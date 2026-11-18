@@ -1,8 +1,10 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Controlled specialization / Especialización controlada
 
 ## Español
 
-NativeSharp 3 permite que una familia de métodos genéricos declare una implementación más
+NativeSharp permite que una familia de métodos genéricos declare una implementación más
 específica mediante el modificador contextual `specialize`:
 
 ```nativesharp
@@ -56,12 +58,12 @@ al mismo tipo y módulo que su fallback, y cada cuerpo obtiene una identidad fí
 El perfil inicial se limita a métodos genéricos ordinarios no virtuales de clases y structs. Las
 funciones libres genéricas todavía no admiten constraints productivos y por eso no son objetivos de
 `specialize`; los métodos virtuales, abstractos, override y sealed también se rechazan. Esta
-restricción evita prometer coherencia abierta o interacción con dispatch que la versión 3.0 aún no
+restricción evita prometer coherencia abierta o interacción con dispatch que el compilador aún no
 modela.
 
 ## English
 
-NativeSharp 3 supports controlled specialization of ordinary generic methods through the
+NativeSharp supports controlled specialization of ordinary generic methods through the
 contextual `specialize` modifier. It is a semantic opt-in, not an optimization hint. When both a
 fallback and a specialized implementation are viable, the implementation with the strictly
 stronger constraint set wins; otherwise the fallback remains available.

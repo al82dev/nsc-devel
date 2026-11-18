@@ -2,7 +2,7 @@
 
 ## Español
 
-NativeSharp 3 conserva la convención de llamada dentro de la identidad canónica de cada tipo
+NativeSharp conserva la convención de llamada dentro de la identidad canónica de cada tipo
 función. Las formas admitidas en Windows x64 son:
 
 - `fn* native(...) -> R`: ABI interna de NativeSharp.
@@ -28,7 +28,7 @@ restricciones variádicas y una ejecución O0 enlazada por NSLink.
 
 ## English
 
-NativeSharp 3 retains the calling convention in the canonical identity of every function type.
+NativeSharp retains the calling convention in the canonical identity of every function type.
 The Windows x64 spellings are:
 
 - `fn* native(...) -> R`: NativeSharp's internal ABI.

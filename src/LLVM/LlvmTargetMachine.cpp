@@ -2,6 +2,7 @@
 
 #include "LlvmCApi.h"
 #include "Internal/CodeViewProcedureRanges.h"
+#include "Internal/WinEhCatchSwitchPhiLegalization.h"
 
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/Target/TargetInfo.h"
@@ -299,6 +300,13 @@ bool LlvmTargetMachine::emitImpl(
             return false;
         }
     }
+
+    // EN: Last IR step before code generation: LLVM's WinEHPrepare loses the value of a catchswitch phi that
+    //     reaches a cleanup funclet through a catch body (see WinEhCatchSwitchPhiLegalization.h).
+    // ES: Ultimo paso sobre el IR antes de generar codigo: WinEHPrepare de LLVM pierde el valor de una phi de
+    //     catchswitch que llega a un funclet de limpieza por el cuerpo de un catch (ver
+    //     WinEhCatchSwitchPhiLegalization.h).
+    legalizeWinEhCatchSwitchPhiUses(module.module_);
 
     // EN: LLVM reads this path as UTF-8. The narrow `path::string()` used before threw for a temporary
     //     directory the active code page cannot spell (a user profile with a CJK name, T08-002).

@@ -1,5 +1,7 @@
 # Tanda correctiva 16: auditoria del reporte de 106 fallos
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 **Fecha:** 2026-10-07  
 **Repositorio:** `A:\nsc-devel`  
 **Rama:** `development`

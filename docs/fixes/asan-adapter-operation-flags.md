@@ -1,0 +1,7 @@
+# Flags del adaptador ASan en realloc y free
+
+La regresión dirigida del adaptador amplía los controles de flags no admitidos a `realloc` y `free`. Cada fixture reserva un bloque con flags cero y después usa flags 8 en una sola operación; espera el diagnóstico específico del adaptador y salida 87. Las pruebas no realizan doble liberación ni ejecutan accesos posteriores a liberar.
+
+Antes de preparar estos fixtures se ejecutó un sondeo independiente equivalente con el adaptador generado O0: ambas operaciones rechazaron flags 8 con salida 87 y diagnóstico; el control alloc → realloc → free con flags cero terminó con salida 42. Log `A:/nsc-fixes-agent1-temp/asan-heap-operation-flags-20261112.log`, con comandos y hashes de las dependencias y del adaptador. Esa ejecución usó un compilador con WIP y `ASAN_OPTIONS=detect_leaks=0`; no verifica todas las opciones ni una revisión limpia. La integración exacta en la regresión existente requiere ejecución dirigida adicional.
+
+La versión integrada se ejecutó posteriormente: los ocho fixtures, incluidos los dos nuevos, devolvieron 87 con el diagnóstico esperado; el control sin configuración de Clang devolvió 77. Registros `A:/nsc-fixes-agent1-temp/asan-operation-flags-integrated-20261112.log` y `asan-operation-flags-integrated-skip-20261112.log`. El test registra el hash del adaptador, pero no los hashes antes y después de todas sus dependencias. No se verificó ausencia general de fugas.

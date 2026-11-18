@@ -1,0 +1,7 @@
+int Main()
+{
+    BinaryFields.Record value = default(BinaryFields.Record);
+    value.Value = 7;
+    value.Count = 3L;
+    return value.Value + (int)value.Count == 10 ? 0 : 1;
+}

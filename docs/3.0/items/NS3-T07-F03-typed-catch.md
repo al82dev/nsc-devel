@@ -1,3 +1,7 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
 # NS3-T07-F03 — Typed try, catch filters, and finally
 
 Status: implemented on `development`
@@ -6,9 +10,9 @@ Validation profile: directed O0/NSLink only; no baseline
 
 ## Delivered vertical
 
-Edition 3 treats a `try` region as a closed set of the errors declared by operations in its
+NativeSharp treats a `try` region as a closed set of the errors declared by operations in its
 protected block. Catch clauses are checked in source order against that set. A typed clause, an
-optional binding, a catch-all, and an edition-3 contextual filter are supported:
+optional binding, a catch-all, and a contextual filter are supported:
 
 ```nativesharp
 try { Parse(); }
@@ -33,7 +37,7 @@ A literal-`false` filter is rejected as unreachable. A non-boolean filter is rej
 - Errors not fully covered continue through an enclosing typed try or the callable's `throws E`
   contract. Otherwise NS3071 is emitted.
 
-This analysis is edition-3-only and does not retrofit checked-error rules onto edition 2.
+This analysis applies according to the checked-error contract, without selecting a language edition.
 
 ## Cleanup and Windows x64 lowering
 

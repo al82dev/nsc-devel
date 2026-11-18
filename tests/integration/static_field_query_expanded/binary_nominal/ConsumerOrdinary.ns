@@ -1,0 +1,10 @@
+using NodeAlias = BinaryNominal.Node;
+namespace Other { public struct Node { public long OtherValue; } }
+int Main()
+{
+    BinaryNominal.Record value = default(BinaryNominal.Record);
+    value.Item.Value = 5;
+    value.Count = 3;
+    NodeAlias node = value.Item;
+    return node.Value + value.Count == 8 ? 0 : 1;
+}

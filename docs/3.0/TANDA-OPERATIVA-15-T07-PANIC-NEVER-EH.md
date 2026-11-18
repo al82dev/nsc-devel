@@ -1,5 +1,7 @@
 # Tanda operativa 15 — T07 panic/never y frontera EH
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 Fecha: 2026-09-29  
 Rama: `development`  
 Plataforma: Windows x64  
@@ -24,7 +26,7 @@ Win64 existente mediante un witness autocontenido, sin importar todo NativeSharp
 
 - `panic()` es contextual: `panic` sigue siendo un identificador salvo como cabeza de llamada no
   calificada.
-- La forma sólo está disponible con `<Language>3</Language>`; edición 2 emite NS3002.
+- La forma se analiza sin seleccionar una edición del lenguaje.
 - El perfil abort inicial acepta exactamente cero argumentos y cero argumentos genéricos.
 - Un miembro calificado llamado `panic` no se confunde con el intrínseco.
 
@@ -64,7 +66,7 @@ el witness EH autocontenido evita ocultar el problema y mantiene la prueba estri
 - `include/nativesharp/Frontend/ProjectMethodBodyModel.h`
   - añade el core operation estable `Panic` al final del enum.
 - `src/Parser/Parser.cpp`
-  - marca la llamada contextual y aplica el gate de edición 3.
+  - marca la llamada contextual; la antigua selección por edición fue retirada.
 - `src/Frontend/ProjectMethodBodyModel.cpp`
   - valida aridad, produce `builtin:never` y termina el flujo alcanzable.
 - `include/nativesharp/Frontend/ProjectOopHirModel.h`
@@ -87,7 +89,7 @@ el witness EH autocontenido evita ocultar el problema y mantiene la prueba estri
 ## Archivos nuevos y por qué
 
 - `tests/cc1/c65_ns3_panic_never/c65_ns3_panic_never.nsproj`
-  - proyecto mínimo edición 3 que no depende de bibliotecas externas.
+  - proyecto mínimo que no depende de bibliotecas externas.
 - `tests/cc1/c65_ns3_panic_never/Main.ns`
   - witness normal de panic no tomado, dead-code binding, catch tipado y salida 42.
 - `docs/3.0/TANDA-OPERATIVA-15-T07-PANIC-NEVER-EH.md`
@@ -114,7 +116,7 @@ escribir panic ni observar never en HIR/MIR/PE. Ahora existe una ruta única y a
 5. Probe temporal que ejecuta `panic()`:
    - lld-link: exit 142;
    - NSLink: exit 142.
-6. Negativo edición 2: exit 1 con NS3002.
+6. La campaña histórica incluía un negativo de selección por edición; esa regla fue retirada y el resultado no valida el comportamiento actual.
 7. Negativo `panic(1)`: exit 1 con diagnóstico de aridad del perfil abort.
 8. c65 incluye throw/catch tipado autocontenido y retorna 42 con ambos linkers.
 

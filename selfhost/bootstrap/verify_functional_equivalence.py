@@ -128,7 +128,7 @@ def parse_project_dump(data: bytes) -> dict[str, object]:
 
 def parse_legacy_metadata(path: Path) -> dict[str, object]:
     data = path.read_bytes()
-    require(data.startswith(b"NSMETA1\0") and len(data) >= 100, "invalid nsc0 NSMETA")
+    require(data.startswith(b"NSMETA\0\0") and len(data) >= 100, "invalid nsc0 NSMETA")
     major, minor = struct.unpack_from("<HH", data, 8)
     payload_size = struct.unpack_from("<Q", data, 28)[0]
     require(100 + payload_size == len(data), "invalid nsc0 NSMETA payload size")
@@ -154,7 +154,7 @@ def parse_legacy_metadata(path: Path) -> dict[str, object]:
 def parse_modern_metadata(path: Path) -> dict[str, object]:
     fields: dict[str, str] = {}
     lines = path.read_text(encoding="utf-8").splitlines()
-    require(lines and lines[0] == "NSMETA/2", "invalid nsc2 NSMETA")
+    require(lines and lines[0] == "NSMETA", "invalid nsc2 NSMETA")
     for line in lines[1:]:
         if "=" in line:
             key, value = line.split("=", 1)

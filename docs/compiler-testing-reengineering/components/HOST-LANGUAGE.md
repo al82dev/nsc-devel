@@ -31,7 +31,7 @@ determinista. La reconstructibilidad exige probar tanto resultados aceptados com
 | `CL-LANG-009` | `GenericSemantics.h/.cpp` | 287 | constraints, const generics, specialization y budget |
 | `CL-LANG-010` | `IntegrationQuality.h/.cpp` | 687 | matrices, corpus, budgets, diagnostics, debug y costo |
 | `CL-LANG-011` | `IterationSemantics.h/.cpp` | 477 | iterators, ranges, generator ABI y fusion |
-| `CL-LANG-012` | `Language3Surface.h/.cpp` | 145 | catálogo histórico de superficie y diagnostics |
+| `CL-LANG-012` | `LanguageSurface.h/.cpp` | 145 | catálogo histórico de superficie y diagnostics |
 | `CL-LANG-013` | `MemoryModel.h/.cpp` | 134 | órdenes atómicos, races, volatile y manifest |
 | `CL-LANG-014` | `MetaprogrammingSemantics.h/.cpp` | 148 | introspection, attributes, hygiene y comptime |
 | `CL-LANG-015` | `ModuleSemantics.h/.cpp` | 195 | identidades, grafo, imports, visibility y API hash |
@@ -184,7 +184,7 @@ determinista. La reconstructibilidad exige probar tanto resultados aceptados com
 
 ## 14. Superficie histórica — `CL-LANG-012`
 
-- tabla de 16 entradas clasifica Implemented, DeferredTo4 o RejectedFor3 y congela name+rationale.
+- tabla de 16 entradas clasifica Implemented, Deferred o Rejected y congela name+rationale.
 - lookup lineal de enum externo retorna silenciosamente la primera entrada.
 - manifest y diagnostics contienen etiquetas `3.0`/`4.0`; son implementación vigente, no evidencia de que esa
   política sea compatible con la decisión posterior de neutralidad de edición.
@@ -295,7 +295,7 @@ determinista. La reconstructibilidad exige probar tanto resultados aceptados com
 
 ## 25. Contradicciones y riesgos que no se ocultan
 
-1. `Language3Surface`, `CompatibilitySemantics`, `IntegrationQuality` y `ReleaseSemantics` contienen gates,
+1. `LanguageSurface`, `CompatibilitySemantics`, `IntegrationQuality` y `ReleaseSemantics` contienen gates,
    strings o metadata ligados a 3.x. La política posterior del usuario exige neutralidad de edición. La Fase 1
    documenta la discrepancia; no la resuelve ni cambia pruebas.
 2. El componente conserva varios conceptos `unsafe`; la decisión posterior de reemplazarlos o relajarlos no se

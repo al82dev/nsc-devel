@@ -1,4 +1,4 @@
-# NativeSharp 3.0 — Reborrow y préstamos divididos / Reborrowing and split borrows
+# NativeSharp — Reborrow y préstamos divididos / Reborrowing and split borrows
 
 ## Contrato normativo / Normative contract
 
@@ -70,11 +70,11 @@ same rule applies recursively to a reborrow chain.
 
 ## Compatibilidad y costo / Compatibility and cost
 
-Edición 2 conserva las reglas anteriores. F03 no cambia Win64 ABI, NSMETA, layout ni runtime; solo
+F03 no cambia Win64 ABI, NSMETA, layout ni runtime; solo
 añade estado semántico y texto de dump. La precisión futura de lifetimes nombrados y procedencia
 cross-module pertenece a F04/F07 y puede ampliar pruebas, pero no relajar exclusividad.
 
-Edition 2 preserves its prior rules. F03 changes neither the Win64 ABI, NSMETA, layout nor runtime;
+F03 changes neither the Win64 ABI, NSMETA, layout nor runtime;
 it adds semantic state and dump text only. Named lifetimes and cross-module provenance belong to
 F04/F07 and may extend proofs without weakening exclusivity.
 

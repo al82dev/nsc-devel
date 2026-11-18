@@ -1,3 +1,5 @@
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
 # NS3-T04-F06 — Controlled specialization
 
 ## Estado
@@ -8,7 +10,7 @@ parcial probado después de la resolución ordinaria de overloads.
 
 ## Qué se hizo
 
-- Se añadió el modificador contextual Edition 3 `specialize` para métodos genéricos ordinarios.
+- Se añadió el modificador contextual NativeSharp `specialize` para métodos genéricos ordinarios.
 - Cada plantilla registra una familia alfa-estable por propietario, nombre, aridad, forma
   static/instance y patrón de parámetros; los constraints quedan fuera de esa identidad para poder
   compararlos.
@@ -27,7 +29,7 @@ parcial probado después de la resolución ordinaria de overloads.
 
 ## Archivos modificados
 
-- `src/Parser/Parser.cpp`: sintaxis, Edition 3 y rechazo exhaustivo sobre declaraciones no válidas.
+- `src/Parser/Parser.cpp`: sintaxis, NativeSharp y rechazo exhaustivo sobre declaraciones no válidas.
 - `include/nativesharp/Frontend/ProjectGenericModel.h` y
   `src/Frontend/ProjectGenericModel.cpp`: identidad de familia, opt-in, consulta por sintaxis y
   conservación del marcador durante monomorfización.
@@ -46,7 +48,7 @@ parcial probado después de la resolución ordinaria de overloads.
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T04SpecializationTests.cpp`: siete cierres de ejecución, fallback,
+- `tests/unit/NativeSharpT04SpecializationTests.cpp`: siete cierres de ejecución, fallback,
   estabilidad de orden, diamantes, equivalencia, opt-in, target inválido y build separado.
 - `docs/3.0/language/controlled-specialization.md`: contrato bilingüe y límites conservadores.
 - Este documento: evidencia atómica del commit F06.

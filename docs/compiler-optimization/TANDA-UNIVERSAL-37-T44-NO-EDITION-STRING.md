@@ -1,12 +1,14 @@
 # Tanda universal 37: cierre T44 sin edición ni texto frágil
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Problema confirmado
 
-T44 compilaba correctamente el consumidor y generaba el ejecutable, pero el verificador exigía que
-stdout contuviera exactamente `Build succeeded (Language 3)`. Al retirar la edición del mensaje,
-una compilación con código 0 y artefacto válido era reportada como fallo.
+T44 compilaba correctamente el consumidor y generaba el ejecutable, pero el verificador exigía una
+etiqueta histórica de lenguaje en stdout. Al retirar la etiqueta del mensaje, una compilación con
+código 0 y artefacto válido era reportada como fallo.
 
-El mismo verificador fabricaba tres proyectos con `<Language>3</Language>`.
+El mismo verificador fabricaba tres proyectos con la propiedad histórica `<Language>`.
 
 ## Cambio
 

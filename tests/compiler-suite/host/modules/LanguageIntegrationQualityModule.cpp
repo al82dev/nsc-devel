@@ -80,7 +80,7 @@ void registerPrioritizedInteractionMatrixCase(TestRegistry& registry)
     addCase(registry, "TL-LANG-126", [](TestContext& context) {
         constexpr std::string_view invalidPriority =
             "prioritized interaction cases require high risk, compiler impact, and minimization";
-        const auto valid = buildNativeSharp3InteractionMatrix(100);
+        const auto valid = buildNativeSharpInteractionMatrix(100);
         std::string error;
         context.expect(validatePrioritizedInteractionMatrix(valid, error) && error.empty(),
             "TL-LANG-126 the canonical high-risk matrix must satisfy prioritization");
@@ -114,8 +114,8 @@ void registerCanonicalInteractionMatrixCase(TestRegistry& registry)
             "variant-move-drop", "generic-trait-associated", "borrow-async-error",
             "module-ffi-contract", "derive-module-fingerprint", "closure-generic-borrow",
             "iterator-async-numeric"};
-        const auto fallback = buildNativeSharp3InteractionMatrix(0);
-        const auto explicitSeed = buildNativeSharp3InteractionMatrix(0x4e533300ULL);
+        const auto fallback = buildNativeSharpInteractionMatrix(0);
+        const auto explicitSeed = buildNativeSharpInteractionMatrix(0x4e533300ULL);
         context.expect(fallback.size() == identities.size() && explicitSeed.size() == fallback.size(),
             "TL-LANG-127 the canonical matrix must contain exactly seven cases");
         for (std::size_t index = 0; index < fallback.size(); ++index)
@@ -128,7 +128,7 @@ void registerCanonicalInteractionMatrixCase(TestRegistry& registry)
                 "TL-LANG-127 zero seed fallback must preserve exact IDs, areas, and sequential seeds");
         }
 
-        const auto wrapped = buildNativeSharp3InteractionMatrix((std::numeric_limits<std::uint64_t>::max)());
+        const auto wrapped = buildNativeSharpInteractionMatrix((std::numeric_limits<std::uint64_t>::max)());
         context.expect(wrapped.size() == 7 && wrapped[0].deterministicSeed == 0 &&
                 wrapped[1].deterministicSeed == 1 && wrapped[6].deterministicSeed == 6,
             "TL-LANG-127 unsigned boundary seeds must follow exact modulo arithmetic");
@@ -138,7 +138,7 @@ void registerCanonicalInteractionMatrixCase(TestRegistry& registry)
 void registerInteractionMinimizationCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-128", [](TestContext& context) {
-        const InteractionCase failing = buildNativeSharp3InteractionMatrix(1000)[2];
+        const InteractionCase failing = buildNativeSharpInteractionMatrix(1000)[2];
         const std::array essential = {FeatureArea::Coroutines, FeatureArea::Ownership};
         std::string error = "stale";
         const auto minimized = minimizeInteractionCase(failing, essential, error);
@@ -156,7 +156,7 @@ void registerInteractionMinimizationCase(TestRegistry& registry)
 void registerInteractionMinimizationFailureCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-129", [](TestContext& context) {
-        const InteractionCase failing = buildNativeSharp3InteractionMatrix(1000)[2];
+        const InteractionCase failing = buildNativeSharpInteractionMatrix(1000)[2];
         std::string error;
         const std::array<FeatureArea, 1> one = {FeatureArea::Ownership};
         context.expect(!minimizeInteractionCase(failing, one, error).has_value() &&
@@ -182,7 +182,7 @@ void registerWholeProgramCorpusCase(TestRegistry& registry)
     addCase(registry, "TL-LANG-130", [](TestContext& context) {
         constexpr std::string_view invalid =
             "whole-program witnesses must be unique, deterministic, incremental, and SDK-independent";
-        const auto valid = buildNativeSharp3WholeProgramCorpus();
+        const auto valid = buildNativeSharpWholeProgramCorpus();
         std::string error = "stale";
         context.expect(validateWholeProgramCorpus(valid, error) && error.empty(),
             "TL-LANG-130 the canonical whole-program corpus must satisfy base invariants");
@@ -207,14 +207,14 @@ void registerCanonicalWholeProgramCorpusCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-131", [](TestContext& context) {
         using Kind = WholeProgramWitness::Kind;
-        const auto corpus = buildNativeSharp3WholeProgramCorpus();
+        const auto corpus = buildNativeSharpWholeProgramCorpus();
         const std::array<std::string_view, 6> identities = {
             "parser", "arena", "job-graph", "serializer", "dll-host-plugin", "async-server"};
         const std::array kinds = {Kind::Parser, Kind::ArenaAllocator, Kind::JobGraph,
             Kind::BinarySerializer, Kind::DllHostPlugin, Kind::AsyncServer};
         const std::array<std::size_t, 6> units = {4, 3, 5, 4, 6, 5};
         std::string error;
-        context.expect(corpus.size() == 6 && validateNativeSharp3WholeProgramCorpus(corpus, error) &&
+        context.expect(corpus.size() == 6 && validateNativeSharpWholeProgramCorpus(corpus, error) &&
                 error.empty(),
             "TL-LANG-131 the canonical six-kind corpus must pass the extended validator");
         for (std::size_t index = 0; index < corpus.size(); ++index)
@@ -229,17 +229,17 @@ void registerCanonicalWholeProgramCorpusCase(TestRegistry& registry)
 
         auto missingProfile = corpus;
         missingProfile[0].debugAndRelease = false;
-        context.expect(!validateNativeSharp3WholeProgramCorpus(missingProfile, error) &&
+        context.expect(!validateNativeSharpWholeProgramCorpus(missingProfile, error) &&
                 error == "whole-program witness lacks a required build profile or observable result",
             "TL-LANG-131 a missing build profile must fail with the exact error");
         auto duplicateKind = corpus;
         duplicateKind[1].kind = duplicateKind[0].kind;
-        context.expect(!validateNativeSharp3WholeProgramCorpus(duplicateKind, error) &&
+        context.expect(!validateNativeSharpWholeProgramCorpus(duplicateKind, error) &&
                 error == "whole-program corpus contains a duplicate witness kind",
             "TL-LANG-131 duplicate witness kinds must fail before complete-kind coverage");
         auto insufficientNoHeap = corpus;
         insufficientNoHeap[3].partialNoHeap = false;
-        context.expect(!validateNativeSharp3WholeProgramCorpus(insufficientNoHeap, error) &&
+        context.expect(!validateNativeSharpWholeProgramCorpus(insufficientNoHeap, error) &&
                 error == "whole-program corpus requires at least four partial noheap profiles",
             "TL-LANG-131 fewer than four partial-noheap profiles must fail exactly");
     });
@@ -275,7 +275,7 @@ void registerPerformanceBudgetComparisonCase(TestRegistry& registry)
 void registerPerformanceAssessmentCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-133", [](TestContext& context) {
-        const auto profiles = nativeSharp3PerformanceBudgets();
+        const auto profiles = nativeSharpPerformanceBudgets();
         const std::array<std::string_view, 6> identities = {"giant-file", "generic-heavy", "macro-heavy",
             "module-fanout", "async-frames", "pathological-diagnostics"};
         const std::array corpora = {PerformanceCorpus::GiantFile, PerformanceCorpus::GenericHeavy,

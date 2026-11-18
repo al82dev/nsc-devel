@@ -1,12 +1,14 @@
 # Tanda documental 04 — tracking de componentes restantes
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 Fecha: 2026-10-04
 
 Rama: `development`
 
 ## Objetivo
 
-Sustituir estados genéricos del catálogo NativeSharp 3.0 por estados sustentados en el código,
+Sustituir estados genéricos del catálogo NativeSharp por estados sustentados en el código,
 commits y expedientes reales de Bindings, Project Manager, Distribución, Saru y Runtime/STL.
 
 ## Cambios
@@ -31,9 +33,9 @@ commits y expedientes reales de Bindings, Project Manager, Distribución, Saru y
 
 ## Archivos
 
-- `tools/native_sharp_3_catalog.py`: contratos canónicos corregidos para Distribución y Saru.
-- `tools/verify_native_sharp_3_catalog.py`: invariantes de rutas operativas.
-- `tests/unit/test_native_sharp_3_catalog.py`: prueba dirigida de los valores canónicos.
+- `tools/native_sharp_catalog.py`: contratos canónicos corregidos para Distribución y Saru.
+- `tools/verify_native_sharp_catalog.py`: invariantes de rutas operativas.
+- `tests/unit/test_native_sharp_catalog.py`: prueba dirigida de los valores canónicos.
 - `A:\DOCUMENTO-MAESTRO-NATIVESHARP-3.0.md`: catálogo y resumen por componente regenerados.
 - `A:\NATIVESHARP-3.0-TRACKING.md`: tabla compacta regenerada desde el maestro.
 

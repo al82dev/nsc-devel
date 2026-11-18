@@ -96,7 +96,9 @@ bool ProjectMethodBodyModel::validateSelectedDeconstruct(
             diagnostics::DiagnosticSeverity::Error,
             sourceSyntax != nullptr ? sourceSyntax->range() : syntax->range(),
             "Deconstruct() returning owning or move-only tuple elements requires per-element "
-            "move bindings and drop flags");
+            "move bindings and drop flags; "
+            "move-only elements cannot be split out of a tuple; return them through out "
+            "parameters or keep the value whole");
         return false;
     }
     if (!source.addressable && !elementTypeHasTrivialLifetime(source.typeKey))
@@ -767,7 +769,42 @@ void ProjectMethodBodyModel::applyMatchExpressionOwnership(
     ExpressionResult& result,
     std::span<const ExpressionResult> values) const
 {
-    const sema::OwnershipKind ownership = values.front().ownership;
+    // EN: The reference arm is the first that produces a value: a `never` first arm made every
+    //     other arm's ownership look different (LKF-326). A fresh `new` and an owned-returning call
+    //     both hand over a new owner, so arms mixing them merge as an owned transfer.
+    // ES: El brazo de referencia es el primero que produce un valor: un primer brazo `never`
+    //     hacía que la propiedad de los demás pareciera distinta (LKF-326). Un `new` nuevo y una
+    //     llamada que devuelve owned entregan un dueño nuevo; mezclados se unen como transferencia.
+    const auto producesValue = [](const ExpressionResult& value) { return value.typeKey != "builtin:never"; };
+    const auto reference = std::ranges::find_if(values, producesValue);
+    if (reference == values.end()) return;
+    const auto handsOverOwner = [](const ExpressionResult& value)
+    {
+        return value.ownershipFreshOwner ||
+            (value.ownership == sema::OwnershipKind::Owned && value.ownershipTransfer);
+    };
+    if (std::ranges::all_of(values, [&](const ExpressionResult& value)
+            {
+                return !producesValue(value) || handsOverOwner(value);
+            }) &&
+        std::ranges::any_of(values, [&](const ExpressionResult& value)
+            {
+                return producesValue(value) && value.ownershipTransfer;
+            }))
+    {
+        // EN: A `new` arm may carry no ownership kind of its own, only the fresh-owner mark, so
+        //     the merge cannot compare kinds here; every arm hands over a new owner.
+        // ES: Un brazo `new` puede no llevar tipo de propiedad propio, solo la marca de dueño
+        //     nuevo, así que aquí no se comparan tipos; todos los brazos entregan un dueño nuevo.
+        result.ownership = sema::OwnershipKind::Owned;
+        result.ownershipTransfer = true;
+        result.ownershipFreshOwner = std::ranges::all_of(values, [&](const ExpressionResult& value)
+            {
+                return !producesValue(value) || value.ownershipFreshOwner;
+            });
+        return;
+    }
+    const sema::OwnershipKind ownership = reference->ownership;
     if (!std::ranges::all_of(
             values, [&](const ExpressionResult& value)
             {

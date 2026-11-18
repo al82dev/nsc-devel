@@ -63,6 +63,12 @@ public:
     const ClassObjectLayout* layoutForType(std::size_t typeOrdinal) const noexcept;
     const StructValueLayout* structLayoutForType(std::size_t typeOrdinal) const noexcept;
     const ObjectFieldLayout* fieldLayoutForMember(std::size_t memberOrdinal) const noexcept;
+    // Query the canonical struct layout before body analysis completes. An unresolved,
+    // invalid or precompiled value dependency yields no proof and emits no diagnostics.
+    static std::optional<StructValueLayout> tryStructLayoutForBodyAnalysis(
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        std::size_t typeOrdinal);
     target::TypeLayout classReferenceLayout() const noexcept;
     // The size and alignment of ONE value of `typeKey` -- what an array stride, a `sizeof` and an
     // aggregate-element offset all need. Builtins answer from the target's fixed widths, a struct

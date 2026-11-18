@@ -105,7 +105,10 @@ ast::TypeSyntax* ProjectGenericModel::cloneInferredType(
     const ast::TypeSyntax* source)
 {
     bool conflict = false;
-    return cloneAliasType(unit.arena(), source, {}, conflict);
+    ast::TypeSyntax* clone = cloneAliasType(unit.arena(), source, {}, conflict);
+    if (clone != nullptr && source != nullptr)
+        substitutedTypeCloneSources_.emplace(clone, source);
+    return clone;
 }
 
 ast::TypeSyntax* ProjectGenericModel::inferNamedExpressionType(
@@ -426,6 +429,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneInferredTypeArgument(
 {
     ast::TypeSyntax* value = unit.arena().make<ast::TypeSyntax>(
         actual->range(), actual->baseTokenKind(), actual->baseName());
+    substitutedTypeCloneSources_.emplace(value, actual);
     if (pattern->ownershipQualifier() == ast::OwnershipQualifierSyntaxKind::None)
         value->setOwnershipQualifier(actual->ownershipQualifier());
     value->setTuple(actual->isTuple());
@@ -434,11 +438,31 @@ ast::TypeSyntax* ProjectGenericModel::cloneInferredTypeArgument(
     value->setOpaqueResultTraitName(actual->opaqueResultTraitName());
     value->setPointeeConst(actual->isPointeeConst());
     value->setPointeeVolatile(actual->isPointeeVolatile());
+    // EN: LKF-363: the reference qualifier, the lifetime and the function-type attributes belong to the
+    //     inferred type as much as its name; the clone kept only the name and the qualifiers above.
+    // ES: LKF-363: el calificador de referencia, la vida y los atributos de tipo función pertenecen al tipo
+    //     inferido tanto como su nombre; el clon conservaba solo el nombre y los calificadores de arriba.
+    value->setReferenceQualifier(actual->referenceQualifier());
+    value->setLifetimeName(actual->lifetimeName());
+    bool conflict = false;
+    if (actual->isFunction())
+    {
+        value->setFunction(true);
+        value->setFunctionCarrier(actual->functionCarrier());
+        value->setFunctionCallingConvention(actual->functionCallingConvention());
+        value->setFunctionVariadic(actual->functionIsVariadic());
+        value->setFunctionUnsafe(actual->functionIsUnsafe());
+        value->setFunctionNoHeap(actual->functionIsNoHeap());
+        value->setFunctionAsync(actual->functionIsAsync());
+        value->setFunctionNullable(actual->functionIsNullable());
+        value->setFunctionLifetimeName(actual->functionLifetimeName());
+        value->setFunctionReturnType(cloneAliasType(unit.arena(), actual->functionReturnType(), {}, conflict));
+        value->setFunctionErrorType(cloneAliasType(unit.arena(), actual->functionErrorType(), {}, conflict));
+    }
     if (actual->originProjectOrdinal().has_value())
         value->setOriginProjectOrdinal(*actual->originProjectOrdinal());
     if (actual->originNamespace().has_value())
         value->setOriginNamespace(*actual->originNamespace());
-    bool conflict = false;
     for (std::size_t index = 0; index < actual->typeArguments().size(); ++index)
     {
         ast::TypeSyntax* argument = cloneAliasType(
@@ -509,8 +533,30 @@ bool ProjectGenericModel::inferTypeArguments(
     const std::optional<bool> named = inferNamedTypeArgument(
         unit, pattern, actual, record, parameters, modifierPrefix, inferred);
     if (named.has_value()) return *named;
+    bool matchingName = pattern->baseName() == actual->baseName();
+    // A qualified imported pattern can match an inferred return only by resolved identity.
+    if (!matchingName && pattern->baseName().find("::") != std::string::npos &&
+        !pattern->typeArguments().empty())
+    {
+        const TypeResolution patternType = resolveTypeTemplate(
+            unit, {}, pattern->baseName(), pattern->typeArguments().size(), GenericLookupScope{});
+        const ast::TypeSyntax* source = actual;
+        std::unordered_set<const ast::TypeSyntax*> visited;
+        while (source != nullptr && visited.insert(source).second)
+        {
+            const auto resolved = resolvedGenericTypeTemplates_.find(source);
+            if (resolved != resolvedGenericTypeTemplates_.end())
+            {
+                matchingName = patternType.kind == TypeResolutionKind::Unique &&
+                    patternType.state != nullptr && resolved->second == patternType.state;
+                break;
+            }
+            const auto previous = substitutedTypeCloneSources_.find(source);
+            source = previous == substitutedTypeCloneSources_.end() ? nullptr : previous->second;
+        }
+    }
     if (modifierPrefix != 0 || pattern->baseTokenKind() != actual->baseTokenKind() ||
-        pattern->baseName() != actual->baseName() ||
+        !matchingName ||
         pattern->typeArguments().size() != actual->typeArguments().size())
         return false;
     for (std::size_t index = 0; index < pattern->typeArguments().size(); ++index)

@@ -1,0 +1,7 @@
+class Box<T>
+{
+    protected int Hidden;
+    public int Visible;
+    public Box() { this.Hidden = 3; this.Visible = 7; }
+}
+int Main() { owned Box<int> value = new Box<int>(); return value.Visible == 7 ? 0 : 1; }

@@ -191,7 +191,7 @@ class ADriveExecutionIsolationTests(unittest.TestCase):
                 environment: dict[str, str],
             ) -> None:
                 received.update(environment)
-                print("Version    : 3.0.3")
+                print("Version    : 1.0.0")
                 print("Build hash : deadbeef")
                 print("Dry run: no archive was created.")
 

@@ -144,7 +144,7 @@ namespace Shared
     const bool producerEmitted =
         runDriver(producerArguments, output, error) == ExitCode::Success;
     tests.expect(producerEmitted,
-        "volatile bit-field producer emits NSMETA 1.18 (" + error + ")");
+        "volatile bit-field producer emits NSMETA (" + error + ")");
 
     const auto consumer = root / "consumer";
     const std::string references =

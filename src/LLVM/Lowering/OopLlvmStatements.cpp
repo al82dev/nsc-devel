@@ -8,13 +8,74 @@ namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
 
+namespace
+{
+std::vector<const frontend::ProjectOopMirNode*> simpleDelegatedFieldStores(
+    const frontend::ProjectOopMirFunction& function, const frontend::ProjectMemberModel& members)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    const auto* body = function.body.get();
+    if (body == nullptr || body->kind != Kind::Block || body->children.empty())
+        return {};
+    std::size_t firstStore = 0;
+    if (body->children.front() != nullptr && body->children.front()->kind == Kind::DirectInstanceCall)
+    {
+        const auto* base = body->children.front().get();
+        if (base == nullptr || base->kind != Kind::DirectInstanceCall || !base->baseReceiver ||
+            !base->memberOrdinal.has_value() ||
+            *base->memberOrdinal >= members.members().size() || base->children.size() != 1 || !base->children[0] ||
+            base->children[0]->kind != Kind::ThisValue) return {};
+        const auto& member = members.members()[*base->memberOrdinal];
+        if (member.kind != frontend::ClassMemberKind::Constructor ||
+            member.declaringTypeOrdinal == function.declaringTypeOrdinal) return {};
+        firstStore = 1;
+    }
+    if (body->children.size() == firstStore) return {};
+    std::vector<const frontend::ProjectOopMirNode*> addresses;
+    std::unordered_set<std::size_t> seenFields;
+    for (std::size_t index = firstStore; index < body->children.size(); ++index)
+    {
+        const auto* store = body->children[index].get();
+        if (store == nullptr || store->kind != Kind::Store || store->children.size() != 2 ||
+            !store->children[0] || !store->children[1]) return {};
+        const auto* address = store->children[0].get();
+        const auto* value = store->children[1].get();
+        if (address->kind != Kind::FieldAddress || !address->memberOrdinal.has_value() ||
+            *address->memberOrdinal >= members.members().size() || address->children.size() != 1 ||
+            !address->children[0] || address->children[0]->kind != Kind::ThisValue ||
+            members.members()[*address->memberOrdinal].declaringTypeOrdinal != function.declaringTypeOrdinal ||
+            members.members()[*address->memberOrdinal].isVolatile ||
+            value->kind != Kind::ValueConstruct || value->typeKey != address->typeKey || value->placementConstructed)
+            return {};
+        for (const auto& argument : value->children)
+            if (!argument || (argument->kind != Kind::IntegerConstant && argument->kind != Kind::FloatingConstant &&
+                              argument->kind != Kind::BooleanConstant)) return {};
+        if (!seenFields.insert(*address->memberOrdinal).second) return {};
+        addresses.push_back(address);
+    }
+    return addresses;
+}
+
+std::vector<const frontend::ProjectOopMirNode*> provenDelegatedFields(
+    const frontend::ProjectOopMirModel& model, const frontend::ProjectMemberModel& members,
+    const frontend::ProjectOopMirNode* call, std::size_t declaringType)
+{
+    if (call == nullptr || !call->memberOrdinal.has_value() || call->calleeName.empty()) return {};
+    const auto* found = model.functionForMangledName(call->calleeName);
+    if (found == nullptr || !found->constructor || found->isImportedNative || found->isImportedC ||
+        found->memberOrdinal != *call->memberOrdinal || found->declaringTypeOrdinal != declaringType)
+        return {};
+    return simpleDelegatedFieldStores(*found, members);
+}
+}
+
 bool OopLlvmImplementation::lowerStatement(
         const frontend::ProjectOopMirNode* node, std::string& error)
 {
         if (node == nullptr) return true;
         ScopedDebugLocation scopedDebugLocation(builder_, debugLocation(node));
-        // EN: Freeze 3.0 C-02: a statement around a suspension point is a resume target.
-        // ES: Congelamiento 3.0 C-02: una sentencia alrededor de un punto de suspension es destino
+        // EN: Freeze C-02: a statement around a suspension point is a resume target.
+        // ES: Congelamiento C-02: una sentencia alrededor de un punto de suspension es destino
         //     de reanudacion.
         enterCoroutineResumeTarget(node);
         switch (node->kind)
@@ -97,6 +158,92 @@ bool OopLlvmImplementation::lowerExpressionStatement(
         return error.empty();
 }
 
+bool OopLlvmImplementation::sharedEmptyDefault(const std::string& typeKey) const
+{
+    const auto* layout = mirModel_.structLayoutForTypeKey(typeKey);
+    if (layout == nullptr || layout->isImported || layout->isUnion ||
+        layout->hasExplicitFieldOffsets || layout->typeOrdinal >= nameLookup_.namedTypes().size())
+        return false;
+    const auto& identity = nameLookup_.namedTypes()[layout->typeOrdinal].identity;
+    const auto& segments = identity.namespaceSegments();
+    if (segments.size() != 2 || segments[0] != "NativeSharp" || segments[1] != "Core" ||
+        !identity.containingTypes().empty()) return false;
+    // A matching generic name alone is not evidence that its zero state may be
+    // destroyed: user code can define a homonym with an observable destructor.
+    // Accept only the proven wrapper shape and an inner destructor whose sole
+    // action is guarded by a null check of its non-owned array field.
+    if (layout->fields.size() != 1U) return false;
+    for (const auto& member : memberModel_->members())
+        if (member.declaringTypeOrdinal == layout->typeOrdinal &&
+            member.kind == frontend::ClassMemberKind::Destructor &&
+            !member.isCompilerGenerated) return false;
+    const auto& innerField = layout->fields.front();
+    if (innerField.memberOrdinal >= memberModel_->members().size()) return false;
+    const auto& innerMember = memberModel_->members()[innerField.memberOrdinal];
+    if (innerMember.name != "inner" || innerMember.isVolatile ||
+        innerMember.declaredOwnership != sema::OwnershipKind::None) return false;
+    const auto* innerLayout = mirModel_.structLayoutForTypeKey(innerField.typeKey);
+    if (innerLayout == nullptr || innerLayout->isImported || innerLayout->isUnion ||
+        innerLayout->hasExplicitFieldOffsets || innerLayout->fields.size() != 2U) return false;
+    bool hasBlock = false;
+    bool hasSlot = false;
+    for (const auto& field : innerLayout->fields)
+    {
+        if (field.memberOrdinal >= memberModel_->members().size()) return false;
+        const auto& symbol = memberModel_->members()[field.memberOrdinal];
+        if (symbol.isVolatile || symbol.declaredOwnership != sema::OwnershipKind::None) return false;
+        if (symbol.name == "block" && field.typeKey == "builtin:long[]") hasBlock = true;
+        else if (symbol.name == "slot" && field.typeKey.ends_with('*')) hasSlot = true;
+        else return false;
+    }
+    if (!hasBlock || !hasSlot) return false;
+    const ast::AstNode* destructor = nullptr;
+    for (const auto& member : memberModel_->members())
+    {
+        if (member.declaringTypeOrdinal != innerLayout->typeOrdinal ||
+            member.kind != frontend::ClassMemberKind::Destructor) continue;
+        if (destructor != nullptr || member.syntax == nullptr || member.isCompilerGenerated) return false;
+        destructor = member.syntax;
+    }
+    if (destructor == nullptr || destructor->first() == nullptr ||
+        destructor->first()->kind() != ast::AstNodeKind::BlockStatement ||
+        destructor->first()->children().size() != 1U) return false;
+    const ast::AstNode* guard = destructor->first()->children().front();
+    if (guard == nullptr || guard->kind() != ast::AstNodeKind::IfStatement ||
+        guard->third() != nullptr || guard->first() == nullptr ||
+        guard->first()->kind() != ast::AstNodeKind::BinaryExpression ||
+        guard->first()->tokenKind() != lexer::TokenKind::BangEqual) return false;
+    const ast::AstNode* left = guard->first()->first();
+    const ast::AstNode* right = guard->first()->second();
+    if (left == nullptr || right == nullptr ||
+        left->kind() != ast::AstNodeKind::IdentifierExpression || left->text() != "block" ||
+        right->kind() != ast::AstNodeKind::NullLiteralExpression) return false;
+    const ast::AstNode* declaration = nameLookup_.namedTypes()[layout->typeOrdinal].syntax;
+    constexpr std::string_view specializationMarker = "stage44-specialization:";
+    if (declaration != nullptr && declaration->auxiliaryText().starts_with(specializationMarker))
+    {
+        std::string key = declaration->auxiliaryText().substr(specializationMarker.size());
+        if (const auto metadata = key.find(";nsc-meta:"); metadata != std::string::npos)
+            key.resize(metadata);
+        for (const char* family : {"Rc", "WeakRc", "Arc", "WeakArc"})
+        {
+            const std::string prefix = identity.moduleName() + "::NativeSharp.Core." + family + "`1<";
+            if (key.starts_with(prefix) && key.ends_with('>')) return true;
+        }
+    }
+    for (const auto& function : mirModel_.functions())
+    {
+        if (function.declaringTypeOrdinal != layout->typeOrdinal) continue;
+        for (const char* family : {"Rc", "WeakRc", "Arc", "WeakArc"})
+        {
+            const std::string prefix = identity.moduleName() + "::NativeSharp.Core." + family + "`1<";
+            if (function.genericSpecializationKey.starts_with(prefix) &&
+                function.genericSpecializationKey.ends_with('>')) return true;
+        }
+    }
+    return false;
+}
+
 bool OopLlvmImplementation::lowerBlockStatement(
         const frontend::ProjectOopMirNode* node, std::string& error)
 {
@@ -104,9 +251,210 @@ bool OopLlvmImplementation::lowerBlockStatement(
                     createDebugLexicalScope(node, currentDebugScope_);
                 ScopedDebugScope scopedDebugScope(currentDebugScope_, lexicalScope);
                 const std::size_t cleanupDepthAtEntry = activeCleanupRegions_.size();
+                std::vector<std::pair<std::size_t, std::unique_ptr<frontend::ProjectOopMirNode>>>
+                    completedBases;
+                const auto forgetCompletedBases = [&]()
+                {
+                    for (const auto& base : completedBases)
+                    {
+                        cleanupRegions_.erase(base.first);
+                        cleanupChainCache_.erase(base.first);
+                        localStorage_.erase(base.first);
+                    }
+                };
+                const bool constructorRoot = currentMirFunction_ != nullptr &&
+                    currentMirFunction_->constructor && node == currentMirFunction_->body.get() &&
+                    memberModel_ != nullptr;
+                bool fieldsPrepared = false;
+                std::vector<LLVMValueRef> delegationFlags;
+                const auto addDeferredBase = [&](std::size_t typeOrdinal)
+                {
+                    const bool localEntry = objectDestructionFunctions_.contains(typeOrdinal);
+                    const bool importedEntry = typeOrdinal < nameLookup_.namedTypes().size() &&
+                        nameLookup_.namedTypes()[typeOrdinal].isPrecompiled &&
+                        memberModel_->isNonEscapingLifecycleTypeKey(
+                            "type:" + nameLookup_.namedTypes()[typeOrdinal].identity.key()) &&
+                        descriptorAccessorFunctions_.contains(typeOrdinal);
+                    if (!localEntry && !importedEntry) return;
+                    std::size_t ordinal = std::numeric_limits<std::size_t>::max();
+                    while (cleanupRegions_.contains(ordinal) || localStorage_.contains(ordinal)) --ordinal;
+                    auto cleanup = std::make_unique<frontend::ProjectOopMirNode>();
+                    cleanup->stringValue = "constructor.delegated.base.cleanup";
+                    cleanup->targetTypeOrdinal = typeOrdinal;
+                    LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
+                    LLVMValueRef flag = entryBlockAlloca(flagType, 0, "constructor.delegated.base.live");
+                    LLVMBuildStore(builder_, LLVMConstInt(flagType, 0, 0), flag);
+                    cleanupRegions_.emplace(ordinal, cleanup.get());
+                    localStorage_.emplace(ordinal, flag);
+                    cleanupChainCache_.erase(ordinal);
+                    activeCleanupRegions_.push_back(ordinal);
+                    delegationFlags.push_back(flag);
+                    completedBases.emplace_back(ordinal, std::move(cleanup));
+                    LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+                };
+                const auto prepareFields = [&](const frontend::ProjectOopMirNode* delegatedCall)
+                {
+                    const bool delegatesToThis = delegatedCall != nullptr;
+                    auto delegatedFields = provenDelegatedFields(
+                        mirModel_, *memberModel_, delegatedCall, currentMirFunction_->declaringTypeOrdinal);
+                    const auto* valueLayout = mirModel_.structLayoutForType(currentMirFunction_->declaringTypeOrdinal);
+                    const bool nonOverlapping = mirModel_.classLayoutForType(currentMirFunction_->declaringTypeOrdinal) ||
+                        (valueLayout != nullptr && !valueLayout->isUnion && !valueLayout->hasExplicitFieldOffsets);
+                    if (!nonOverlapping) delegatedFields.clear();
+                    if (!std::ranges::all_of(delegatedFields, [&](const auto* field) {
+                            return memberModel_->typeRequiresValueDrop(field->typeKey);
+                        })) delegatedFields.clear();
+                    std::unordered_set<std::size_t> delegatedFieldOrdinals;
+                    for (const auto* field : delegatedFields)
+                        delegatedFieldOrdinals.insert(*field->memberOrdinal);
+                    if (delegatesToThis)
+                    {
+                        const auto* layout = mirModel_.classLayoutForType(currentMirFunction_->declaringTypeOrdinal);
+                        if (layout != nullptr && layout->baseTypeOrdinal.has_value())
+                            addDeferredBase(*layout->baseTypeOrdinal);
+                    }
+                    std::unordered_set<std::size_t> trackedTypes{currentMirFunction_->declaringTypeOrdinal};
+                    for (const auto& child : node->children)
+                        if (child != nullptr && child->stringValue == "constructor.implicit.base.completed" &&
+                            child->targetTypeOrdinal.has_value()) trackedTypes.insert(*child->targetTypeOrdinal);
+                    std::vector<const frontend::ProjectOopMirNode*> pending{node};
+                    std::vector<const frontend::ProjectOopMirNode*> addresses;
+                    std::vector<std::unique_ptr<frontend::ProjectOopMirNode>> implicitAddresses;
+                    addresses.insert(addresses.end(), delegatedFields.begin(), delegatedFields.end());
+                    while (!pending.empty())
+                    {
+                        const auto* item = pending.back();
+                        pending.pop_back();
+                        if (item == nullptr) continue;
+                        if (item->kind == frontend::ProjectOopMirNodeKind::Store && !item->children.empty() &&
+                            item->children.front() != nullptr)
+                        {
+                            const auto* address = item->children.front().get();
+                            if (address->kind == frontend::ProjectOopMirNodeKind::FieldAddress &&
+                                address->memberOrdinal.has_value() &&
+                                *address->memberOrdinal < memberModel_->members().size() &&
+                                !address->children.empty() && address->children.front() != nullptr &&
+                                address->children.front()->kind == frontend::ProjectOopMirNodeKind::ThisValue)
+                            {
+                                const auto& field = memberModel_->members()[*address->memberOrdinal];
+                                if (trackedTypes.contains(field.declaringTypeOrdinal) &&
+                                    ((field.declaredOwnership == sema::OwnershipKind::Owned &&
+                                      requiresOwnedDestruction(address->typeKey)) ||
+                                     memberModel_->typeRequiresValueDrop(address->typeKey)))
+                                    addresses.push_back(address);
+                            }
+                        }
+                        for (const auto& child : item->children) pending.push_back(child.get());
+                    }
+                    // NSC-NEW-012: a value field with a destructor that the constructor never stores keeps
+                    // its default value, and the object's destructor drops that value on success. It is
+                    // live from the start, so a failing constructor must drop it too. A field that is
+                    // stored keeps the existing rule: it becomes live at its store.
+                    std::unordered_set<std::size_t> storedFieldOrdinals;
+                    for (const auto* stored : addresses) storedFieldOrdinals.insert(*stored->memberOrdinal);
+                    std::unordered_set<std::size_t> defaultValueDropOrdinals;
+                    for (const std::size_t type : trackedTypes)
+                    {
+                        const std::vector<frontend::ObjectFieldLayout>* fields = nullptr;
+                        if (const auto* layout = mirModel_.classLayoutForType(type); layout != nullptr)
+                            fields = &layout->fields;
+                        else if (const auto* layout = mirModel_.structLayoutForType(type);
+                                 layout != nullptr && !layout->isUnion && !layout->hasExplicitFieldOffsets)
+                            fields = &layout->fields;
+                        if (fields == nullptr) continue;
+                        for (const auto& field : *fields)
+                        {
+                            if (field.memberOrdinal >= memberModel_->members().size()) continue;
+                            const auto& symbol = memberModel_->members()[field.memberOrdinal];
+                            const bool nullablePointer = symbol.declaredOwnership == sema::OwnershipKind::Owned &&
+                                requiresOwnedDestruction(field.typeKey) &&
+                                !memberModel_->typeRequiresValueDrop(field.typeKey);
+                            // A delegating constructor leaves default fields to the constructor it
+                            // delegates to, which may move them out; value fields carry no runtime
+                            // moved-from state, so marking them live afterwards would drop twice.
+                            const bool defaultValueDrop = !delegatesToThis && !nullablePointer &&
+                                !symbol.isStatic && memberModel_->typeRequiresValueDrop(field.typeKey) &&
+                                !storedFieldOrdinals.contains(field.memberOrdinal) &&
+                                !delegatedFieldOrdinals.contains(field.memberOrdinal);
+                            if (symbol.declaringTypeOrdinal != type ||
+                                (!nullablePointer && !sharedEmptyDefault(field.typeKey) && !defaultValueDrop))
+                                continue;
+                            if (defaultValueDrop && !sharedEmptyDefault(field.typeKey))
+                                defaultValueDropOrdinals.insert(field.memberOrdinal);
+                            auto address = std::make_unique<frontend::ProjectOopMirNode>();
+                            address->memberOrdinal = field.memberOrdinal;
+                            address->typeKey = field.typeKey;
+                            address->immediate = field.offset;
+                            addresses.push_back(address.get());
+                            implicitAddresses.push_back(std::move(address));
+                        }
+                    }
+                    std::ranges::sort(addresses, {}, [](const auto* address) { return *address->memberOrdinal; });
+                    std::optional<std::size_t> previous;
+                    for (const auto* address : addresses)
+                    {
+                        if (previous == address->memberOrdinal) continue;
+                        previous = address->memberOrdinal;
+                        std::size_t ordinal = std::numeric_limits<std::size_t>::max();
+                        while (cleanupRegions_.contains(ordinal) || localStorage_.contains(ordinal)) --ordinal;
+                        auto cleanup = std::make_unique<frontend::ProjectOopMirNode>();
+                        cleanup->memberOrdinal = address->memberOrdinal;
+                        cleanup->typeKey = address->typeKey;
+                        cleanup->immediate = address->immediate;
+                        LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
+                        LLVMValueRef flag = entryBlockAlloca(flagType, 0, "constructor.field.live");
+                        const auto& field = memberModel_->members()[*address->memberOrdinal];
+                        const auto* valueLayout = mirModel_.structLayoutForType(field.declaringTypeOrdinal);
+                        const bool nonOverlapping = mirModel_.classLayoutForType(field.declaringTypeOrdinal) != nullptr ||
+                            (valueLayout != nullptr && !valueLayout->isUnion && !valueLayout->hasExplicitFieldOffsets);
+                        const bool sharedEmpty = nonOverlapping && sharedEmptyDefault(address->typeKey);
+                        cleanup->stringValue = sharedEmpty ? "constructor.shared.field.cleanup" :
+                            "constructor.owned.field.cleanup";
+                        const bool nullableOwned = field.declaredOwnership == sema::OwnershipKind::Owned &&
+                            requiresOwnedDestruction(address->typeKey) &&
+                            !memberModel_->typeRequiresValueDrop(address->typeKey) && nonOverlapping;
+                        const bool defaultValueLive = nonOverlapping &&
+                            defaultValueDropOrdinals.contains(*address->memberOrdinal);
+                        const bool defaultLive = nullableOwned || sharedEmpty || defaultValueLive;
+                        LLVMBuildStore(builder_, LLVMConstInt(flagType, defaultLive && !delegatesToThis ? 1 : 0, 0), flag);
+                        const bool delegatedLive = delegatedFieldOrdinals.contains(*address->memberOrdinal);
+                        if (delegatesToThis && (defaultLive || delegatedLive)) delegationFlags.push_back(flag);
+                        cleanupRegions_.emplace(ordinal, cleanup.get());
+                        localStorage_.emplace(ordinal, flag);
+                        cleanupChainCache_.erase(ordinal);
+                        activeCleanupRegions_.push_back(ordinal);
+                        completedBases.emplace_back(ordinal, std::move(cleanup));
+                    }
+                    if (!addresses.empty()) LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+                    fieldsPrepared = true;
+                };
                 for (const auto& child : node->children)
                 {
                     if (terminated()) break;
+                    const auto* baseCandidate = child.get();
+                    if (baseCandidate != nullptr &&
+                        baseCandidate->kind == frontend::ProjectOopMirNodeKind::FullExpressionCleanup &&
+                        baseCandidate->children.size() == 1)
+                        baseCandidate = baseCandidate->children.front().get();
+                    const bool baseCall = constructorRoot && baseCandidate != nullptr &&
+                        baseCandidate->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall &&
+                        baseCandidate->baseReceiver && baseCandidate->memberOrdinal.has_value() &&
+                        *baseCandidate->memberOrdinal < memberModel_->members().size() &&
+                        memberModel_->members()[*baseCandidate->memberOrdinal].kind == frontend::ClassMemberKind::Constructor;
+                    const bool delegateCall = constructorRoot && !fieldsPrepared && baseCandidate != nullptr &&
+                        baseCandidate->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall &&
+                        !baseCandidate->baseReceiver && baseCandidate->memberOrdinal.has_value() &&
+                        *baseCandidate->memberOrdinal < memberModel_->members().size() &&
+                        memberModel_->members()[*baseCandidate->memberOrdinal].kind == frontend::ClassMemberKind::Constructor &&
+                        memberModel_->members()[*baseCandidate->memberOrdinal].declaringTypeOrdinal ==
+                            currentMirFunction_->declaringTypeOrdinal &&
+                        !baseCandidate->children.empty() && baseCandidate->children.front() != nullptr &&
+                        baseCandidate->children.front()->kind == frontend::ProjectOopMirNodeKind::ThisValue;
+                    if (constructorRoot && !fieldsPrepared && !baseCall && child != nullptr &&
+                        child->kind != frontend::ProjectOopMirNodeKind::OwnedParameterCleanup)
+                        prepareFields(delegateCall ? baseCandidate : nullptr);
+                    if (baseCall)
+                        addDeferredBase(memberModel_->members()[*baseCandidate->memberOrdinal].declaringTypeOrdinal);
                     // A source block alone is too broad for a local: CodeView treats the
                     // variable's lexical parent as its visibility range, so assigning every
                     // declaration to the brace scope makes a local visible before its own line.
@@ -132,13 +480,73 @@ bool OopLlvmImplementation::lowerBlockStatement(
                     }
                     LLVMMetadataRef enclosingPendingScope = pendingLocalDebugScope_;
                     pendingLocalDebugScope_ = declarationScope;
+                    const auto* previousDelegate = pendingDelegatedConstructor_;
+                    const auto* previousDelegationFlags = pendingDelegationFlags_;
+                    if (delegateCall || baseCall)
+                    {
+                        pendingDelegatedConstructor_ = baseCandidate;
+                        pendingDelegationFlags_ = &delegationFlags;
+                    }
                     const bool lowered = lowerStatement(child.get(), error);
+                    pendingDelegatedConstructor_ = previousDelegate;
+                    pendingDelegationFlags_ = previousDelegationFlags;
                     pendingLocalDebugScope_ = enclosingPendingScope;
                     if (declarationScope != nullptr) currentDebugScope_ = declarationScope;
                     if (!lowered)
                     {
                         activeCleanupRegions_.resize(cleanupDepthAtEntry);
+                        forgetCompletedBases();
                         return false;
+                    }
+                    if (constructorRoot && !terminated() && child != nullptr &&
+                        child->stringValue == "constructor.implicit.base.completed" &&
+                        child->targetTypeOrdinal.has_value() &&
+                        objectDestructionFunctions_.contains(*child->targetTypeOrdinal))
+                    {
+                        for (const auto& item : completedBases)
+                        {
+                            const auto* action = item.second.get();
+                            if ((action->stringValue != "constructor.owned.field.cleanup" &&
+                                 action->stringValue != "constructor.shared.field.cleanup") ||
+                                !action->memberOrdinal.has_value() ||
+                                *action->memberOrdinal >= memberModel_->members().size() ||
+                                memberModel_->members()[*action->memberOrdinal].declaringTypeOrdinal !=
+                                    *child->targetTypeOrdinal) continue;
+                            const auto flag = localStorage_.find(item.first);
+                            if (flag != localStorage_.end())
+                                LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0), flag->second);
+                        }
+                        bool updated = false;
+                        for (auto& item : completedBases)
+                        {
+                            if (item.second->stringValue != "constructor.completed.base.cleanup" &&
+                                item.second->stringValue != "constructor.delegated.base.cleanup") continue;
+                            item.second->targetTypeOrdinal = child->targetTypeOrdinal;
+                            cleanupChainCache_.erase(item.first);
+                            updated = true;
+                            break;
+                        }
+                        if (!updated)
+                        {
+                            std::size_t ordinal = std::numeric_limits<std::size_t>::max();
+                            while (cleanupRegions_.contains(ordinal) || localStorage_.contains(ordinal)) --ordinal;
+                            auto cleanup = std::make_unique<frontend::ProjectOopMirNode>();
+                            cleanup->stringValue = "constructor.completed.base.cleanup";
+                            cleanup->targetTypeOrdinal = child->targetTypeOrdinal;
+                            cleanupRegions_.emplace(ordinal, cleanup.get());
+                            cleanupChainCache_.erase(ordinal);
+                            auto position = activeCleanupRegions_.begin() + cleanupDepthAtEntry;
+                            while (position != activeCleanupRegions_.end())
+                            {
+                                const auto action = cleanupRegions_.find(*position);
+                                if (action == cleanupRegions_.end() || action->second == nullptr ||
+                                    action->second->kind != frontend::ProjectOopMirNodeKind::OwnedParameterCleanup) break;
+                                ++position;
+                            }
+                            activeCleanupRegions_.insert(position, ordinal);
+                            completedBases.emplace_back(ordinal, std::move(cleanup));
+                            LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+                        }
                     }
                     if (child != nullptr &&
                         (child->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration ||
@@ -154,15 +562,23 @@ bool OopLlvmImplementation::lowerBlockStatement(
                     {
                         const std::size_t ordinal = activeCleanupRegions_.back();
                         activeCleanupRegions_.pop_back();
+                        const auto entry = cleanupRegions_.find(ordinal);
+                        if (entry != cleanupRegions_.end() && entry->second != nullptr &&
+                            (entry->second->stringValue == "constructor.completed.base.cleanup" ||
+                             entry->second->stringValue == "constructor.owned.field.cleanup" ||
+                             entry->second->stringValue == "constructor.shared.field.cleanup" ||
+                             entry->second->stringValue == "constructor.delegated.base.cleanup")) continue;
                         if (!emitCleanupAction(ordinal, error))
                         {
                             activeCleanupRegions_.resize(cleanupDepthAtEntry);
+                            forgetCompletedBases();
                             return false;
                         }
                         if (terminated()) break;
                     }
                 }
                 activeCleanupRegions_.resize(cleanupDepthAtEntry);
+                forgetCompletedBases();
                 return true;
 }
 
@@ -179,9 +595,9 @@ bool OopLlvmImplementation::lowerGeneratorFrameInitStatement(
                 LLVMValueRef selfAlloca = selfFound->second;
                 if (currentMirFunction_ == nullptr)
                     return fail(error, "generator frame init missing current function");
-                // EN: Freeze 3.0 C-14: an empty frame is not allocated; the future owns and later
+                // EN: Freeze C-14: an empty frame is not allocated; the future owns and later
                 //     frees whatever frame it holds, and a zero-byte block is not one to free.
-                // ES: Congelamiento 3.0 C-14: un frame vacio no se reserva; el future es dueno y luego
+                // ES: Congelamiento C-14: un frame vacio no se reserva; el future es dueno y luego
                 //     libera el frame que tenga, y un bloque de cero bytes no es uno para liberar.
                 if (currentMirFunction_->asyncFrameSize == 0 &&
                     currentMirFunction_->returnTypeKey.starts_with("future:")) return true;
@@ -192,21 +608,46 @@ bool OopLlvmImplementation::lowerGeneratorFrameInitStatement(
                     allocationFunctionType_, allocationFunction_, allocArgs, 1, "gen.frame.alloc");
                 if (frame == nullptr)
                     return fail(error, "generator constructor frame allocation failed");
+                // EN: LKF-476: the runtime allocator returns null when the heap is exhausted, and the
+                //     frame was stored and its parameters copied without a check. A null frame now
+                //     traps with AllocationFailure, as the coroutine frame does (LKF-447).
+                // ES: LKF-476: el asignador del runtime devuelve null si el heap se agota, y el frame se
+                //     guardaba y recibía los parámetros sin comprobarlo. Un frame nulo atrapa ahora con
+                //     AllocationFailure, como el frame de corrutina (LKF-447).
+                frame = checkedStage42Allocation(frame, "gen.frame.alloc", error);
+                if (frame == nullptr) return false;
                 LLVMBuildStore(builder_, frame, byteOffset(selfAlloca, 8, "gen.self.frame"));
-                // EN: Freeze 3.0 C-02: the frame's drop guards start cleared.
-                // ES: Congelamiento 3.0 C-02: las guardas de destruccion del frame inician en cero.
+                // EN: Freeze C-02: the frame's drop guards start cleared.
+                // ES: Congelamiento C-02: las guardas de destruccion del frame inician en cero.
                 zeroCoroutineDropFlags(frame, *currentMirFunction_);
                 for (const auto& [paramOrdinal, offset, typeKey] :
                      currentMirFunction_->asyncFrameParameters)
                 {
+                    // NSC-NEW-029: the receiver of an instance method. / NSC-NEW-029: el receptor de
+                    // un método de instancia.
+                    // A static callable has no receiver: its slot comes from a `this` of an object
+                    // initializer, which reads the object under construction instead. / Un callable
+                    // estático no tiene receptor: su ranura sale de un `this` de un inicializador de
+                    // objeto, que lee el objeto en construcción.
+                    if (paramOrdinal == frontend::kAsyncFrameThisOrdinal)
+                    {
+                        if (thisValue_ != nullptr)
+                            LLVMBuildStore(builder_, thisValue_, byteOffset(frame, offset, "gen.frame.this"));
+                        continue;
+                    }
                     const auto paramFound = parameterStorage_.find(paramOrdinal);
                     if (paramFound == parameterStorage_.end() || paramFound->second == nullptr) continue;
                     LLVMTypeRef paramType = llvmType(typeKey, error);
                     if (paramType == nullptr) return false;
-                    LLVMBuildStore(
-                        builder_,
-                        LLVMBuildLoad2(builder_, paramType, paramFound->second, "gen.param"),
-                        byteOffset(frame, offset, "gen.frame.param"));
+                    LLVMValueRef captured = LLVMBuildLoad2(
+                        builder_, paramType, paramFound->second, "gen.param");
+                    LLVMValueRef stored = LLVMBuildStore(
+                        builder_, captured, byteOffset(frame, offset, "gen.frame.param"));
+                    if (LLVMGetTypeKind(paramType) == LLVMVectorTypeKind)
+                    {
+                        LLVMSetAlignment(captured, 1U);
+                        LLVMSetAlignment(stored, 1U);
+                    }
                 }
                 return true;
 }
@@ -288,7 +729,9 @@ bool OopLlvmImplementation::lowerLocalDeclarationStatement(
                         }
                         else
                         {
-                            LLVMBuildStore(builder_, value, address);
+                            LLVMValueRef store = LLVMBuildStore(builder_, value, address);
+                            if (LLVMGetTypeKind(LLVMTypeOf(value)) == LLVMVectorTypeKind)
+                                LLVMSetAlignment(store, 1U);
                         }
                     }
                 }
@@ -402,10 +845,10 @@ bool OopLlvmImplementation::lowerSuspendPointStatement(
                     if (localFound == localStorage_.end() || localFound->second == nullptr) continue;
                     LLVMTypeRef localType = llvmType(typeKey, error);
                     if (localType == nullptr) return false;
-                    LLVMBuildStore(
-                        builder_,
-                        LLVMBuildLoad2(builder_, localType, localFound->second, "suspend.local"),
-                        byteOffset(suspendFrame, offset, "suspend.frame.slot"));
+                    LLVMValueRef loaded = LLVMBuildLoad2(builder_, localType, localFound->second, "suspend.local");
+                    LLVMValueRef stored = LLVMBuildStore(builder_, loaded, byteOffset(suspendFrame, offset, "suspend.frame.slot"));
+                    if (LLVMGetTypeKind(localType) == LLVMVectorTypeKind)
+                    { LLVMSetAlignment(loaded, 1U); LLVMSetAlignment(stored, 1U); }
                 }
                 LLVMBuildStore(builder_, LLVMConstInt(intType, node->integerValue, 0), self);
                 LLVMBuildRetVoid(builder_);
@@ -421,12 +864,11 @@ bool OopLlvmImplementation::lowerSuspendPointStatement(
                     if (localFound == localStorage_.end() || localFound->second == nullptr) continue;
                     LLVMTypeRef localType = llvmType(typeKey, error);
                     if (localType == nullptr) return false;
-                    LLVMBuildStore(
-                        builder_,
-                        LLVMBuildLoad2(
-                            builder_, localType, byteOffset(resumeFrame, offset, "suspend.frame.slot"),
-                            "suspend.saved"),
-                        localFound->second);
+                    LLVMValueRef loaded = LLVMBuildLoad2(
+                        builder_, localType, byteOffset(resumeFrame, offset, "suspend.frame.slot"), "suspend.saved");
+                    LLVMValueRef stored = LLVMBuildStore(builder_, loaded, localFound->second);
+                    if (LLVMGetTypeKind(localType) == LLVMVectorTypeKind)
+                    { LLVMSetAlignment(loaded, 1U); LLVMSetAlignment(stored, 1U); }
                 }
                 return true;
 }
@@ -482,7 +924,8 @@ bool OopLlvmImplementation::storeYieldValueItem(
                         ? LLVMPointerTypeInContext(context_, 0)
                         : llvmType(node->children.front()->typeKey, error);
                     if (itemType == nullptr) return false;
-                    LLVMBuildStore(builder_, item, byteOffset(self, 16, "yield.item"));
+                    LLVMValueRef stored = LLVMBuildStore(builder_, item, byteOffset(self, 16, "yield.item"));
+                    LLVMSetAlignment(stored, 1);
                 }
                 return true;
 }
@@ -527,10 +970,10 @@ LLVMValueRef OopLlvmImplementation::prepareYieldValueFrame(
                     if (localFound == localStorage_.end() || localFound->second == nullptr) continue;
                     LLVMTypeRef localType = llvmType(typeKey, error);
                     if (localType == nullptr) return nullptr;
-                    LLVMBuildStore(
-                        builder_,
-                        LLVMBuildLoad2(builder_, localType, localFound->second, "yield.local"),
-                        byteOffset(framePhi, offset, "yield.frame.slot"));
+                    LLVMValueRef loaded = LLVMBuildLoad2(builder_, localType, localFound->second, "yield.local");
+                    LLVMValueRef stored = LLVMBuildStore(builder_, loaded, byteOffset(framePhi, offset, "yield.frame.slot"));
+                    if (LLVMGetTypeKind(localType) == LLVMVectorTypeKind)
+                    { LLVMSetAlignment(loaded, 1U); LLVMSetAlignment(stored, 1U); }
                 }
         return framePhi;
 }
@@ -550,12 +993,11 @@ bool OopLlvmImplementation::restoreYieldValueFrame(
                     if (localFound == localStorage_.end() || localFound->second == nullptr) continue;
                     LLVMTypeRef localType = llvmType(typeKey, error);
                     if (localType == nullptr) return false;
-                    LLVMBuildStore(
-                        builder_,
-                        LLVMBuildLoad2(
-                            builder_, localType, byteOffset(resumeFrame, offset, "yield.frame.slot"),
-                            "yield.saved"),
-                        localFound->second);
+                    LLVMValueRef loaded = LLVMBuildLoad2(
+                        builder_, localType, byteOffset(resumeFrame, offset, "yield.frame.slot"), "yield.saved");
+                    LLVMValueRef stored = LLVMBuildStore(builder_, loaded, localFound->second);
+                    if (LLVMGetTypeKind(localType) == LLVMVectorTypeKind)
+                    { LLVMSetAlignment(loaded, 1U); LLVMSetAlignment(stored, 1U); }
                 }
                 return true;
 }
@@ -567,11 +1009,67 @@ bool OopLlvmImplementation::lowerYieldBreakStatement(
                 // terminates the generator (state = -1) + return false.
                 if (parameterStorage_.empty())
                     return fail(error, "yield break has no MoveNext self parameter");
+                // This exit is only one generated control-flow path. Restore the lexical
+                // lowering state so sibling paths retain their active cleanup identities.
+                const std::vector<std::size_t> savedActive = activeCleanupRegions_;
+                const std::vector<FuncletContext> savedFunclets = funcletStack_;
+                const std::vector<ActiveCatchBody> catches = activeCatchExceptions_;
+                // A yield break exits every enclosing catch in synchronous generators too.
+                std::size_t catchCount = catches.size();
+                bool cleared = false;
+                const auto restoreState = [&]()
+                {
+                    activeCleanupRegions_ = savedActive;
+                    funcletStack_ = savedFunclets;
+                };
+                const auto releaseCatch = [&]()
+                {
+                    if (!cleared)
+                    {
+                        buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
+                        cleared = true;
+                    }
+                    const ActiveCatchBody& frame = catches[--catchCount];
+                    return frame.ownerSlot == nullptr || emitCaughtExceptionRelease(frame.ownerSlot, error);
+                };
                 for (std::size_t index = node->cleanupRegionOrdinals.size(); index > 0; --index)
                 {
-                    if (!emitOneStructuredCleanup(node->cleanupRegionOrdinals[index - 1], error))
+                    const std::size_t ordinal = node->cleanupRegionOrdinals[index - 1];
+                    const auto depth = activeCleanupIndex(ordinal, savedActive);
+                    if (!depth.has_value())
+                    {
+                        restoreState();
+                        return fail(error, "yield break cleanup region is inactive");
+                    }
+                    // A catch owns its exception until the exit crosses that catch's scope;
+                    // an inner finally therefore runs before an outer catch is released.
+                    while (catchCount > 0 && catches[catchCount - 1].cleanupDepthAtEntry > *depth)
+                    {
+                        if (!releaseCatch()) { restoreState(); return false; }
+                        if (terminated()) { restoreState(); return true; }
+                    }
+                    if (!emitOneStructuredCleanup(ordinal, error))
+                    {
+                        restoreState();
                         return false;
-                    if (terminated()) return true;
+                    }
+                    if (terminated())
+                    {
+                        restoreState();
+                        return true;
+                    }
+                }
+                while (catchCount > 0)
+                {
+                    if (!releaseCatch()) { restoreState(); return false; }
+                    if (terminated()) { restoreState(); return true; }
+                }
+                restoreState();
+                if (coroutine_.active && coroutine_.asyncGenerator)
+                {
+                    if (!markCoroutineFinished(error)) return false;
+                    releaseOwnedCaptureCells();
+                    return publishAsyncGeneratorEnd(error);
                 }
                 LLVMValueRef self = LLVMBuildLoad2(
                     builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
@@ -618,7 +1116,10 @@ bool OopLlvmImplementation::lowerAsyncYieldValueStatement(
                 LLVMValueRef item = lowerAsyncYieldItem(node, frame, error);
                 if (!node->children.empty() && item == nullptr) return false;
                 if (item != nullptr)
-                    LLVMBuildStore(builder_, item, byteOffset(asyncIter, 16, "ayield.item.addr"));
+                {
+                    LLVMValueRef stored = LLVMBuildStore(builder_, item, byteOffset(asyncIter, 16, "ayield.item.addr"));
+                    LLVMSetAlignment(stored, 1);
+                }
                 LLVMBuildStore(
                     builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0),
                     byteOffset(future, 16, "ayield.result.addr"));
@@ -738,10 +1239,10 @@ LLVMValueRef OopLlvmImplementation::prepareAsyncYieldFrame(
                     if (localFound == localStorage_.end() || localFound->second == nullptr) continue;
                     LLVMTypeRef localType = llvmType(typeKey, error);
                     if (localType == nullptr) return nullptr;
-                    LLVMBuildStore(
-                        builder_,
-                        LLVMBuildLoad2(builder_, localType, localFound->second, "ayield.local"),
-                        byteOffset(frame, offset, "ayield.frame.local.slot"));
+                    LLVMValueRef loaded = LLVMBuildLoad2(builder_, localType, localFound->second, "ayield.local");
+                    LLVMValueRef stored = LLVMBuildStore(builder_, loaded, byteOffset(frame, offset, "ayield.frame.local.slot"));
+                    if (LLVMGetTypeKind(localType) == LLVMVectorTypeKind)
+                    { LLVMSetAlignment(loaded, 1U); LLVMSetAlignment(stored, 1U); }
                 }
                 return frame;
 }
@@ -792,12 +1293,11 @@ bool OopLlvmImplementation::restoreAsyncYieldFrame(
                     if (localFound == localStorage_.end() || localFound->second == nullptr) continue;
                     LLVMTypeRef localType = llvmType(typeKey, error);
                     if (localType == nullptr) return false;
-                    LLVMBuildStore(
-                        builder_,
-                        LLVMBuildLoad2(
-                            builder_, localType, byteOffset(resumeFrame, offset, "ayield.frame.local.slot"),
-                            "ayield.saved"),
-                        localFound->second);
+                    LLVMValueRef loaded = LLVMBuildLoad2(
+                        builder_, localType, byteOffset(resumeFrame, offset, "ayield.frame.local.slot"), "ayield.saved");
+                    LLVMValueRef stored = LLVMBuildStore(builder_, loaded, localFound->second);
+                    if (LLVMGetTypeKind(localType) == LLVMVectorTypeKind)
+                    { LLVMSetAlignment(loaded, 1U); LLVMSetAlignment(stored, 1U); }
                 }
                 return true;
 }
@@ -812,14 +1312,14 @@ bool OopLlvmImplementation::lowerDropFrameStatement(
                 LLVMValueRef self = LLVMBuildLoad2(
                     builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
                     "drop.self");
-                // EN: Freeze 3.0 C-02: a synchronous generator unwinds through its MoveNext, which
+                // EN: Freeze C-02: a synchronous generator unwinds through its MoveNext, which
                 //     runs the finally blocks and destructions active at its yield; its frame
                 //     locals are never destroyed blindly (they may be dead or never initialized).
-                // ES: Congelamiento 3.0 C-02: un generador sincrono se desenreda por su MoveNext,
+                // ES: Congelamiento C-02: un generador sincrono se desenreda por su MoveNext,
                 //     que corre los finally y destrucciones activas en su yield; los locales del
                 //     frame nunca se destruyen a ciegas (pueden estar muertos o sin inicializar).
-                // EN: Freeze 3.0 C-14: an async function's future has its own drop.
-                // ES: Congelamiento 3.0 C-14: el future de una funcion async tiene su propio drop.
+                // EN: Freeze C-14: an async function's future has its own drop.
+                // ES: Congelamiento C-14: el future de una funcion async tiene su propio drop.
                 if (currentMirFunction_ != nullptr && !currentMirFunction_->parameterTypeKeys.empty() &&
                     currentMirFunction_->parameterTypeKeys[0].starts_with("future:"))
                     return lowerFutureDrop(self, error);
@@ -838,10 +1338,10 @@ bool OopLlvmImplementation::lowerDropFrameStatement(
                         LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), "drop.frame.null"),
                     noFrame, doDrop);
                 enterBlock(doDrop);
-                // EN: Freeze 3.0 C-17: the async-generator poll is a coroutine now, so a parked one
+                // EN: Freeze C-17: the async-generator poll is a coroutine now, so a parked one
                 //     unwinds through it (finally blocks and the destructions active at its yield)
                 //     instead of a blind drop of every frame slot, which could drop a dead value.
-                // ES: Congelamiento 3.0 C-17: el poll del generador async ahora es una corrutina,
+                // ES: Congelamiento C-17: el poll del generador async ahora es una corrutina,
                 //     asi que uno detenido se desenreda por el (los finally y las destrucciones
                 //     activas en su yield) en lugar de destruir a ciegas cada slot del frame, que
                 //     podia destruir un valor muerto.
@@ -896,8 +1396,29 @@ bool OopLlvmImplementation::emitDefaultLocalStorage(const frontend::ProjectOopMi
         // LLVMConstNull covers every shape this can be -- integers and floats zero, pointers
         // null, and an indirect-aggregate carrier `[N x i8]` becomes `zeroinitializer`, which the
         // backend expands into the memset it would have taken to write by hand.
-        LLVMValueRef store = LLVMBuildStore(builder_, LLVMConstNull(type), slot->second);
+        // EN: At O0 the backend expands an aggregate zeroinitializer store into one store per element;
+        //     `int[100000] a;` crashed the compiler (LKF-293). Aggregates are cleared with one memset.
+        // ES: En O0 el backend expande el store zeroinitializer de un agregado en un store por
+        //     elemento; `int[100000] a;` hacía caer el compilador (LKF-293). Un memset limpia el agregado.
+        const LLVMTypeKind kind = LLVMGetTypeKind(type);
         const unsigned structAlignment = structAlignmentFor(node->typeKey);
+        if (kind == LLVMArrayTypeKind || kind == LLVMStructTypeKind)
+        {
+            // EN: The byte size is ptrtoint(gep(type, null, 1)), which LLVM folds to a constant.
+            // ES: El tamaño en bytes es ptrtoint(gep(type, null, 1)), que LLVM pliega a constante.
+            LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+            LLVMValueRef one[] = {LLVMConstInt(LLVMInt64TypeInContext(context_), 1, 0)};
+            LLVMValueRef end = LLVMBuildGEP2(builder_, type, LLVMConstNull(pointerType), one, 1, "local.zero.end");
+            LLVMValueRef size = LLVMBuildPtrToInt(builder_, end, LLVMInt64TypeInContext(context_), "local.zero.size");
+            LLVMValueRef memsetArguments[] = {
+                slot->second,
+                LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
+                size,
+                LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+            buildNoUnwindCall(memsetFunctionType_, memsetFunction_, memsetArguments, 4, "");
+            return true;
+        }
+        LLVMValueRef store = LLVMBuildStore(builder_, LLVMConstNull(type), slot->second);
         if (structAlignment > 1U)
         {
             LLVMSetAlignment(store, structAlignment);

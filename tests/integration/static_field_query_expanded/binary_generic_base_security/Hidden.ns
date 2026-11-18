@@ -1,0 +1,1 @@
+int Main() { owned Alpha.Box<int> a = new Alpha.Box<int>(); a.SetBase(3); a.Same=7; int x=0; static foreach (field in Fields(Alpha.Box<int>)) { x=x+field.Get(a); } return x==10 && a.ReadHidden()==4 ? 0 : 1; }

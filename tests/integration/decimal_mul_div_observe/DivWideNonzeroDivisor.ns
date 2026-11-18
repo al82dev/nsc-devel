@@ -1,0 +1,14 @@
+noinline decimal Divide(decimal a, decimal b) { return checked(a / b); }
+
+int Main()
+{
+    unsafe("inspect decimal quotient with wide divisor")
+    {
+        i128 numeratorBits = (i128)1 << 64;
+        i128 divisorBits = numeratorBits + (i128)1;
+        decimal numerator = *((decimal*)&numeratorBits);
+        decimal divisor = *((decimal*)&divisorBits);
+        decimal result = Divide(numerator, divisor);
+        return *((i128*)&result) == (i128)1 ? 0 : 1;
+    }
+}

@@ -6,6 +6,7 @@
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
 
+#include "../support/MetadataHeaderControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -149,7 +150,7 @@ public class Device
         nativesharp::interop::LibraryMetadataCodec codec;
         std::string metadataError;
         tests.expect(codec.write(compilation, metadataPath, metadataError),
-            "volatile declarations serialize to NSMETA 1.14");
+            "volatile declarations serialize to NSMETA");
         nativesharp::interop::LibraryMetadata metadata;
         tests.expect(codec.read(metadataPath, metadata, metadataError),
             "volatile NSMETA round-trips through the current reader");
@@ -176,10 +177,9 @@ public class Device
             "NSMETA preserves volatile on both the public member and physical layout field");
 
         nativesharp::interop::LibraryMetadata downlevel = metadata;
-        downlevel.formatMinor = 13;
-        const auto downlevelPath = root / "VolatileMmio" / "VolatileMmio-1.13.nsmeta";
+        const auto downlevelPath = root / "VolatileMmio" / "VolatileMmio-sample-13.nsmeta";
         tests.expect(codec.writeModel(downlevel, downlevelPath, metadataError),
-            "a requested NSMETA 1.13 artifact is written with historical semantics");
+            "a requested NSMETA artifact is written with historical semantics");
         nativesharp::interop::LibraryMetadata decodedDownlevel;
         tests.expect(codec.read(downlevelPath, decodedDownlevel, metadataError),
             "the down-level volatile fixture remains readable");
@@ -197,8 +197,13 @@ public class Device
                     (field.flags & nativesharp::interop::kMetadataMemberVolatile) != 0U;
             }
         }
-        tests.expect(!downlevelVolatile,
-            "NSMETA 1.13 output strips the 1.14 volatile bit instead of misrepresenting it");
+        // NSC-META-001: the reserved header bytes used to strip the volatile bit. The label selects nothing now,
+        // so the bit must survive it, and the file must equal the unlabelled one.
+        tests.expect(downlevelVolatile,
+            "a reserved header bytes keeps the volatile bit on the member and the layout field");
+        tests.expect(nativesharp::tests::metadataReservedBytesPreserveContent(
+                codec, downlevel, downlevelPath, metadataError),
+            "the reserved header bytes alone changes no written byte (" + metadataError + ")");
     }
 
     const auto producer = root / "PrecompiledProducer";

@@ -182,9 +182,11 @@ namespace Demo
         "delegate cell freezes both cross-module lifetime callbacks in its public ABI");
     tests.expect(llvm.find("delegate.has.receiver = icmp ne ptr") != std::string::npos,
         "delegate invocation distinguishes static and instance ABI by receiver nullness");
-    tests.expect(llvm.find("delegate.static.result = call i32") != std::string::npos,
+    tests.expect(llvm.find("delegate.static.result = call i32 %delegate.code(i32 10)") != std::string::npos ||
+            llvm.find("delegate.static.result = invoke i32 %delegate.code(i32 10)") != std::string::npos,
         "static delegate target uses user arguments only");
-    tests.expect(llvm.find("delegate.instance.result = call i32") != std::string::npos,
+    tests.expect(llvm.find("delegate.instance.result = call i32 %delegate.code(ptr %delegate.receiver, i32 10)") != std::string::npos ||
+            llvm.find("delegate.instance.result = invoke i32 %delegate.code(ptr %delegate.receiver, i32 10)") != std::string::npos,
         "instance delegate target receives hidden receiver first");
     tests.expect(llvm.find("event.node = call ptr @__nativesharp_alloc(i64 16)") != std::string::npos,
         "event subscription allocates a two-pointer list node");

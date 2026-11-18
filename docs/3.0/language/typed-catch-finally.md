@@ -1,8 +1,10 @@
 # Typed catch, filters, and finally / Catch tipado, filtros y finally
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Español
 
-En edición 3, `try` conoce los tipos de error declarados por las operaciones de su bloque. Los
+En NativeSharp, `try` conoce los tipos de error declarados por las operaciones de su bloque. Los
 `catch` se prueban en el orden escrito:
 
 ```nativesharp
@@ -13,7 +15,7 @@ finally { Close(); }
 ```
 
 Las formas admitidas son `catch (Error problem)`, `catch (Error)` y el comodín `catch`. Cualquiera
-puede llevar `when (condición)` en edición 3. La condición debe ser `bool` y puede usar la variable
+puede llevar `when (condición)` en NativeSharp. La condición debe ser `bool` y puede usar la variable
 del catch.
 
 Un filtro puede resultar falso, por lo que no hace exhaustivo al catch. Un catch posterior sigue
@@ -31,9 +33,9 @@ asignación oculta para evaluar catches o filtros.
 
 ## English
 
-In edition 3, a `try` region knows the error types declared by operations in its protected block.
+In NativeSharp, a `try` region knows the error types declared by operations in its protected block.
 Catch clauses are tested in source order. Supported forms are `catch (Error value)`,
-`catch (Error)`, and catch-all `catch`. Each may carry an edition-3
+`catch (Error)`, and catch-all `catch`. Each may carry a contextual
 `when (boolean-expression)` filter, and the typed catch binding is in scope in that expression.
 
 A runtime filter may decline the exception and therefore does not make a clause exhaustive. A

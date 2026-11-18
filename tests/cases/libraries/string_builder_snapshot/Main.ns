@@ -1,0 +1,23 @@
+using NativeSharp.Core;
+public class Program
+{
+    public static int Main()
+    {
+        raii StringBuilder builder = new StringBuilder();
+        builder.AppendRepeat('x', 32768);
+        int index = 0;
+        while (index < 2000)
+        {
+            raii string result = builder.ToOwnedString();
+            if (result.Length != 32768 || result[0] != 'x' || result[32767] != 'x') { return 1; }
+            index = index + 1;
+        }
+        raii string saved = builder.ToOwnedString();
+        builder.Clear();
+        builder.Append("changed");
+        if (saved.Length != 32768 || saved[0] != 'x' || saved[32767] != 'x') { return 2; }
+        Console.WriteLine("ready");
+        raii string line = Console.ReadLine();
+        return 0;
+    }
+}

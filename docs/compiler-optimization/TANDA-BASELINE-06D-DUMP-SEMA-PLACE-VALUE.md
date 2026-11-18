@@ -1,5 +1,7 @@
 # Tanda baseline 06D: categorías semánticas place/value
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Objetivo
 
 Restaurar la equivalencia funcional SH42 entre el compilador nativo y el
@@ -7,7 +9,7 @@ compilador autoalojado sin relajar ni normalizar artificialmente sus dumps.
 
 ## Causa
 
-El modelo semántico nativo de NativeSharp 3.0 publica las categorías
+El modelo semántico nativo de NativeSharp publica las categorías
 `place` y `value`. El dumper autoalojado conservaba las etiquetas históricas
 `lvalue` y `rvalue`, aunque ambas implementaciones clasificaban las mismas
 expresiones de la misma forma.

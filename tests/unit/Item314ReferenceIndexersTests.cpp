@@ -268,7 +268,7 @@ namespace CrossIndex
         }
     }
     tests.expect(metadataRead && getterBit,
-        "NSMETA 1.15 marks the public ref-indexer getter (" + metadataError + ")");
+        "NSMETA marks the public ref-indexer getter (" + metadataError + ")");
 
     const auto consumer = root / "consumer";
     writeFile(consumer / "IndexConsumer.nsproj",

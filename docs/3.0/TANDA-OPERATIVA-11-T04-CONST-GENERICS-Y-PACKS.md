@@ -1,5 +1,7 @@
 # Tanda operativa 11 — T04 const generics y type packs
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Actualización 2026-10-03:** las limitaciones históricas de F02/F03 descritas en este registro
 > quedaron cerradas. Const generics admite expresiones deterministas, signo, enums, tuplas
 > estructurales, normalización completa e inferencia exacta. Packs admite tipos/valores, expansión
@@ -41,7 +43,7 @@ Cada declaración conserva ahora, en paralelo con el nombre compatible 2.x, un d
 - pack de tipos;
 - pack de valores const materializable.
 
-La sintaxis edition 3 aceptada incluye `const T N`, `pack Ts` y `pack const T Ns`. Un pack debe ser
+La sintaxis aceptada incluye `const T N`, `pack Ts` y `pack const T Ns`. Un pack debe ser
 el último parámetro. Los tipos const vigentes son `bool`, `char`, enteros builtin, enums nominales
 y tuplas estructurales aprobadas. Un `where` sobre const/pack se rechaza en la declaración, no lejos
 de ella durante una instancia.
@@ -79,7 +81,7 @@ declarado, falla cerrada.
 ### Frontera `.nsmeta`
 
 No se inventó una segunda representación de templates. La metadata pública conserva el source
-template edition 3; el consumidor lo lexea y parsea con los mismos descriptores. Un productor
+template; el consumidor lo lexea y parsea con los mismos descriptores. Un productor
 `StaticLibrary` con `Buffer<T,const int N>` y `Types<pack Ts>` fue emitido como `.lib/.nsmeta`; un
 consumidor independiente especializó ambos, enlazó en O0 y terminó en 42.
 
@@ -96,7 +98,7 @@ consumidor independiente especializó ambos, enlazó en O0 y terminó en 42.
   - codifican y decodifican el marcador interno determinista de argumento const.
 - `src/Parser/Parser.cpp`
   - parsea parámetros/argumentos const, packs, listas vacías y `Ts...`;
-  - reserva estas formas a edition 3;
+  - reconoce estas formas sin seleccionar una edición;
   - diagnostica packs no finales y constraints inválidos;
   - distingue `F<>()` de inferencia `F()`.
 - `include/nativesharp/Frontend/ProjectGenericModel.h`,
@@ -114,7 +116,7 @@ consumidor independiente especializó ambos, enlazó en O0 y terminó en 42.
 ### Nuevos
 
 - `tests/cc1/c61_ns3_const_generics_packs/c61_ns3_const_generics_packs.nsproj`
-  - fixture mínima edition 3.
+  - fixture mínima.
 - `tests/cc1/c61_ns3_const_generics_packs/Main.ns`
   - testigo O0 de enteros/bool, identidad canónica, layouts 16/32, pack vacío/múltiple,
     forwarding y métodos genéricos; devuelve 42.
@@ -130,8 +132,8 @@ logs temporales de los probes se eliminaron antes del commit.
 - Valores equivalentes no duplican código por el sufijo léxico del literal.
 - Packs vacíos y no vacíos tienen claves distintas y deterministas.
 - El forwarding reutiliza el materializador existente y su cache en lugar de generar AST paralelo.
-- Templates edition 3 conservan comportamiento al cruzar `.nsmeta`.
-- Errores de tipo, overflow, edition, posición de pack y expansión inválida se localizan en fuente.
+- Templates conservan comportamiento al cruzar `.nsmeta`.
+- Errores de tipo, overflow, posición de pack y expansión inválida se localizan en fuente.
 - Una entrada hostil no puede expandir un pack sin límite visible.
 
 ## Validación dirigida ejecutada
@@ -146,8 +148,9 @@ logs temporales de los probes se eliminaron antes del commit.
 5. Productor `StaticLibrary` `.lib/.nsmeta` y consumidor separado O0: emisión, rehidratación,
    enlace y ejecución correctos; exit 42.
 6. Siete probes negativos individuales, todos con exit distinto de cero y fragmento causal:
-   tipo const incorrecto, overflow, edition 2, pack no final, valor dentro de type pack,
-   expansión sin pack y `where` sobre pack.
+   tipo const incorrecto, overflow, pack no final, valor dentro de type pack,
+   expansión sin pack y `where` sobre pack. La campaña también incluía un rechazo por edición,
+   una regla que fue retirada.
 7. El target unitario T04 no está generado en esta configuración `build-clang`; el intento por
    nombre respondió `unknown target`. No se reconfiguró para habilitar suites y no se invocó CTest.
 

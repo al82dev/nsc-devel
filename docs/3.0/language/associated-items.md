@@ -1,10 +1,12 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Tipos y constantes asociados / Associated types and constants
 
 ## Español
 
 ### Declaración e implementación
 
-Un `trait` de edition 3 puede declarar tipos y constantes asociados:
+Un `trait` de NativeSharp puede declarar tipos y constantes asociados:
 
 ```nativesharp
 trait IIterator
@@ -54,7 +56,7 @@ debe ser exactamente el declarado por el trait y su inicializador debe ser const
 - defaults heredados que compiten exigen una definición explícita;
 - una proyección sin definición informa tanto la proyección como el dueño concreto;
 - los ciclos de normalización se rechazan antes de monomorfizar;
-- las definiciones y requisitos públicos viajan en NSMETA 1.29; un escritor anterior no puede
+- las definiciones y requisitos públicos viajan en NSMeta; un escritor anterior no puede
   descartarlos silenciosamente.
 
 Los tipos asociados son entidades exclusivamente estáticas. Tras la normalización, MIR, ABI y PDB
@@ -65,7 +67,7 @@ mostrar. Una constante asociada se conserva como constante, no como local fictic
 
 ### Declaration and implementation
 
-An edition 3 `trait` may declare associated types and constants:
+A NativeSharp `trait` may declare associated types and constants:
 
 ```nativesharp
 trait IIterator
@@ -115,7 +117,7 @@ must exactly match the trait declaration and its initializer must be constant.
 - competing inherited defaults require an explicit definition;
 - an unresolved projection reports both the projection and its concrete owner;
 - normalization cycles are rejected before monomorphization;
-- public requirements and definitions cross modules in NSMETA 1.29; an older writer cannot erase
+- public requirements and definitions cross modules in NSMeta; an older writer cannot erase
   them silently.
 
 Associated types are compile-time-only entities. After normalization, MIR, ABI, and PDB observe

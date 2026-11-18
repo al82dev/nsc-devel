@@ -4,13 +4,13 @@ PA-002,nsc_build_identity,BuildId.h,GENERATED_HEADER,nsc_basic,CMakeLists.txt:13
 PA-003,nsc_language_service,NativeSharpLanguageServiceTargets.cmake,CMAKE_EXPORT,nsc-lsp build tree,CMakeLists.txt:403-421,CLASIFICADO
 PA-004,nsc,NativeSharpToolchain.contract,CONTRACT,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
 PA-005,nsc,NativeSharpCompatibility.policy,POLICY,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
-PA-006,nsc,NativeSharp3Migration.baseline,BASELINE_CONTRACT,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
-PA-007,nsc,NativeSharp3BreakingChanges.ledger,LEDGER,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
-PA-008,nsc,NativeSharp3Migration.guide,GUIDE,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
-PA-009,nsc,NativeSharp3RC.freeze,FREEZE_CONTRACT,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
-PA-010,nsc,NativeSharp3Compatibility.matrix,COMPATIBILITY_MATRIX,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
-PA-011,nsc,NativeSharp3FinalBaseline.contract,BASELINE_CONTRACT,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
-PA-012,nsc,NativeSharp3Promotion.act,PROMOTION_ACT,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
+PA-006,nsc,NativeSharpMigration.baseline,BASELINE_CONTRACT,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
+PA-007,nsc,NativeSharpBreakingChanges.ledger,LEDGER,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
+PA-008,nsc,NativeSharpMigration.guide,GUIDE,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
+PA-009,nsc,NativeSharpRC.freeze,FREEZE_CONTRACT,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
+PA-010,nsc,NativeSharpCompatibility.matrix,COMPATIBILITY_MATRIX,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
+PA-011,nsc,NativeSharpFinalBaseline.contract,BASELINE_CONTRACT,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
+PA-012,nsc,NativeSharpPromotion.act,PROMOTION_ACT,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
 PA-013,nsc,NativeSharpRuntime.abi,RUNTIME_CONTRACT,share/nativesharp/runtime,CMakeLists.txt:698-890,CLASIFICADO
 PA-014,nsc,NativeSharpConcurrency.contract,CONCURRENCY_CONTRACT,share/nativesharp/runtime,CMakeLists.txt:698-890,CLASIFICADO
 PA-015,nsc,NativeSharpNumeric.contract,NUMERIC_CONTRACT,share/nativesharp/runtime,CMakeLists.txt:698-890,CLASIFICADO

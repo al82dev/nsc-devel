@@ -1,6 +1,6 @@
 # Non-capturing lambdas / Lambdas sin captura
 
-Status: normative for NativeSharp language edition 3
+Status: normative for NativeSharp
 
 Platform profile: Windows x64
 
@@ -43,7 +43,7 @@ Direct invocation lowers to the generated static callable. A later implicit conv
 only to a compatible raw `fn*`; it never converts implicitly to `fn&`. The unconverted signature uses
 the NativeSharp convention. A foreign convention therefore requires an immediate contextual target.
 
-An unconverted block-bodied lambda is rejected because edition 3 does not infer one return type from
+An unconverted block-bodied lambda is rejected because NativeSharp does not infer one return type from
 arbitrary control flow. Supplying an explicit `fn*` target keeps block-bodied lambdas available.
 
 ## Inference and composition / Inferencia y composición
@@ -64,6 +64,4 @@ contextual inference when an ordinary lambda is passed to a generic method.
 
 - captures and explicit `copy`/`move`/`ref` modes belong to T08-F03;
 - generic-lambda parameters and monomorphization belong to T08-F04;
-- `static` local variables remain deferred to language edition 4 because their once-initialization,
-  reentrancy, destruction, and module-lifetime contract is not yet defined;
 - this contract is Windows x64 only.

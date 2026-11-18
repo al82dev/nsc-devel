@@ -436,7 +436,7 @@ ProjectImplicitConversion ProjectTypeConversion::classifyImplicit(
         return makeConversion(ProjectConversionKind::Identity, 0, sourceTypeKey, targetTypeKey);
     }
 
-    // NativeSharp 3.0 T07-F04. `never` is the bottom type: a divergent expression can
+    // NativeSharp T07-F04. `never` is the bottom type: a divergent expression can
     // inhabit every result context precisely because it never produces a runtime value.
     // Keep this ahead of structural conversions so a never expression does not pretend to
     // manufacture tuple elements, reference objects, or numeric bits.
@@ -780,7 +780,9 @@ std::optional<std::vector<std::string>> ProjectTypeConversion::tupleElementTypeK
         if (parsed.ec != std::errc{} || parsed.ptr == first || parsed.ptr == last ||
             *parsed.ptr != ':') return std::nullopt;
         cursor = static_cast<std::size_t>(parsed.ptr - typeKey.data()) + 1;
-        if (length == 0 || cursor + length > close) return std::nullopt;
+        // LKF-399: `cursor + length` wrapped for a length near SIZE_MAX; compare with what is left.
+        // LKF-399: `cursor + length` desbordaba con una longitud cercana a SIZE_MAX; se compara con lo restante.
+        if (length == 0 || cursor > close || length > close - cursor) return std::nullopt;
         result.emplace_back(typeKey.substr(cursor, length));
         cursor += length;
         if (cursor == close) break;

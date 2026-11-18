@@ -667,7 +667,7 @@ bool provideCppFunctionsWithPrecompiledCatalogs(
         std::vector<CppCEnumSnapshot> enums;
         metadata_detail::CDependencyCatalog dependencies;
         if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
-                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+                records, enums, dependencies, error)) return false;
         for (const auto& function : dependencies.functions)
         {
             const auto owner = owners.find(function.moduleName);

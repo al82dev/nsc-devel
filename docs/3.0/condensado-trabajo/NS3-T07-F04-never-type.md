@@ -6,7 +6,7 @@ Validation profile: directed O0/NSLink only; no baseline
 
 ## Delivered contract
 
-`builtin:never` is NativeSharp 3's bottom type. A divergent expression converts implicitly to
+`builtin:never` is NativeSharp's bottom type. A divergent expression converts implicitly to
 every result type with the dedicated `Never` conversion kind. The conversion participates in
 overload resolution, explicit generic instantiations, conditional inference, local inference,
 returns, arguments, assignments, boolean conditions, and match arms. It never manufactures a

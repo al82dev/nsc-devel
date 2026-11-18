@@ -199,9 +199,9 @@ void testNominalFamilies(TestContext& context)
         "TP-PAR-138 class must dispatch to ClassDeclaration");
     context.expect(childAt(root, 1) != nullptr && childAt(root, 1)->kind() == AstNodeKind::InterfaceDeclaration,
         "TP-PAR-138 interface must dispatch to InterfaceDeclaration");
-    context.expect(childAt(root, 2) != nullptr && childAt(root, 2)->auxiliaryText() == "ns3-trait",
+    context.expect(childAt(root, 2) != nullptr && childAt(root, 2)->auxiliaryText() == "nsc-trait",
         "TP-PAR-138 trait must retain its specialized interface marker");
-    context.expect(childAt(root, 3) != nullptr && childAt(root, 3)->auxiliaryText() == "ns3-trait-impl",
+    context.expect(childAt(root, 3) != nullptr && childAt(root, 3)->auxiliaryText() == "nsc-trait-impl",
         "TP-PAR-138 impl must retain its specialized class marker");
     context.expect(childAt(root, 4) != nullptr && childAt(root, 4)->kind() == AstNodeKind::DelegateDeclaration,
         "TP-PAR-138 delegate must dispatch to DelegateDeclaration");

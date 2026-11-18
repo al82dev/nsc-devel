@@ -15,7 +15,7 @@ Eliminar la excepción funcional que permitía ciclos de referencias únicamente
 ## Archivos
 
 - `src/Compilation/ProjectGraphLoader.cpp`
-- `tests/unit/NativeSharp3T12SemanticModuleTests.cpp`
+- `tests/unit/NativeSharpT12SemanticModuleTests.cpp`
 
 ## Verificación
 

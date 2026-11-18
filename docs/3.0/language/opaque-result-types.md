@@ -1,8 +1,10 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Opaque result types / Tipos de resultado opacos
 
 ## Español
 
-Una función o método de edition 3 puede declarar `some Trait` como retorno:
+Una función o método de NativeSharp puede declarar `some Trait` como retorno:
 
 ```nativesharp
 trait IScore { int Score(); }
@@ -31,13 +33,13 @@ con el mismo concreto y trait siguen devolviendo identidades opacas diferentes.
 argumentos genéricos, punteros, arrays o tuplas. `some` y `dyn` son contratos distintos y no se
 combinan.
 
-Una API pública publica en NSMETA 1.30 la identidad, layout in-place, trait y asociados necesarios.
+Una API pública publica en NSMeta la identidad, layout in-place, trait y asociados necesarios.
 El nombre de la representación concreta puede permanecer internal; el ABI del resultado sí queda
 congelado y cualquier cambio incompatible aparece en el diff API/ABI.
 
 ## English
 
-An edition 3 function or method may declare `some Trait` as its return type. This is not
+A NativeSharp function or method may declare `some Trait` as its return type. This is not
 `dyn Trait`: the compiler creates one declaration-scoped nominal type, stores the single inferred
 concrete representation directly in it, and forwards the trait surface. There is no boxing,
 implicit allocation, or hidden dynamic dispatch.
@@ -51,6 +53,6 @@ Separate declarations always have separate opaque identities.
 parameters, locals, generic arguments, pointers, arrays, and tuples. `some` and `dyn` describe
 different contracts and cannot be combined.
 
-Public APIs carry identity, in-place layout, trait, and associated contracts in NSMETA 1.30. The
+Public APIs carry identity, in-place layout, trait, and associated contracts in NSMeta. The
 concrete representation name may remain internal, while ABI-relevant changes remain visible to
 metadata validation and API/ABI diff tooling.

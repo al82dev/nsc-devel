@@ -131,9 +131,15 @@ std::optional<GeneratorFrame> computeGeneratorFrame(
         if (local.size == 0 || local.alignment == 0 || local.alignment > 16 ||
             (local.alignment & (local.alignment - 1U)) != 0) return std::nullopt;
         result.alignment = std::max(result.alignment, local.alignment);
+        if (result.size > std::numeric_limits<std::size_t>::max() - (local.alignment - 1U))
+            return std::nullopt;
         result.size = (result.size + local.alignment - 1U) / local.alignment * local.alignment;
+        if (result.size > std::numeric_limits<std::size_t>::max() - local.size)
+            return std::nullopt;
         result.size += local.size;
     }
+    if (result.size > std::numeric_limits<std::size_t>::max() - (result.alignment - 1U))
+        return std::nullopt;
     result.size = (result.size + result.alignment - 1U) / result.alignment * result.alignment;
     return result;
 }

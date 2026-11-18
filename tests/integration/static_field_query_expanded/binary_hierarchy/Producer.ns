@@ -1,0 +1,19 @@
+namespace BinaryHierarchy
+{
+    public class Base
+    {
+        public int Same;
+        protected int Protected;
+        private int Hidden;
+        public Base() { this.Same = 3; this.Protected = 4; this.Hidden = 90; }
+        public int ReadBase() { return this.Same; }
+        public int ReadProtected() { return this.Protected; }
+        public int ReadHidden() { return this.Hidden; }
+    }
+    public class Derived : Base
+    {
+        public int Same;
+        public Derived() { this.Same = 7; }
+        public int ReadDerived() { return this.Same; }
+    }
+}

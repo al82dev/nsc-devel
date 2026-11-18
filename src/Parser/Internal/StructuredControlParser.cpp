@@ -4,7 +4,7 @@
 
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
-#include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Language/LanguageSurface.h"
 
 #include <algorithm>
 #include <iterator>
@@ -72,6 +72,7 @@ bool Parser::StructuredControlParser::structuredControlAtCursor() const noexcept
             parser_.at(TokenKind::KwTry) || parser_.at(TokenKind::KwUsing) ||
             parser_.atContextualKeyword("defer") ||
             parser_.at(TokenKind::KwForeach) ||
+            (parser_.at(TokenKind::KwStatic) && parser_.peek().kind() == TokenKind::KwForeach) ||
             conditionalPatternAtCursor() ||
             parser_.at(TokenKind::KwSwitch) ||
             parser_.startsParenthesizedBlock("match");
@@ -187,7 +188,8 @@ void Parser::StructuredControlParser::parseControl()
         else if (parser_.at(TokenKind::KwUsing)) work_.push_back({WorkKind::ParseUsing, 0});
         else if (parser_.atContextualKeyword("defer"))
             work_.push_back({WorkKind::ParseDefer, 0});
-        else if (parser_.at(TokenKind::KwForeach))
+        else if (parser_.at(TokenKind::KwForeach) ||
+                 (parser_.at(TokenKind::KwStatic) && parser_.peek().kind() == TokenKind::KwForeach))
             work_.push_back({WorkKind::ParseForeach, 0});
         else if (conditionalPatternAtCursor())
             work_.push_back({WorkKind::ParseConditionalPattern, 0});
@@ -241,14 +243,8 @@ void Parser::StructuredControlParser::parseFor()
         const std::size_t index = forStates_.size();
         forStates_.emplace_back();
         parser_.parseForHeader(forStates_.back());
-        if (!parser_.at(TokenKind::LeftBrace))
-        {
-            parser_.expect(TokenKind::LeftBrace, "'{' after for clause");
-            values_.push_back(parser_.lowerForStatement(forStates_[index], nullptr));
-            return;
-        }
         work_.push_back({WorkKind::FinishFor, index});
-        work_.push_back({WorkKind::ParseBlock, 0});
+        work_.push_back({WorkKind::ParseEmbedded, 0});
     }
 
 void Parser::StructuredControlParser::parseUsing()
@@ -475,12 +471,17 @@ void Parser::StructuredControlParser::parseForeach()
                 std::move(foreachStates_[index]), nullptr));
             return;
         }
+        if (foreachStates_[index].staticFieldIteration)
+            foreachStates_[index].descriptorTypeNameInserted =
+                parser_.knownTypeNames_.insert(foreachStates_[index].elementName + ".Type").second;
         work_.push_back({WorkKind::FinishForeach, index});
         work_.push_back({WorkKind::ParseBlock, 0});
     }
 
 void Parser::StructuredControlParser::finishForeach(std::size_t index, ast::AstNode* body)
 {
+        if (foreachStates_[index].descriptorTypeNameInserted)
+            parser_.knownTypeNames_.erase(foreachStates_[index].elementName + ".Type");
         values_.push_back(parser_.lowerForeachStatement(
             std::move(foreachStates_[index]), body));
     }
@@ -825,10 +826,10 @@ void Parser::StructuredControlParser::appendSwitchLabel(ast::AstNode* section)
         const std::size_t beginIndex = parser_.index_;
         const bool isDefault = parser_.at(TokenKind::KwDefault);
         parser_.consume();
-        // EN: Freeze 3.0 C-06: list patterns are implemented in `match` and `is`; a `case`
+        // EN: Freeze C-06: list patterns are implemented in `match` and `is`; a `case`
         //     label is a constant label by design, so `case [ ... ]:` is a deliberate rejection,
         //     not a planned feature.
-        // ES: Congelamiento 3.0 C-06: los list patterns estan implementados en `match` e `is`;
+        // ES: Congelamiento C-06: los list patterns estan implementados en `match` e `is`;
         //     una etiqueta `case` es constante por diseno, asi que `case [ ... ]:` es un rechazo
         //     deliberado, no una capacidad planeada.
         if (!isDefault && parser_.at(TokenKind::LeftBracket))
@@ -1318,7 +1319,16 @@ void Parser::StructuredControlParser::appendMatchGoverningState(
             state.governing,
             false,
             !state.hasReferenceBinding && !state.hasMoveBinding);
-        if (state.hasReferenceBinding) governing->setAuxiliaryText("local:ref");
+        if (state.hasReferenceBinding)
+        {
+            bool hasMutableReferenceBinding = false;
+            for (const MatchArm& arm : state.arms)
+                for (const auto& binding : arm.analysis.bindings)
+                    hasMutableReferenceBinding = hasMutableReferenceBinding ||
+                        binding.second == PatternBindingMode::ReferenceMutable;
+            governing->setAuxiliaryText(
+                hasMutableReferenceBinding ? "local:ref" : "local:pattern-ref");
+        }
         lowered.addChild(governing);
         lowered.addChild(makeMatchSelectedDeclaration(state.keywordRange, temporary));
     }

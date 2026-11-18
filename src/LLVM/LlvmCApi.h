@@ -20,6 +20,7 @@
 #include "LLVMComdatSelectionKind.h"
 #include "LLVMInlineAsmDialect.h"
 #include "LLVMFastMathFlags.h"
+#include "LLVMTypeKind.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -45,6 +46,7 @@ struct LLVMOpaqueMetadata;
 struct LLVMOpaqueDIBuilder;
 struct LLVMOpaqueDbgRecord;
 struct LLVMComdat;
+struct LLVMOpaqueUse;
 
 using LLVMContextRef = LLVMOpaqueContext*;
 using LLVMModuleRef = LLVMOpaqueModule*;
@@ -63,6 +65,7 @@ using LLVMMetadataRef = LLVMOpaqueMetadata*;
 using LLVMDIBuilderRef = LLVMOpaqueDIBuilder*;
 using LLVMDbgRecordRef = LLVMOpaqueDbgRecord*;
 using LLVMComdatRef = LLVMComdat*;
+using LLVMUseRef = LLVMOpaqueUse*;
 using LLVMBool = int;
 
 
@@ -581,6 +584,21 @@ LLVMValueRef LLVMGetNextFunction(LLVMValueRef function);
 // LLVMHasPersonalityFn are no longer used and were removed. LLVMIsDeclaration is still used
 // (LlvmNativeSanitizer).
 LLVMBool LLVMIsDeclaration(LLVMValueRef global);
+// EN: legalizeWinEhCatchSwitchPhiUses (Internal/WinEhCatchSwitchPhiLegalization.cpp) finds the functions with a
+//     Windows EH personality, their `catchswitch` blocks and the EH-pad phis that use a catchswitch phi, and
+//     rewrites those phi entries. These symbols walk uses and EH pads and set one phi operand.
+// ES: legalizeWinEhCatchSwitchPhiUses (Internal/WinEhCatchSwitchPhiLegalization.cpp) busca las funciones con
+//     personalidad EH de Windows, sus bloques `catchswitch` y las phis de bloques EH que usan una phi de
+//     catchswitch, y reescribe esas entradas. Estos simbolos recorren usos y bloques EH y fijan un operando.
+LLVMBool LLVMHasPersonalityFn(LLVMValueRef function);
+LLVMValueRef LLVMIsACatchSwitchInst(LLVMValueRef value);
+LLVMValueRef LLVMIsAFuncletPadInst(LLVMValueRef value);
+LLVMValueRef LLVMIsALandingPadInst(LLVMValueRef value);
+LLVMUseRef LLVMGetFirstUse(LLVMValueRef value);
+LLVMUseRef LLVMGetNextUse(LLVMUseRef use);
+LLVMValueRef LLVMGetUser(LLVMUseRef use);
+void LLVMSetOperand(LLVMValueRef user, unsigned index, LLVMValueRef value);
+LLVMBasicBlockRef LLVMGetInstructionParent(LLVMValueRef instruction);
 
 LLVMTypeRef LLVMVoidTypeInContext(LLVMContextRef context);
 LLVMTypeRef LLVMInt1TypeInContext(LLVMContextRef context);
@@ -648,6 +666,7 @@ LLVMValueRef LLVMGetUndef(LLVMTypeRef type);
 LLVMValueRef LLVMConstVector(LLVMValueRef* scalarConstantValues, unsigned size);
 LLVMTypeRef LLVMTypeOf(LLVMValueRef value);
 LLVMValueRef LLVMSizeOf(LLVMTypeRef type);
+LLVMTypeKind LLVMGetTypeKind(LLVMTypeRef type);
 
 LLVMValueRef LLVMAddGlobal(LLVMModuleRef module, LLVMTypeRef type, const char* name);
 void LLVMSetInitializer(LLVMValueRef global, LLVMValueRef constantValue);
@@ -715,6 +734,9 @@ void LLVMAddCallSiteAttribute(LLVMValueRef call, LLVMAttributeIndex index, LLVMA
 //    emitted at the call site would re-allocate on every loop iteration and grow the stack
 //    without bound.
 void LLVMSetAlignment(LLVMValueRef value, unsigned bytes);
+// LKF-436: reads the alignment a load or store claims, so a packed field can lower it.
+// LKF-436: lee la alineación que declara una carga o escritura, para que un campo empaquetado la baje.
+unsigned LLVMGetAlignment(LLVMValueRef value);
 // Item 308. Marks a load/store as an observable volatile access. This affects optimization only;
 // atomic ordering and synchronization remain separate APIs and contracts.
 void LLVMSetVolatile(LLVMValueRef memoryAccessInstruction, LLVMBool isVolatile);
@@ -741,10 +763,10 @@ void LLVMDisposeBuilder(LLVMBuilderRef builder);
 void LLVMPositionBuilderAtEnd(LLVMBuilderRef builder, LLVMBasicBlockRef block);
 LLVMBasicBlockRef LLVMGetInsertBlock(LLVMBuilderRef builder);
 LLVMValueRef LLVMGetBasicBlockTerminator(LLVMBasicBlockRef block);
-// EN: Freeze 3.0 DEC-05: LlvmModuleInspector walks blocks, edges, instructions and phis of the
+// EN: Freeze DEC-05: LlvmModuleInspector walks blocks, edges, instructions and phis of the
 //     generated module (and clones it for the SSA form). LLVMGetFirstBasicBlock and
 //     LLVMGetNextBasicBlock return for this read-only use.
-// ES: Congelamiento 3.0 DEC-05: LlvmModuleInspector recorre bloques, aristas, instrucciones y phis del
+// ES: Congelamiento DEC-05: LlvmModuleInspector recorre bloques, aristas, instrucciones y phis del
 //     modulo generado (y lo clona para la forma SSA). LLVMGetFirstBasicBlock y LLVMGetNextBasicBlock
 //     vuelven para este uso de solo lectura.
 LLVMBasicBlockRef LLVMGetFirstBasicBlock(LLVMValueRef function);
@@ -993,6 +1015,11 @@ LLVMValueRef LLVMBuildExtractValue(
     LLVMBuilderRef builder,
     LLVMValueRef aggregate,
     unsigned index,
+    const char* name);
+LLVMValueRef LLVMBuildExtractElement(
+    LLVMBuilderRef builder,
+    LLVMValueRef vector,
+    LLVMValueRef index,
     const char* name);
 
 // Stage 54.2 "Atomics". LLVMBuildAtomicRMW emits a real hardware atomic read-modify-write

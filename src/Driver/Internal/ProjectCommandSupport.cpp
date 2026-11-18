@@ -1,9 +1,34 @@
 #include "ProjectCommandSupport.h"
 
 #include <cstdlib>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#endif
 
 namespace nativesharp::driver
 {
+std::filesystem::path compilerExecutablePath()
+{
+#ifdef _WIN32
+    std::wstring buffer(MAX_PATH, L'\0');
+    for (;;)
+    {
+        const DWORD length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+        if (length == 0) return {};
+        if (length < buffer.size())
+        {
+            buffer.resize(length);
+            return std::filesystem::path(buffer);
+        }
+        buffer.resize(buffer.size() * 2U);
+    }
+#else
+    return {};
+#endif
+}
+
 std::string jsonEscape(std::string_view value)
 {
     std::string result;

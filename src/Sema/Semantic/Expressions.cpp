@@ -138,7 +138,7 @@ ExpressionInfo SemanticAnalyzer::analyzeIdentifier(ast::AstNode* node, bool allo
             report(
                 node->range(),
                 diagnostics::DiagnosticId::InvalidOperand,
-                "function name can only be used as the designator of a call in NativeSharp 2.0");
+                "function name can only be used as the designator of a call in NativeSharp");
             info.type = types_.builtin(TypeKind::Error);
         }
         return record(node, info);

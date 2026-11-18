@@ -211,6 +211,25 @@ bool ProjectOopHirModel::initializeStringCoreOperandCallFrame(
         error = "Stage 51 string intrinsic requires a resolved Core.String call";
         return false;
     }
+    if (frame.core->kind == MethodCoreOperationKind::SharedInstanceSize ||
+        frame.core->kind == MethodCoreOperationKind::SharedInstanceAlignment)
+    {
+        const auto typeOrdinal = inheritanceModel_ != nullptr
+            ? inheritanceModel_->typeOrdinalForTypeKey(frame.core->elementTypeKey) : std::nullopt;
+        const auto* layout = typeOrdinal.has_value() && objectLayoutModel_ != nullptr
+            ? objectLayoutModel_->layoutForType(*typeOrdinal) : nullptr;
+        if (layout == nullptr)
+        {
+            error = "shared instance layout has no class layout";
+            return false;
+        }
+        call.node = makeNode(ProjectOopHirNodeKind::IntegerConstant, frame.syntax, frame.core->resultTypeKey);
+        call.node->integerValue = frame.core->kind == MethodCoreOperationKind::SharedInstanceSize
+            ? layout->size : layout->alignment;
+        call.operandSyntaxes.push_back(frame.syntax->children()[0]);
+        call.operandAddressContexts.push_back(false);
+        return true;
+    }
     if (call.binding->forwardedReceiver)
     {
         if (call.binding->receiverSyntax == nullptr)
@@ -232,6 +251,8 @@ bool ProjectOopHirModel::initializeStringCoreOperandCallFrame(
         return false;
     }
     call.node = makeNode(plan->hirKind, frame.syntax, frame.core->resultTypeKey);
+    if (frame.core->kind == MethodCoreOperationKind::SharedDestroyObject)
+        call.node->dynamicDestruction = true;
     call.appliesConversions = true;
     return true;
 }
@@ -253,6 +274,9 @@ void ProjectOopHirModel::acceptCoreOperandCallChild(
 {
     CoreOperandCallFrameState& call = *frame.coreOperandCall;
     const std::size_t index = call.nextOperand++;
+    if (frame.core->kind == MethodCoreOperationKind::SharedInstanceSize ||
+        frame.core->kind == MethodCoreOperationKind::SharedInstanceAlignment)
+        return;
     if (call.appliesConversions &&
         index < call.binding->selectedConversions.size() &&
         call.binding->selectedConversions[index].kind != ProjectConversionKind::Identity)
@@ -623,14 +647,14 @@ bool ProjectOopHirModel::initializeStructCloneCallFrame(
     frame.core = coreBinding(frame.syntax);
     if (frame.addressContext || !frame.syntax->children().empty())
     {
-        error = "NativeSharp 3.0 record Clone() received an invalid operand count";
+        error = "NativeSharp record Clone() received an invalid operand count";
         return false;
     }
     const ast::AstNode* receiver = frame.syntax->first() != nullptr
         ? frame.syntax->first()->first() : nullptr;
     if (receiver == nullptr)
     {
-        error = "NativeSharp 3.0 record Clone() has no receiver";
+        error = "NativeSharp record Clone() has no receiver";
         return false;
     }
     frame.operandSyntaxes.push_back(receiver);

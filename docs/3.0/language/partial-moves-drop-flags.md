@@ -1,4 +1,4 @@
-# NativeSharp 3.0 — Moves parciales y drop flags / Partial moves and drop flags
+# NativeSharp — Moves parciales y drop flags / Partial moves and drop flags
 
 ## Contrato normativo / Normative contract
 
@@ -36,8 +36,7 @@ siblings. A path has stable semantic identity (`L<n>` or `P<n>`) followed by eve
 - Un tipo valor con destructor personalizado no permite moves parciales: el destructor observa el
   valor completo. El valor sí puede moverse completo y su responsabilidad de destrucción se
   transfiere al destino.
-- Un tipo `copy` y un `union` crudo no pueden declarar destructor de struct. Edición 2 conserva su
-  diagnóstico y semántica histórica.
+- Un tipo `copy` y un `union` crudo no pueden declarar destructor de struct.
 - El drop glue ejecuta primero el destructor propio y después destruye fields en orden inverso.
   Fields `owned`, structs anidados y fixed arrays se recorren recursivamente.
 - Locales y parámetros por valor con drop participan en las regiones de cleanup ordinarias:
@@ -50,8 +49,7 @@ siblings. A path has stable semantic identity (`L<n>` or `P<n>`) followed by eve
 
 - A value type with a custom destructor forbids partial moves because its destructor observes the
   complete value. A whole-value move is allowed and transfers the drop responsibility.
-- A `copy` type and a raw `union` cannot declare a struct destructor. Edition 2 keeps its historical
-  diagnostic and behavior.
+- A `copy` type and a raw `union` cannot declare a struct destructor.
 - Drop glue runs the value's own destructor first, then drops fields in reverse order. Owned fields,
   nested structs and fixed arrays are traversed recursively.
 - Drop-bearing locals and by-value parameters participate in lexical, structured-exit and native
@@ -77,7 +75,7 @@ whose drop consists only of owner fields add no separate storage.
 - move completo de agregado con descendiente movido;
 - move parcial que cruza back-edge;
 - move parcial de un tipo con destructor personalizado;
-- destructor en struct `copy`, `union` o edición 2.
+- destructor en struct `copy` o `union`.
 
 Los diagnósticos señalan la expresión fuente y conservan un código estructurado cuando existe el
 catálogo `NS3xxx`; ninguna decisión depende de comparar texto localizado.

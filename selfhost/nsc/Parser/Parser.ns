@@ -321,6 +321,13 @@ namespace NativeSharp.Compiler.Parser
         }
         private static owned string DecodeString(string spelling)
         {
+            if (spelling.Length >= 6 && spelling[0] == '"' && spelling[1] == '"' && spelling[2] == '"')
+            {
+                int delimiter = 0;
+                while (delimiter < spelling.Length && spelling[delimiter] == '"') { delimiter = delimiter + 1; }
+                if (delimiter == spelling.Length) { delimiter = delimiter / 2; }
+                return String.Substring(spelling, delimiter, spelling.Length - delimiter * 2);
+            }
             raii StringBuilder output = new StringBuilder(spelling.Length);
             int cursor = 1;
             while (cursor + 1 < spelling.Length)
@@ -358,9 +365,18 @@ namespace NativeSharp.Compiler.Parser
             if (!At(TokenKind.LeftParen)) { return false; }
             int saved = index; index = index + 1;
             if (!TypeStartsHere()) { index = saved; return false; }
+            int savedErrors = errors;
+            int savedFirstErrorIndex = firstErrorIndex;
+            int savedGenericGreater = pendingGenericGreater;
+            raii string savedSemanticType = String.Copy(lastSemanticType);
             raii string type = ParseType();
-            bool result = At(TokenKind.RightParen);
-            index = saved; return result;
+            bool result = errors == savedErrors && At(TokenKind.RightParen);
+            index = saved;
+            errors = savedErrors;
+            firstErrorIndex = savedFirstErrorIndex;
+            pendingGenericGreater = savedGenericGreater;
+            lastSemanticType = move(savedSemanticType);
+            return result;
         }
 
         private bool LooksLikeParenthesizedLambda()

@@ -4,12 +4,14 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
+#include <array>
 #include <map>
 #include <unordered_map>
 #include <utility>
@@ -55,6 +57,33 @@ std::string writtenSpelling(const ast::TypeSyntax* syntax)
         }
     }
     return text;
+}
+
+std::string openConstraintSpelling(
+    const ast::TypeSyntax* syntax,
+    std::span<const std::string> parameters,
+    std::size_t depth = 0)
+{
+    if (syntax == nullptr) return "?";
+    if (depth == 1U && syntax->typeArguments().empty() && syntax->modifiers().empty() &&
+        !syntax->isFunction() && !syntax->isTuple())
+    {
+        const auto parameter = std::ranges::find(parameters, syntax->baseName());
+        if (parameter != parameters.end())
+            return "parameter:" + std::to_string(parameter - parameters.begin());
+    }
+    std::string result = writtenSpelling(syntax);
+    if (!syntax->typeArguments().empty())
+    {
+        result += '<';
+        for (std::size_t i = 0; i < syntax->typeArguments().size(); ++i)
+        {
+            if (i != 0) result += ',';
+            result += openConstraintSpelling(syntax->typeArguments()[i], parameters, depth + 1U);
+        }
+        result += '>';
+    }
+    return result;
 }
 
 // La declaracion que una clave de tipo nombra, o null. Se busca por la clave y no por un indice
@@ -193,7 +222,11 @@ bool hasPublicDefaultConstructor(
         if (member.accessibility == ClassMemberAccessibility::Public && member.parameters.empty())
             return true;
     }
-    return !hasExplicitConstructor;
+    // A precompiled public surface can omit a private constructor. Absence of
+    // published constructors therefore cannot prove an accessible default.
+    // Older metadata may also omit an implicit constructor, so this is a
+    // conservative restriction rather than proof that the type has none.
+    return !hasExplicitConstructor && !declaration->isPrecompiled;
 }
 
 bool hasTrackedLifetime(
@@ -313,6 +346,7 @@ bool ProjectGenericConstraintModel::validateTemplateTypeConstraint(
     std::size_t templateOrdinal,
     const ast::GenericConstraintClause& clause,
     const ast::TypeSyntax* constraintSyntax,
+    const ProjectGenericModel& genericModel,
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
     std::unordered_map<std::string, std::string>& seenByKey,
@@ -321,15 +355,23 @@ bool ProjectGenericConstraintModel::validateTemplateTypeConstraint(
     std::vector<std::string>& clauseAtoms,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    const std::string constraintKey =
-        memberModel.canonicalTypeKey(constraintSyntax, nameLookup);
+    std::string constraintKey = memberModel.canonicalTypeKey(constraintSyntax, nameLookup);
+    const std::string* openIdentity = genericModel.resolvedTypeIdentity(constraintSyntax);
+    const GenericTemplateRecord* openTemplate = openIdentity != nullptr && openIdentity->starts_with("generic:")
+        ? genericModel.templateForCanonicalKey(openIdentity->substr(8)) : nullptr;
+    if (openTemplate != nullptr)
+        constraintKey = *openIdentity + ":" +
+            openConstraintSpelling(constraintSyntax, genericModel.templates()[templateOrdinal].parameters);
     clauseAtoms.push_back("type:" + constraintKey);
     std::size_t constraintOrdinal = 0;
     const NamedTypeDeclaration* constraint =
         declarationForTypeKey(nameLookup, constraintKey, constraintOrdinal);
-    if (constraint == nullptr ||
+    if ((openTemplate == nullptr && constraint == nullptr) ||
+        (openTemplate != nullptr && openTemplate->kind != GenericTemplateKind::Class &&
+         openTemplate->kind != GenericTemplateKind::Interface) ||
+        (openTemplate == nullptr &&
         (constraint->kind != NamedTypeDeclarationKind::Class &&
-         constraint->kind != NamedTypeDeclarationKind::Interface))
+         constraint->kind != NamedTypeDeclarationKind::Interface)))
     {
         violations_.push_back(GenericConstraintViolation{
             GenericConstraintViolationKind::ConstraintIsNotAClassOrInterface,
@@ -359,7 +401,8 @@ bool ProjectGenericConstraintModel::validateTemplateTypeConstraint(
         return false;
     }
     seenByKey.emplace(constraintKey, std::string(constraintSyntax->baseName()));
-    if (constraint->kind == NamedTypeDeclarationKind::Class)
+    if ((openTemplate != nullptr && openTemplate->kind == GenericTemplateKind::Class) ||
+        (openTemplate == nullptr && constraint->kind == NamedTypeDeclarationKind::Class))
         baseClasses.emplace_back(constraintSyntax, acceptedConstraints);
     ++acceptedConstraints;
     return true;
@@ -434,6 +477,7 @@ void ProjectGenericConstraintModel::validateTemplateClause(
     std::size_t templateOrdinal,
     const GenericTemplateRecord& templateRecord,
     const ast::GenericConstraintClause& clause,
+    const ProjectGenericModel& genericModel,
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
     std::vector<std::string>& templateAtoms,
@@ -457,7 +501,7 @@ void ProjectGenericConstraintModel::validateTemplateClause(
     {
         if (constraintSyntax == nullptr) continue;
         validateTemplateTypeConstraint(
-            templateOrdinal, clause, constraintSyntax, nameLookup, memberModel,
+            templateOrdinal, clause, constraintSyntax, genericModel, nameLookup, memberModel,
             seenByKey, baseClasses, acceptedConstraints, clauseAtoms, diagnostics);
     }
     normalizeTemplateClause(
@@ -498,7 +542,7 @@ void ProjectGenericConstraintModel::validateTemplateClauses(
         std::vector<std::string> templateAtoms;
         for (const ast::GenericConstraintClause& clause : templateRecord.constraints)
             validateTemplateClause(
-                templateOrdinal, templateRecord, clause, nameLookup,
+                templateOrdinal, templateRecord, clause, genericModel, nameLookup,
                 memberModel, templateAtoms, diagnostics);
         finalizeTemplateConstraintIdentity(templateOrdinal, templateAtoms);
     }
@@ -672,12 +716,155 @@ void ProjectGenericConstraintModel::reportPrimaryConstraint(
 void ProjectGenericConstraintModel::initializeBuildState(std::size_t templateCount)
 {
     violations_.clear();
+    certifiedDefaultConstructions_.clear();
     deferredBySpecialization_.clear();
     invalidSpecializations_.clear();
     invalidTemplateOrdinals_.clear();
     normalizedConstraintIdentities_.assign(templateCount, {});
     normalizedConstraintAtoms_.assign(templateCount, {});
     built_ = true;
+}
+
+// Collect constructions directly naming a parameter in this method's lexical generic scope.
+// Nested generic declarations, including generic lambdas, require their own scope proof.
+// A non-generic lambda retains this method's type-parameter scope.
+static std::unordered_map<const ast::AstNode*, std::string> constrainedConstructionSources(
+    const ast::AstNode* root, const std::unordered_map<std::string, std::string>& parameterTypes)
+{
+    std::unordered_map<const ast::AstNode*, std::string> sources;
+    std::vector<const ast::AstNode*> pending{root};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr) continue;
+        if (node != root && !node->genericParameters().empty()) continue;
+        const bool construction = node->kind() == ast::AstNodeKind::PlacementConstructionExpression ||
+            node->kind() == ast::AstNodeKind::ObjectCreationExpression;
+        const ast::TypeSyntax* syntax = node->typeSyntax();
+        if (construction && syntax != nullptr && syntax->typeArguments().empty() &&
+            syntax->modifiers().empty())
+        {
+            const auto parameter = parameterTypes.find(syntax->baseName());
+            if (parameter != parameterTypes.end()) sources.emplace(node, parameter->second);
+        }
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        pending.insert(pending.end(), node->children().begin(), node->children().end());
+    }
+    return sources;
+}
+
+// Resolve the exact source pointer, not a source location, spelling, or first instantiation site.
+static const ast::AstNode* originalConstruction(
+    const ProjectGenericModel& genericModel, const ast::AstNode* construction)
+{
+    std::unordered_set<const ast::AstNode*> visited;
+    const ast::AstNode* current = construction;
+    while (current != nullptr && visited.insert(current).second)
+    {
+        const ast::AstNode* source = genericModel.constructionCloneSource(current);
+        if (source == nullptr) return current == construction ? nullptr : current;
+        current = source;
+    }
+    return nullptr;
+}
+
+// Mark a clone only when the source node and concrete type both match a positive clause proof.
+static void recordCertifiedClones(
+    const ast::AstNode* root,
+    const ProjectGenericModel& genericModel,
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    const std::unordered_map<const ast::AstNode*, std::string>& sources,
+    std::unordered_map<const ast::AstNode*, std::string>& certified)
+{
+    std::vector<const ast::AstNode*> pending{root};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr) continue;
+        const bool construction = node->kind() == ast::AstNodeKind::PlacementConstructionExpression ||
+            node->kind() == ast::AstNodeKind::ObjectCreationExpression;
+        if (construction && node->typeSyntax() != nullptr)
+        {
+            const ast::AstNode* source = originalConstruction(genericModel, node);
+            const auto match = sources.find(source);
+            if (match != sources.end() &&
+                memberModel.canonicalTypeKey(node->typeSyntax(), nameLookup) == match->second)
+                certified.emplace(node, match->second);
+        }
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        pending.insert(pending.end(), node->children().begin(), node->children().end());
+    }
+}
+
+void ProjectGenericConstraintModel::collectCertifiedDefaultConstructions(
+    const ProjectGenericModel& genericModel,
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel)
+{
+    const auto templates = genericModel.templates();
+    for (const GenericSpecializationRecord& specialization : genericModel.specializations())
+    {
+        if (specialization.kind != GenericTemplateKind::Method || specialization.templateSyntax == nullptr ||
+            specialization.specializedSyntax == nullptr || specialization.templateOrdinal >= templates.size() ||
+            invalidTemplateOrdinals_.contains(specialization.templateOrdinal) ||
+            invalidSpecializations_.contains(specialization.specializedSyntax)) continue;
+        const GenericTemplateRecord& original = templates[specialization.templateOrdinal];
+        if (original.syntax != specialization.templateSyntax) continue;
+        std::unordered_map<std::string, std::string> validated;
+        for (const ast::GenericConstraintClause& clause : specialization.specializedSyntax->genericConstraints())
+        {
+            if (!clause.requiresDefaultConstructor || clause.substitutedArgument == nullptr ||
+                clause.associatedProjection != nullptr || clause.enclosingTypeParameter) continue;
+            const auto parameter = std::ranges::find(original.parameters, clause.parameterName);
+            const auto originalClause = std::ranges::find_if(original.constraints, [&](const auto& entry) {
+                return entry.parameterName == clause.parameterName && entry.requiresDefaultConstructor &&
+                    entry.associatedProjection == nullptr && !entry.enclosingTypeParameter;
+            });
+            if (parameter == original.parameters.end() || originalClause == original.constraints.end()) continue;
+            const std::string key = memberModel.canonicalTypeKey(clause.substitutedArgument, nameLookup);
+            const std::size_t parameterOrdinal = static_cast<std::size_t>(parameter - original.parameters.begin());
+            if (parameterOrdinal >= specialization.typeArguments.size()) continue;
+            std::size_t ordinal = 0;
+            const NamedTypeDeclaration* declaration = declarationForTypeKey(nameLookup, key, ordinal);
+            if (declaration == nullptr) continue;
+            const std::string& argumentIdentity = specialization.typeArguments[parameterOrdinal];
+            if (argumentIdentity != key)
+            {
+                // A closed generic class has two canonical forms: its generic specialization key
+                // in the planner and its concrete declaration key in name/member lookup. Bridge
+                // them only through the exact specialized declaration node and record.
+                const GenericSpecializationRecord* typeSpecialization =
+                    genericModel.specializationForSyntax(declaration->syntax);
+                if (typeSpecialization == nullptr ||
+                    typeSpecialization->kind == GenericTemplateKind::Method ||
+                    typeSpecialization->specializedSyntax != declaration->syntax ||
+                    invalidTemplateOrdinals_.contains(typeSpecialization->templateOrdinal) ||
+                    invalidSpecializations_.contains(typeSpecialization->specializedSyntax) ||
+                    argumentIdentity != "generic:" + typeSpecialization->specializationKey) continue;
+            }
+            if (declaration != nullptr && declaration->kind == NamedTypeDeclarationKind::Class &&
+                hasPublicDefaultConstructor(clause.substitutedArgument, declaration, ordinal, memberModel))
+                validated.emplace(clause.parameterName, key);
+        }
+        if (validated.empty()) continue;
+        const auto sources = constrainedConstructionSources(specialization.templateSyntax, validated);
+        recordCertifiedClones(specialization.specializedSyntax, genericModel, nameLookup, memberModel,
+                              sources, certifiedDefaultConstructions_);
+    }
+}
+
+bool ProjectGenericConstraintModel::certifiesDefaultConstruction(
+    const ast::AstNode* construction, std::string_view typeKey) const noexcept
+{
+    const auto found = certifiedDefaultConstructions_.find(construction);
+    return found != certifiedDefaultConstructions_.end() && found->second == typeKey;
 }
 
 void ProjectGenericConstraintModel::collectInvalidTemplateOrdinals()
@@ -855,60 +1042,137 @@ bool ProjectGenericConstraintModel::satisfiesThreadSafetyConstraint(
     const NamedTypeDeclaration& argument,
     std::size_t argumentOrdinal,
     bool sendMarker,
-    const ProjectMemberModel& memberModel)
+    std::string_view markerTypeKey,
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    const ProjectInheritanceModel& inheritanceModel)
 {
     // NS304-T07-F07: Send/Sync derivan estructuralmente — un tipo es Send/Sync
     // cuando sus campos lo son y no contiene raw pointers. No se exige `: Send`.
-    language::ThreadSafetyTypeFacts facts;
-    facts.typeName = argument.identity.name();
-    std::vector<std::size_t> fallbackMemberOrdinals;
-    std::span<const std::size_t> memberOrdinals =
-        memberModel.membersDeclaredByType(argumentOrdinal);
-    if (!memberModel.hasMembersDeclaredByTypeIndex())
+    struct PendingType { std::size_t ordinal; bool send; bool strict; };
+    std::vector<PendingType> pending{{argumentOrdinal, sendMarker, false}};
+    std::array<std::unordered_set<std::size_t>, 4> visited;
+    const auto enqueueStructuralTypes = [&](std::string typeKey, bool send, bool strict) {
+        std::vector<std::pair<std::string, bool>> types;
+        types.emplace_back(std::move(typeKey), send);
+        while (!types.empty())
+        {
+            auto [current, currentMode] = std::move(types.back());
+            types.pop_back();
+            if (current.ends_with("*")) return false;
+            if (current.starts_with("refmut:"))
+            {
+                if (!currentMode) return false;
+                types.emplace_back(current.substr(7), true);
+                continue;
+            }
+            // A shared reference needs the referent's Sync, not its Send.
+            // Preserve the conservative legacy rule outside conditional contracts.
+            if (current.starts_with("ref:"))
+            {
+                if (!strict) return false;
+                types.emplace_back(current.substr(4), false);
+                continue;
+            }
+            auto element = ProjectMemberModel::fixedArrayElementTypeKey(current);
+            if (!element.has_value()) element = ProjectTypeConversion::nativeArrayElementType(current);
+            if (element.has_value())
+            {
+                types.emplace_back(std::move(*element), currentMode);
+                continue;
+            }
+            if (auto tuple = ProjectTypeConversion::tupleElementTypeKeys(current); tuple.has_value())
+            {
+                for (std::string& element : *tuple)
+                    types.emplace_back(std::move(element), currentMode);
+                continue;
+            }
+            std::size_t ordinal = 0;
+            if (declarationForTypeKey(nameLookup, current, ordinal) != nullptr)
+                pending.push_back({ordinal, currentMode, strict});
+            else if (strict && !current.starts_with("builtin:"))
+                return false;
+        }
+        return true;
+    };
+    while (!pending.empty())
     {
-        for (std::size_t ordinal = 0; ordinal < memberModel.members().size(); ++ordinal)
+        const PendingType item = pending.back();
+        pending.pop_back();
+        const std::size_t currentOrdinal = item.ordinal;
+        const bool currentSend = item.send;
+        if (!visited[(item.strict ? 2U : 0U) + (currentSend ? 1U : 0U)].insert(currentOrdinal).second)
+            continue;
+        const NamedTypeDeclaration* current = currentOrdinal == argumentOrdinal
+            ? &argument : nameLookup.typeForOrdinal(currentOrdinal);
+        if (current == nullptr) return false;
+        const std::string currentMarker = std::string(markerTypeKey.substr(0, markerTypeKey.size() - 4U)) +
+            (currentSend ? "Send" : "Sync");
+        if (const auto payload = memberModel.conditionalUnsafeThreadArgument(*current, currentMarker, nameLookup);
+            payload.has_value())
         {
-            if (memberModel.members()[ordinal].declaringTypeOrdinal == argumentOrdinal)
-                fallbackMemberOrdinals.push_back(ordinal);
+            if (!enqueueStructuralTypes(*payload, true, true) ||
+                !enqueueStructuralTypes(*payload, false, true)) return false;
+            continue;
         }
-        memberOrdinals = fallbackMemberOrdinals;
+        if (const auto base = inheritanceModel.baseTypeOrdinal(currentOrdinal); base.has_value())
+            pending.push_back({*base, currentSend, item.strict});
+        language::ThreadSafetyTypeFacts facts;
+        facts.typeName = current->identity.name();
+        std::vector<std::size_t> fallbackMemberOrdinals;
+        std::span<const std::size_t> memberOrdinals =
+            memberModel.membersDeclaredByType(currentOrdinal);
+        if (!memberModel.hasMembersDeclaredByTypeIndex())
+        {
+            for (std::size_t ordinal = 0; ordinal < memberModel.members().size(); ++ordinal)
+            {
+                if (memberModel.members()[ordinal].declaringTypeOrdinal == currentOrdinal)
+                    fallbackMemberOrdinals.push_back(ordinal);
+            }
+            memberOrdinals = fallbackMemberOrdinals;
+        }
+        for (const std::size_t memberOrdinal : memberOrdinals)
+        {
+            if (memberOrdinal >= memberModel.members().size()) continue;
+            const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
+            if (member.kind != ClassMemberKind::Field) continue;
+            language::ThreadSafetyMemberFacts memberFacts;
+            memberFacts.name = member.name;
+            if (member.declaredTypeKey.starts_with("refmut:"))
+            {
+                // NS304-T07-F07: un `ref mut T` es mutable -> Send del referido, no Sync.
+                memberFacts.kind = language::ThreadSafetyMemberKind::MutableReference;
+                memberFacts.send = true;
+                memberFacts.sync = false;
+                if (currentSend && !enqueueStructuralTypes(member.declaredTypeKey.substr(7), true, item.strict)) return false;
+            }
+            else if (member.declaredTypeKey.starts_with("ref:"))
+            {
+                memberFacts.kind = language::ThreadSafetyMemberKind::SharedReference;
+                memberFacts.send = true;
+                memberFacts.sync = true;
+                if (item.strict && !enqueueStructuralTypes(member.declaredTypeKey.substr(4), false, true))
+                    return false;
+            }
+            else if (member.declaredTypeKey.ends_with("*"))
+            {
+                memberFacts.kind = language::ThreadSafetyMemberKind::RawPointer;
+                memberFacts.send = false;
+                memberFacts.sync = false;
+            }
+            else
+            {
+                memberFacts.kind = language::ThreadSafetyMemberKind::Value;
+                memberFacts.send = true;
+                memberFacts.sync = true;
+                if (!enqueueStructuralTypes(member.declaredTypeKey, currentSend, item.strict)) return false;
+            }
+            facts.members.push_back(std::move(memberFacts));
+        }
+        const language::ThreadSafetyDecision decision = language::evaluateThreadSafety(facts);
+        if (!(currentSend ? decision.send : decision.sync)) return false;
     }
-    for (const std::size_t memberOrdinal : memberOrdinals)
-    {
-        if (memberOrdinal >= memberModel.members().size()) continue;
-        const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
-        if (member.kind != ClassMemberKind::Field) continue;
-        language::ThreadSafetyMemberFacts memberFacts;
-        memberFacts.name = member.name;
-        if (member.declaredTypeKey.starts_with("refmut:"))
-        {
-            // NS304-T07-F07: un `ref mut T` es mutable -> Send del referido, no Sync.
-            memberFacts.kind = language::ThreadSafetyMemberKind::MutableReference;
-            memberFacts.send = true;
-            memberFacts.sync = false;
-        }
-        else if (member.declaredTypeKey.starts_with("ref:"))
-        {
-            memberFacts.kind = language::ThreadSafetyMemberKind::SharedReference;
-            memberFacts.send = true;
-            memberFacts.sync = true;
-        }
-        else if (member.declaredTypeKey.ends_with("*"))
-        {
-            memberFacts.kind = language::ThreadSafetyMemberKind::RawPointer;
-            memberFacts.send = false;
-            memberFacts.sync = false;
-        }
-        else
-        {
-            memberFacts.kind = language::ThreadSafetyMemberKind::Value;
-            memberFacts.send = true;
-            memberFacts.sync = true;
-        }
-        facts.members.push_back(std::move(memberFacts));
-    }
-    const language::ThreadSafetyDecision decision = language::evaluateThreadSafety(facts);
-    return sendMarker ? decision.send : decision.sync;
+    return true;
 }
 
 bool ProjectGenericConstraintModel::satisfiesTypeConstraint(
@@ -916,6 +1180,7 @@ bool ProjectGenericConstraintModel::satisfiesTypeConstraint(
     std::size_t argumentOrdinal,
     const NamedTypeDeclaration& constraint,
     std::size_t constraintOrdinal,
+    const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
     const ProjectInheritanceModel& inheritanceModel,
     const ProjectInterfaceModel& interfaceModel)
@@ -926,7 +1191,8 @@ bool ProjectGenericConstraintModel::satisfiesTypeConstraint(
         (argument.kind == NamedTypeDeclarationKind::Class ||
          argument.kind == NamedTypeDeclarationKind::Struct))
         return satisfiesThreadSafetyConstraint(
-            argument, argumentOrdinal, sendMarker, memberModel);
+            argument, argumentOrdinal, sendMarker, "type:" + constraint.identity.key(),
+            nameLookup, memberModel, inheritanceModel);
     if (constraint.kind == NamedTypeDeclarationKind::Interface)
     {
         // Dos caminos, y hacen falta los dos: una CLASE la implementa, y una INTERFAZ
@@ -994,7 +1260,7 @@ void ProjectGenericConstraintModel::appendTypeConstraintViolation(
         return;
     }
     if (satisfiesTypeConstraint(
-            *argument, argumentOrdinal, *constraint, constraintOrdinal, memberModel,
+            *argument, argumentOrdinal, *constraint, constraintOrdinal, nameLookup, memberModel,
             inheritanceModel, interfaceModel))
         return;
     pending.push_back(PendingDiagnostic{
@@ -1107,14 +1373,14 @@ void ProjectGenericConstraintModel::storeSpecializationViolations(
             DeferredDiagnostic{entry.id, entry.range, entry.message, entry.violation});
 }
 
-// EN: Freeze 3.0 P1: the member clauses of a closed type (`ToArray() where T : copy` in
+// EN: Freeze P1: the member clauses of a closed type (`ToArray() where T : copy` in
 //     `List<Guard>`). A member whose clause fails is marked invalid and its diagnostics are only
 //     deferred: they reach the program at the call that selects the member, where overload
 //     resolution already reports deferred constraint failures. The type itself stays valid, and
 //     the analysis and HIR guards skip that member's body. O(members of the closed type).
 //     P3: an indexer or property accessor (`get where T : copy`) is a method node nested in its
 //     declaration; it is checked the same way and selected through the same overload resolution.
-// ES: Congelamiento 3.0 P1: las clausulas de miembro de un tipo cerrado (`ToArray() where T : copy`
+// ES: Congelamiento P1: las clausulas de miembro de un tipo cerrado (`ToArray() where T : copy`
 //     en `List<Guard>`). Un miembro cuya clausula falla se marca invalido y sus diagnosticos solo
 //     se aplazan: llegan al programa en la llamada que lo elige, donde la resolucion de sobrecargas
 //     ya informa los constraints aplazados. El tipo sigue valido, y las guardas de analisis y de
@@ -1169,7 +1435,9 @@ void ProjectGenericConstraintModel::validateSpecializationMemberClause(
         "; template is declared in module '" + templateRecord.moduleName + "'";
     for (const ast::GenericConstraintClause& clause : member->genericConstraints())
     {
-        if (!clause.enclosingTypeParameter) continue;
+        if (!clause.enclosingTypeParameter &&
+            !(member->genericParameters().empty() && clause.substitutedArgument != nullptr &&
+              member->auxiliaryText().starts_with("stage44-specialization:"))) continue;
         validateSpecializationClause(
             specialization, memberRecord, clause, templateModuleSuffix, nameLookup, memberModel,
             inheritanceModel, interfaceModel, pending);
@@ -1260,6 +1528,7 @@ bool ProjectGenericConstraintModel::build(
         validateSpecialization(
             specialization, templates, nameLookup, memberModel, inheritanceModel,
             interfaceModel, ungrouped);
+    collectCertifiedDefaultConstructions(genericModel, nameLookup, memberModel);
     emitUngroupedViolations(ungrouped, diagnostics);
 
     // Lo agrupado NO se emite aqui. Vive en `deferredBySpecialization_` hasta que la resolucion

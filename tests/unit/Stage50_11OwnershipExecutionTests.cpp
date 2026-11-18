@@ -96,7 +96,7 @@ void writeProject(const std::filesystem::path& directory, std::string_view name)
 void writeProjectWithCoreReference(const std::filesystem::path& directory, std::string_view name)
 {
     const std::filesystem::path core =
-        std::filesystem::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core/NativeSharp.Core.nsproj";
+        std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib/NativeSharp.Core/NativeSharp.Core.nsproj";
     writeFile(
         directory / (std::string(name) + ".nsproj"),
         "<Project><PropertyGroup><Name>" + std::string(name) +
@@ -1197,10 +1197,15 @@ void testMovingFromAPlainLocalIsRejected(TestContext& tests, const std::filesyst
     const std::string source = std::string(kPrelude) + R"NS(
     class Program
     {
+        // Freeze (item 141): a local bound to `new` owns its object, so the plain local here
+        // is an alias of a borrowed parameter.
+        static void Take(Resource source)
+        {
+            Resource plain = source;
+            raii Resource owner = move(plain);
+        }
         public static int Main()
         {
-            Resource plain = new Resource(1);
-            raii Resource owner = move(plain);
             return 0;
         }
     }
@@ -1681,11 +1686,16 @@ void testPlainAliasIntoOwnedFieldIsRejected(TestContext& tests, const std::files
 
     class Program
     {
-        public static int Main()
+        // Freeze (item 141): a local bound to `new` owns its object, so the plain reference
+        // here is an alias of a borrowed parameter.
+        static void Keep(Resource source)
         {
-            Resource plain = new Resource(1);
+            Resource plain = source;
             raii Holder holder = new Holder();
             holder.slot = plain;
+        }
+        public static int Main()
+        {
             return 0;
         }
     }

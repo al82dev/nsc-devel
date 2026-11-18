@@ -1,0 +1,4 @@
+namespace External {
+ public struct Value<T> { public T Data; }
+ internal struct Hidden<T> { public T Data; }
+}

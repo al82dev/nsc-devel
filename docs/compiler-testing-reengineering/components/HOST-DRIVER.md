@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Host.Driver — orquestación, CLI, productos, paquetes y contratos operativos
 
 ## 1. Estado y procedencia
@@ -217,7 +219,7 @@ El analizador de migración tokeniza comentarios/strings, procesa suppressions y
 ownership, moves, using, narrowing y orden de cleanup. Los fixes sólo se aplican cuando están marcados seguros, con
 prueba de equivalencia y rangos no solapados.
 
-La guía ejecutable se valida mediante su estructura pública: encabezado NativeSharp 2.x, estrategia incremental,
+La guía ejecutable se valida mediante su estructura pública: encabezado de migración NativeSharp, estrategia incremental,
 inventario de decisiones manuales y capítulos estables. Una entrada sin hallazgos conserva un único capítulo
 `VERIFY`; una entrada con transformaciones publica pares `Before:` y `After:`. Ningún sentinel privado forma parte
 del contrato observable.

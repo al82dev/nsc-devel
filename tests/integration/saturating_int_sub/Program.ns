@@ -1,0 +1,13 @@
+int Subtract(int a, int b) { return saturating(a - b); }
+int Main()
+{
+    int maximum = 2147483647;
+    int minimum = -2147483647 - 1;
+    if (Subtract(maximum, -1) != maximum) return 1;
+    if (Subtract(minimum, 1) != minimum) return 2;
+    if (Subtract(maximum, 1) != maximum - 1) return 3;
+    if (Subtract(minimum, -1) != minimum + 1) return 4;
+    if (Subtract(7, -2) != 9 || Subtract(-7, 2) != -9) return 5;
+    if (maximum - (-1) != minimum || minimum - 1 != maximum) return 6;
+    return 0;
+}

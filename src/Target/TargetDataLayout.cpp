@@ -392,6 +392,11 @@ std::optional<std::uint64_t> TargetDataLayout::alignUp(
     }
 
     const std::uint64_t mask = alignment - 1;
+    // EN: LKF-505: an already aligned value near UINT64_MAX overflowed `value + mask` and was
+    //     rejected although it needs no rounding.
+    // ES: LKF-505: un valor ya alineado cerca de UINT64_MAX desbordaba `value + mask` y se rechazaba
+    //     aunque no necesita redondeo.
+    if ((value & mask) == 0) return value;
     const std::optional<std::uint64_t> withMask = checkedAdd(value, mask);
     if (!withMask.has_value())
     {

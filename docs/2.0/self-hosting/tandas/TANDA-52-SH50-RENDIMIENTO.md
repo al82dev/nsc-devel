@@ -21,7 +21,7 @@ perfiles, optimización, LTO, ThinLTO, worker pool y scheduler.
 | `selfhost/contracts/performance.contract.json` | presupuestos, repeticiones y matriz |
 | `selfhost/bootstrap/verify_performance.py` | medición, hashes y validación |
 | `cmake/VerifyNativeSharpPerformance.cmake` | gate SH50 reproducible |
-| `mkdown/NativeSharp-2.0-Compiler-Performance-and-Diagnostics-Roadmap.md` | integración normativa |
+| `mkdown/NativeSharp-Compiler-Performance-and-Diagnostics-Roadmap.md` | integración normativa |
 
 ## Resultado dirigido
 

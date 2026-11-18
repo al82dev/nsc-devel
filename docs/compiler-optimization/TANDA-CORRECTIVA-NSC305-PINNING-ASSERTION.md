@@ -37,7 +37,7 @@ encuentra una linea semanticamente correcta.
 |---|---|
 | Repositorio | `A:\\nsc-devel` |
 | Rama | `development` |
-| Archivo funcional | `tests/unit/NativeSharp3T06PinningTests.cpp` |
+| Archivo funcional | `tests/unit/NativeSharpT06PinningTests.cpp` |
 | Simbolo | asercion `mirPasses` del caso positivo |
 | Documento | este expediente |
 | Prueba | `nsc_ns3_t06_pinning_tests` |

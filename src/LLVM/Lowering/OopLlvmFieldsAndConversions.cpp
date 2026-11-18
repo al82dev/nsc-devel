@@ -3,6 +3,9 @@
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
+#include "nativesharp/Language/AbiSemantics.h"
+
+#include <cmath>
 
 namespace nativesharp::llvm_backend
 {
@@ -183,6 +186,41 @@ LLVMValueRef OopLlvmImplementation::fieldAddressFromReceiver(
             builder_, LLVMInt8TypeInContext(context_), receiver, indices, 1, "field.addr");
     }
 
+unsigned OopLlvmImplementation::placeAlignment(const frontend::ProjectOopMirNode* place) const noexcept
+{
+        unsigned result = 0;
+        const frontend::ProjectOopMirNode* current = place;
+        while (current != nullptr && current->alignment > 0 &&
+            (current->kind == frontend::ProjectOopMirNodeKind::FieldAddress ||
+             current->kind == frontend::ProjectOopMirNodeKind::FieldLoad))
+        {
+            const auto field = static_cast<unsigned>(current->alignment);
+            if (result == 0 || field < result) result = field;
+            if (current->children.empty() || current->children.front() == nullptr) break;
+            const frontend::ProjectOopMirNode* receiver = current->children.front().get();
+            // A class receiver is an object pointer from the allocator; only a struct value can
+            // place the field below its own alignment. / Un receptor de clase es un puntero del
+            // asignador; solo un struct puede dejar el campo bajo su propia alineación.
+            if (!isStructValue(receiver->typeKey)) break;
+            const unsigned enclosing = structAlignmentFor(receiver->typeKey);
+            if (enclosing > 0 && enclosing < result) result = enclosing;
+            current = receiver;
+        }
+        return result;
+    }
+
+void OopLlvmImplementation::clampAccessAlignmentTo(LLVMValueRef access, unsigned alignment) noexcept
+{
+        if (access != nullptr && alignment != 0 && alignment < LLVMGetAlignment(access))
+            LLVMSetAlignment(access, alignment);
+    }
+
+void OopLlvmImplementation::clampAccessAlignment(
+        LLVMValueRef access, const frontend::ProjectOopMirNode* place) const noexcept
+{
+        clampAccessAlignmentTo(access, placeAlignment(place));
+    }
+
 LLVMValueRef OopLlvmImplementation::checkedReceiver(LLVMValueRef receiver, std::string& error)
 {
         if (receiver == nullptr || trapFunction_ == nullptr || trapFunctionType_ == nullptr ||
@@ -219,6 +257,25 @@ LLVMValueRef OopLlvmImplementation::convert(
         if (source == target || source == "builtin:null") return value;
         LLVMTypeRef destination = llvmType(target, error);
         if (destination == nullptr) return nullptr;
+        if (source.starts_with("mask<") && target.starts_with("simd<"))
+        {
+            const auto sourceSimd = language::parsePortableSimdType(source);
+            const auto targetSimd = language::parsePortableSimdType(target);
+            if (sourceSimd.has_value() && targetSimd.has_value() &&
+                (sourceSimd->laneTypeKey == targetSimd->laneTypeKey ||
+                 (sourceSimd->laneTypeKey == "builtin:float" && targetSimd->laneTypeKey == "builtin:uint") ||
+                 (sourceSimd->laneTypeKey == "builtin:double" && targetSimd->laneTypeKey == "builtin:ulong")) &&
+                sourceSimd->laneCount == targetSimd->laneCount)
+            {
+                const bool floating = targetSimd->laneKind == language::SimdLaneKind::FloatingPoint;
+                LLVMTypeRef integerDestination = floating
+                    ? LLVMVectorType(LLVMIntTypeInContext(context_, static_cast<unsigned>(targetSimd->laneBits)),
+                                     static_cast<unsigned>(targetSimd->laneCount))
+                    : destination;
+                LLVMValueRef bits = LLVMBuildSExt(builder_, value, integerDestination, "mask.to.integer.lanes");
+                return floating ? LLVMBuildBitCast(builder_, bits, destination, "mask.to.float.lanes") : bits;
+            }
+        }
         if (const std::optional<language::AnonymousLambdaType> lambdaType =
                 language::parseAnonymousLambdaTypeIdentity(source))
         {
@@ -325,9 +382,9 @@ LLVMValueRef OopLlvmImplementation::tryConvertSpanView(
             !terminalTypeKey(target).starts_with(readOnlySpanPrefix)) return nullptr;
         const frontend::ProjectOopMirStructLayout* sourceLayout = findStructLayout(mirModel_, source);
         const frontend::ProjectOopMirStructLayout* targetLayout = findStructLayout(mirModel_, target);
-        // EN: Freeze 3.0 P4: Span and ReadOnlySpan have the same fields (four since P4); all are
+        // EN: Freeze P4: Span and ReadOnlySpan have the same fields (four since P4); all are
         //     carried, so the converted view keeps its array and first index.
-        // ES: Congelamiento 3.0 P4: Span y ReadOnlySpan tienen los mismos campos (cuatro desde P4); se
+        // ES: Congelamiento P4: Span y ReadOnlySpan tienen los mismos campos (cuatro desde P4); se
         //     copian todos, asi la vista convertida conserva su arreglo y su primer indice.
         if (sourceLayout == nullptr || targetLayout == nullptr || sourceLayout->fields.size() < 2U ||
             sourceLayout->fields.size() != targetLayout->fields.size()) return nullptr;
@@ -371,13 +428,13 @@ LLVMValueRef OopLlvmImplementation::tryConvertSpanView(
 }
 
 LLVMValueRef OopLlvmImplementation::convertDecimalToInteger(
-        LLVMValueRef value, LLVMTypeRef destination)
+        LLVMValueRef value, LLVMTypeRef destination, unsigned destinationWidth)
 {
-        // NS304-T15-F06: decimal -> integer = coefficient (low 96 bits) / 10^scale, truncated toward
-        // zero. 10^scale is built with a runtime loop because the scale is dynamic (0..28). The
-        // division is widened through a 64-bit lane (the 128-bit divide would need __udivti3).
+        // Divide the complete 96-bit coefficient by 10 once per scale digit.  Each
+        // division processes three 32-bit limbs, using only 64-bit divisions.
         LLVMTypeRef wide = LLVMIntTypeInContext(context_, 128);
-        LLVMValueRef coefficientMask = LLVMConstInt(wide, 0xFFFFFFFFFFFFFFFFull, 0);
+        std::uint64_t coefficientWords[2] = {0xFFFFFFFFFFFFFFFFull, 0xFFFFFFFFull};
+        LLVMValueRef coefficientMask = LLVMConstIntOfArbitraryPrecision(wide, 2, coefficientWords);
         LLVMValueRef coefficient = LLVMBuildAnd(builder_, value, coefficientMask, "decimal.coeff");
         LLVMValueRef scaleShift = LLVMConstInt(wide, 96, 0);
         LLVMValueRef scaleRaw = LLVMBuildLShr(builder_, value, scaleShift, "decimal.scale.raw");
@@ -390,7 +447,6 @@ LLVMValueRef OopLlvmImplementation::convertDecimalToInteger(
         LLVMValueRef isNegative = LLVMBuildTrunc(
             builder_, signBit, LLVMInt1TypeInContext(context_), "decimal.negative");
         LLVMTypeRef lane = LLVMInt64TypeInContext(context_);
-        LLVMValueRef coefficientLane = LLVMBuildTrunc(builder_, coefficient, lane, "decimal.coeff64");
         LLVMValueRef scaleLane = LLVMBuildTrunc(builder_, scale, lane, "decimal.scale64");
         LLVMBasicBlockRef preheader = LLVMGetInsertBlock(builder_);
         LLVMBasicBlockRef header = LLVMAppendBasicBlockInContext(
@@ -403,22 +459,38 @@ LLVMValueRef OopLlvmImplementation::convertDecimalToInteger(
         LLVMValueRef ten = LLVMConstInt(lane, 10, 0);
         LLVMBuildBr(builder_, header);
         enterBlock(header);
-        LLVMValueRef divisor = LLVMBuildPhi(builder_, lane, "decimal.pow10.div");
+        LLVMValueRef current = LLVMBuildPhi(builder_, wide, "decimal.coeff.current");
         LLVMValueRef remaining = LLVMBuildPhi(builder_, lane, "decimal.pow10.scale");
         LLVMValueRef done = LLVMBuildICmp(
             builder_, LLVMIntEQ, remaining, LLVMConstInt(lane, 0, 0), "decimal.pow10.done");
         LLVMBuildCondBr(builder_, done, exit, body);
         enterBlock(body);
-        LLVMValueRef nextDivisor = LLVMBuildMul(builder_, divisor, ten, "decimal.pow10.mul");
+        LLVMValueRef mask32 = LLVMConstInt(lane, 0xFFFFFFFFull, 0);
+        LLVMValueRef remainder = LLVMConstInt(lane, 0, 0);
+        LLVMValueRef next = LLVMConstNull(wide);
+        for (int shift = 64; shift >= 0; shift -= 32)
+        {
+            LLVMValueRef part = LLVMBuildTrunc(builder_, LLVMBuildLShr(
+                builder_, current, LLVMConstInt(wide, static_cast<unsigned>(shift), 0), "decimal.part.shift"),
+                lane, "decimal.part.low64");
+            part = LLVMBuildAnd(builder_, part, mask32, "decimal.part");
+            LLVMValueRef dividend = LLVMBuildOr(builder_, LLVMBuildShl(
+                builder_, remainder, LLVMConstInt(lane, 32, 0), "decimal.rem.shift"), part, "decimal.dividend");
+            LLVMValueRef quotient = LLVMBuildUDiv(builder_, dividend, ten, "decimal.limb.quotient");
+            remainder = LLVMBuildURem(builder_, dividend, ten, "decimal.limb.remainder");
+            LLVMValueRef extended = LLVMBuildZExt(builder_, quotient, wide, "decimal.limb.wide");
+            next = LLVMBuildOr(builder_, next, LLVMBuildShl(builder_, extended,
+                LLVMConstInt(wide, static_cast<unsigned>(shift), 0), "decimal.limb.shift"), "decimal.next");
+        }
         LLVMValueRef nextRemaining = LLVMBuildSub(builder_, remaining, one, "decimal.pow10.dec");
         LLVMBuildBr(builder_, header);
-        LLVMAddIncoming(divisor, &one, &preheader, 1);
-        LLVMAddIncoming(divisor, &nextDivisor, &body, 1);
+        LLVMAddIncoming(current, &coefficient, &preheader, 1);
+        LLVMAddIncoming(current, &next, &body, 1);
         LLVMAddIncoming(remaining, &scaleLane, &preheader, 1);
         LLVMAddIncoming(remaining, &nextRemaining, &body, 1);
         enterBlock(exit);
-        LLVMValueRef quotient = LLVMBuildUDiv(builder_, coefficientLane, divisor, "decimal.quotient");
-        LLVMValueRef truncated = LLVMBuildTrunc(builder_, quotient, destination, "decimal.trunc");
+        LLVMValueRef truncated = destinationWidth == 128
+            ? current : LLVMBuildTrunc(builder_, current, destination, "decimal.trunc");
         LLVMValueRef negated = LLVMBuildSub(
             builder_, LLVMConstNull(destination), truncated, "decimal.neg");
         return LLVMBuildSelect(builder_, isNegative, negated, truncated, "decimal.toint");
@@ -450,8 +522,6 @@ LLVMValueRef OopLlvmImplementation::convertDecimalToFloating(
         // NS304-T15-F06: decimal -> float/double = |coefficient| / 10^scale, sign applied. Precision
         // loss is accepted (the destination FP format decides it).
         LLVMTypeRef wide = LLVMIntTypeInContext(context_, 128);
-        LLVMValueRef coefficient = LLVMBuildAnd(
-            builder_, value, LLVMConstInt(wide, 0xFFFFFFFFFFFFFFFFull, 0), "decimal.coeff");
         LLVMValueRef scaleRaw = LLVMBuildLShr(
             builder_, value, LLVMConstInt(wide, 96, 0), "decimal.scale.raw");
         LLVMValueRef scale = LLVMBuildAnd(
@@ -461,11 +531,39 @@ LLVMValueRef OopLlvmImplementation::convertDecimalToFloating(
         LLVMValueRef isNegative = LLVMBuildTrunc(
             builder_, signBit, LLVMInt1TypeInContext(context_), "decimal.negative");
         LLVMTypeRef lane = LLVMInt64TypeInContext(context_);
-        LLVMValueRef coeff64 = LLVMBuildTrunc(builder_, coefficient, lane, "decimal.coeff64");
+        LLVMValueRef coeff64 = LLVMBuildTrunc(builder_, value, lane, "decimal.coeff64");
+        LLVMValueRef high = LLVMBuildTrunc(builder_, LLVMBuildLShr(
+            builder_, value, LLVMConstInt(wide, 64, 0), "decimal.coeff.high.shift"),
+            LLVMInt32TypeInContext(context_), "decimal.coeff.high");
         LLVMValueRef scale64 = LLVMBuildTrunc(builder_, scale, lane, "decimal.scale64");
-        LLVMValueRef divisorInt = buildPow10(scale64, "decimal.tofp.pow10");
-        LLVMValueRef coeffFp = LLVMBuildUIToFP(builder_, coeff64, destination, "decimal.coeff.fp");
-        LLVMValueRef divisorFp = LLVMBuildUIToFP(builder_, divisorInt, destination, "decimal.pow10.fp");
+        LLVMValueRef lowFp = LLVMBuildUIToFP(builder_, coeff64, destination, "decimal.coeff.low.fp");
+        LLVMValueRef highFp = LLVMBuildUIToFP(builder_, high, destination, "decimal.coeff.high.fp");
+        LLVMValueRef coeffFp = LLVMBuildFAdd(builder_, lowFp, LLVMBuildFMul(
+            builder_, highFp, LLVMConstReal(destination, 18446744073709551616.0),
+            "decimal.coeff.high.scaled"), "decimal.coeff.fp");
+        LLVMBasicBlockRef preheader = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef header = appendBlock("decimal.tofp.pow10.header");
+        LLVMBasicBlockRef body = appendBlock("decimal.tofp.pow10.body");
+        LLVMBasicBlockRef exit = appendBlock("decimal.tofp.pow10.exit");
+        LLVMBuildBr(builder_, header);
+        enterBlock(header);
+        LLVMValueRef divisorFp = LLVMBuildPhi(builder_, destination, "decimal.pow10.fp");
+        LLVMValueRef remaining = LLVMBuildPhi(builder_, lane, "decimal.pow10.remaining");
+        LLVMValueRef done = LLVMBuildICmp(builder_, LLVMIntEQ, remaining,
+            LLVMConstInt(lane, 0, 0), "decimal.pow10.done");
+        LLVMBuildCondBr(builder_, done, exit, body);
+        enterBlock(body);
+        LLVMValueRef nextDivisor = LLVMBuildFMul(
+            builder_, divisorFp, LLVMConstReal(destination, 10.0), "decimal.pow10.next");
+        LLVMValueRef nextRemaining = LLVMBuildSub(
+            builder_, remaining, LLVMConstInt(lane, 1, 0), "decimal.pow10.dec");
+        LLVMBuildBr(builder_, header);
+        LLVMValueRef one = LLVMConstReal(destination, 1.0);
+        LLVMAddIncoming(divisorFp, &one, &preheader, 1);
+        LLVMAddIncoming(divisorFp, &nextDivisor, &body, 1);
+        LLVMAddIncoming(remaining, &scale64, &preheader, 1);
+        LLVMAddIncoming(remaining, &nextRemaining, &body, 1);
+        enterBlock(exit);
         LLVMValueRef result = LLVMBuildFDiv(builder_, coeffFp, divisorFp, "decimal.tofp");
         LLVMValueRef negated = LLVMBuildFNeg(builder_, result, "decimal.tofp.neg");
         return LLVMBuildSelect(builder_, isNegative, negated, result, "decimal.tofp.signed");
@@ -474,8 +572,9 @@ LLVMValueRef OopLlvmImplementation::convertDecimalToFloating(
 LLVMValueRef OopLlvmImplementation::convertFloatingToDecimal(
         LLVMValueRef value, std::string_view source, std::string& error)
 {
-        // NS304-T15-F06: float/double -> decimal. Finite values are rounded to 6 fractional digits
-        // (coefficient = round(|v| * 10^6), scale 6, sign bit).
+        // Round to six fractional digits when the coefficient fits. Above that range,
+        // binary float inputs have no fractional bits, so use scale zero; trap values
+        // whose magnitude is outside the 96-bit decimal coefficient.
         LLVMTypeRef sourceFp = llvmType(source, error);
         if (sourceFp == nullptr) return nullptr;
         LLVMValueRef isNegative = LLVMBuildFCmp(
@@ -500,15 +599,40 @@ LLVMValueRef OopLlvmImplementation::convertFloatingToDecimal(
         buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArgs, 1, "");
         LLVMBuildUnreachable(builder_);
         enterBlock(okBlock);
+        LLVMTypeRef calculationType = LLVMDoubleTypeInContext(context_);
+        LLVMValueRef magnitude = sourceFp == calculationType
+            ? abs : LLVMBuildFPExt(builder_, abs, calculationType, "decimal.from.extended");
         LLVMValueRef scaled = LLVMBuildFMul(
-            builder_, abs, LLVMConstReal(sourceFp, 1e6), "decimal.from.scaled");
-        LLVMValueRef rounded = LLVMBuildFPToSI(
-            builder_, scaled, LLVMInt64TypeInContext(context_), "decimal.from.coeff64");
+            builder_, magnitude, LLVMConstReal(calculationType, 1e6), "decimal.from.scaled");
+        LLVMValueRef limit = LLVMConstReal(calculationType, std::ldexp(1.0, 96));
+        LLVMValueRef useScale = LLVMBuildFCmp(builder_, LLVMRealOLT, scaled, limit, "decimal.from.use.scale");
+        LLVMValueRef coefficient = LLVMBuildSelect(builder_, useScale, scaled, magnitude, "decimal.from.coefficient");
+        LLVMValueRef fits = LLVMBuildFCmp(builder_, LLVMRealOLT, coefficient, limit, "decimal.from.fits");
+        if (!emitGuard(fits, LlvmTrapReason::DecimalOverflow, "decimal.from.overflow", error))
+            return nullptr;
         LLVMTypeRef wide = LLVMIntTypeInContext(context_, 128);
-        LLVMValueRef coeffWide = LLVMBuildZExt(builder_, rounded, wide, "decimal.from.coeff");
+        LLVMTypeRef lane = LLVMInt64TypeInContext(context_);
+        LLVMValueRef chunkBase = LLVMConstReal(calculationType, std::ldexp(1.0, 48));
+        LLVMValueRef highPart = LLVMBuildFDiv(builder_, coefficient, chunkBase, "decimal.from.high.fp");
+        LLVMValueRef high = LLVMBuildFPToUI(builder_, highPart, lane, "decimal.from.high");
+        LLVMValueRef highFp = LLVMBuildUIToFP(builder_, high, calculationType, "decimal.from.high.exact");
+        LLVMValueRef remainder = LLVMBuildFSub(builder_, coefficient,
+            LLVMBuildFMul(builder_, highFp, chunkBase, "decimal.from.high.scaled"), "decimal.from.low.fp");
+        LLVMValueRef low = LLVMBuildFPToUI(builder_, remainder, lane, "decimal.from.low");
+        LLVMValueRef fractional = LLVMBuildFSub(builder_, remainder,
+            LLVMBuildUIToFP(builder_, low, calculationType, "decimal.from.low.exact"), "decimal.from.fraction");
+        LLVMValueRef roundUp = LLVMBuildFCmp(builder_, LLVMRealOGE, fractional,
+            LLVMConstReal(calculationType, 0.5), "decimal.from.round.up");
+        LLVMValueRef roundedLow = LLVMBuildAdd(builder_, low,
+            LLVMBuildZExt(builder_, roundUp, lane, "decimal.from.round.increment"), "decimal.from.low.rounded");
+        LLVMValueRef coeffWide = LLVMBuildAdd(builder_,
+            LLVMBuildShl(builder_, LLVMBuildZExt(builder_, high, wide, "decimal.from.high.wide"),
+                         LLVMConstInt(wide, 48, 0), "decimal.from.high.shift"),
+            LLVMBuildZExt(builder_, roundedLow, wide, "decimal.from.low.wide"), "decimal.from.coeff");
+        LLVMValueRef scaleValue = LLVMBuildSelect(
+            builder_, useScale, LLVMConstInt(wide, 6, 0), LLVMConstNull(wide), "decimal.from.scale.value");
         LLVMValueRef scaleShifted = LLVMBuildShl(
-            builder_, LLVMConstInt(wide, 6, 0),
-            LLVMConstInt(wide, 96, 0), "decimal.from.scale");
+            builder_, scaleValue, LLVMConstInt(wide, 96, 0), "decimal.from.scale");
         LLVMValueRef combined = LLVMBuildOr(builder_, coeffWide, scaleShifted, "decimal.from.value");
         LLVMValueRef sign = LLVMBuildShl(
             builder_, LLVMBuildZExt(builder_, isNegative, wide, "decimal.from.signext"),
@@ -539,7 +663,60 @@ LLVMValueRef OopLlvmImplementation::convertScalar(
             targetEnum != nullptr ? targetEnum->isSigned : isSignedInteger(target);
         if (sourceWidth != 0 && targetWidth != 0)
         {
+            // EN: A checked conversion between built-in integers traps when the value does not fit,
+            //     for every source width; only i128/u128 sources were checked before. A widening
+            //     signed-to-unsigned conversion only needs the sign check.
+            // ES: Una conversion checked entre enteros incorporados atrapa si el valor no cabe, con
+            //     todo ancho de origen; antes solo se comprobaban origenes i128/u128. Una conversion
+            //     que ensancha de con signo a sin signo solo necesita la comprobacion de signo.
+            const bool checkedIntegers = currentOverflowPolicy_ == "checked" && sourceEnum == nullptr &&
+                targetEnum == nullptr && frontend::builtins::findIntegerType(source) != nullptr &&
+                frontend::builtins::findIntegerType(target) != nullptr;
+            if (checkedIntegers && targetWidth > sourceWidth && sourceSigned && !targetSigned)
+            {
+                LLVMValueRef nonnegative = LLVMBuildICmp(
+                    builder_, LLVMIntSGE, value, LLVMConstNull(LLVMTypeOf(value)), "checked.widen.nonnegative");
+                if (!emitGuard(nonnegative, LlvmTrapReason::IntegerOverflow, "checked.widen.overflow", error))
+                    return nullptr;
+                return LLVMBuildZExt(builder_, value, destination, "checked.widen");
+            }
+            if (checkedIntegers && targetWidth <= sourceWidth)
+            {
+                LLVMValueRef narrowed = sourceWidth == targetWidth
+                    ? value : LLVMBuildTrunc(builder_, value, destination, "checked.cast.trunc");
+                LLVMValueRef fits = LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0);
+                if (sourceWidth != targetWidth)
+                {
+                    LLVMValueRef restored = targetSigned
+                        ? LLVMBuildSExt(builder_, narrowed, LLVMTypeOf(value), "checked.cast.restore")
+                        : LLVMBuildZExt(builder_, narrowed, LLVMTypeOf(value), "checked.cast.restore");
+                    fits = LLVMBuildICmp(builder_, LLVMIntEQ, value, restored, "checked.cast.fits");
+                }
+                if (sourceSigned != targetSigned)
+                {
+                    LLVMValueRef nonnegative = LLVMBuildICmp(
+                        builder_, LLVMIntSGE, value, LLVMConstNull(LLVMTypeOf(value)), "checked.cast.nonnegative");
+                    fits = LLVMBuildAnd(builder_, fits, nonnegative, "checked.cast.sign.fits");
+                }
+                if (!emitGuard(fits, LlvmTrapReason::IntegerOverflow, "checked.cast.overflow", error))
+                    return nullptr;
+                return narrowed;
+            }
             if (sourceWidth == targetWidth) return value;
+            if (source == "builtin:int" && (target == "builtin:short" || target == "builtin:byte") &&
+                currentOverflowPolicy_ == "saturating")
+            {
+                LLVMTypeRef type = LLVMTypeOf(value);
+                const std::int64_t minimum = target == "builtin:short" ? -32768 : 0;
+                const std::uint64_t maximum = target == "builtin:short" ? 32767U : 255U;
+                LLVMValueRef lower = LLVMConstInt(type, static_cast<std::uint64_t>(minimum), 1);
+                LLVMValueRef upper = LLVMConstInt(type, maximum, 0);
+                LLVMValueRef below = LLVMBuildICmp(builder_, LLVMIntSLT, value, lower, "sat.below");
+                LLVMValueRef above = LLVMBuildICmp(builder_, LLVMIntSGT, value, upper, "sat.above");
+                LLVMValueRef clampedLow = LLVMBuildSelect(builder_, below, lower, value, "sat.low");
+                LLVMValueRef clamped = LLVMBuildSelect(builder_, above, upper, clampedLow, "sat.high");
+                return LLVMBuildTrunc(builder_, clamped, destination, "sat.trunc");
+            }
             if (sourceWidth > targetWidth) return LLVMBuildTrunc(builder_, value, destination, "trunc");
             return sourceSigned
                 ? LLVMBuildSExt(builder_, value, destination, "sext")
@@ -550,9 +727,26 @@ LLVMValueRef OopLlvmImplementation::convertScalar(
                 ? LLVMBuildSIToFP(builder_, value, destination, "sitofp")
                 : LLVMBuildUIToFP(builder_, value, destination, "uitofp");
         if (isFloating(source) && targetWidth != 0)
+        {
+            const unsigned precision = source == "builtin:float" ? 24U : 53U;
+            const bool minimumIsBoundary = targetSigned && targetWidth - 1U >= precision;
+            const double magnitude = std::ldexp(1.0, static_cast<int>(targetSigned ? targetWidth - 1U : targetWidth));
+            const double lowerValue = targetSigned
+                ? (minimumIsBoundary ? -magnitude : -magnitude - 1.0)
+                : -1.0;
+            LLVMTypeRef inputType = LLVMTypeOf(value);
+            LLVMValueRef lower = LLVMConstReal(inputType, lowerValue);
+            LLVMValueRef upper = LLVMConstReal(inputType, magnitude);
+            LLVMValueRef aboveLower = LLVMBuildFCmp(builder_, minimumIsBoundary ? LLVMRealOGE : LLVMRealOGT,
+                value, lower, "fptoi.above_lower");
+            LLVMValueRef belowUpper = LLVMBuildFCmp(builder_, LLVMRealOLT, value, upper, "fptoi.below_upper");
+            LLVMValueRef valid = LLVMBuildAnd(builder_, aboveLower, belowUpper, "fptoi.valid");
+            if (!emitGuard(valid, LlvmTrapReason::FloatingToIntegerOutOfRange, "fptoi.range", error))
+                return nullptr;
             return targetSigned
                 ? LLVMBuildFPToSI(builder_, value, destination, "fptosi")
                 : LLVMBuildFPToUI(builder_, value, destination, "fptoui");
+        }
         if (source == "builtin:float" && target == "builtin:double")
             return LLVMBuildFPExt(builder_, value, destination, "fpext");
         if (source == "builtin:double" && target == "builtin:float")
@@ -577,7 +771,7 @@ LLVMValueRef OopLlvmImplementation::convertScalar(
         if (sourceWidth != 0 && targetIsAddress)
             return LLVMBuildIntToPtr(builder_, value, destination, "inttoptr");
         if (source == "builtin:decimal" && targetWidth != 0)
-            return convertDecimalToInteger(value, destination);
+            return convertDecimalToInteger(value, destination, targetWidth);
         if (sourceWidth != 0 && target == "builtin:decimal")
             return convertIntegerToDecimal(value, sourceSigned);
         if (source == "builtin:decimal" && (target == "builtin:float" || target == "builtin:double"))

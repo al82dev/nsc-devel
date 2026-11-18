@@ -117,7 +117,10 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::captureOwnershipFlow() const
 {
     ++ownershipFlowStatistics_.snapshotsCaptured;
     OwnershipFlowSnapshot state;
+    state.fnOnceEnvironments = fnOnceEnvironments_;
+    state.consumedFnOnceEnvironments = consumedFnOnceEnvironments_;
     state.reachable = ownershipFlowReachable_;
+    state.arrayReferences = arrayReferenceFlow_;
     state.localBaseOrdinal = currentCallableLocalBase_;
     state.localCount = locals_.size();
     const std::size_t localSlotCount = state.localCount >= state.localBaseOrdinal
@@ -155,6 +158,7 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::captureOwnershipFlow() const
     state.assignedRequiredFields = activeRequiredFieldAssignments_;
     state.hasRequiredConstructorExit = hasRequiredConstructorExit_;
     state.requiredConstructorExitAssignments = requiredConstructorExitAssignments_;
+    state.assignedOutParameters = activeOutParameterAssignments_;
 
     state.storageFacts.resize(state.parameterFlags.size() + state.localFlags.size());
     ownershipFlowStatistics_.denseStorageSlotsCaptured += state.storageFacts.size();
@@ -187,7 +191,11 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::captureOwnershipFlow() const
 void ProjectMethodBodyModel::restoreOwnershipFlow(const OwnershipFlowSnapshot& state)
 {
     ++ownershipFlowStatistics_.snapshotsRestored;
+    if (state.discardReplayObservationsAfter.has_value() &&
+        *state.discardReplayObservationsAfter < arrayReferenceReplayObservations_.size())
+        arrayReferenceReplayObservations_.resize(*state.discardReplayObservationsAfter);
     ownershipFlowReachable_ = state.reachable;
+    arrayReferenceFlow_ = state.arrayReferences;
     restoreLocalOwnershipFlags(state);
     restoreParameterOwnershipFlags(state);
     partiallyMovedPlaces_ = state.partiallyMovedPlaces;
@@ -195,6 +203,7 @@ void ProjectMethodBodyModel::restoreOwnershipFlow(const OwnershipFlowSnapshot& s
     activeRequiredFieldAssignments_ = state.assignedRequiredFields;
     hasRequiredConstructorExit_ = state.hasRequiredConstructorExit;
     requiredConstructorExitAssignments_ = state.requiredConstructorExitAssignments;
+    activeOutParameterAssignments_ = state.assignedOutParameters;
     restoreAssignedLocals(state);
     std::vector<std::pair<std::size_t, std::size_t>> activeAfterSnapshot;
     for (const auto& [storage, member] : activeUnionMembers_)
@@ -207,6 +216,8 @@ void ProjectMethodBodyModel::restoreOwnershipFlow(const OwnershipFlowSnapshot& s
 
 void ProjectMethodBodyModel::restoreLocalOwnershipFlags(const OwnershipFlowSnapshot& state)
 {
+    fnOnceEnvironments_ = state.fnOnceEnvironments;
+    consumedFnOnceEnvironments_ = state.consumedFnOnceEnvironments;
     movedRaiiLocals_.clear();
     maybeMovedRaiiLocals_.clear();
     invokedFnOnceLocals_.clear();
@@ -339,7 +350,15 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwnershipFlow(
     }
 
     OwnershipFlowSnapshot result;
+    result.fnOnceEnvironments = left.fnOnceEnvironments;
+    for (const auto& [local, environments] : right.fnOnceEnvironments)
+        result.fnOnceEnvironments[local].insert(environments.begin(), environments.end());
+    result.consumedFnOnceEnvironments = left.consumedFnOnceEnvironments;
+    result.consumedFnOnceEnvironments.insert(right.consumedFnOnceEnvironments.begin(),
+        right.consumedFnOnceEnvironments.end());
     result.reachable = true;
+    result.arrayReferences = ArrayReferenceFlowState::join(
+        left.arrayReferences, right.arrayReferences);
     result.localBaseOrdinal = std::min(left.localBaseOrdinal, right.localBaseOrdinal);
     result.localCount = std::max(left.localCount, right.localCount);
     result.localFlags.resize(result.localCount >= result.localBaseOrdinal
@@ -478,6 +497,10 @@ void ProjectMethodBodyModel::joinRequiredOwnershipFields(
     for (const std::size_t fieldOrdinal : left.assignedRequiredFields)
         if (right.assignedRequiredFields.contains(fieldOrdinal))
             result.assignedRequiredFields.insert(fieldOrdinal);
+    // NSC-NCSS-006: an out parameter is assigned after a join only if both paths assigned it.
+    for (const std::size_t parameterOrdinal : left.assignedOutParameters)
+        if (right.assignedOutParameters.contains(parameterOrdinal))
+            result.assignedOutParameters.insert(parameterOrdinal);
 }
 
 void ProjectMethodBodyModel::joinOwnershipStorageFacts(

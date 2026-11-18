@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>CheckedPositiveOuter</Name><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><Compile Include="CheckedPositiveOuter.ns"/></ItemGroup></Project>

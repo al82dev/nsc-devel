@@ -148,40 +148,37 @@ void deprecationCatalogContract(TestContext& context, std::size_t variant)
 {
     if (variant == 3U)
     {
-        context.expect(!parseDeprecationRelease("").has_value() &&
-                !parseDeprecationRelease("3.x").has_value() &&
-                !parseDeprecationRelease("3").has_value(),
-            "malformed release labels are rejected");
+        context.expect(deprecatedFeature("") == nullptr &&
+                deprecatedFeature("unknown-feature") == nullptr,
+            "empty and unknown feature identities are rejected");
         return;
     }
-    const auto release = parseDeprecationRelease(variant == 8U ? "4294967295.0" : "3.4");
     const auto features = deprecatedFeatures();
     bool lookups = !features.empty();
     for (const auto& feature : features)
         lookups = lookups && deprecatedFeature(feature.identity) == &feature &&
             deprecatedFeature(feature.issue) == &feature;
-    context.expect(release.has_value() && release->major == (variant == 8U ? 4294967295U : 3U) &&
-            lookups && deprecatedFeature("does-not-exist") == nullptr &&
-            deprecationStateName(DeprecationState::Removed) == "removed",
-        "deprecation releases, catalog lookup, and state names are canonical");
+    context.expect(lookups && deprecatedFeature("does-not-exist") == nullptr &&
+            deprecationStateName(DeprecationState::Removed) == "removed" &&
+            currentDeprecationPolicy().find("removal-not-before=") == std::string::npos,
+        "deprecation catalog and state names are canonical without release gates");
 }
 
 void deprecationDecisionContract(TestContext& context, std::size_t variant)
 {
     DeprecatedFeature feature{"legacy", DeprecationKind::Behavior,
-        nativesharp::language::MigrationIssue::NewlyContextualWord, {3U, 0U}, {4U, 0U}};
+        nativesharp::language::MigrationIssue::NewlyContextualWord, variant == 5U};
     const bool suppressed = variant == 3U;
     const bool warningsAsErrors = variant == 4U;
-    const DeprecationRelease release = variant == 5U ? DeprecationRelease{4U, 0U} :
-        DeprecationRelease{3U, 1U};
-    const auto decision = evaluateDeprecation(feature, release, suppressed, warningsAsErrors);
-    const auto expected = suppressed ? DeprecationState::Suppressed :
-        release.major >= 4U ? DeprecationState::Removed :
+    const auto decision = evaluateDeprecation(feature, suppressed, warningsAsErrors);
+    const auto expected = feature.removed ? DeprecationState::Removed :
+        suppressed ? DeprecationState::Suppressed :
         warningsAsErrors ? DeprecationState::Error : DeprecationState::Warning;
     context.expect(decision.feature == &feature && decision.state == expected &&
-            deprecationRemovalAllowed(feature, {4U, 0U}, true, false) &&
-            !deprecationRemovalAllowed(feature, {3U, 9U}, true, false),
-        "deprecation state and minimum removal release follow the policy matrix");
+            deprecationRemovalAllowed(feature, true, false) &&
+            deprecationRemovalAllowed(feature, false, true) &&
+            !deprecationRemovalAllowed(feature, false, false),
+        "deprecation and removal follow explicit state and policy evidence");
 }
 
 void driverDispatchContract(TestContext& context, std::size_t variant)

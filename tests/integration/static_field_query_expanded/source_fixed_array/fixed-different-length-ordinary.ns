@@ -1,0 +1,1 @@
+int Pick(int[4] a) { return 4; } int Pick(int[5] a) { return 5; } struct C { public int[4] Four; public int[5] Five; } int Main() { C c=default(C); return Pick(c.Four)*10+Pick(c.Five)==45 ? 0 : 1; }

@@ -2,7 +2,7 @@
   <PropertyGroup><Name>c24_binary_file_io</Name></PropertyGroup>
   <ItemGroup>
     <Compile Include="**/*.ns" />
-    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
-    <ProjectReference Include="../../../lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj" />
+    <LibraryReference Include="NativeSharpCore.lib" Metadata="NativeSharpCore.nsmeta" />
+    <LibraryReference Include="NativeSharpCoreIO.lib" Metadata="NativeSharpCoreIO.nsmeta" />
   </ItemGroup>
 </Project>

@@ -20,7 +20,7 @@
   MIR, LLVM, runtime, Driver, metadata, Builder, fixtures, manifiesto y expectativas.
 - **Contratos congelados:** TP-PAR-385…394; forma de `LoopExpression`; label; recovery; builder
   evaluado una vez; nombres sintéticos monotónicos; stack LIFO de comprehension; lowering de
-  `yield return`/`yield break`; orden, ranges, diagnostics, sintaxis, API, ABI y NSMETA 3.0.4.
+  `yield return`/`yield break`; orden, ranges, diagnostics, sintaxis, API, ABI y contrato de NSMETA.
 - **Pruebas inmutables:** `ParserLoopComprehensionModule.cpp` y las entradas CP-PAR-033 del
   manifiesto. No se modifica ninguna prueba ni expectativa.
 - **Prohibido:** introducir un caso especial sólo para expression statements, modificar el parser

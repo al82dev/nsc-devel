@@ -1,7 +1,7 @@
 #include "../ParseContinuationCoordinator.h"
 
 #include "nativesharp/Language/AbiSemantics.h"
-#include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Language/LanguageSurface.h"
 
 #include <algorithm>
 #include <cassert>
@@ -296,22 +296,16 @@ void Parser::ParseContinuationCoordinator::finishForIncrement(const Work& work)
     scheduleForBody(work.frameIndex);
 }
 
-// Requires the canonical block body and schedules it without nested parser invocation.
+// Schedules the body as a canonical block or one embedded statement.
 void Parser::ParseContinuationCoordinator::scheduleForBody(std::size_t frameIndex)
 {
     ForFrame& frame = forFrames_[frameIndex];
-    if (!parser_.at(TokenKind::LeftBrace))
-    {
-        parser_.expect(TokenKind::LeftBrace, "'{' after for clause");
-        complete(frame.resultSlot, parser_.lowerForStatement(frame.state, nullptr));
-        return;
-    }
     Work finish{WorkKind::FinishForBody, frame.resultSlot};
     finish.frameIndex = frameIndex;
     finish.childSlot = makeResultSlot();
     const std::size_t childSlot = finish.childSlot;
     work_.push_back(finish);
-    work_.push_back({WorkKind::Block, childSlot});
+    work_.push_back({WorkKind::Embedded, childSlot});
 }
 
 // Attaches the completed block to the canonical for lowering.
@@ -381,6 +375,29 @@ void Parser::ParseContinuationCoordinator::startForeach(const Work& work)
     const std::size_t frameIndex = foreachFrames_.size();
     foreachFrames_.push_back({{}, work.resultSlot, 0, 0});
     ForeachFrame& frame = foreachFrames_.back();
+    if (parser_.at(TokenKind::KwStatic) && parser_.peek().kind() == TokenKind::KwForeach)
+    {
+        if (!parser_.parseStaticFieldIterationHeader(frame.state))
+        {
+            complete(frame.resultSlot, nullptr);
+            return;
+        }
+        if (!parser_.at(TokenKind::LeftBrace))
+        {
+            parser_.expect(TokenKind::LeftBrace, "'{' after static foreach clause");
+            complete(frame.resultSlot, parser_.lowerForeachStatement(std::move(frame.state), nullptr));
+            return;
+        }
+        frame.state.descriptorTypeNameInserted =
+            parser_.knownTypeNames_.insert(frame.state.elementName + ".Type").second;
+        Work finish{WorkKind::FinishForeachBody, frame.resultSlot};
+        finish.frameIndex = frameIndex;
+        finish.childSlot = makeResultSlot();
+        const std::size_t childSlot = finish.childSlot;
+        work_.push_back(finish);
+        work_.push_back({WorkKind::Block, childSlot});
+        return;
+    }
     if (!parser_.parseForeachHeaderPrefix(frame.state))
     {
         complete(frame.resultSlot, nullptr);
@@ -435,6 +452,8 @@ void Parser::ParseContinuationCoordinator::finishForeachProbe(const Work& work)
 void Parser::ParseContinuationCoordinator::finishForeachBody(const Work& work)
 {
     ForeachFrame& frame = foreachFrames_[work.frameIndex];
+    if (frame.state.descriptorTypeNameInserted)
+        parser_.knownTypeNames_.erase(frame.state.elementName + ".Type");
     complete(frame.resultSlot, parser_.lowerForeachStatement(
         std::move(frame.state), childValue(work)));
 }
@@ -824,8 +843,8 @@ void Parser::ParseContinuationCoordinator::continueSwitchLabels(const Work& work
     finish.beginIndex = parser_.index_;
     finish.flag = parser_.at(TokenKind::KwDefault);
     parser_.consume();
-    // EN: Freeze 3.0 C-06: same deliberate rejection as StructuredControlParser::appendSwitchLabel.
-    // ES: Congelamiento 3.0 C-06: el mismo rechazo deliberado que appendSwitchLabel.
+    // EN: Freeze C-06: same deliberate rejection as StructuredControlParser::appendSwitchLabel.
+    // ES: Congelamiento C-06: el mismo rechazo deliberado que appendSwitchLabel.
     if (!finish.flag && parser_.at(TokenKind::LeftBracket))
         parser_.diagnostics_.report(
             diagnostics::DiagnosticId::UnexpectedToken,
@@ -1361,7 +1380,16 @@ void Parser::ParseContinuationCoordinator::appendMatchGoverningState(
         frame.governing,
         false,
         !frame.hasReferenceBinding && !frame.hasMoveBinding);
-    if (frame.hasReferenceBinding) governing->setAuxiliaryText("local:ref");
+    if (frame.hasReferenceBinding)
+    {
+        bool hasMutableReferenceBinding = false;
+        for (const MatchArm& arm : frame.arms)
+            for (const auto& binding : arm.analysis.bindings)
+                hasMutableReferenceBinding = hasMutableReferenceBinding ||
+                    binding.second == PatternBindingMode::ReferenceMutable;
+        governing->setAuxiliaryText(
+            hasMutableReferenceBinding ? "local:ref" : "local:pattern-ref");
+    }
     lowered.addChild(governing);
     lowered.addChild(makeMatchSelectedDeclaration(frame.keywordRange, temporary));
 }

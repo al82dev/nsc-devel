@@ -3,6 +3,6 @@
   <ItemGroup>
     <Compile Include="Main.ns" />
     <ProjectReference Include="lib/ConstraintLibrary.nsproj" />
-    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+    <LibraryReference Include="NativeSharpCore.lib" Metadata="NativeSharpCore.nsmeta" />
   </ItemGroup>
 </Project>

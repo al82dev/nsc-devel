@@ -1,6 +1,8 @@
 # Tanda correctiva 03: inferencia de edicion desde NSMETA
 
-## SCOPE LOCK
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+## SCOPE LOCK histórico
 
 - Se corrige exclusivamente la perdida de procedencia cuando un proyecto sin
   `<Language>` consume un cierre NSMETA con una unica edicion.
@@ -14,40 +16,40 @@
 
 La tanda 2 preservo la procedencia de la edicion y resolvio la inferencia entre
 proyectos fuente. `ProjectGraph::addPrecompiledProjects` aun comparaba el valor
-predeterminado Language 2 de un propietario implicito antes de considerar la
+  predeterminado de un propietario implicito antes de considerar la
 edicion publicada por sus descriptores NSMETA. El mismo dato conservado por
 `Project` no participaba en esta segunda ampliacion del grafo.
 
-## Cambio
+## Cambio histórico
 
-`ProjectGraph` calcula una autoridad unica a partir de:
+La corrección de esa campaña calculaba una autoridad unica a partir de:
 
 1. las ediciones declaradas expresamente por proyectos fuente;
 2. las ediciones publicadas por los descriptores NSMETA unicos.
 
-Los proyectos fuente implicitos adoptan esa autoridad sin perder su procedencia.
-Una declaracion fuente explicita incompatible, dos descriptores incompatibles o
-una misma metadata asignada a ediciones diferentes continúan produciendo
-`NS3001`.
+Los proyectos fuente implicitos adoptaban esa autoridad sin perder su procedencia.
+El mecanismo rechazaba etiquetas explícitas incompatibles o descriptores con
+etiquetas diferentes mediante `NS3001`.
 
-El calculo es iterativo y lineal respecto de proyectos y descriptores. No agrega
+**Contrato vigente:** el lenguaje es único. El grafo no infiere ni compara
+versiones de lenguaje o NSMeta; valida contenido y contratos reales.
+
+El cálculo de entonces era iterativo y lineal respecto de proyectos y descriptores. No agregó
 recursion, estado global, trabajo por cuerpo ni costo en las rutas semanticas
 calientes.
 
 ## Archivos
 
 - `src/Compilation/ProjectGraph.cpp`: reconciliacion del cierre fuente/NSMETA.
-- `tests/unit/PrecompiledLanguageEditionInferenceTests.cpp`: cobertura nueva de
+- `tests/unit/PrecompiledLegacyLanguageLabelTests.cpp`: cobertura nueva de
   adopcion implicita y conflictos explicitos.
 - `CMakeLists.txt`: registro de la prueba dirigida independiente.
 
-## Criterio de cierre
+## Criterio histórico de cierre
 
-- Un propietario implicito adopta Language 3 desde un unico NSMETA Language 3.
-- La procedencia del propietario permanece implicita.
-- Language 2 explicito frente a NSMETA Language 3 sigue rechazado con `NS3001`.
-- Dos autoridades NSMETA incompatibles siguen rechazadas con `NS3001`.
-- Pasan la prueba nueva, la inferencia fuente de la tanda 2 y la constitucion T00.
+- La campaña comprobó la adopción implícita de la etiqueta publicada por una
+  dependencia y el rechazo de etiquetas incompatibles. Esas reglas fueron retiradas.
+- También comprobó la inferencia fuente y la constitución T00 de aquella revisión.
 
 ## Evidencia dirigida
 

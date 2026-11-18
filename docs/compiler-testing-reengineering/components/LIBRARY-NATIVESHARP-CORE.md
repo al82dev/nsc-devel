@@ -1,5 +1,7 @@
 # Library.NativeSharp.Core — disposición y contrato reconstructivo
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## 1. Estado y procedencia
 
 - **Revisión:** `65d4dcf44143c7a945a786c8f1e6ba78d225ad02`.

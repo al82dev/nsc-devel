@@ -8,14 +8,14 @@ namespace nativesharp::llvm_backend
 {
 class LlvmModule;
 
-// EN: Freeze 3.0 DEC-05. Versioned formats of the stage inspections of a source file. The NativeSharp
-//     3.x pipeline has no CFG, dominance, SSA or MIR-pass stage of its own: LLVM performs them, so
-//     these inspections observe the LLVM module that the 3.x pipeline generates. The specification
+// EN: Freeze DEC-05. Versioned formats of the stage inspections of a source file. The NativeSharp
+//     pipeline has no CFG, dominance, SSA or MIR-pass stage of its own: LLVM performs them, so
+//     these inspections observe the LLVM module that the pipeline generates. The specification
 //     lives in docs/3.0/NSC-FORMATOS-INSPECCION-LLVM.md; a change of layout changes the version.
-// ES: Congelamiento 3.0 DEC-05. Formatos versionados de las inspecciones de etapa de un archivo
-//     fuente. El pipeline 3.x de NativeSharp no tiene etapas propias de CFG, dominancia, SSA ni pases
+// ES: Congelamiento DEC-05. Formatos versionados de las inspecciones de etapa de un archivo
+//     fuente. El pipeline de NativeSharp no tiene etapas propias de CFG, dominancia, SSA ni pases
 //     de MIR: las hace LLVM, asi que estas inspecciones observan el modulo LLVM que genera el
-//     pipeline 3.x. La especificacion esta en docs/3.0/NSC-FORMATOS-INSPECCION-LLVM.md; un cambio de
+//     pipeline. La especificacion esta en docs/3.0/NSC-FORMATOS-INSPECCION-LLVM.md; un cambio de
 //     disposicion cambia la version.
 inline constexpr std::string_view kLlvmCfgFormat = "nsc-llvm-cfg/1";
 inline constexpr std::string_view kLlvmDominanceFormat = "nsc-llvm-dominance/1";

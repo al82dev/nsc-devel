@@ -1,10 +1,12 @@
 # Tanda operativa 13 — T06 move, borrow, lifetime y drop
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Objetivo
 
 Auditar y reforzar la vertical productiva T06-F01..F05 en el compilador real, sin aceptar como
 implementación la máquina de estados aislada `OwnershipSemantics`. El alcance operativo fue llegar
-desde fuente edition 3 hasta semántica, HIR/MIR, LLVM y PE O0 con un movimiento parcial observable,
+desde fuente hasta semántica, HIR/MIR, LLVM y PE O0 con un movimiento parcial observable,
 destrucción exactamente una vez y conflictos borrow diagnosticados antes del backend.
 
 Esta tanda no intenta declarar completo todo T06. Named lifetimes, split borrows, `defer`, pinning,
@@ -74,7 +76,7 @@ hermanos: permitirlo exige un modelo de lugares/proyecciones y prueba de disjunc
 ### Nuevos
 
 - `tests/cc1/c63_ns3_move_borrow_drop/c63_ns3_move_borrow_drop.nsproj`
-  - proyecto edition 3 mínimo para la vertical.
+  - proyecto mínimo para la vertical.
 - `tests/cc1/c63_ns3_move_borrow_drop/Main.ns`
   - extrae un campo owned, conserva utilizable el campo hermano y cuenta dos destructores exactos.
 - `docs/3.0/TANDA-OPERATIVA-13-T06-MOVE-BORROW-DROP.md`

@@ -353,7 +353,7 @@ bool ProjectMethodBodyModel::analyzePortableSimdBinary(
     TokenKind operation,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
-    // NativeSharp 3 portable vectors are structural value types. Operations never mix lane
+    // NativeSharp portable vectors are structural value types. Operations never mix lane
     // shapes implicitly: that keeps AVX2 lowering and scalar fallback observably identical.
     const auto leftSimd = language::parsePortableSimdType(left.typeKey);
     const auto rightSimd = language::parsePortableSimdType(right.typeKey);
@@ -897,7 +897,18 @@ bool ProjectMethodBodyModel::analyzePointerArithmetic(
         result.cppVolatilePointeeAlignment = method_body_detail::cppVolatilePointerArithmeticAlignment(
             sourcePointer.cppVolatilePointeeContract, sourcePointer.cppVolatilePointeeAlignment, element);
         result.pointerAddressSpace = sourcePointer.pointerAddressSpace;
-        result.onePastEndPointer = sourcePointer.onePastEndPointer;
+        // EN: LKF-324: the sentinel mark used to survive any offset, so `end - 1`, which points back
+        //     at the last element, could not be dereferenced. The mark stays only when the offset is
+        //     a constant that does not move back (zero or forward); any other offset clears it, as
+        //     for every raw pointer whose position is not tracked.
+        // ES: LKF-324: la marca de centinela sobrevivía a cualquier desplazamiento, así que
+        //     `end - 1`, que vuelve al último elemento, no podía desreferenciarse. La marca queda solo
+        //     si el desplazamiento es una constante que no retrocede (cero o hacia delante); otro
+        //     desplazamiento la quita, como en todo puntero crudo cuya posición no se sigue.
+        const ExpressionResult& offset = leftIsPointer ? right : left;
+        const bool movesBack = !offset.integerConstant.has_value() ||
+            (offset.integerConstant->value != 0 && (offset.integerConstant->isNegative != minus));
+        result.onePastEndPointer = sourcePointer.onePastEndPointer && !movesBack;
     }
     MethodCoreBinding binding;
     binding.kind = MethodCoreOperationKind::PointerArithmetic;

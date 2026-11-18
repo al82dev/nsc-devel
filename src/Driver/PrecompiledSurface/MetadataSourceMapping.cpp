@@ -2,6 +2,9 @@
 #include "nativesharp/Language/CallableSemantics.h"
 #include "../../Interop/Internal/CppCRecordMetadataCodec.h"
 #include "../../Interop/Internal/LibraryMetadataCodecSupport.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
+#include "nativesharp/Language/AbiSemantics.h"
+#include "nativesharp/Language/CoroutineSemantics.h"
 
 namespace nativesharp::driver
 {
@@ -25,10 +28,19 @@ constexpr std::array<LayoutRow, 15> kLayoutRows = {{{"bool", BuiltinLayoutKind::
 
 std::string foldedPathKey(const std::filesystem::path &path)
 {
-    const std::u8string encoded = path.lexically_normal().generic_u8string();
+    // EN: LKF-263: the case of the key is folded like the file system folds it (upperCasePathText) before
+    //     the ASCII letters are lowered. The ASCII step no longer calls std::tolower, whose result for bytes
+    //     above 0x7F depends on the global locale and could split a UTF-8 sequence. The path stays as the
+    //     caller spelled it: a relative path is relative to its owner, not to the process directory.
+    // ES: LKF-263: la caja de la clave se pliega como la pliega el sistema de archivos (upperCasePathText)
+    //     antes de bajar las letras ASCII. El paso ASCII ya no llama a std::tolower, cuyo resultado para
+    //     bytes mayores que 0x7F depende del locale global y podía partir una secuencia UTF-8. La ruta queda
+    //     como la escribió el llamador: una relativa lo es a su dueño, no al directorio del proceso.
+    const std::filesystem::path folded(upperCasePathText(path.lexically_normal().generic_wstring()));
+    const std::u8string encoded = folded.generic_u8string();
     std::string key(reinterpret_cast<const char *>(encoded.data()), encoded.size());
-    std::transform(key.begin(), key.end(), key.begin(),
-                   [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    std::transform(key.begin(), key.end(), key.begin(), [](unsigned char value)
+                   { return static_cast<char>(value >= 'A' && value <= 'Z' ? value + ('a' - 'A') : value); });
     return key;
 }
 
@@ -71,8 +83,23 @@ std::string escapedStringLiteral(std::string_view value)
             result += "\\0";
             break;
         default:
-            result.push_back(character);
+        {
+            // EN: LKF-260/582: a string literal rejects raw control bytes and invalid UTF-8, so every byte
+            //     outside printable ASCII is spelled `\xHH`, which the lexer decodes back to that byte.
+            // ES: LKF-260/582: un literal de cadena rechaza bytes de control crudos y UTF-8 inválido, así que
+            //     todo byte fuera del ASCII imprimible se escribe `\xHH`, que el lexer decodifica a ese byte.
+            const auto byte = static_cast<unsigned char>(character);
+            if (byte < 0x20U || byte >= 0x7FU)
+            {
+                static constexpr char kHex[] = "0123456789ABCDEF";
+                result += "\\x";
+                result.push_back(kHex[byte >> 4U]);
+                result.push_back(kHex[byte & 0xFU]);
+            }
+            else
+                result.push_back(character);
             break;
+        }
         }
     }
     result.push_back('"');
@@ -132,15 +159,20 @@ bool sourceIteratorTypeForMetadataKey(std::string_view typeKey, std::string_view
 
 bool sourceFutureTypeForMetadataKey(std::string_view typeKey, std::string &sourceType, std::string &error)
 {
-    // NS304-T05-F09: the opaque future surface materializes as Future<item>; the carried error
-    // type travels through the member's error contract (declaredErrorTypeKey), not the spelling.
-    const std::string rest = std::string(typeKey.substr(std::string_view("future:").size()));
-    const std::size_t pipe = rest.find('|');
-    const std::string itemKey = pipe == std::string::npos ? rest : rest.substr(0, pipe);
-    std::string itemSource;
-    if (!sourceTypeForMetadataKey(itemKey, itemSource, error))
+    const auto inner = language::futureInnerTypeKey(typeKey);
+    if (!inner.has_value())
+    {
+        error = "metadata contains malformed future type key '" + std::string(typeKey) + "'";
         return false;
-    sourceType = "Future<" + itemSource + ">";
+    }
+    const auto errorKey = language::futureErrorTypeKey(typeKey);
+    std::string itemSource;
+    std::string errorSource;
+    if (!sourceTypeForMetadataKey(std::string(*inner), itemSource, error)) return false;
+    if (errorKey.has_value() && !sourceTypeForMetadataKey(std::string(*errorKey), errorSource, error)) return false;
+    sourceType = "Future<" + itemSource;
+    if (errorKey.has_value()) sourceType += ", " + errorSource;
+    sourceType += ">";
     return true;
 }
 
@@ -253,6 +285,22 @@ bool sourceCoreTypeForMetadataKey(const std::string &typeKey, std::string &sourc
     else if (typeKey.starts_with("future:"))
     {
         return sourceFutureTypeForMetadataKey(typeKey, sourceType, error);
+    }
+    else if (typeKey.starts_with("mask<") || typeKey.starts_with("simd<"))
+    {
+        const auto simd = language::parsePortableSimdType(typeKey);
+        // Guard the product without multiplication: malformed metadata must not
+        // exploit unsigned overflow in the portable width validation.
+        if (!simd || simd->laneCount > 512U / simd->laneBits ||
+            language::portableSimdTypeIdentity(*simd) != typeKey)
+        {
+            error = "metadata-backed source import cannot materialize type key '" + typeKey + "'";
+            return false;
+        }
+        // The portable SIMD parser accepts only builtin lane keys.
+        const std::string laneSource = simd->laneTypeKey.substr(8);
+        sourceType = std::string(simd->mask ? "mask<" : "simd<") + laneSource + ", " +
+                     std::to_string(simd->laneCount) + ">";
     }
     else
     {
@@ -477,8 +525,8 @@ bool metadataProvidesType(const interop::LibraryMetadata &metadata, const std::s
     if (!interop::metadata_detail::verifyBinaryClosureMetadata(metadata, error)) return false;
     std::vector<interop::CppCRecordSnapshot> records;
     std::vector<interop::CppCEnumSnapshot> enums;
-    if (!interop::metadata_detail::decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error,
-                                                                metadata.formatMinor)) return false;
+    if (!interop::metadata_detail::decodeCTypeCatalogByContent(metadata.cppCRecordCatalog, records, enums,
+            error)) return false;
     return std::ranges::any_of(records, [&](const auto &record) { return "type:" + record.identityKey == typeKey; }) ||
            std::ranges::any_of(enums, [&](const auto &enumeration) { return "type:" + enumeration.identityKey == typeKey; });
 }
@@ -537,6 +585,78 @@ bool sourceTypeForMetadataKey(const interop::LibraryMetadata &metadata, const st
                               std::string &sourceType, std::string &error)
 {
     const std::string baseTypeKey = metadataBaseTypeKey(typeKey);
+    const bool tupleReference = typeKey.size() == baseTypeKey.size() + 1U && typeKey.ends_with('*');
+    if (frontend::ProjectTypeConversion::isTuple(typeKey) ||
+        (tupleReference && frontend::ProjectTypeConversion::isTuple(baseTypeKey)))
+    {
+        struct Item { std::string value; bool literal; };
+        std::vector<Item> pending{{tupleReference ? baseTypeKey : typeKey, false}};
+        std::string converted;
+        while (!pending.empty())
+        {
+            Item item = std::move(pending.back());
+            pending.pop_back();
+            if (item.literal)
+            {
+                converted += item.value;
+                continue;
+            }
+            if (frontend::ProjectTypeConversion::isTuple(item.value))
+            {
+                const auto elements = frontend::ProjectTypeConversion::tupleElementTypeKeys(item.value);
+                if (!elements.has_value())
+                {
+                    error = "metadata contains malformed tuple type key '" + item.value + "'";
+                    return false;
+                }
+                converted += '(';
+                pending.push_back({elements->size() == 1U ? ",)" : ")", true});
+                for (std::size_t i = elements->size(); i > 0; --i)
+                {
+                    pending.push_back({(*elements)[i - 1U], false});
+                    if (i > 1U) pending.push_back({", ", true});
+                }
+                continue;
+            }
+            if (frontend::ProjectTypeConversion::isNumeric(item.value) || item.value == "builtin:bool")
+            {
+                converted += item.value.substr(8U);
+                continue;
+            }
+            if (item.value.starts_with("simd<") || item.value.starts_with("mask<"))
+            {
+                std::string elementSource;
+                if (!sourceTypeForMetadataKey(item.value, elementSource, error))
+                    return false;
+                converted += elementSource;
+                continue;
+            }
+            const auto specialization = std::ranges::find_if(metadata.genericSpecializations,
+                [&](const auto &candidate)
+                {
+                    const auto key = metadataSpecializedTypeKey(candidate);
+                    return (candidate.templateKey == "NativeSharpCore::NativeSharp.Core.SharedView`1" ||
+                            candidate.templateKey == "NativeSharpCore::NativeSharp.Core.Arc`1" ||
+                            candidate.templateKey == "NativeSharpCore::NativeSharp.Core.WeakArc`1" ||
+                            candidate.templateKey == "NativeSharpCore::NativeSharp.Core.Rc`1" ||
+                            candidate.templateKey == "NativeSharpCore::NativeSharp.Core.WeakRc`1") &&
+                           key.has_value() && *key == item.value;
+                });
+            if (specialization != metadata.genericSpecializations.end())
+            {
+                std::string elementSource;
+                if (!sourceTypeForGenericSpecialization(metadata, *specialization, elementSource, error))
+                    return false;
+                converted += elementSource;
+                continue;
+            }
+            error = "metadata-backed tuple source import cannot yet materialize element '" + item.value + "'";
+            return false;
+        }
+        sourceType = std::move(converted);
+        if (tupleReference) sourceType += '*';
+        return true;
+    }
     if (metadataTypeForKey(metadata, baseTypeKey) == nullptr)
     {
         const auto specialization =
@@ -637,7 +757,7 @@ bool sourceTypeForGenericSpecialization(const interop::LibraryMetadata &metadata
         }
         else
         {
-            // NSMETA 1.7-1.11 stored readable spellings.  Builtins remain valid as written; the
+            // NSMETA stored readable spellings.  Builtins remain valid as written; the
             // producer-side fix now stores canonical named identities for cross-module demands.
             argumentType = argument;
         }

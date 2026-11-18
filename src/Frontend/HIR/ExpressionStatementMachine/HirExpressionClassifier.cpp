@@ -516,7 +516,9 @@ std::optional<IterativeExpressionKind> ProjectOopHirModel::iterativeStorageKind(
             operatorCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
             callableSymbol(*operatorCall->selectedMemberOrdinal) != nullptr &&
             callableSymbol(*operatorCall->selectedMemberOrdinal)->isUserOperator;
-        if (userOperator) return IterativeExpressionKind::UserUnaryOperator;
+        if (userOperator && syntax->tokenKind() != lexer::TokenKind::PlusPlus &&
+            syntax->tokenKind() != lexer::TokenKind::MinusMinus)
+            return IterativeExpressionKind::UserUnaryOperator;
         if (syntax->tokenKind() == lexer::TokenKind::PlusPlus ||
             syntax->tokenKind() == lexer::TokenKind::MinusMinus)
         {
@@ -654,13 +656,15 @@ std::optional<IterativeExpressionKind> ProjectOopHirModel::iterativeIndexKind(
 
     const MethodCoreBinding* core = coreBinding(syntax);
     const bool ordinaryElement = core != nullptr &&
-        (core->kind == MethodCoreOperationKind::ArrayElement ||
+        (core->kind == MethodCoreOperationKind::SimdMaskElement ||
+         core->kind == MethodCoreOperationKind::ArrayElement ||
          core->kind == MethodCoreOperationKind::RangeArrayElement ||
          core->kind == MethodCoreOperationKind::StringElement);
     const bool nullConditionalElement = core != nullptr &&
         core->kind == MethodCoreOperationKind::NullConditionalArrayElement;
     const bool validAddress =
-        !(core != nullptr && core->kind == MethodCoreOperationKind::StringElement && address) &&
+        !(core != nullptr && (core->kind == MethodCoreOperationKind::StringElement ||
+                              core->kind == MethodCoreOperationKind::SimdMaskElement) && address) &&
         !(nullConditionalElement && address);
     const ast::AstNode* firstIndex = !syntax->children().empty()
         ? syntax->children().front()

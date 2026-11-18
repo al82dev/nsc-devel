@@ -165,6 +165,47 @@ std::vector<Token> tokenize(std::string_view source)
     return result;
 }
 
+// EN: LKF-253: a migration marker is an instruction only inside a `//` comment: the first `//` of the
+//     line, with no quote before it (so it does not start inside a literal), followed by optional blanks and
+//     the marker. Returns the offset just past the marker, or npos when the line carries no instruction.
+// ES: LKF-253: un marcador de migración es instrucción solo dentro de un comentario `//`: el primer `//` de
+//     la línea, sin comillas antes (así no empieza dentro de un literal), seguido de blancos opcionales y el
+//     marcador. Devuelve el offset tras el marcador, o npos si la línea no lleva instrucción.
+std::size_t commentMarkerEnd(std::string_view line, std::string_view marker)
+{
+    const std::size_t comment = line.find("//");
+    if (comment == std::string_view::npos ||
+        line.substr(0, comment).find_first_of("\"'") != std::string_view::npos)
+        return std::string_view::npos;
+    std::size_t cursor = comment + 2;
+    while (cursor < line.size() && (line[cursor] == ' ' || line[cursor] == '\t'))
+        ++cursor;
+    if (line.substr(cursor, marker.size()) != marker)
+        return std::string_view::npos;
+    const std::size_t end = cursor + marker.size();
+    if (end < line.size() && line[end] != ' ' && line[end] != '\t' && line[end] != '\r')
+        return std::string_view::npos;
+    return end;
+}
+
+bool declaresGeneratedSource(std::string_view source)
+{
+    const std::string_view head = source.substr(0, std::min<std::size_t>(source.size(), 512));
+    std::size_t begin = 0;
+    while (begin < head.size())
+    {
+        const std::size_t end = head.find('\n', begin);
+        const std::string_view line =
+            head.substr(begin, end == std::string_view::npos ? head.size() - begin : end - begin);
+        if (commentMarkerEnd(line, "nsc-migration:generated") != std::string_view::npos)
+            return true;
+        if (end == std::string_view::npos)
+            break;
+        begin = end + 1;
+    }
+    return false;
+}
+
 std::unordered_map<std::uint32_t, std::unordered_set<std::string>> suppressions(
     std::string_view source)
 {
@@ -177,10 +218,10 @@ std::unordered_map<std::uint32_t, std::unordered_set<std::string>> suppressions(
         const std::string_view text = source.substr(
             begin, end == std::string_view::npos ? source.size() - begin : end - begin);
         constexpr std::string_view marker = "nsc-migration:disable-next-line";
-        const std::size_t markerOffset = text.find(marker);
-        if (markerOffset != std::string_view::npos)
+        const std::size_t markerEnd = commentMarkerEnd(text, marker);
+        if (markerEnd != std::string_view::npos)
         {
-            std::istringstream codes(std::string(text.substr(markerOffset + marker.size())));
+            std::istringstream codes(std::string(text.substr(markerEnd)));
             std::string code;
             while (codes >> code) result[line + 1].insert(std::move(code));
         }
@@ -262,14 +303,14 @@ void analyzeIdentifierMigration(
             next->text == "," || next->text == ")" || next->text == "["))
     {
         addFinding(analysis, disabled, token, language::MigrationIssue::NewlyContextualWord,
-            "identifier collides with a NativeSharp 3 contextual word",
+            "identifier collides with a NativeSharp contextual word",
             "rename the declaration and every bound reference");
     }
     if (token.identifier && next != nullptr && next->text == "(" &&
         index + 2 < tokens.size() && tokens[index + 2].text == "null")
     {
         addFinding(analysis, disabled, token, language::MigrationIssue::OverloadResolution,
-            "a null argument can select a different overload under 3.0 nullability",
+            "a null argument can select a different overload under nullability rules",
             "add an explicit nullable pointer/reference cast or choose the overload by name");
     }
 }
@@ -295,7 +336,7 @@ void analyzeOwnershipAndImportMigration(
         tokens[index - 2].identifier && tokens[index - 3].text == "*")
     {
         addFinding(analysis, disabled, token, language::MigrationIssue::Nullability,
-            "null initializes a pointer whose 3.0 nullability is not explicit",
+            "null initializes a pointer whose nullability is not explicit",
             "declare the pointer nullable or replace null with a valid address");
     }
     if (token.text == "using" && next != nullptr && next->identifier)
@@ -328,7 +369,7 @@ void analyzeNumericMigration(
     }
     addFinding(analysis, disabled, tokens[index + 3],
         language::MigrationIssue::NumericNarrowing,
-        "implicit numeric conversion must be checked under the 3.0 range rules",
+        "implicit numeric conversion must be checked under the range rules",
         "use a checked explicit conversion after proving the value is representable",
         std::move(safeFix));
 }
@@ -349,7 +390,7 @@ void analyzeCleanupMigration(
         });
     if (!hasLifetimeObject) return;
     addFinding(analysis, disabled, token, language::MigrationIssue::CleanupOrder,
-        "early return crosses deterministic cleanup introduced or reordered in 3.0",
+        "early return crosses deterministic cleanup",
         "verify reverse declaration order and every defer capture before migrating");
 }
 }
@@ -360,8 +401,7 @@ MigrationAnalysis analyzeMigrationSource(
 {
     MigrationAnalysis analysis;
     analysis.sourcePath = std::move(sourcePath);
-    if (source.substr(0, std::min<std::size_t>(source.size(), 512)).find(
-            "nsc-migration:generated") != std::string_view::npos)
+    if (declaresGeneratedSource(source))
     {
         analysis.generatedSource = true;
         return analysis;
@@ -425,13 +465,9 @@ std::string renderMigrationAnalysis(const MigrationAnalysis& analysis)
         if (const DeprecatedFeature* feature = deprecatedFeature(finding.issue))
         {
             const DeprecationDecision decision =
-                evaluateDeprecation(*feature, {3, 0}, false, false);
+                evaluateDeprecation(*feature, false, false);
             output << "  deprecation: feature=" << feature->identity
-                   << " state=" << deprecationStateName(decision.state)
-                   << " since=" << feature->deprecatedSince.major << '.'
-                   << feature->deprecatedSince.minor
-                   << " removal-not-before=" << feature->removalNotBefore.major << '.'
-                   << feature->removalNotBefore.minor << '\n';
+                   << " state=" << deprecationStateName(decision.state) << '\n';
         }
         if (finding.safeFix.has_value())
             output << "  safe-fix: " << finding.safeFix->replacement
@@ -488,7 +524,19 @@ bool applySafeMigrationFixesToFile(
     std::string& error)
 {
     appliedFixCount = 0;
-    if (sourcePath == destinationPath)
+    // EN: LKF-254: two spellings of one file (relative, `..`, case, a link) are the same output too.
+    // ES: LKF-254: dos escrituras del mismo archivo (relativa, `..`, mayúsculas, un enlace) también son la
+    //     misma salida.
+    std::error_code existsError, equivalentError, sourceCanonicalError, destinationCanonicalError;
+    const bool sameFile = std::filesystem::exists(destinationPath, existsError) &&
+                          std::filesystem::equivalent(sourcePath, destinationPath, equivalentError);
+    const std::filesystem::path sourceCanonical =
+        std::filesystem::weakly_canonical(sourcePath, sourceCanonicalError);
+    const std::filesystem::path destinationCanonical =
+        std::filesystem::weakly_canonical(destinationPath, destinationCanonicalError);
+    const bool sameCanonical = !sourceCanonicalError && !destinationCanonicalError &&
+                               !sourceCanonical.empty() && sourceCanonical == destinationCanonical;
+    if (sourcePath == destinationPath || sameFile || sameCanonical)
     {
         error = "safe migration fixes require a distinct output path";
         return false;

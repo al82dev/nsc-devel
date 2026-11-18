@@ -8,7 +8,7 @@
     "exit_code": 0,
     "stdout": {
       "mode": "regex",
-      "text": "NativeSharp Compiler 3.0.0 [(]nsc[)].*Build hash: [0-9a-f][0-9a-f]+"
+      "text": "NativeSharp Compiler 1.0.0 [(]nsc[)].*Build hash: [0-9a-f][0-9a-f]+"
     }
   },
   "tags": ["legacy-parity", "o0-only"],

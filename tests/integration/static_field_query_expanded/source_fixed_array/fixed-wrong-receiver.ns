@@ -1,0 +1,1 @@
+struct A { public int[4] Values; } struct B { public int[4] Values; } int Main() { B value=default(B); static foreach (field in Fields(A)) { var item=field.Get(value); } return 0; }

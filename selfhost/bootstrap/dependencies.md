@@ -1,4 +1,4 @@
-# Dependencias permitidas por el bootstrap de NativeSharp 2.0
+# Dependencias permitidas por el bootstrap de NativeSharp
 
 ## Semilla
 

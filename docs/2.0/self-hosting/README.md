@@ -1,4 +1,6 @@
-# Expedientes de self-hosting de NativeSharp 2.0
+# Expedientes de self-hosting de NativeSharp
+
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
 
 Este directorio contiene la documentación ejecutable del programa de self-hosting definido en
 `../SELF_HOSTING_ROADMAP.md`.
@@ -23,5 +25,5 @@ Este directorio contiene la documentación ejecutable del programa de self-hosti
   148 fixtures y 18 casos de triage; Gate 0 queda `LANDED` sin incidencias de release.
 
 Una tanda no está cerrada sólo porque el código compile. Está cerrada cuando su expediente, pruebas,
-baseline completo y commit de cierre coinciden entre sí. Las 56 tandas de NativeSharp 2.0 cumplen
+baseline completo y commit de cierre coinciden entre sí. Las 56 tandas de NativeSharp cumplen
 esa condición; el trabajo posterior pertenece al roadmap 3.0.

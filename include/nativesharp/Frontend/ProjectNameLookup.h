@@ -59,6 +59,7 @@ class CompilationWorkerPool;
 
 namespace nativesharp::frontend
 {
+class ProjectGenericModel;
 struct ProjectOopHirModelTestAccess;
 
 
@@ -170,6 +171,7 @@ public:
     bool setImportedNamespaces(std::vector<std::pair<std::size_t, std::string>> namespaces);
     bool setCppImportedTypes(std::vector<CppImportedTypeDeclaration> types);
     bool setCppImportedTypeAliases(std::vector<CppImportedTypeAlias> aliases);
+    void setGenericModel(const ProjectGenericModel* genericModel) noexcept;
 
     bool build(
         const compilation::ProjectGraph& graph,
@@ -389,10 +391,10 @@ private:
         std::size_t groupBegin,
         std::size_t groupEnd,
         diagnostics::DiagnosticEngine& diagnostics);
-    // EN: Freeze 3.0 C-05 (found): declarations the 1.x grammar still parses but no 3.x model
+    // EN: Freeze C-05 (found): declarations the 1.x grammar still parses but no 3.x model
     //     registers -- an `extern C` import outside a class, a variable outside any namespace.
     //     They used to vanish silently; a later use then failed as an unknown identifier.
-    // ES: Congelamiento 3.0 C-05 (hallazgo): declaraciones que la gramatica 1.x aun analiza pero
+    // ES: Congelamiento C-05 (hallazgo): declaraciones que la gramatica 1.x aun analiza pero
     //     que ningun modelo 3.x registra -- un import `extern C` fuera de una clase, una variable
     //     fuera de todo namespace. Desaparecian en silencio; un uso posterior fallaba como
     //     identificador desconocido.
@@ -708,6 +710,9 @@ private:
     std::vector<std::string> foldedModuleByProject_;
     std::vector<std::unordered_set<std::string>> foldedFriendsByProject_;
     std::unordered_map<const ast::TypeSyntax*, std::size_t> bindingBySyntax_;
+    const ProjectGenericModel* genericModel_ = nullptr;
+    bool genericArgumentPrepass_ = false;
+    std::unordered_map<const ast::TypeSyntax*, TypeNameBinding> authoredGenericArgumentBindings_;
     std::vector<ExpressionTypeNameBinding> expressionTypeBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> expressionTypeBindingBySyntax_;
     std::unique_ptr<ProjectCompilationIndexes> ownedIndexes_;

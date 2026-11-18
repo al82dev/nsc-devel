@@ -174,7 +174,7 @@ int runProbe()
     std::filesystem::create_directories(root);
     const std::filesystem::path project = root / "CallableWavePerformance.nsproj";
     writeFile(project,
-        "<Project><PropertyGroup><Name>CallableWavePerformance</Name><Language>3</Language>"
+        "<Project><PropertyGroup><Name>CallableWavePerformance</Name>"
         "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>\n");
     writeFile(root / "Main.ns", buildSource(callableCount));
     long long maximumPeakBytes = 0;

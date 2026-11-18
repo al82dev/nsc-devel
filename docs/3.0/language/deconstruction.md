@@ -2,7 +2,7 @@
 
 ## Español
 
-NativeSharp 3.0 permite declarar variables y asignar almacenamiento existente mediante patrones
+NativeSharp permite declarar variables y asignar almacenamiento existente mediante patrones
 de tupla:
 
 ```nativesharp
@@ -38,7 +38,7 @@ conversiones antes de producir HIR, por lo que un fallo intermedio no deja lower
 
 ## English
 
-NativeSharp 3.0 supports both inferred declarations and assignments through tuple patterns:
+NativeSharp supports both inferred declarations and assignments through tuple patterns:
 
 ```nativesharp
 var (x, (y, _)) = source;

@@ -13,7 +13,7 @@ comprobaciones de restore, lock, procedencia y ejecución.
 
 ## Archivo
 
-- `tests/unit/NativeSharp3T33PackageCoherenceTests.cpp`
+- `tests/unit/NativeSharpT33PackageCoherenceTests.cpp`
 
 ## Mejora
 

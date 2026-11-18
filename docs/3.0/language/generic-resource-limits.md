@@ -2,7 +2,7 @@
 
 ## Español
 
-NativeSharp 3.0 limita la monomorfización para que una expansión genérica defectuosa termine con
+NativeSharp limita la monomorfización para que una expansión genérica defectuosa termine con
 un diagnóstico en vez de agotar la pila o la memoria del compilador. El perfil normativo usa:
 
 - profundidad activa máxima: `64`;
@@ -34,7 +34,7 @@ iterativo o una representación no genérica interna.
 
 ## English
 
-NativeSharp 3.0 bounds monomorphization so a defective generic expansion ends in a diagnostic
+NativeSharp bounds monomorphization so a defective generic expansion ends in a diagnostic
 instead of exhausting compiler stack or memory. The normative profile permits an active depth of
 `64`, `16384` new instances per compilation, and reports the newest `12` causal frames.
 

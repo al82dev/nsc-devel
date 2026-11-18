@@ -2,6 +2,6 @@
   <PropertyGroup><Name>c45_tipos_anidados</Name></PropertyGroup>
   <ItemGroup>
     <Compile Include="**/*.ns" />
-    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+    <LibraryReference Include="NativeSharpCore.lib" Metadata="NativeSharpCore.nsmeta" />
   </ItemGroup>
 </Project>

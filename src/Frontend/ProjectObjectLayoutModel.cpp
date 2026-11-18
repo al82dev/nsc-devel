@@ -12,6 +12,7 @@
 #include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
+#include "nativesharp/Target/TargetDataLayout.h"
 
 #include <algorithm>
 #include <limits>
@@ -66,6 +67,34 @@ std::uint64_t alignFutureOffset(std::uint64_t offset, std::uint64_t alignment) n
     return (offset + alignment - 1U) / alignment * alignment;
 }
 
+// EN: LKF-394: the Future frame is {state, poll, result, poll fn, error, next}; every alignment and every
+//     sum is checked, so an oversized result or error yields no layout instead of a wrapped size.
+// ES: LKF-394: el frame de Future es {estado, poll, resultado, función poll, error, siguiente}; cada
+//     alineación y cada suma se comprueban, así un resultado o error enorme no da layout en vez de un
+//     tamaño que da la vuelta.
+std::optional<std::pair<std::uint64_t, std::uint64_t>> checkedFutureFrameLayout(
+    const std::pair<std::uint64_t, std::uint64_t>& result,
+    const std::pair<std::uint64_t, std::uint64_t>& error) noexcept
+{
+    const auto place = [](std::optional<std::uint64_t> at, std::uint64_t alignment,
+                          std::uint64_t size) -> std::optional<std::uint64_t>
+    {
+        if (!at.has_value() || alignment == 0U ||
+            *at > std::numeric_limits<std::uint64_t>::max() - (alignment - 1U))
+            return std::nullopt;
+        return checkedAdd(alignFutureOffset(*at, alignment), size);
+    };
+    std::optional<std::uint64_t> end = place(std::uint64_t{4U}, 8U, 8U);
+    end = place(end, result.second, result.first);
+    end = place(end, 8U, 8U);
+    if (error.first > 0U) end = place(end, error.second, error.first);
+    end = place(end, 8U, 8U);
+    const std::uint64_t alignment = std::max({std::uint64_t{8U}, result.second, error.second});
+    const std::optional<std::uint64_t> total = place(end, alignment, 0U);
+    if (!total.has_value()) return std::nullopt;
+    return std::pair{*total, alignment};
+}
+
 }
 
 ProjectObjectLayoutModel::ProjectObjectLayoutModel() noexcept
@@ -77,6 +106,33 @@ ProjectObjectLayoutModel::ProjectObjectLayoutModel(
     ProjectCompilationIndexes& indexes) noexcept
     : indexes_(&indexes)
 {
+}
+
+std::optional<StructValueLayout> ProjectObjectLayoutModel::tryStructLayoutForBodyAnalysis(
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    std::size_t typeOrdinal)
+{
+    if (!nameLookup.isBuilt() || !memberModel.isBuilt() || typeOrdinal >= nameLookup.namedTypes().size())
+        return std::nullopt;
+    const auto& type = nameLookup.namedTypes()[typeOrdinal];
+    if (type.kind != NamedTypeDeclarationKind::Struct || type.isPrecompiled) return std::nullopt;
+    ProjectObjectLayoutModel probe;
+    probe.nameLookup_ = &nameLookup;
+    probe.memberModel_ = &memberModel;
+    probe.structLayoutIndexByType_.resize(nameLookup.namedTypes().size());
+    probe.classLayoutIndexByType_.resize(nameLookup.namedTypes().size());
+    probe.namedTypeLayouts_.resize(nameLookup.namedTypes().size(), TypeLayout{0, 1});
+    probe.namedLayoutStates_.resize(nameLookup.namedTypes().size(), NamedLayoutState::Unvisited);
+    diagnostics::DiagnosticEngine diagnostics;
+    if (!probe.buildStructLayout(typeOrdinal, diagnostics, type.range) || diagnostics.hasErrors())
+        return std::nullopt;
+    for (std::size_t ordinal = 0; ordinal < probe.namedLayoutStates_.size(); ++ordinal)
+        if (probe.namedLayoutStates_[ordinal] == NamedLayoutState::Complete &&
+            nameLookup.namedTypes()[ordinal].isPrecompiled) return std::nullopt;
+    const auto index = probe.structLayoutIndexByType_[typeOrdinal];
+    if (!index.has_value() || *index >= probe.structLayouts_.size()) return std::nullopt;
+    return probe.structLayouts_[*index];
 }
 
 bool ProjectObjectLayoutModel::build(
@@ -300,6 +356,49 @@ ProjectObjectLayoutModel::valueLayoutForTypeKey(
         typeKey == "builtin:nuint" || typeKey == "builtin:double" || typeKey == "builtin:string" ||
         ProjectTypeConversion::isNativeArray(typeKey) || typeKey.ends_with("*")) return {{8, 8}};
     if (typeKey == "builtin:i128" || typeKey == "builtin:u128") return {{16, 16}};
+    // NSC-NEW-001: `decimal` was missing here, so every consumer that asks this question had to
+    // know it separately. Those that did not rejected it: `sizeof(decimal[2])`, an async
+    // `decimal` result ("async future has no physical layout"), and decimal locals kept across an
+    // await, which got no frame slot. The size and alignment are the target's decimal layout,
+    // the same one arrays, stackalloc and raw elements already use.
+    if (typeKey == "builtin:decimal")
+    {
+        const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(target::BuiltinLayoutKind::Decimal);
+        return {{decimal.size, decimal.alignment}};
+    }
+    if (language::futureInnerTypeKey(typeKey).has_value())
+    {
+        std::vector<std::optional<std::string_view>> errors;
+        std::string_view inner = typeKey;
+        while (const auto nested = language::futureInnerTypeKey(inner))
+        {
+            errors.push_back(language::futureErrorTypeKey(inner));
+            inner = *nested;
+        }
+        auto result = inner == "builtin:void"
+            ? std::optional<std::pair<std::uint64_t, std::uint64_t>>{{0U, 1U}}
+            : valueLayoutForTypeKey(nameLookup, inner);
+        if (!result.has_value()) return std::nullopt;
+        for (auto it = errors.rbegin(); it != errors.rend(); ++it)
+        {
+            const auto error = it->has_value()
+                ? valueLayoutForTypeKey(nameLookup, **it)
+                : std::optional<std::pair<std::uint64_t, std::uint64_t>>{{0U, 1U}};
+            if (!error.has_value()) return std::nullopt;
+            const auto frame = checkedFutureFrameLayout(*result, *error);
+            if (!frame.has_value()) return std::nullopt;
+            result = *frame;
+        }
+        return result;
+    }
+    if (const auto simd = language::parsePortableSimdType(typeKey); simd.has_value())
+    {
+        if (simd->laneCount > 512U / simd->laneBits) return std::nullopt;
+        const std::uint64_t bytes = simd->mask
+            ? static_cast<std::uint64_t>((simd->laneCount + 7U) / 8U)
+            : static_cast<std::uint64_t>(simd->laneBits * simd->laneCount / 8U);
+        return {{bytes, std::min<std::uint64_t>(bytes, 16U)}};
+    }
     if (const std::optional<language::AggregateLayout> tuple =
             tupleLayoutForTypeKey(nameLookup, typeKey);
         tuple.has_value())
@@ -507,6 +606,23 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutBaseType(
     if (syntax->isTuple())
     {
         if (nameLookup_ == nullptr || memberModel_ == nullptr) return std::nullopt;
+        // The tuple query reads already-built value layouts. Build its by-value
+        // element dependencies first, just as a direct named field does.
+        std::vector<const ast::TypeSyntax*> pending(syntax->typeArguments().begin(),
+                                                     syntax->typeArguments().end());
+        while (!pending.empty())
+        {
+            const ast::TypeSyntax* element = pending.back();
+            pending.pop_back();
+            if (element == nullptr) return std::nullopt;
+            if (element->referenceQualifier() != ast::ReferenceQualifierSyntaxKind::None) continue;
+            if (element->isTuple() && element->modifiers().empty())
+            {
+                pending.insert(pending.end(), element->typeArguments().begin(), element->typeArguments().end());
+                continue;
+            }
+            if (!layoutTypeSyntax(element, diagnostics, useRange).has_value()) return std::nullopt;
+        }
         const std::string key = memberModel_->canonicalTypeKey(syntax, *nameLookup_);
         const std::optional<language::AggregateLayout> layout =
             tupleLayoutForTypeKey(*nameLookup_, key);
@@ -577,9 +693,9 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutBaseType(
     return layoutNamedType(*ordinal, diagnostics, useRange);
 }
 
-// EN: Freeze 3.0 (plan item 113): `Future<T>` is not a named type, so a field of that type has no type
+// EN: Freeze (plan item 113): `Future<T>` is not a named type, so a field of that type has no type
 //     ordinal. Its canonical key `future:<T>` names the future value instead.
-// ES: Congelamiento 3.0 (elemento 113 del plan): `Future<T>` no es un tipo con nombre, así que un campo de ese
+// ES: Congelamiento (elemento 113 del plan): `Future<T>` no es un tipo con nombre, así que un campo de ese
 //     tipo no tiene ordinal de tipo. Su clave canónica `future:<T>` nombra el valor future.
 std::optional<std::string> ProjectObjectLayoutModel::futureFieldTypeKey(const ast::TypeSyntax* syntax) const
 {
@@ -635,13 +751,17 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutFutureType(
             "future field layout could not be computed for '" + typeKey + "'");
         return std::nullopt;
     }
-    std::uint64_t end = alignFutureOffset(4U, 8U) + 8U;
-    end = alignFutureOffset(end, result->second) + result->first;
-    end = alignFutureOffset(end, 8U) + 8U;
-    if (error->first > 0U) end = alignFutureOffset(end, error->second) + error->first;
-    end = alignFutureOffset(end, 8U) + 8U;
-    const std::uint64_t alignment = std::max({std::uint64_t{8U}, result->second, error->second});
-    return TypeLayout{alignFutureOffset(end, alignment), alignment};
+    const auto frame = checkedFutureFrameLayout(*result, *error);
+    if (!frame.has_value())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            useRange,
+            "future field layout overflows the Windows x64 object-size model for '" + typeKey + "'");
+        return std::nullopt;
+    }
+    return TypeLayout{frame->first, frame->second};
 }
 
 std::optional<TypeLayout> ProjectObjectLayoutModel::layoutNamedType(

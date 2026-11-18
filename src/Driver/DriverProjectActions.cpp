@@ -233,9 +233,9 @@ bool lowerProjectLlvm(std::string_view action, bool oopLlvmAction, bool success,
         projectCompilation.memberModel() == nullptr || projectCompilation.objectLayoutModel() == nullptr ||
         projectCompilation.oopMirModel() == nullptr)
         return true;
-    // EN: Freeze 3.0 (plan item 114): lowered with the member model, without debug information, as the emission
+    // EN: Freeze (plan item 114): lowered with the member model, without debug information, as the emission
     //     lowers it; the value drops of C-11 need that model.
-    // ES: Congelamiento 3.0 (elemento 114 del plan): se baja con el modelo de miembros, sin información de
+    // ES: Congelamiento (elemento 114 del plan): se baja con el modelo de miembros, sin información de
     //     depuración, como lo baja la emisión; los drops de valor de C-11 necesitan ese modelo.
     llvm_backend::ProjectOopLlvmLowerer lowerer;
     oopLlvmModule =
@@ -254,9 +254,9 @@ bool lowerProjectLlvm(std::string_view action, bool oopLlvmAction, bool success,
     }
     if (action == "--dump-project-oop-llvm")
         output << oopLlvmModule->text();
-    // EN: Freeze 3.0 C-05: the optimized forms verify the module, run the pipeline of the
+    // EN: Freeze C-05: the optimized forms verify the module, run the pipeline of the
     //     requested level and dump or verify the result (the former single-file -opt dumps).
-    // ES: Congelamiento 3.0 C-05: las formas optimizadas verifican el modulo, corren el pipeline
+    // ES: Congelamiento C-05: las formas optimizadas verifican el modulo, corren el pipeline
     //     del nivel pedido y vuelcan o verifican el resultado (los antiguos -opt de un archivo).
     if (action != "--dump-project-oop-llvm-opt" && action != "--verify-project-oop-llvm-opt") return true;
     std::string verificationError;
@@ -280,7 +280,7 @@ bool lowerProjectLlvm(std::string_view action, bool oopLlvmAction, bool success,
 bool validateProjectCompilationResult(bool success, bool oopHirAction, frontend::ProjectCompilation &projectCompilation,
                                       std::ostream &error)
 {
-    if (projectCompilation.diagnostics().hasErrors())
+    if (!projectCompilation.diagnostics().diagnostics().empty())
     {
         diagnostics::DiagnosticRenderer renderer(projectCompilation.sourceManager());
         renderer.renderAll(projectCompilation.diagnostics(), error);

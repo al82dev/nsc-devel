@@ -71,16 +71,12 @@ bool readStringVector(ByteReader& reader, std::vector<std::string>& values)
     return true;
 }
 
-void encodePayloadPreamble(
-    ByteWriter& writer,
-    const LibraryMetadata& metadata,
-    std::uint8_t legacySourceRevision)
+void encodePayloadPreamble(ByteWriter &writer, const LibraryMetadata &metadata)
 {
     writer.text(metadata.producerVersion);
     writer.text(metadata.moduleName);
     writer.text(metadata.targetTriple);
-    if (metadata.formatMinor >= 23) writer.u8(legacySourceRevision);
-    if (metadata.formatMinor < 8) return;
+
     writer.u16(metadata.nativeAbiMajor);
     writer.u16(metadata.nativeAbiMinor);
     writer.u16(metadata.runtimeAbiMajor);
@@ -92,93 +88,69 @@ void encodePayloadPreamble(
     writer.u32(metadata.managedDelegateCellSize);
 }
 
-void encodeTypeFeatures(
-    ByteWriter& writer,
-    const LibraryMetadata& metadata,
-    const LibraryMetadataType& type)
+void encodeTypeFeatures(ByteWriter &writer, const LibraryMetadataType &type)
 {
-    // Minor 2. Un lector de minor 1 no lo espera, asi que se escribe solo
-    // cuando el formato que se esta produciendo lo incluye -- la misma
-    // condicion que ya usa `ownership`.
-    if (metadata.formatMinor >= 2) writer.text(type.enumUnderlyingTypeKey);
-    if (metadata.formatMinor >= 5)
+    writer.text(type.enumUnderlyingTypeKey);
+
+    writer.u8(type.delegateFlags);
+    writer.text(type.delegateReturnTypeKey);
+    writeStringVector(writer, type.delegateParameterTypeKeys);
+
+    writer.u8(type.delegateReturnDynamicTrait ? 1U : 0U);
+    writer.u32(static_cast<std::uint32_t>(type.delegateParameterTypeKeys.size()));
+    for (std::size_t parameterIndex = 0; parameterIndex < type.delegateParameterTypeKeys.size(); ++parameterIndex)
     {
-        writer.u8(type.delegateFlags);
-        writer.text(type.delegateReturnTypeKey);
-        writeStringVector(writer, type.delegateParameterTypeKeys);
-        if (metadata.formatMinor >= 31)
-        {
-            writer.u8(type.delegateReturnDynamicTrait ? 1U : 0U);
-            writer.u32(static_cast<std::uint32_t>(type.delegateParameterTypeKeys.size()));
-            for (std::size_t parameterIndex = 0;
-                 parameterIndex < type.delegateParameterTypeKeys.size();
-                 ++parameterIndex)
-            {
-                writer.u8(parameterIndex < type.delegateParameterDynamicTraits.size()
-                    ? type.delegateParameterDynamicTraits[parameterIndex]
-                    : 0U);
-            }
-        }
+        writer.u8(parameterIndex < type.delegateParameterDynamicTraits.size()
+                      ? type.delegateParameterDynamicTraits[parameterIndex]
+                      : 0U);
     }
-    if (metadata.formatMinor >= 27)
+
+    writer.u32(static_cast<std::uint32_t>(type.variantCases.size()));
+    for (const LibraryMetadataVariantCase &variantCase : type.variantCases)
     {
-        writer.u32(static_cast<std::uint32_t>(type.variantCases.size()));
-        for (const LibraryMetadataVariantCase& variantCase : type.variantCases)
-        {
-            writer.text(variantCase.name);
-            writer.text(variantCase.payloadTypeKey);
-        }
+        writer.text(variantCase.name);
+        writer.text(variantCase.payloadTypeKey);
     }
-    if (metadata.formatMinor >= 28)
-        writeStringVector(writer, type.traitMethodSignatures);
-    if (metadata.formatMinor >= 29)
+
+    writeStringVector(writer, type.traitMethodSignatures);
+
+    writer.u32(static_cast<std::uint32_t>(type.associatedItems.size()));
+    for (const LibraryMetadataAssociatedItem &item : type.associatedItems)
     {
-        writer.u32(static_cast<std::uint32_t>(type.associatedItems.size()));
-        for (const LibraryMetadataAssociatedItem& item : type.associatedItems)
-        {
-            writer.u8(static_cast<std::uint8_t>(item.kind));
-            writer.text(item.name);
-            writer.text(item.typeKey);
-            writer.u8(item.hasDefault ? 1U : 0U);
-            writer.u64(item.valueBits);
-        }
+        writer.u8(static_cast<std::uint8_t>(item.kind));
+        writer.text(item.name);
+        writer.text(item.typeKey);
+        writer.u8(item.hasDefault ? 1U : 0U);
+        writer.u64(item.valueBits);
     }
-    if (metadata.formatMinor >= 31)
-    {
-        writer.u8(type.traitObjectFlags);
-        writer.u8(type.traitObjectWordCount);
-    }
+
+    writer.u8(type.traitObjectFlags);
+    writer.u8(type.traitObjectWordCount);
 }
 
-void encodeTypeFields(
-    ByteWriter& writer,
-    const LibraryMetadata& metadata,
-    const LibraryMetadataType& type)
+void encodeTypeFields(ByteWriter &writer, const LibraryMetadataType &type)
 {
     writer.u32(static_cast<std::uint32_t>(type.fields.size()));
-    for (const LibraryMetadataField& field : type.fields)
+    for (const LibraryMetadataField &field : type.fields)
     {
         writer.text(field.name);
         writer.text(field.typeKey);
-        if (metadata.formatMinor >= 1)
-            writer.u8(static_cast<std::uint8_t>(field.ownership));
+        writer.u8(static_cast<std::uint8_t>(field.ownership));
         writer.u64(field.offset);
         writer.u64(field.size);
         writer.u64(field.alignment);
         writer.u32(field.flags);
-        if (metadata.formatMinor >= 18)
-        {
-            writer.u64(field.bitOffset);
-            writer.u64(field.bitWidth);
-        }
+
+        writer.u64(field.bitOffset);
+        writer.u64(field.bitWidth);
     }
-    if (metadata.formatMinor >= 36) writer.text(type.dropGlueEntryName);
+    writer.text(type.dropGlueEntryName);
 }
 
-void encodeTypes(ByteWriter& writer, const LibraryMetadata& metadata)
+void encodeTypes(ByteWriter &writer, const LibraryMetadata &metadata)
 {
     writer.u32(static_cast<std::uint32_t>(metadata.types.size()));
-    for (const LibraryMetadataType& type : metadata.types)
+    for (const LibraryMetadataType &type : metadata.types)
     {
         writer.u8(static_cast<std::uint8_t>(type.kind));
         writer.u8(type.accessibility);
@@ -193,39 +165,27 @@ void encodeTypes(ByteWriter& writer, const LibraryMetadata& metadata)
         writer.u64(type.referenceSize);
         writer.u64(type.referenceAlignment);
         writer.u64(type.stableTypeId);
-        encodeTypeFeatures(writer, metadata, type);
-        encodeTypeFields(writer, metadata, type);
+        encodeTypeFeatures(writer, type);
+        encodeTypeFields(writer, type);
     }
 }
 
-void encodeParameter(
-    ByteWriter& writer,
-    const LibraryMetadata& metadata,
-    const LibraryMetadataParameter& parameter)
+void encodeParameter(ByteWriter &writer, const LibraryMetadataParameter &parameter)
 {
     writer.text(parameter.name);
     writer.text(parameter.typeKey);
-    if (metadata.formatMinor >= 1)
-        writer.u8(static_cast<std::uint8_t>(parameter.ownership));
-    if (metadata.formatMinor >= 4)
-        writer.u8(static_cast<std::uint8_t>(parameter.passKind));
-    if (metadata.formatMinor >= 24)
-        writer.u8(parameter.isParameterPack ? 1U : 0U);
-    if (metadata.formatMinor >= 31)
-        writer.u8(parameter.isDynamicTrait ? 1U : 0U);
-    if (metadata.formatMinor >= 3)
-    {
-        writer.u8(static_cast<std::uint8_t>(parameter.defaultValueKind));
-        writer.u8(parameter.defaultValueFlags);
-        writer.u64(parameter.defaultValueBits);
-        writer.text(parameter.defaultValueText);
-    }
+    writer.u8(static_cast<std::uint8_t>(parameter.ownership));
+    writer.u8(static_cast<std::uint8_t>(parameter.passKind));
+    writer.u8(parameter.isParameterPack ? 1U : 0U);
+    writer.u8(parameter.isDynamicTrait ? 1U : 0U);
+
+    writer.u8(static_cast<std::uint8_t>(parameter.defaultValueKind));
+    writer.u8(parameter.defaultValueFlags);
+    writer.u64(parameter.defaultValueBits);
+    writer.text(parameter.defaultValueText);
 }
 
-void encodeMember(
-    ByteWriter& writer,
-    const LibraryMetadata& metadata,
-    const LibraryMetadataMember& member)
+void encodeMember(ByteWriter &writer, const LibraryMetadataMember &member)
 {
     writer.u8(member.kind);
     writer.u8(member.accessibility);
@@ -234,62 +194,53 @@ void encodeMember(
     writer.text(member.name);
     writer.text(member.signatureKey);
     writer.text(member.declaredTypeKey);
-    if (metadata.formatMinor >= 1)
-        writer.u8(static_cast<std::uint8_t>(member.declaredOwnership));
+    writer.u8(static_cast<std::uint8_t>(member.declaredOwnership));
     writer.text(member.cAbiName);
     writer.text(member.mangledName);
     writer.u32(static_cast<std::uint32_t>(member.parameters.size()));
-    for (const LibraryMetadataParameter& parameter : member.parameters)
-        encodeParameter(writer, metadata, parameter);
+    for (const LibraryMetadataParameter &parameter : member.parameters)
+        encodeParameter(writer, parameter);
     writer.u8(member.constantKind);
     writer.u64(member.constantBits);
-    if (metadata.formatMinor >= 9) writer.text(member.constantText);
-    if (metadata.formatMinor >= 10) writer.text(member.importDllName);
-    if (metadata.formatMinor >= 13) writer.text(member.inlineSourceText);
+    writer.text(member.constantText);
+    writer.text(member.importDllName);
+    writer.text(member.inlineSourceText);
 }
 
-void encodeMembersAndTraitImpls(
-    ByteWriter& writer,
-    const LibraryMetadata& metadata,
-    bool includeTraitImpls)
+void encodeMembersAndTraitImpls(ByteWriter &writer, const LibraryMetadata &metadata)
 {
     writer.u32(static_cast<std::uint32_t>(metadata.members.size()));
-    for (const LibraryMetadataMember& member : metadata.members)
-        encodeMember(writer, metadata, member);
-    // NSMETA 1.40 (NS304-T08-F05): external trait conformances. The explicit
-    // switch lets the ABI projection retain this section for 1.40 after its
-    // common payload has been projected through the neutral 1.24 layout.
-    if (!includeTraitImpls) return;
+    for (const LibraryMetadataMember &member : metadata.members)
+        encodeMember(writer, member);
     writer.u32(static_cast<std::uint32_t>(metadata.traitImpls.size()));
-    for (const LibraryMetadataTraitImpl& traitImpl : metadata.traitImpls)
+    for (const LibraryMetadataTraitImpl &traitImpl : metadata.traitImpls)
     {
         writer.text(traitImpl.targetTypeKey);
         writer.text(traitImpl.traitTypeKey);
         writer.u32(static_cast<std::uint32_t>(traitImpl.methods.size()));
-        for (const LibraryMetadataMember& member : traitImpl.methods)
-            encodeMember(writer, metadata, member);
+        for (const LibraryMetadataMember &member : traitImpl.methods)
+            encodeMember(writer, member);
     }
 }
 
-void encodeGenericRecords(ByteWriter& writer, const LibraryMetadata& metadata)
+void encodeGenericRecords(ByteWriter &writer, const LibraryMetadata &metadata)
 {
     writer.u32(static_cast<std::uint32_t>(metadata.genericTemplates.size()));
-    for (const LibraryMetadataGenericTemplate& generic : metadata.genericTemplates)
+    for (const LibraryMetadataGenericTemplate &generic : metadata.genericTemplates)
     {
         writer.u8(generic.kind);
-        if (metadata.formatMinor >= 7) writer.u8(generic.accessibility);
+        writer.u8(generic.accessibility);
         writer.text(generic.canonicalKey);
         writer.text(generic.moduleName);
         writer.text(generic.namespaceName);
         writer.text(generic.ownerName);
         writer.text(generic.name);
         writeStringVector(writer, generic.parameters);
-        if (metadata.formatMinor >= 7) writer.text(generic.sourceText);
-        if (metadata.formatMinor >= 11) writeStringVector(writer, generic.dependencies);
+        writer.text(generic.sourceText);
+        writeStringVector(writer, generic.dependencies);
     }
     writer.u32(static_cast<std::uint32_t>(metadata.genericSpecializations.size()));
-    for (const LibraryMetadataGenericSpecialization& specialization :
-         metadata.genericSpecializations)
+    for (const LibraryMetadataGenericSpecialization &specialization : metadata.genericSpecializations)
     {
         writer.u8(specialization.kind);
         writer.text(specialization.templateKey);
@@ -297,24 +248,24 @@ void encodeGenericRecords(ByteWriter& writer, const LibraryMetadata& metadata)
         writer.text(specialization.specializedName);
         writeStringVector(writer, specialization.typeArguments);
     }
-    if (metadata.formatMinor >= 12) writeStringVector(writer, metadata.externalTypeKeys);
+    writeStringVector(writer, metadata.externalTypeKeys);
 }
 
-void encodeDispatchRecords(ByteWriter& writer, const LibraryMetadata& metadata)
+void encodeDispatchRecords(ByteWriter &writer, const LibraryMetadata &metadata)
 {
     writer.u32(static_cast<std::uint32_t>(metadata.dispatchTables.size()));
-    for (const LibraryMetadataDispatch& dispatch : metadata.dispatchTables)
+    for (const LibraryMetadataDispatch &dispatch : metadata.dispatchTables)
     {
         writer.text(dispatch.typeKey);
         writer.u64(dispatch.stableTypeId);
         writer.text(dispatch.descriptorName);
-        if (metadata.formatMinor >= 6) writer.text(dispatch.descriptorAccessorName);
+        writer.text(dispatch.descriptorAccessorName);
         writer.text(dispatch.vtableName);
         writer.text(dispatch.destructionEntryName);
         writeStringVector(writer, dispatch.slotSignatures);
         writeStringVector(writer, dispatch.slotCalleeNames);
         writer.u32(static_cast<std::uint32_t>(dispatch.interfaces.size()));
-        for (const LibraryMetadataDispatchInterface& interfaceRecord : dispatch.interfaces)
+        for (const LibraryMetadataDispatchInterface &interfaceRecord : dispatch.interfaces)
         {
             writer.text(interfaceRecord.interfaceTypeKey);
             writer.u64(interfaceRecord.stableInterfaceTypeId);
@@ -326,10 +277,10 @@ void encodeDispatchRecords(ByteWriter& writer, const LibraryMetadata& metadata)
     }
 }
 
-void encodeExportRecords(ByteWriter& writer, const LibraryMetadata& metadata)
+void encodeExportRecords(ByteWriter &writer, const LibraryMetadata &metadata)
 {
     writer.u32(static_cast<std::uint32_t>(metadata.exports.size()));
-    for (const LibraryMetadataExport& exportRecord : metadata.exports)
+    for (const LibraryMetadataExport &exportRecord : metadata.exports)
     {
         writer.text(exportRecord.cAbiName);
         writer.text(exportRecord.declaringTypeKey);
@@ -339,11 +290,11 @@ void encodeExportRecords(ByteWriter& writer, const LibraryMetadata& metadata)
     }
 }
 
-void encodeNamespaceFunctions(ByteWriter& writer, const LibraryMetadata& metadata)
+void encodeNamespaceFunctions(ByteWriter &writer, const LibraryMetadata &metadata)
 {
-    if (metadata.formatMinor < 21) return;
+
     writer.u32(static_cast<std::uint32_t>(metadata.namespaceFunctions.size()));
-    for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+    for (const LibraryMetadataNamespaceFunction &function : metadata.namespaceFunctions)
     {
         writer.u8(function.accessibility);
         writer.u8(function.flags);
@@ -354,16 +305,14 @@ void encodeNamespaceFunctions(ByteWriter& writer, const LibraryMetadata& metadat
         writer.u8(static_cast<std::uint8_t>(function.declaredOwnership));
         writer.text(function.mangledName);
         writer.u32(static_cast<std::uint32_t>(function.parameters.size()));
-        for (const LibraryMetadataParameter& parameter : function.parameters)
+        for (const LibraryMetadataParameter &parameter : function.parameters)
         {
             writer.text(parameter.name);
             writer.text(parameter.typeKey);
             writer.u8(static_cast<std::uint8_t>(parameter.ownership));
             writer.u8(static_cast<std::uint8_t>(parameter.passKind));
-            if (metadata.formatMinor >= 24)
-                writer.u8(parameter.isParameterPack ? 1U : 0U);
-            if (metadata.formatMinor >= 31)
-                writer.u8(parameter.isDynamicTrait ? 1U : 0U);
+            writer.u8(parameter.isParameterPack ? 1U : 0U);
+            writer.u8(parameter.isDynamicTrait ? 1U : 0U);
             writer.u8(static_cast<std::uint8_t>(parameter.defaultValueKind));
             writer.u8(parameter.defaultValueFlags);
             writer.u64(parameter.defaultValueBits);
@@ -372,11 +321,11 @@ void encodeNamespaceFunctions(ByteWriter& writer, const LibraryMetadata& metadat
     }
 }
 
-void encodeNamespaceStates(ByteWriter& writer, const LibraryMetadata& metadata)
+void encodeNamespaceStates(ByteWriter &writer, const LibraryMetadata &metadata)
 {
-    if (metadata.formatMinor < 22) return;
+
     writer.u32(static_cast<std::uint32_t>(metadata.namespaceStates.size()));
-    for (const LibraryMetadataNamespaceState& state : metadata.namespaceStates)
+    for (const LibraryMetadataNamespaceState &state : metadata.namespaceStates)
     {
         writer.u8(state.accessibility);
         writer.u8(state.flags);
@@ -391,11 +340,11 @@ void encodeNamespaceStates(ByteWriter& writer, const LibraryMetadata& metadata)
     }
 }
 
-void encodeBinaryClosure(ByteWriter& writer, const LibraryMetadata& metadata)
+void encodeBinaryClosure(ByteWriter &writer, const LibraryMetadata &metadata)
 {
-    if (metadata.formatMinor < 25) return;
+
     writer.u32(static_cast<std::uint32_t>(metadata.binaryDependencies.size()));
-    for (const LibraryMetadataBinaryDependency& dependency : metadata.binaryDependencies)
+    for (const LibraryMetadataBinaryDependency &dependency : metadata.binaryDependencies)
     {
         writer.text(dependency.moduleName);
         writer.text(dependency.libraryFileName);
@@ -404,29 +353,28 @@ void encodeBinaryClosure(ByteWriter& writer, const LibraryMetadata& metadata)
         writer.raw(dependency.abiFingerprint);
     }
     writer.u32(static_cast<std::uint32_t>(metadata.platformImports.size()));
-    for (const LibraryMetadataPlatformImport& importRecord : metadata.platformImports)
+    for (const LibraryMetadataPlatformImport &importRecord : metadata.platformImports)
     {
         writer.text(importRecord.dllName);
         writer.text(importRecord.symbolName);
     }
 }
 
-template <typename Constraints>
-void encodeLifetimeConstraints(ByteWriter& writer, const Constraints& constraints)
+template <typename Constraints> void encodeLifetimeConstraints(ByteWriter &writer, const Constraints &constraints)
 {
     writer.u32(static_cast<std::uint32_t>(constraints.size()));
-    for (const auto& [longer, shorter] : constraints)
+    for (const auto &[longer, shorter] : constraints)
     {
         writer.text(longer);
         writer.text(shorter);
     }
 }
 
-void encodeLifetimeContracts(ByteWriter& writer, const LibraryMetadata& metadata)
+void encodeLifetimeContracts(ByteWriter &writer, const LibraryMetadata &metadata)
 {
-    if (metadata.formatMinor < 34) return;
+
     writer.u32(static_cast<std::uint32_t>(metadata.types.size()));
-    for (const LibraryMetadataType& type : metadata.types)
+    for (const LibraryMetadataType &type : metadata.types)
     {
         writeStringVector(writer, type.lifetimeParameters);
         encodeLifetimeConstraints(writer, type.lifetimeOutlivesConstraints);
@@ -437,72 +385,71 @@ void encodeLifetimeContracts(ByteWriter& writer, const LibraryMetadata& metadata
             writer.u8(static_cast<std::uint8_t>(passKind));
         writeStringVector(writer, type.delegateParameterLifetimeNames);
         writer.u32(static_cast<std::uint32_t>(type.fields.size()));
-        for (const LibraryMetadataField& field : type.fields) writer.text(field.lifetimeName);
+        for (const LibraryMetadataField &field : type.fields)
+            writer.text(field.lifetimeName);
     }
     writer.u32(static_cast<std::uint32_t>(metadata.members.size()));
-    for (const LibraryMetadataMember& member : metadata.members)
+    for (const LibraryMetadataMember &member : metadata.members)
     {
         writer.text(member.returnLifetimeName);
         writeStringVector(writer, member.lifetimeParameters);
         encodeLifetimeConstraints(writer, member.lifetimeOutlivesConstraints);
         writer.u32(static_cast<std::uint32_t>(member.parameters.size()));
-        for (const LibraryMetadataParameter& parameter : member.parameters)
+        for (const LibraryMetadataParameter &parameter : member.parameters)
             writer.text(parameter.lifetimeName);
     }
     writer.u32(static_cast<std::uint32_t>(metadata.namespaceFunctions.size()));
-    for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+    for (const LibraryMetadataNamespaceFunction &function : metadata.namespaceFunctions)
     {
         writer.text(function.returnLifetimeName);
         writeStringVector(writer, function.lifetimeParameters);
         encodeLifetimeConstraints(writer, function.lifetimeOutlivesConstraints);
         writer.u32(static_cast<std::uint32_t>(function.parameters.size()));
-        for (const LibraryMetadataParameter& parameter : function.parameters)
+        for (const LibraryMetadataParameter &parameter : function.parameters)
             writer.text(parameter.lifetimeName);
     }
 }
 
-template <typename Callable>
-void encodeEscapeSummary(ByteWriter& writer, const Callable& callable)
+template <typename Callable> void encodeEscapeSummary(ByteWriter &writer, const Callable &callable)
 {
     writer.u32(static_cast<std::uint32_t>(callable.parameterEscapeSummary.size()));
     for (const LibraryMetadataEscapeClass item : callable.parameterEscapeSummary)
         writer.u8(static_cast<std::uint8_t>(item));
 }
 
-void encodeEscapeContracts(ByteWriter& writer, const LibraryMetadata& metadata)
+void encodeEscapeContracts(ByteWriter &writer, const LibraryMetadata &metadata)
 {
-    if (metadata.formatMinor < 35) return;
+
     writer.u32(static_cast<std::uint32_t>(metadata.members.size()));
-    for (const LibraryMetadataMember& member : metadata.members)
+    for (const LibraryMetadataMember &member : metadata.members)
         encodeEscapeSummary(writer, member);
     writer.u32(static_cast<std::uint32_t>(metadata.namespaceFunctions.size()));
-    for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+    for (const LibraryMetadataNamespaceFunction &function : metadata.namespaceFunctions)
         encodeEscapeSummary(writer, function);
 }
 
-void encodeErrorContracts(ByteWriter& writer, const LibraryMetadata& metadata)
+void encodeErrorContracts(ByteWriter &writer, const LibraryMetadata &metadata)
 {
-    if (metadata.formatMinor < 37) return;
+
     writer.u32(static_cast<std::uint32_t>(metadata.types.size()));
-    for (const LibraryMetadataType& type : metadata.types)
+    for (const LibraryMetadataType &type : metadata.types)
         writer.text(type.delegateErrorTypeKey);
     writer.u32(static_cast<std::uint32_t>(metadata.members.size()));
-    for (const LibraryMetadataMember& member : metadata.members)
+    for (const LibraryMetadataMember &member : metadata.members)
         writer.text(member.declaredErrorTypeKey);
     writer.u32(static_cast<std::uint32_t>(metadata.namespaceFunctions.size()));
-    for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+    for (const LibraryMetadataNamespaceFunction &function : metadata.namespaceFunctions)
         writer.text(function.declaredErrorTypeKey);
 }
 
-void encodeGenericContracts(ByteWriter& writer, const LibraryMetadata& metadata)
+void encodeGenericContracts(ByteWriter &writer, const LibraryMetadata &metadata)
 {
-    if (metadata.formatMinor < 38) return;
+
     writer.u32(static_cast<std::uint32_t>(metadata.genericTemplates.size()));
-    for (const LibraryMetadataGenericTemplate& generic : metadata.genericTemplates)
+    for (const LibraryMetadataGenericTemplate &generic : metadata.genericTemplates)
     {
         writer.u32(static_cast<std::uint32_t>(generic.parameterContracts.size()));
-        for (const LibraryMetadataGenericTemplate::ParameterContract& parameter :
-             generic.parameterContracts)
+        for (const LibraryMetadataGenericTemplate::ParameterContract &parameter : generic.parameterContracts)
         {
             writer.text(parameter.name);
             writer.u8(parameter.kind);
@@ -516,11 +463,11 @@ void encodeGenericContracts(ByteWriter& writer, const LibraryMetadata& metadata)
         encodeLifetimeConstraints(writer, generic.lifetimeOutlivesConstraints);
     }
     writer.u32(static_cast<std::uint32_t>(metadata.members.size()));
-    for (const LibraryMetadataMember& member : metadata.members)
+    for (const LibraryMetadataMember &member : metadata.members)
     {
         writer.u8(member.ffiUnwindPolicy);
         writer.u32(static_cast<std::uint32_t>(member.parameters.size()));
-        for (const LibraryMetadataParameter& parameter : member.parameters)
+        for (const LibraryMetadataParameter &parameter : member.parameters)
         {
             writer.u32(parameter.ffiLengthParameter);
             writer.text(parameter.ffiLengthParameterName);
@@ -574,15 +521,107 @@ void encodePointeeQualifierContracts(ByteWriter& writer, const LibraryMetadata& 
         writer.u8(state.declaredPointeeQualifiers);
 }
 
-std::vector<std::uint8_t> encodePayload(
-    const LibraryMetadata& metadata,
-    std::uint8_t legacySourceRevision,
-    bool includeTraitImpls)
+// EN: The C/C++ interoperability block: binary dependencies, the C type catalogue and the pointee qualifiers of the
+//     signature slots. Written only when the metadata carries any of them, as the payload's last block; its
+//     presence is read from the content, not from a format number.
+// ES: El bloque de interoperabilidad C/C++: dependencias binarias, catalogo de tipos C y calificadores del dato
+//     apuntado de las posiciones de firma. Se escribe solo si la metadata trae alguno, como ultimo bloque del
+//     payload; su presencia se lee del contenido, no de un numero de formato.
+bool hasPointeeQualifierContracts(const LibraryMetadata& metadata)
+{
+    const auto any = [](const std::vector<std::uint8_t>& values) {
+        return std::ranges::any_of(values, [](std::uint8_t value) { return value != 0U; });
+    };
+    for (const LibraryMetadataType& type : metadata.types)
+    {
+        if (type.delegateReturnPointeeQualifiers != 0U || any(type.delegateParameterPointeeQualifiers)) return true;
+        for (const LibraryMetadataField& field : type.fields)
+            if (field.pointeeQualifiers != 0U) return true;
+    }
+    for (const LibraryMetadataMember& member : metadata.members)
+    {
+        if (member.declaredPointeeQualifiers != 0U) return true;
+        for (const LibraryMetadataParameter& parameter : member.parameters)
+            if (parameter.pointeeQualifiers != 0U) return true;
+    }
+    for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+    {
+        if (function.declaredPointeeQualifiers != 0U) return true;
+        for (const LibraryMetadataParameter& parameter : function.parameters)
+            if (parameter.pointeeQualifiers != 0U) return true;
+    }
+    return std::ranges::any_of(metadata.namespaceStates,
+        [](const LibraryMetadataNamespaceState& state) { return state.declaredPointeeQualifiers != 0U; });
+}
+
+bool hasCppInteropBlock(const LibraryMetadata& metadata)
+{
+    return !metadata.cppBinaryDependencies.empty() || !metadata.cppCRecordCatalog.empty() ||
+        hasPointeeQualifierContracts(metadata);
+}
+
+void encodeCppInteropBlock(ByteWriter& writer, const LibraryMetadata& metadata)
+{
+    writer.u32(static_cast<std::uint32_t>(metadata.cppBinaryDependencies.size()));
+    for (const auto& dependency : metadata.cppBinaryDependencies)
+    {
+        writer.text(dependency.libraryFileName);
+        writer.u64(dependency.librarySize);
+        writer.raw(dependency.libraryDigest);
+        writer.text(dependency.runtimeFileName);
+        writer.u64(dependency.runtimeSize);
+        writer.raw(dependency.runtimeDigest);
+    }
+    writer.u64(static_cast<std::uint64_t>(metadata.cppCRecordCatalog.size()));
+    writer.raw(metadata.cppCRecordCatalog);
+    encodePointeeQualifierContracts(writer, metadata);
+}
+
+
+void encodeTemplateSourceImports(ByteWriter &writer, const LibraryMetadata &metadata)
+{
+
+    writer.u32(static_cast<std::uint32_t>(metadata.genericTemplates.size()));
+    for (const LibraryMetadataGenericTemplate &generic : metadata.genericTemplates)
+    {
+        writer.u32(static_cast<std::uint32_t>(generic.sourceImports.size()));
+        for (const auto &directive : generic.sourceImports)
+        {
+            writer.text(directive.namespaceName);
+            writer.text(directive.alias);
+            writer.text(directive.target);
+            writer.u8(directive.importKind);
+            writer.u8(directive.reexport ? 1U : 0U);
+        }
+    }
+}
+
+bool hasPointerOutputObjectOrigins(const LibraryMetadata& metadata)
+{
+    return std::ranges::any_of(metadata.members, [](const auto& member)
+        { return !member.pointerOutputObjectOrigins.empty(); });
+}
+
+void encodePointerOutputObjectOrigins(ByteWriter& writer, const LibraryMetadata& metadata)
+{
+    writer.u32(static_cast<std::uint32_t>(metadata.members.size()));
+    for (const auto& member : metadata.members)
+    {
+        writer.u32(static_cast<std::uint32_t>(member.pointerOutputObjectOrigins.size()));
+        for (const auto& origins : member.pointerOutputObjectOrigins)
+        {
+            writer.u32(static_cast<std::uint32_t>(origins.size()));
+            for (const std::uint32_t origin : origins) writer.u32(origin);
+        }
+    }
+}
+
+std::vector<std::uint8_t> encodePayload(const LibraryMetadata &metadata)
 {
     ByteWriter writer;
-    encodePayloadPreamble(writer, metadata, legacySourceRevision);
+    encodePayloadPreamble(writer, metadata);
     encodeTypes(writer, metadata);
-    encodeMembersAndTraitImpls(writer, metadata, includeTraitImpls);
+    encodeMembersAndTraitImpls(writer, metadata);
     encodeGenericRecords(writer, metadata);
     encodeDispatchRecords(writer, metadata);
     encodeExportRecords(writer, metadata);
@@ -594,28 +633,23 @@ std::vector<std::uint8_t> encodePayload(
     encodeEscapeContracts(writer, metadata);
     encodeErrorContracts(writer, metadata);
     encodeGenericContracts(writer, metadata);
-    if (metadata.formatMinor >= 39) writer.u32(metadata.languageFeatureFlags);
-    if (metadata.formatMinor >= 41)
-    {
-        writer.u32(static_cast<std::uint32_t>(metadata.cppBinaryDependencies.size()));
-        for (const auto& dependency : metadata.cppBinaryDependencies)
-        {
-            writer.text(dependency.libraryFileName);
-            writer.u64(dependency.librarySize);
-            writer.raw(dependency.libraryDigest);
-            writer.text(dependency.runtimeFileName);
-            writer.u64(dependency.runtimeSize);
-            writer.raw(dependency.runtimeDigest);
-        }
-    }
-    if (metadata.formatMinor >= 42)
-    {
-        writer.u64(static_cast<std::uint64_t>(metadata.cppCRecordCatalog.size()));
-        writer.raw(metadata.cppCRecordCatalog);
-    }
-    // EN: Part of the current contract (1.49); there is no older form to read.
-    // ES: Parte del contrato vigente (1.49); no hay una forma anterior que leer.
-    if (metadata.formatMinor >= 49) encodePointeeQualifierContracts(writer, metadata);
+    const bool cppInterop = hasCppInteropBlock(metadata);
+    writer.u32(metadata.languageFeatureFlags);
+    encodeTemplateSourceImports(writer, metadata);
+
+    writer.u32(static_cast<std::uint32_t>(metadata.genericTemplates.size()));
+    for (const auto &generic : metadata.genericTemplates)
+        writeStringVector(writer, generic.candidateReceiverTypeKeys);
+    writeStringVector(writer, metadata.sourceNamespaces);
+
+    writeStringVector(writer, metadata.trivialCleanupRootTypeKeys);
+    writeStringVector(writer, metadata.nonEscapingLifecycleTypeKeys);
+    if (hasPointerOutputObjectOrigins(metadata) || !metadata.identitySafeLifecycleTypeKeys.empty() ||
+        cppInterop)
+        encodePointerOutputObjectOrigins(writer, metadata);
+    if (!metadata.identitySafeLifecycleTypeKeys.empty() || cppInterop)
+        writeStringVector(writer, metadata.identitySafeLifecycleTypeKeys);
+    if (cppInterop) encodeCppInteropBlock(writer, metadata);
     return writer.bytes();
 }
 
@@ -661,7 +695,7 @@ void appendDropGlueProjection(
     const LibraryMetadata& metadata,
     std::vector<std::uint8_t>& projection)
 {
-    const bool hasValueDropGlue = metadata.formatMinor >= 36 && std::ranges::any_of(
+    const bool hasValueDropGlue = std::ranges::any_of(
         metadata.types,
         [](const LibraryMetadataType& type)
         {
@@ -695,11 +729,8 @@ void appendTraitProjection(
     {
         catalogue.text(type.identityKey);
         writeStringVector(catalogue, type.traitMethodSignatures);
-        if (metadata.formatMinor >= 31)
-        {
-            catalogue.u8(type.traitObjectFlags);
-            catalogue.u8(type.traitObjectWordCount);
-        }
+        catalogue.u8(type.traitObjectFlags);
+        catalogue.u8(type.traitObjectWordCount);
     }
     appendCatalogueBytes(projection, catalogue);
 }
@@ -742,7 +773,6 @@ void appendEscapeProjection(
     const LibraryMetadata& metadata,
     std::vector<std::uint8_t>& projection)
 {
-    if (metadata.formatMinor < 35) return;
     ByteWriter catalogue;
     catalogue.u32(static_cast<std::uint32_t>(metadata.members.size()));
     for (const LibraryMetadataMember& member : metadata.members)
@@ -750,6 +780,7 @@ void appendEscapeProjection(
     catalogue.u32(static_cast<std::uint32_t>(metadata.namespaceFunctions.size()));
     for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
         writeEscapeProjection(catalogue, function);
+    if (hasPointerOutputObjectOrigins(metadata)) encodePointerOutputObjectOrigins(catalogue, metadata);
     appendCatalogueBytes(projection, catalogue);
 }
 
@@ -757,7 +788,6 @@ void appendErrorTypeProjection(
     const LibraryMetadata& metadata,
     std::vector<std::uint8_t>& projection)
 {
-    if (metadata.formatMinor < 37) return;
     ByteWriter catalogue;
     catalogue.u32(static_cast<std::uint32_t>(metadata.types.size()));
     for (const LibraryMetadataType& type : metadata.types)
@@ -782,33 +812,268 @@ void appendErrorTypeProjection(
     appendCatalogueBytes(projection, catalogue);
 }
 
+void abiEncodePayloadPreamble(ByteWriter &writer, const LibraryMetadata &metadata)
+{
+    writer.text("");
+    writer.text(metadata.moduleName);
+    writer.text(metadata.targetTriple);
+
+    writer.u16(metadata.nativeAbiMajor);
+    writer.u16(metadata.nativeAbiMinor);
+    writer.u16(metadata.runtimeAbiMajor);
+    writer.u16(metadata.runtimeAbiMinor);
+    writer.u16(metadata.manglingAbiVersion);
+    writer.u16(metadata.objectAbiVersion);
+    writer.u16(metadata.delegateAbiVersion);
+    writer.u16(metadata.exceptionAbiVersion);
+    writer.u32(metadata.managedDelegateCellSize);
+}
+
+void abiEncodeTypeFeatures(ByteWriter &writer, const LibraryMetadataType &type)
+{
+    writer.text(type.enumUnderlyingTypeKey);
+
+    writer.u8(type.delegateFlags);
+    writer.text(type.delegateReturnTypeKey);
+    writeStringVector(writer, type.delegateParameterTypeKeys);
+}
+
+void abiEncodeTypeFields(ByteWriter &writer, const LibraryMetadataType &type)
+{
+    writer.u32(static_cast<std::uint32_t>(type.fields.size()));
+    for (const LibraryMetadataField &field : type.fields)
+    {
+        writer.text(field.name);
+        writer.text(field.typeKey);
+        writer.u8(static_cast<std::uint8_t>(field.ownership));
+        writer.u64(field.offset);
+        writer.u64(field.size);
+        writer.u64(field.alignment);
+        writer.u32(field.flags);
+
+        writer.u64(field.bitOffset);
+        writer.u64(field.bitWidth);
+    }
+}
+
+void abiEncodeTypes(ByteWriter &writer, const LibraryMetadata &metadata)
+{
+    writer.u32(static_cast<std::uint32_t>(metadata.types.size()));
+    for (const LibraryMetadataType &type : metadata.types)
+    {
+        writer.u8(static_cast<std::uint8_t>(type.kind));
+        writer.u8(type.accessibility);
+        writer.u16(type.flags);
+        writer.text(type.identityKey);
+        writer.text(type.fullyQualifiedName);
+        writer.text(type.baseTypeKey);
+        writeStringVector(writer, type.interfaceTypeKeys);
+        writer.u64(type.size);
+        writer.u64(type.alignment);
+        writer.u64(type.headerSize);
+        writer.u64(type.referenceSize);
+        writer.u64(type.referenceAlignment);
+        writer.u64(type.stableTypeId);
+        abiEncodeTypeFeatures(writer, type);
+        abiEncodeTypeFields(writer, type);
+    }
+}
+
+void abiEncodeParameter(ByteWriter &writer, const LibraryMetadataParameter &parameter)
+{
+    writer.text(parameter.name);
+    writer.text(parameter.typeKey);
+    writer.u8(static_cast<std::uint8_t>(parameter.ownership));
+    writer.u8(static_cast<std::uint8_t>(parameter.passKind));
+    writer.u8(parameter.isParameterPack ? 1U : 0U);
+
+    writer.u8(static_cast<std::uint8_t>(parameter.defaultValueKind));
+    writer.u8(parameter.defaultValueFlags);
+    writer.u64(parameter.defaultValueBits);
+    writer.text(parameter.defaultValueText);
+}
+
+void abiEncodeMember(ByteWriter &writer, const LibraryMetadataMember &member)
+{
+    writer.u8(member.kind);
+    writer.u8(member.accessibility);
+    writer.u32(member.flags);
+    writer.text(member.declaringTypeKey);
+    writer.text(member.name);
+    writer.text(member.signatureKey);
+    writer.text(member.declaredTypeKey);
+    writer.u8(static_cast<std::uint8_t>(member.declaredOwnership));
+    writer.text(member.cAbiName);
+    writer.text(member.mangledName);
+    writer.u32(static_cast<std::uint32_t>(member.parameters.size()));
+    for (const LibraryMetadataParameter &parameter : member.parameters)
+        abiEncodeParameter(writer, parameter);
+    writer.u8(member.constantKind);
+    writer.u64(member.constantBits);
+    writer.text(member.constantText);
+    writer.text(member.importDllName);
+    writer.text(member.inlineSourceText);
+}
+
+void abiEncodeMembersAndTraitImpls(ByteWriter &writer, const LibraryMetadata &metadata,
+                                   bool includeTraitImpls)
+{
+    writer.u32(static_cast<std::uint32_t>(metadata.members.size()));
+    for (const LibraryMetadataMember &member : metadata.members)
+        abiEncodeMember(writer, member);
+    if (!includeTraitImpls)
+        return;
+    writer.u32(static_cast<std::uint32_t>(metadata.traitImpls.size()));
+    for (const LibraryMetadataTraitImpl &traitImpl : metadata.traitImpls)
+    {
+        writer.text(traitImpl.targetTypeKey);
+        writer.text(traitImpl.traitTypeKey);
+        writer.u32(static_cast<std::uint32_t>(traitImpl.methods.size()));
+        for (const LibraryMetadataMember &member : traitImpl.methods)
+            abiEncodeMember(writer, member);
+    }
+}
+
+void abiEncodeGenericRecords(ByteWriter &writer, const LibraryMetadata &metadata)
+{
+    writer.u32(static_cast<std::uint32_t>(metadata.genericTemplates.size()));
+    for (const LibraryMetadataGenericTemplate &generic : metadata.genericTemplates)
+    {
+        writer.u8(generic.kind);
+        writer.u8(generic.accessibility);
+        writer.text(generic.canonicalKey);
+        writer.text(generic.moduleName);
+        writer.text(generic.namespaceName);
+        writer.text(generic.ownerName);
+        writer.text(generic.name);
+        writeStringVector(writer, generic.parameters);
+        writer.text(generic.sourceText);
+        writeStringVector(writer, generic.dependencies);
+    }
+    writer.u32(static_cast<std::uint32_t>(metadata.genericSpecializations.size()));
+    for (const LibraryMetadataGenericSpecialization &specialization : metadata.genericSpecializations)
+    {
+        writer.u8(specialization.kind);
+        writer.text(specialization.templateKey);
+        writer.text(specialization.specializationKey);
+        writer.text(specialization.specializedName);
+        writeStringVector(writer, specialization.typeArguments);
+    }
+    writeStringVector(writer, metadata.externalTypeKeys);
+}
+
+void abiEncodeDispatchRecords(ByteWriter &writer, const LibraryMetadata &metadata)
+{
+    writer.u32(static_cast<std::uint32_t>(metadata.dispatchTables.size()));
+    for (const LibraryMetadataDispatch &dispatch : metadata.dispatchTables)
+    {
+        writer.text(dispatch.typeKey);
+        writer.u64(dispatch.stableTypeId);
+        writer.text(dispatch.descriptorName);
+        writer.text(dispatch.descriptorAccessorName);
+        writer.text(dispatch.vtableName);
+        writer.text(dispatch.destructionEntryName);
+        writeStringVector(writer, dispatch.slotSignatures);
+        writeStringVector(writer, dispatch.slotCalleeNames);
+        writer.u32(static_cast<std::uint32_t>(dispatch.interfaces.size()));
+        for (const LibraryMetadataDispatchInterface &interfaceRecord : dispatch.interfaces)
+        {
+            writer.text(interfaceRecord.interfaceTypeKey);
+            writer.u64(interfaceRecord.stableInterfaceTypeId);
+            writer.text(interfaceRecord.methodTableName);
+            writeStringVector(writer, interfaceRecord.interfaceSignatures);
+            writeStringVector(writer, interfaceRecord.implementationSignatures);
+            writeStringVector(writer, interfaceRecord.calleeNames);
+        }
+    }
+}
+
+void abiEncodeExportRecords(ByteWriter &writer, const LibraryMetadata &metadata)
+{
+    writer.u32(static_cast<std::uint32_t>(metadata.exports.size()));
+    for (const LibraryMetadataExport &exportRecord : metadata.exports)
+    {
+        writer.text(exportRecord.cAbiName);
+        writer.text(exportRecord.declaringTypeKey);
+        writer.text(exportRecord.returnTypeKey);
+        writeStringVector(writer, exportRecord.parameterTypeKeys);
+        writer.text(exportRecord.nativeMangledName);
+    }
+}
+
+void abiEncodeNamespaceFunctions(ByteWriter &writer, const LibraryMetadata &metadata)
+{
+
+    writer.u32(static_cast<std::uint32_t>(metadata.namespaceFunctions.size()));
+    for (const LibraryMetadataNamespaceFunction &function : metadata.namespaceFunctions)
+    {
+        writer.u8(function.accessibility);
+        writer.u8(function.flags);
+        writer.text(function.namespaceName);
+        writer.text(function.name);
+        writer.text(function.signatureKey);
+        writer.text(function.declaredTypeKey);
+        writer.u8(static_cast<std::uint8_t>(function.declaredOwnership));
+        writer.text(function.mangledName);
+        writer.u32(static_cast<std::uint32_t>(function.parameters.size()));
+        for (const LibraryMetadataParameter &parameter : function.parameters)
+        {
+            writer.text(parameter.name);
+            writer.text(parameter.typeKey);
+            writer.u8(static_cast<std::uint8_t>(parameter.ownership));
+            writer.u8(static_cast<std::uint8_t>(parameter.passKind));
+            writer.u8(parameter.isParameterPack ? 1U : 0U);
+
+            writer.u8(static_cast<std::uint8_t>(parameter.defaultValueKind));
+            writer.u8(parameter.defaultValueFlags);
+            writer.u64(parameter.defaultValueBits);
+            writer.text(parameter.defaultValueText);
+        }
+    }
+}
+
+void abiEncodeNamespaceStates(ByteWriter &writer, const LibraryMetadata &metadata)
+{
+
+    writer.u32(static_cast<std::uint32_t>(metadata.namespaceStates.size()));
+    for (const LibraryMetadataNamespaceState &state : metadata.namespaceStates)
+    {
+        writer.u8(state.accessibility);
+        writer.u8(state.flags);
+        writer.u8(static_cast<std::uint8_t>(state.initializerKind));
+        writer.text(state.namespaceName);
+        writer.text(state.name);
+        writer.text(state.declaredTypeKey);
+        writer.text(state.storageName);
+        writer.text(state.accessorName);
+        writer.u64(state.initializerBits);
+        writer.text(state.initializerText);
+    }
+}
+
 std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
 {
-    LibraryMetadata projected = metadata;
-    projected.producerVersion.clear();
-    const bool includeTraitImpls =
-        projected.formatMinor >= 40 && !projected.traitImpls.empty();
-    // Static closure and private imports describe how to link this particular archive; they do
-    // not change the public NativeSharp ABI published by the module. Project every current
-    // post-1.24 model through 1.24 so the two 1.25 section counts stay outside the public
-    // fingerprint when later additive minors (such as 1.26 record flags) are introduced. Type
-    // flags are part of every projection, so record/derive policy still changes the public
-    // contract while the private binary closure does not leak back into it.
-    projected.binaryDependencies.clear();
-    projected.platformImports.clear();
-    if (projected.formatMinor >= 25) projected.formatMinor = 24;
-    std::vector<std::uint8_t> projection =
-        encodePayload(projected, kLegacyAbiProjectionSourceRevisionByte, includeTraitImpls);
+    // The ABI projection excludes producer identity and private link dependencies.
+    ByteWriter writer;
+    abiEncodePayloadPreamble(writer, metadata);
+    abiEncodeTypes(writer, metadata);
+    abiEncodeMembersAndTraitImpls(writer, metadata, !metadata.traitImpls.empty());
+    abiEncodeGenericRecords(writer, metadata);
+    abiEncodeDispatchRecords(writer, metadata);
+    abiEncodeExportRecords(writer, metadata);
+    abiEncodeNamespaceFunctions(writer, metadata);
+    abiEncodeNamespaceStates(writer, metadata);
+    std::vector<std::uint8_t> projection = writer.bytes();
     appendVariantProjection(metadata, projection);
     appendDropGlueProjection(metadata, projection);
     appendTraitProjection(metadata, projection);
     appendAssociatedItemProjection(metadata, projection);
     appendEscapeProjection(metadata, projection);
     appendErrorTypeProjection(metadata, projection);
-    if (metadata.formatMinor >= 42 && !metadata.cppCRecordCatalog.empty())
+    if (!metadata.cppCRecordCatalog.empty())
     {
         std::vector<std::uint8_t> abiCatalog = metadata.cppCRecordCatalog;
-        if (metadata.formatMinor >= 43 && isCTypeCatalogWithProvenance(abiCatalog))
+        if (isCTypeCatalogWithProvenance(abiCatalog))
         {
             std::vector<CppCRecordSnapshot> records;
             std::vector<CppCEnumSnapshot> enums;
@@ -850,19 +1115,11 @@ bool decodePayloadPreamble(
         error = "truncated metadata identity payload";
         return false;
     }
-    std::uint8_t legacySourceRevision = 0U;
-    if (metadata.formatMinor >= 23 && !reader.u8(legacySourceRevision))
-    {
-        error = "truncated metadata source revision byte";
-        return false;
-    }
-    static_cast<void>(legacySourceRevision);
-    if (metadata.formatMinor >= 8 &&
-        (!reader.u16(metadata.nativeAbiMajor) || !reader.u16(metadata.nativeAbiMinor) ||
+    if (!reader.u16(metadata.nativeAbiMajor) || !reader.u16(metadata.nativeAbiMinor) ||
          !reader.u16(metadata.runtimeAbiMajor) || !reader.u16(metadata.runtimeAbiMinor) ||
          !reader.u16(metadata.manglingAbiVersion) || !reader.u16(metadata.objectAbiVersion) ||
          !reader.u16(metadata.delegateAbiVersion) || !reader.u16(metadata.exceptionAbiVersion) ||
-         !reader.u32(metadata.managedDelegateCellSize)))
+         !reader.u32(metadata.managedDelegateCellSize))
     {
         error = "truncated metadata ABI contract";
         return false;
@@ -872,7 +1129,6 @@ bool decodePayloadPreamble(
 }
 bool decodeTypeIdentity(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataType& type,
     std::string& error)
 {
@@ -889,7 +1145,7 @@ bool decodeTypeIdentity(
         return false;
     }
     type.kind = static_cast<LibraryMetadataTypeKind>(kind);
-    if (metadata.formatMinor >= 2 && !reader.text(type.enumUnderlyingTypeKey))
+    if (!reader.text(type.enumUnderlyingTypeKey))
     {
         error = "truncated or invalid metadata enum underlying type";
         return false;
@@ -899,21 +1155,17 @@ bool decodeTypeIdentity(
 
 bool decodeDelegateType(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataType& type,
     std::string& error)
 {
-    if (metadata.formatMinor >= 5 &&
-        (!reader.u8(type.delegateFlags) ||
-         type.delegateFlags > (metadata.formatMinor >= 20 ? 3U : 1U) ||
+    if (!reader.u8(type.delegateFlags) ||
+         type.delegateFlags > 3U ||
          !reader.text(type.delegateReturnTypeKey) ||
-         !readStringVector(reader, type.delegateParameterTypeKeys)))
+         !readStringVector(reader, type.delegateParameterTypeKeys))
     {
         error = "truncated or invalid metadata delegate signature";
         return false;
     }
-    if (metadata.formatMinor < 31) return true;
-
     std::uint8_t returnDynamicTrait = 0;
     std::uint32_t parameterDynamicTraitCount = 0;
     if (!reader.u8(returnDynamicTrait) || returnDynamicTrait > 1U ||
@@ -941,12 +1193,9 @@ bool decodeDelegateType(
 
 bool decodeVariantCases(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataType& type,
     std::string& error)
 {
-    if (metadata.formatMinor < 27) return true;
-
     std::uint32_t variantCaseCount = 0;
     if (!readCount(reader, variantCaseCount))
     {
@@ -969,12 +1218,9 @@ bool decodeVariantCases(
 
 bool decodeAssociatedItems(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataType& type,
     std::string& error)
 {
-    if (metadata.formatMinor < 29) return true;
-
     std::uint32_t associatedCount = 0;
     if (!readCount(reader, associatedCount))
     {
@@ -1004,19 +1250,16 @@ bool decodeAssociatedItems(
 
 bool decodeTraitType(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataType& type,
     std::string& error)
 {
-    if (metadata.formatMinor >= 28 &&
-        !readStringVector(reader, type.traitMethodSignatures))
+    if (!readStringVector(reader, type.traitMethodSignatures))
     {
         error = "truncated metadata trait method catalogue";
         return false;
     }
-    if (!decodeAssociatedItems(reader, metadata, type, error)) return false;
-    if (metadata.formatMinor >= 31 &&
-        (!reader.u8(type.traitObjectFlags) || !reader.u8(type.traitObjectWordCount)))
+    if (!decodeAssociatedItems(reader, type, error)) return false;
+    if (!reader.u8(type.traitObjectFlags) || !reader.u8(type.traitObjectWordCount))
     {
         error = "truncated metadata trait-object ABI contract";
         return false;
@@ -1026,7 +1269,6 @@ bool decodeTraitType(
 
 bool decodeTypeFields(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataType& type,
     std::string& error)
 {
@@ -1041,15 +1283,14 @@ bool decodeTypeFields(
     {
         LibraryMetadataField field;
         if (!reader.text(field.name) || !reader.text(field.typeKey) ||
-            !readOwnership(reader, metadata.formatMinor, field.ownership) ||
+            !readOwnership(reader, field.ownership) ||
             !reader.u64(field.offset) || !reader.u64(field.size) ||
             !reader.u64(field.alignment) || !reader.u32(field.flags))
         {
             error = "truncated or invalid metadata field record";
             return false;
         }
-        if (metadata.formatMinor >= 18 &&
-            (!reader.u64(field.bitOffset) || !reader.u64(field.bitWidth)))
+        if (!reader.u64(field.bitOffset) || !reader.u64(field.bitWidth))
         {
             error = "truncated or invalid metadata bit-field record";
             return false;
@@ -1061,16 +1302,15 @@ bool decodeTypeFields(
 
 bool decodeType(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataType& type,
     std::string& error)
 {
-    if (!decodeTypeIdentity(reader, metadata, type, error)) return false;
-    if (!decodeDelegateType(reader, metadata, type, error)) return false;
-    if (!decodeVariantCases(reader, metadata, type, error)) return false;
-    if (!decodeTraitType(reader, metadata, type, error)) return false;
-    if (!decodeTypeFields(reader, metadata, type, error)) return false;
-    if (metadata.formatMinor >= 36 && !reader.text(type.dropGlueEntryName))
+    if (!decodeTypeIdentity(reader, type, error)) return false;
+    if (!decodeDelegateType(reader, type, error)) return false;
+    if (!decodeVariantCases(reader, type, error)) return false;
+    if (!decodeTraitType(reader, type, error)) return false;
+    if (!decodeTypeFields(reader, type, error)) return false;
+    if (!reader.text(type.dropGlueEntryName))
     {
         error = "truncated metadata value drop-glue identity";
         return false;
@@ -1094,7 +1334,7 @@ bool decodeTypes(
     for (std::uint32_t index = 0; index < count; ++index)
     {
         LibraryMetadataType type;
-        if (!decodeType(reader, metadata, type, error)) return false;
+        if (!decodeType(reader, type, error)) return false;
         metadata.types.push_back(std::move(type));
     }
     return true;
@@ -1102,17 +1342,15 @@ bool decodeTypes(
 
 bool decodeParameter(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataParameter& parameter,
     std::string& error)
 {
     if (!reader.text(parameter.name) || !reader.text(parameter.typeKey) ||
-        !readOwnership(reader, metadata.formatMinor, parameter.ownership))
+        !readOwnership(reader, parameter.ownership))
     {
         error = "truncated or invalid metadata parameter record";
         return false;
     }
-    if (metadata.formatMinor >= 4)
     {
         std::uint8_t passKind = 0;
         if (!reader.u8(passKind) ||
@@ -1123,7 +1361,6 @@ bool decodeParameter(
         }
         parameter.passKind = static_cast<LibraryMetadataParameterPassKind>(passKind);
     }
-    if (metadata.formatMinor >= 24)
     {
         std::uint8_t parameterPack = 0;
         if (!reader.u8(parameterPack) || parameterPack > 1U)
@@ -1133,7 +1370,6 @@ bool decodeParameter(
         }
         parameter.isParameterPack = parameterPack != 0U;
     }
-    if (metadata.formatMinor >= 31)
     {
         std::uint8_t dynamicTrait = 0;
         if (!reader.u8(dynamicTrait) || dynamicTrait > 1U)
@@ -1143,7 +1379,6 @@ bool decodeParameter(
         }
         parameter.isDynamicTrait = dynamicTrait != 0U;
     }
-    if (metadata.formatMinor >= 3)
     {
         std::uint8_t defaultKind = 0;
         if (!reader.u8(defaultKind) ||
@@ -1161,7 +1396,6 @@ bool decodeParameter(
 
 bool decodeMember(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataMember& member,
     std::string& error)
 {
@@ -1169,7 +1403,7 @@ bool decodeMember(
         !reader.u32(member.flags) || !reader.text(member.declaringTypeKey) ||
         !reader.text(member.name) || !reader.text(member.signatureKey) ||
         !reader.text(member.declaredTypeKey) ||
-        !readOwnership(reader, metadata.formatMinor, member.declaredOwnership) ||
+        !readOwnership(reader, member.declaredOwnership) ||
         !reader.text(member.cAbiName) || !reader.text(member.mangledName))
     {
         error = "truncated or invalid metadata member record";
@@ -1185,13 +1419,12 @@ bool decodeMember(
     for (std::uint32_t parameterIndex = 0; parameterIndex < parameterCount; ++parameterIndex)
     {
         LibraryMetadataParameter parameter;
-        if (!decodeParameter(reader, metadata, parameter, error)) return false;
+        if (!decodeParameter(reader, parameter, error)) return false;
         member.parameters.push_back(std::move(parameter));
     }
     if (!reader.u8(member.constantKind) || !reader.u64(member.constantBits) ||
-        (metadata.formatMinor >= 9 && !reader.text(member.constantText)) ||
-        (metadata.formatMinor >= 10 && !reader.text(member.importDllName)) ||
-        (metadata.formatMinor >= 13 && !reader.text(member.inlineSourceText)))
+        !reader.text(member.constantText) || !reader.text(member.importDllName) ||
+        !reader.text(member.inlineSourceText))
     {
         error = "truncated metadata constant record";
         return false;
@@ -1211,12 +1444,11 @@ bool decodeMembersAndTraitImpls(
     for (std::uint32_t index = 0; index < count; ++index)
     {
         LibraryMetadataMember member;
-        if (!decodeMember(reader, metadata, member, error)) return false;
+        if (!decodeMember(reader, member, error)) return false;
         metadata.members.push_back(std::move(member));
     }
 
-    // NSMETA 1.40 (NS304-T08-F05): external trait conformances.
-    if (metadata.formatMinor >= 40)
+    // External trait conformances.
     {
         if (!readCount(reader, count)) { error = "invalid metadata trait-impl count"; return false; }
         metadata.traitImpls.clear();
@@ -1235,7 +1467,7 @@ bool decodeMembersAndTraitImpls(
             for (std::uint32_t methodIndex = 0; methodIndex < methodCount; ++methodIndex)
             {
                 LibraryMetadataMember member;
-                if (!decodeMember(reader, metadata, member, error)) return false;
+                if (!decodeMember(reader, member, error)) return false;
                 traitImpl.methods.push_back(std::move(member));
             }
             metadata.traitImpls.push_back(std::move(traitImpl));
@@ -1258,12 +1490,12 @@ bool decodeGenericRecords(
     {
         LibraryMetadataGenericTemplate generic;
         if (!reader.u8(generic.kind) ||
-            (metadata.formatMinor >= 7 && !reader.u8(generic.accessibility)) ||
+            !reader.u8(generic.accessibility) ||
             !reader.text(generic.canonicalKey) || !reader.text(generic.moduleName) ||
             !reader.text(generic.namespaceName) || !reader.text(generic.ownerName) || !reader.text(generic.name) ||
             !readStringVector(reader, generic.parameters) ||
-            (metadata.formatMinor >= 7 && !reader.text(generic.sourceText)) ||
-            (metadata.formatMinor >= 11 && !readStringVector(reader, generic.dependencies)))
+            !reader.text(generic.sourceText) ||
+            !readStringVector(reader, generic.dependencies))
         {
             error = "truncated generic-template metadata";
             return false;
@@ -1287,7 +1519,7 @@ bool decodeGenericRecords(
         metadata.genericSpecializations.push_back(std::move(specialization));
     }
 
-    if (metadata.formatMinor >= 12 && !readStringVector(reader, metadata.externalTypeKeys))
+    if (!readStringVector(reader, metadata.externalTypeKeys))
     {
         error = "truncated external-type dependency metadata";
         return false;
@@ -1310,7 +1542,7 @@ bool decodeDispatchAndExportRecords(
         LibraryMetadataDispatch dispatch;
         if (!reader.text(dispatch.typeKey) || !reader.u64(dispatch.stableTypeId) ||
             !reader.text(dispatch.descriptorName) ||
-            (metadata.formatMinor >= 6 && !reader.text(dispatch.descriptorAccessorName)) ||
+            !reader.text(dispatch.descriptorAccessorName) ||
             !reader.text(dispatch.vtableName) ||
             !reader.text(dispatch.destructionEntryName) || !readStringVector(reader, dispatch.slotSignatures) ||
             !readStringVector(reader, dispatch.slotCalleeNames))
@@ -1360,7 +1592,6 @@ bool decodeDispatchAndExportRecords(
 
 bool decodeNamespaceFunctionParameter(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataParameter& parameter,
     std::string& error)
 {
@@ -1374,10 +1605,8 @@ bool decodeNamespaceFunctionParameter(
         parameterOwnership > static_cast<std::uint8_t>(LibraryMetadataOwnershipKind::Borrowed) ||
         !reader.u8(passKind) ||
         passKind > static_cast<std::uint8_t>(LibraryMetadataParameterPassKind::In) ||
-        (metadata.formatMinor >= 24 &&
-         (!reader.u8(parameterPack) || parameterPack > 1U)) ||
-        (metadata.formatMinor >= 31 &&
-         (!reader.u8(dynamicTrait) || dynamicTrait > 1U)) ||
+        !reader.u8(parameterPack) || parameterPack > 1U ||
+        !reader.u8(dynamicTrait) || dynamicTrait > 1U ||
         !reader.u8(defaultKind) ||
         defaultKind > static_cast<std::uint8_t>(LibraryMetadataDefaultValueKind::String) ||
         !reader.u8(parameter.defaultValueFlags) || parameter.defaultValueFlags > 1U ||
@@ -1396,14 +1625,12 @@ bool decodeNamespaceFunctionParameter(
 
 bool decodeNamespaceFunction(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataNamespaceFunction& function,
     std::string& error)
 {
     if (!reader.u8(function.accessibility) || !reader.u8(function.flags) ||
         function.accessibility > 1U ||
-        function.flags > (metadata.formatMinor >= 32 ? 63U :
-                              (metadata.formatMinor >= 31 ? 31U : 15U)) ||
+        function.flags > 63U ||
         !reader.text(function.namespaceName) || !reader.text(function.name) ||
         !reader.text(function.signatureKey) || !reader.text(function.declaredTypeKey))
     {
@@ -1431,7 +1658,7 @@ bool decodeNamespaceFunction(
          ++parameterIndex)
     {
         LibraryMetadataParameter parameter;
-        if (!decodeNamespaceFunctionParameter(reader, metadata, parameter, error)) return false;
+        if (!decodeNamespaceFunctionParameter(reader, parameter, error)) return false;
         function.parameters.push_back(std::move(parameter));
     }
     return true;
@@ -1442,7 +1669,6 @@ bool decodeNamespaceFunctions(
     LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor >= 21)
     {
         std::uint32_t count = 0;
         if (!readCount(reader, count))
@@ -1454,7 +1680,7 @@ bool decodeNamespaceFunctions(
         for (std::uint32_t index = 0; index < count; ++index)
         {
             LibraryMetadataNamespaceFunction function;
-            if (!decodeNamespaceFunction(reader, metadata, function, error)) return false;
+            if (!decodeNamespaceFunction(reader, function, error)) return false;
             metadata.namespaceFunctions.push_back(std::move(function));
         }
     }
@@ -1469,7 +1695,6 @@ bool decodeNamespaceStates(
     std::string& error)
 {
     std::uint32_t count = 0;
-    if (metadata.formatMinor >= 22)
     {
         if (!readCount(reader, count))
         {
@@ -1483,7 +1708,7 @@ bool decodeNamespaceStates(
             std::uint8_t initializerKind = 0;
             if (!reader.u8(state.accessibility) || state.accessibility > 1U ||
                 !reader.u8(state.flags) ||
-                state.flags > (metadata.formatMinor >= 31 ? 3U : 1U) ||
+                state.flags > 3U ||
                 !reader.u8(initializerKind) ||
                 initializerKind > static_cast<std::uint8_t>(
                     LibraryMetadataNamespaceStateInitializerKind::Null) ||
@@ -1513,7 +1738,6 @@ bool decodeBinaryClosure(
     std::string& error)
 {
     std::uint32_t count = 0;
-    if (metadata.formatMinor >= 25)
     {
         if (!readCount(reader, count))
         {
@@ -1749,7 +1973,6 @@ bool decodeLifetimeContracts(
     LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 34) return true;
     if (!decodeTypeLifetimeCatalogue(reader, metadata, error)) return false;
     if (!decodeMemberLifetimeCatalogue(reader, metadata, error)) return false;
     return decodeNamespaceFunctionLifetimeCatalogue(reader, metadata, error);
@@ -1775,7 +1998,7 @@ bool decodeEscapeSummary(
     {
         std::uint8_t raw = 0;
         if (!reader.u8(raw) ||
-            raw > static_cast<std::uint8_t>(LibraryMetadataEscapeClass::Unknown))
+            raw > static_cast<std::uint8_t>(LibraryMetadataEscapeClass::ForeignImport))
         {
             error = "truncated or invalid metadata " + std::string(kind) +
                 " escape summary";
@@ -1813,7 +2036,6 @@ bool decodeEscapeContracts(
     LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 35) return true;
     if (!decodeEscapeCatalogue(
             reader,
             metadata.members,
@@ -1836,7 +2058,6 @@ bool decodeErrorContracts(
     LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor >= 37)
     {
         std::uint32_t catalogueCount = 0;
         if (!readCount(reader, catalogueCount) || catalogueCount != metadata.types.size())
@@ -2082,9 +2303,70 @@ bool decodeGenericContracts(
     LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 38) return true;
     if (!decodeGenericTemplateContracts(reader, metadata, error)) return false;
     return decodeFfiMemberContracts(reader, metadata, error);
+}
+
+bool decodeTemplateSourceImports(ByteReader& reader, LibraryMetadata& metadata, std::string& error)
+{
+    std::uint32_t count = 0;
+    if (!readCount(reader, count) || count != metadata.genericTemplates.size())
+    {
+        error = "invalid metadata template source-import catalogue count";
+        return false;
+    }
+    for (auto& generic : metadata.genericTemplates)
+    {
+        std::uint32_t directives = 0;
+        if (!readCount(reader, directives))
+        {
+            error = "invalid metadata template source-import count";
+            return false;
+        }
+        generic.sourceImports.reserve(directives);
+        for (std::uint32_t index = 0; index < directives; ++index)
+        {
+            LibraryMetadataGenericTemplate::SourceImport directive;
+            std::uint8_t reexport = 0;
+            if (!reader.text(directive.namespaceName) || !reader.text(directive.alias) ||
+                !reader.text(directive.target) || !reader.u8(directive.importKind) ||
+                !reader.u8(reexport) || directive.target.empty() || directive.importKind > 5U || reexport > 1U)
+            {
+                error = "truncated or invalid metadata template source-import";
+                return false;
+            }
+            directive.reexport = reexport != 0U;
+            generic.sourceImports.push_back(std::move(directive));
+        }
+    }
+    return true;
+}
+
+// EN: The C/C++ interoperability block that encodeCppInteropBlock writes last; its presence is the content that
+//     remains after the other optional blocks.
+// ES: El bloque de interoperabilidad C/C++ que encodeCppInteropBlock escribe al final; su presencia es el
+//     contenido que queda tras los demas bloques opcionales.
+bool decodeCppInteropBlock(ByteReader& reader, LibraryMetadata& metadata, std::string& error)
+{
+    std::uint32_t count = 0;
+    if (!readCount(reader, count)) { error = "invalid C/C++ binary-dependency count"; return false; }
+    metadata.cppBinaryDependencies.clear();
+    metadata.cppBinaryDependencies.reserve(count);
+    for (std::uint32_t index = 0; index < count; ++index)
+    {
+        LibraryMetadataCppBinaryDependency dependency;
+        if (!reader.text(dependency.libraryFileName) || !reader.u64(dependency.librarySize) ||
+            !reader.raw(dependency.libraryDigest) || !reader.text(dependency.runtimeFileName) ||
+            !reader.u64(dependency.runtimeSize) || !reader.raw(dependency.runtimeDigest))
+        { error = "truncated C/C++ binary-dependency metadata"; return false; }
+        metadata.cppBinaryDependencies.push_back(std::move(dependency));
+    }
+    std::uint64_t size = 0;
+    if (!reader.u64(size) || size > kMaximumPayloadSize || size > reader.remaining())
+    { error = "invalid C record catalogue size"; return false; }
+    metadata.cppCRecordCatalog.resize(static_cast<std::size_t>(size));
+    if (!reader.raw(metadata.cppCRecordCatalog)) { error = "truncated C record catalogue"; return false; }
+    return decodePointeeQualifierContracts(reader, metadata, error);
 }
 
 bool decodePayload(
@@ -2105,7 +2387,6 @@ bool decodePayload(
     if (!decodeEscapeContracts(reader, metadata, error)) return false;
     if (!decodeErrorContracts(reader, metadata, error)) return false;
     if (!decodeGenericContracts(reader, metadata, error)) return false;
-    if (metadata.formatMinor >= 39)
     {
         if (!reader.u32(metadata.languageFeatureFlags) ||
             (metadata.languageFeatureFlags & ~kMetadataLanguageFeatureMask) != 0U)
@@ -2114,32 +2395,67 @@ bool decodePayload(
             return false;
         }
     }
-    if (metadata.formatMinor >= 41)
+    if (!decodeTemplateSourceImports(reader, metadata, error)) return false;
     {
         std::uint32_t count = 0;
-        if (!readCount(reader, count)) { error = "invalid C/C++ binary-dependency count"; return false; }
-        metadata.cppBinaryDependencies.clear();
-        metadata.cppBinaryDependencies.reserve(count);
-        for (std::uint32_t index = 0; index < count; ++index)
+        if (!readCount(reader, count) || count != metadata.genericTemplates.size())
         {
-            LibraryMetadataCppBinaryDependency dependency;
-            if (!reader.text(dependency.libraryFileName) || !reader.u64(dependency.librarySize) ||
-                !reader.raw(dependency.libraryDigest) || !reader.text(dependency.runtimeFileName) ||
-                !reader.u64(dependency.runtimeSize) || !reader.raw(dependency.runtimeDigest))
-            { error = "truncated C/C++ binary-dependency metadata"; return false; }
-            metadata.cppBinaryDependencies.push_back(std::move(dependency));
+            error = "invalid metadata template receiver-candidate catalogue count";
+            return false;
+        }
+        for (auto& generic : metadata.genericTemplates)
+        {
+            if (!readStringVector(reader, generic.candidateReceiverTypeKeys))
+            {
+                error = "truncated metadata template receiver candidates";
+                return false;
+            }
+        }
+        if (!readStringVector(reader, metadata.sourceNamespaces))
+        {
+            error = "truncated metadata source namespaces";
+            return false;
         }
     }
-    if (metadata.formatMinor >= 42)
+    if (!readStringVector(reader, metadata.trivialCleanupRootTypeKeys))
     {
-        std::uint64_t size = 0;
-        if (!reader.u64(size) || size > kMaximumPayloadSize || size > reader.remaining())
-        { error = "invalid C record catalogue size"; return false; }
-        metadata.cppCRecordCatalog.resize(static_cast<std::size_t>(size));
-        if (!reader.raw(metadata.cppCRecordCatalog))
-        { error = "truncated C record catalogue"; return false; }
+        error = "truncated metadata trivial root cleanup contracts";
+        return false;
     }
-    if (metadata.formatMinor >= 49 && !decodePointeeQualifierContracts(reader, metadata, error)) return false;
+    if (!reader.atEnd() && !readStringVector(reader, metadata.nonEscapingLifecycleTypeKeys))
+    {
+        error = "truncated metadata lifecycle non-escape contracts";
+        return false;
+    }
+    if (!reader.atEnd())
+    {
+        std::uint32_t count = 0;
+        if (!readCount(reader, count) || count != metadata.members.size())
+        { error = "invalid metadata pointer-output origin catalogue count"; return false; }
+        for (auto& member : metadata.members)
+        {
+            std::uint32_t outputs = 0;
+            if (!readCount(reader, outputs) || (outputs != 0 && outputs != member.parameters.size()))
+            { error = "invalid metadata pointer-output parameter count"; return false; }
+            member.pointerOutputObjectOrigins.resize(outputs);
+            for (auto& origins : member.pointerOutputObjectOrigins)
+            {
+                std::uint32_t originCount = 0;
+                if (!readCount(reader, originCount) || originCount > member.parameters.size())
+                { error = "invalid metadata pointer-output origin count"; return false; }
+                origins.resize(originCount);
+                for (auto& origin : origins)
+                    if (!reader.u32(origin) || origin >= member.parameters.size())
+                    { error = "invalid metadata pointer-output origin"; return false; }
+            }
+        }
+    }
+    if (!reader.atEnd() && !readStringVector(reader, metadata.identitySafeLifecycleTypeKeys))
+    {
+        error = "invalid metadata receiver-identity lifecycle contracts";
+        return false;
+    }
+    if (!reader.atEnd() && !decodeCppInteropBlock(reader, metadata, error)) return false;
     if (!reader.atEnd())
     {
         error = "metadata payload has trailing bytes";

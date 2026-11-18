@@ -1,0 +1,1 @@
+int Main() { BinaryNominalPrivate.Record value = default(BinaryNominalPrivate.Record); BinaryNominalPrivate.Hidden item = value.Item; return 0; }

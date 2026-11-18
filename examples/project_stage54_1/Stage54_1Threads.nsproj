@@ -2,7 +2,7 @@
   <PropertyGroup><Name>Stage54_1Threads</Name></PropertyGroup>
   <ItemGroup>
     <Compile Include="**/*.ns" />
-    <ProjectReference Include="../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
-    <ProjectReference Include="../../lib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj" />
+    <LibraryReference Include="NativeSharpCore.lib" Metadata="NativeSharpCore.nsmeta" />
+    <LibraryReference Include="NativeSharpCoreThreading.lib" Metadata="NativeSharpCoreThreading.nsmeta" />
   </ItemGroup>
 </Project>

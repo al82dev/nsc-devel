@@ -35,7 +35,7 @@ An owning method value stores the receiver's dynamic destruction entry in the co
 - `src/Frontend/ProjectOopMirModel.cpp`: resolves direct, virtual, and interface method-value targets.
 - `src/LLVM/ProjectOopLlvmLowerer.cpp`: materializes native bound-method cells and resolves dynamic targets at binding time.
 - `src/Language/CallableSemantics.cpp`: publishes the ABI 1.1 32-byte layout.
-- `tests/unit/NativeSharp3T08MethodValueTests.cpp`: adds the directed feature gate.
+- `tests/unit/NativeSharpT08MethodValueTests.cpp`: adds the directed feature gate.
 - `tests/unit/NativeSharp3T08CallableTests.cpp` and `tests/unit/Stage42DelegatesEventsTests.cpp`: align earlier expectations with the completed contract.
 
 ## Directed evidence

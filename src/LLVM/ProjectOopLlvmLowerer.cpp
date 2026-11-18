@@ -29,7 +29,7 @@
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/Language/AbiSemantics.h"
-#include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Language/LanguageSurface.h"
 #include "nativesharp/Language/MemoryModel.h"
 #include "nativesharp/Source/SourceManager.h"
 

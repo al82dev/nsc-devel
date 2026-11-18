@@ -14,6 +14,12 @@
 #include <system_error>
 #include <vector>
 
+#if defined(_WIN32)
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
 namespace nativesharp::driver
 {
 namespace
@@ -149,6 +155,19 @@ bool fileIdentity(const std::filesystem::path &path, std::string &digest, std::u
     return true;
 }
 
+// EN: LKF-256/257: auxiliary names carry the process id, so two lifecycle commands on one prefix never
+//     share a temporary, backup or retirement name.
+// ES: LKF-256/257: los nombres auxiliares llevan el id del proceso, así dos comandos de ciclo de vida sobre
+//     un mismo prefijo nunca comparten nombre temporal, de respaldo o de retiro.
+std::string lifecycleProcessSuffix()
+{
+#if defined(_WIN32)
+    return std::to_string(static_cast<unsigned long>(_getpid()));
+#else
+    return std::to_string(static_cast<unsigned long>(getpid()));
+#endif
+}
+
 bool isBuildIdentityPath(std::string_view path)
 {
     return path == "bin/nsc.exe" || path == "bin/nsc.pdb";
@@ -259,8 +278,8 @@ bool writeTextAtomically(const std::filesystem::path &destination, std::string_v
             return false;
         }
     }
-    const std::filesystem::path temporary = destination.string() + ".tmp";
-    const std::filesystem::path backup = destination.string() + ".previous";
+    const std::filesystem::path temporary = destination.string() + ".tmp-" + lifecycleProcessSuffix();
+    const std::filesystem::path backup = destination.string() + ".previous-" + lifecycleProcessSuffix();
     if (!writeLifecycleTemporary(temporary, text, error)) return false;
     bool hadDestination = false;
     if (!preserveLifecycleDestination(
@@ -666,13 +685,44 @@ bool removeInstallationTargets(
     const std::vector<RemovalTarget>& removals,
     std::string& error)
 {
+    // EN: LKF-257: retirement first parks every target under a per-process name. If one cannot be parked,
+    //     the parked ones go back and nothing has been removed; only when all are parked are they deleted.
+    // ES: LKF-257: el retiro primero aparta cada destino bajo un nombre por proceso. Si uno no se puede
+    //     apartar, los apartados vuelven y no se ha eliminado nada; solo con todos apartados se eliminan.
+    const std::string parkedSuffix = ".nsc-retire-" + lifecycleProcessSuffix();
+    std::vector<std::pair<std::filesystem::path, std::filesystem::path>> parked;
+    parked.reserve(removals.size());
     for (const RemovalTarget& removal : removals)
     {
+        std::filesystem::path parkedPath = removal.path;
+        parkedPath += parkedSuffix;
         std::error_code filesystemError;
-        if (!std::filesystem::remove(removal.path, filesystemError) || filesystemError)
+        std::filesystem::rename(removal.path, parkedPath, filesystemError);
+        if (!filesystemError)
         {
-            error = "cannot remove installed file '" + removal.path.string() +
-                "': " + filesystemError.message();
+            parked.emplace_back(removal.path, std::move(parkedPath));
+            continue;
+        }
+        const std::string parkMessage = filesystemError.message();
+        bool restored = true;
+        for (auto entry = parked.rbegin(); entry != parked.rend(); ++entry)
+        {
+            std::error_code restoreError;
+            std::filesystem::rename(entry->second, entry->first, restoreError);
+            if (restoreError) restored = false;
+        }
+        error = "cannot remove installed file '" + removal.path.string() + "': " + parkMessage +
+            (restored ? std::string("; no installed file was removed")
+                      : "; some installed files remain under the '" + parkedSuffix + "' suffix");
+        return false;
+    }
+    for (const auto& [original, parkedPath] : parked)
+    {
+        std::error_code filesystemError;
+        if (!std::filesystem::remove(parkedPath, filesystemError) || filesystemError)
+        {
+            error = "installed file '" + original.string() + "' was retired but '" + parkedPath.string() +
+                "' cannot be deleted: " + filesystemError.message();
             return false;
         }
     }

@@ -52,8 +52,8 @@ int main()
     std::filesystem::remove_all(root, filesystemError);
     std::filesystem::create_directories(root, filesystemError);
     const std::string threadingProject =
-        (std::filesystem::path(NSC_SOURCE_DIR) /
-            "lib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj").generic_string();
+        (std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) /
+            "stdlib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj").generic_string();
     writeFile(root / "PerWorkerQueuesItem374.nsproj",
         "<Project><PropertyGroup><Name>PerWorkerQueuesItem374</Name></PropertyGroup><ItemGroup>"
         "<Compile Include=\"Main.ns\"/><ProjectReference Include=\"" + threadingProject +
@@ -98,9 +98,15 @@ public class Program
                      root / "PerWorkerQueuesO0.exe", "-O0", diagnostic),
         "directed per-worker FIFO queues execute independently at O0 (" + diagnostic + ")");
     diagnostic.clear();
+    tests.expect(compileAndRun(root / "PerWorkerQueuesItem374.nsproj", root / "PerWorkerQueuesO1.exe", "-O1", diagnostic),
+        "directed per-worker FIFO queues execute independently at O1 (" + diagnostic + ")");
+    diagnostic.clear();
     tests.expect(compileAndRun(root / "PerWorkerQueuesItem374.nsproj",
                      root / "PerWorkerQueuesO2.exe", "-O2", diagnostic),
         "directed per-worker FIFO queues execute independently at O2 (" + diagnostic + ")");
+    diagnostic.clear();
+    tests.expect(compileAndRun(root / "PerWorkerQueuesItem374.nsproj", root / "PerWorkerQueuesO3.exe", "-O3", diagnostic),
+        "directed per-worker FIFO queues execute independently at O3 (" + diagnostic + ")");
     const int result = tests.result();
     if (result == 0) std::filesystem::remove_all(root, filesystemError);
     return result;

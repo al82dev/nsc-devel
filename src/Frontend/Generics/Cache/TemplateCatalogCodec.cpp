@@ -13,15 +13,60 @@
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 namespace nativesharp::frontend::internal
 {
+// Cache entries can contain older numbered syntax markers. Normalize only the known marker
+// tokens, at token boundaries, so arbitrary auxiliary text is preserved unchanged.
+static void normalizeSyntaxMarkers(std::string& text, ast::AstNodeKind kind)
+{
+    const bool traitNode = kind == ast::AstNodeKind::InterfaceDeclaration ||
+        kind == ast::AstNodeKind::ClassDeclaration;
+    const bool extensionNode = kind == ast::AstNodeKind::FunctionDeclaration ||
+        kind == ast::AstNodeKind::MethodDeclaration;
+    if (!traitNode && !extensionNode) return;
+    std::size_t cursor = 0;
+    while ((cursor = text.find("ns", cursor)) != std::string::npos)
+    {
+        if (cursor != 0 && text[cursor - 1] != ':' && text[cursor - 1] != ';' &&
+            text[cursor - 1] != '|')
+        {
+            cursor += 2;
+            continue;
+        }
+        std::size_t digitEnd = cursor + 2;
+        while (digitEnd < text.size() && text[digitEnd] >= '0' && text[digitEnd] <= '9')
+            ++digitEnd;
+        if (digitEnd == cursor + 2 || digitEnd == text.size() || text[digitEnd] != '-')
+        {
+            cursor += 2;
+            continue;
+        }
+        const std::size_t tokenStart = digitEnd + 1;
+        const std::size_t tokenEnd = text.find_first_of(";|", tokenStart);
+        const std::string_view token(text.data() + tokenStart,
+            (tokenEnd == std::string::npos ? text.size() : tokenEnd) - tokenStart);
+        if ((traitNode && (token == "trait" || token == "trait-impl")) ||
+            (extensionNode && (token == "extension" || token == "extension-static")))
+        {
+            text.replace(cursor, tokenStart - cursor, "nsc-");
+            cursor += 4;
+        }
+        else
+        {
+            cursor += 2;
+        }
+    }
+}
+
 // NSC305-C01. SHA-256 of a template's source text (reconstructed from the lexer tokens), the C1
 // cache key input that invalidates on any source change (including the body).
 std::string computeTemplateSourceFingerprint(
@@ -506,7 +551,45 @@ static bool deserializeTypeSyntaxConstExpression(
     return true;
 }
 
+// EN: LKF-354: the readers recurse once per nested node or type. A payload nested deeper than the bound is
+//     treated as a cache miss (the template is parsed again) instead of growing the stack without limit.
+// ES: LKF-354: los lectores recursan una vez por nodo o tipo anidado. Un payload más profundo que el límite
+//     se trata como fallo de caché (la plantilla se vuelve a analizar) en vez de crecer la pila sin límite.
+constexpr std::size_t kMaximumCatalogReadDepth = 4096;
+thread_local std::size_t catalogReadDepth = 0;
+
+template <typename Read>
+auto withCatalogReadDepth(Read read) -> decltype(read())
+{
+    if (catalogReadDepth >= kMaximumCatalogReadDepth) return nullptr;
+    ++catalogReadDepth;
+    try
+    {
+        auto result = read();
+        --catalogReadDepth;
+        return result;
+    }
+    catch (...)
+    {
+        --catalogReadDepth;
+        throw;
+    }
+}
+
+static ast::TypeSyntax* deserializeTypeSyntaxTreeBody(
+    ast::AstArena& arena,
+    CachePayloadReader& reader,
+    std::optional<FileId> relocatedFileId);
+
 [[maybe_unused]] static ast::TypeSyntax* deserializeTypeSyntaxTree(
+    ast::AstArena& arena,
+    CachePayloadReader& reader,
+    std::optional<FileId> relocatedFileId)
+{
+    return withCatalogReadDepth([&] { return deserializeTypeSyntaxTreeBody(arena, reader, relocatedFileId); });
+}
+
+static ast::TypeSyntax* deserializeTypeSyntaxTreeBody(
     ast::AstArena& arena,
     CachePayloadReader& reader,
     std::optional<FileId> relocatedFileId)
@@ -615,6 +698,7 @@ static bool deserializeTypeSyntaxConstExpression(
         !reader.u32(tokenKind) || !reader.u32(modifierCount))
         return nullptr;
     node->setText(std::move(text));
+    normalizeSyntaxMarkers(auxiliaryText, node->kind());
     node->setAuxiliaryText(std::move(auxiliaryText));
     node->setArgumentName(std::move(argumentName));
     node->setAllocatorFailureProfile(std::move(allocatorFailureProfile));
@@ -694,13 +778,24 @@ void writeNodeHead(std::string& out, const ast::AstNode& node, SyntaxSteps& step
 //     before), then the declaration metadata.
 // ES: La cantidad de type syntaxes adicionales del nodo, luego cada una en orden (una entrada nula no escribe nada,
 //     como antes) y luego la metadata de declaración.
+// EN: LKF-353: a null step writes nothing, so a counted list counts only its non-null entries; the reader
+//     then reads exactly the entries that were written.
+// ES: LKF-353: un paso nulo no escribe nada, así que una lista contada cuenta solo sus entradas no nulas; el
+//     lector lee entonces exactamente las entradas escritas.
+template <typename Entry>
+std::uint32_t nonNullCount(const std::vector<Entry*>& entries)
+{
+    return static_cast<std::uint32_t>(std::count_if(entries.begin(), entries.end(),
+                                                    [](const Entry* entry) { return entry != nullptr; }));
+}
+
 void writeNodeTypeList(std::string& out, const ast::AstNode& node, SyntaxSteps& steps)
 {
     const auto& syntaxes = node.typeSyntaxes();
-    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(syntaxes.size()));
+    internal::CachePayloadWriter::u32(out, nonNullCount(syntaxes));
     pushSyntaxStep(steps, SyntaxStep::Kind::NodeMetadata, &node);
     for (auto syntax = syntaxes.rbegin(); syntax != syntaxes.rend(); ++syntax)
-        pushSyntaxStep(steps, SyntaxStep::Kind::Type, nullptr, *syntax);
+        if (*syntax != nullptr) pushSyntaxStep(steps, SyntaxStep::Kind::Type, nullptr, *syntax);
 }
 
 // Serializes declaration metadata that is neither a child node nor a TypeSyntax slot. These lists
@@ -842,13 +937,13 @@ void writeNodeConstraintTypes(
     SyntaxSteps& steps)
 {
     const ast::GenericConstraintClause& clause = node.genericConstraints()[index];
-    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(clause.typeConstraints.size()));
+    internal::CachePayloadWriter::u32(out, nonNullCount(clause.typeConstraints));
     pushSyntaxStep(steps, SyntaxStep::Kind::NodeConstraintTail, &node, nullptr, index);
     for (auto constraint = clause.typeConstraints.rbegin();
          constraint != clause.typeConstraints.rend();
          ++constraint)
     {
-        pushSyntaxStep(steps, SyntaxStep::Kind::Type, nullptr, *constraint);
+        if (*constraint != nullptr) pushSyntaxStep(steps, SyntaxStep::Kind::Type, nullptr, *constraint);
     }
 }
 
@@ -890,9 +985,9 @@ void writeNodeOperands(std::string& out, const ast::AstNode& node, SyntaxSteps& 
 void writeNodeChildren(std::string& out, const ast::AstNode& node, SyntaxSteps& steps)
 {
     const std::vector<ast::AstNode*>& children = node.children();
-    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(children.size()));
+    internal::CachePayloadWriter::u32(out, nonNullCount(children));
     for (auto child = children.rbegin(); child != children.rend(); ++child)
-        pushSyntaxStep(steps, SyntaxStep::Kind::Node, *child);
+        if (*child != nullptr) pushSyntaxStep(steps, SyntaxStep::Kind::Node, *child);
 }
 
 // EN: Type fields up to the type arguments: the scalars and the argument count, then each argument.
@@ -901,10 +996,10 @@ void writeTypeHead(std::string& out, const ast::TypeSyntax& type, SyntaxSteps& s
 {
     out += serializeTypeSyntaxScalars(type);
     const auto& arguments = type.typeArguments();
-    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(arguments.size()));
+    internal::CachePayloadWriter::u32(out, nonNullCount(arguments));
     pushSyntaxStep(steps, SyntaxStep::Kind::TypeFunction, nullptr, &type);
     for (auto argument = arguments.rbegin(); argument != arguments.rend(); ++argument)
-        pushSyntaxStep(steps, SyntaxStep::Kind::Type, nullptr, *argument);
+        if (*argument != nullptr) pushSyntaxStep(steps, SyntaxStep::Kind::Type, nullptr, *argument);
 }
 
 // EN: The presence flags of the function return and error types, then both trees, then the modifiers.
@@ -1124,7 +1219,22 @@ static bool deserializeAstNodeDeclarationMetadata(
 }
 
 // NSC305-C01. Inverse of serializeAstNodeTree (allocates the tree into `arena`).
+static ast::AstNode* deserializeAstNodeTreeBody(
+    ast::AstArena& arena,
+    CachePayloadReader& reader,
+    std::optional<FileId> relocatedFileId);
+
+// LKF-354: every nested node read goes through the depth bound.
+// LKF-354: toda lectura de nodo anidado pasa por el límite de profundidad.
 static ast::AstNode* deserializeAstNodeTreeImpl(
+    ast::AstArena& arena,
+    CachePayloadReader& reader,
+    std::optional<FileId> relocatedFileId)
+{
+    return withCatalogReadDepth([&] { return deserializeAstNodeTreeBody(arena, reader, relocatedFileId); });
+}
+
+static ast::AstNode* deserializeAstNodeTreeBody(
     ast::AstArena& arena,
     CachePayloadReader& reader,
     std::optional<FileId> relocatedFileId)
@@ -1335,7 +1445,9 @@ ast::AstNode* deserializeAstNodeTree(
     CachePayloadReader reader(bytes);
     if (!readTemplateRecord(reader, record)) return false;
     record.syntax = deserializeAstNodeTree(arena, reader);
-    return record.syntax != nullptr;
+    // LKF-354: an entry is restored only when its payload was consumed entirely.
+    // LKF-354: una entrada se restaura solo si su payload se consumió por completo.
+    return record.syntax != nullptr && reader.remaining().empty();
 }
 
 // NSC305-C04. Interface/implementation fingerprints for the MIR cache. A private body change updates

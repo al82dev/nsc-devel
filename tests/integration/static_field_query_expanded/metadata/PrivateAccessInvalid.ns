@@ -1,0 +1,5 @@
+int Main()
+{
+    owned MetadataFields.Record value = new MetadataFields.Record();
+    return value.Hidden;
+}

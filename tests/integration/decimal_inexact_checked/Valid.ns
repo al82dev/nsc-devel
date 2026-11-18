@@ -1,0 +1,26 @@
+noinline decimal Add(decimal a, decimal b) { return checked(a + b); }
+noinline decimal Sub(decimal a, decimal b) { return a - b; }
+int Main() { unsafe("inspect exact decimal controls") {
+  i128 bits = ((i128)1 << 96) - (i128)1;
+  decimal max = *((decimal*)&bits);
+  decimal a = Add(max, 0.0m);
+  decimal b = Sub(max, 1.0m);
+  decimal c = Add(1.5m, 0.2m);
+  decimal d = Add(max, 0.00m);
+  i128 negativeBits = bits | ((i128)1 << 127);
+  decimal negative = *((decimal*)&negativeBits);
+  decimal e = Add(max, negative);
+  i128 scaleOne = (i128)1 << 96;
+  i128 leftBits = bits / (i128)10 + (i128)1;
+  i128 rightBits = bits | scaleOne | ((i128)1 << 127);
+  decimal left = *((decimal*)&leftBits);
+  decimal right = *((decimal*)&rightBits);
+  decimal f = Add(left, right);
+  if (*((i128*)&a) != bits) return 1;
+  if (*((i128*)&b) != bits - (i128)1) return 2;
+  if (c != 1.7m) return 3;
+  if (*((i128*)&d) != bits) return 4;
+  if (*((i128*)&e) != (i128)0) return 5;
+  if (*((i128*)&f) != ((i128)5 | scaleOne)) return 6;
+  return 0;
+} }

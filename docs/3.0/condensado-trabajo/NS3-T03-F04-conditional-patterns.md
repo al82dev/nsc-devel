@@ -1,8 +1,10 @@
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
 # NS3-T03-F04 — Conditional patterns
 
 ## Estado
 
-`TERMINADA`. `if let`, `while let` y `let ... else` son productivos en edición 3, bajan al mismo
+`TERMINADA`. `if let`, `while let` y `let ... else` son productivos en NativeSharp, bajan al mismo
 árbol de patterns que `match` y llegan a O0/NSLink.
 
 ## Qué se hizo
@@ -29,7 +31,7 @@
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T03ConditionalPatternTests.cpp`: ejecución O0/NSLink, evaluación única,
+- `tests/unit/NativeSharpT03ConditionalPatternTests.cpp`: ejecución O0/NSLink, evaluación única,
   loops, nesting, alcance, borrow `ref`, edición, divergencia y equivalencia MIR con `match`.
 - `docs/3.0/language/conditional-patterns.md`: contrato bilingüe de sintaxis, flujo, alcance e
   inicialización.

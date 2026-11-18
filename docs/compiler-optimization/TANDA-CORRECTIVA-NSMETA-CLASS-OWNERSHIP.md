@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Tanda correctiva: propiedad de clases en NSMETA 1.36
 
 ## Problema
@@ -15,14 +17,14 @@ a `LibraryMetadataTypeKind::Struct`.
 
 - `src/Interop/LibraryMetadata.cpp` limita la obligación de drop-glue de valor a structs con
   almacenamiento `owned` directo.
-- `tests/unit/NativeSharp3T06DropGlueTests.cpp` añade una clase pública que posee un recurso y
+- `tests/unit/NativeSharpT06DropGlueTests.cpp` añade una clase pública que posee un recurso y
   comprueba que su NSMETA es válido sin publicar drop-glue de valor.
 - Se conserva intacta la regla estricta para structs propietarios y la compatibilidad NSMETA 1.35.
 
 ## Archivos
 
 - Modificado: `src/Interop/LibraryMetadata.cpp`.
-- Modificado: `tests/unit/NativeSharp3T06DropGlueTests.cpp`.
+- Modificado: `tests/unit/NativeSharpT06DropGlueTests.cpp`.
 - Nuevo: este documento de trazabilidad.
 
 ## Mejora

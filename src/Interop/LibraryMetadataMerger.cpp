@@ -93,14 +93,16 @@ bool equalMember(const LibraryMetadataMember& left, const LibraryMetadataMember&
                left.constantKind, left.constantBits, left.constantText,
                left.importDllName, left.inlineSourceText, left.returnLifetimeName,
                left.lifetimeParameters, left.lifetimeOutlivesConstraints,
-               left.parameterEscapeSummary, left.ffiUnwindPolicy, left.declaredPointeeQualifiers) ==
+               left.parameterEscapeSummary, left.pointerOutputObjectOrigins, left.ffiUnwindPolicy,
+               left.declaredPointeeQualifiers) ==
             std::tie(right.kind, right.accessibility, right.flags, right.declaringTypeKey,
                 right.name, right.signatureKey, right.declaredTypeKey, right.declaredErrorTypeKey,
                 right.declaredOwnership, right.cAbiName, right.mangledName,
                 right.constantKind, right.constantBits, right.constantText,
                 right.importDllName, right.inlineSourceText, right.returnLifetimeName,
                 right.lifetimeParameters, right.lifetimeOutlivesConstraints,
-                right.parameterEscapeSummary, right.ffiUnwindPolicy, right.declaredPointeeQualifiers) &&
+                right.parameterEscapeSummary, right.pointerOutputObjectOrigins, right.ffiUnwindPolicy,
+                right.declaredPointeeQualifiers) &&
         vectorEqual(left.parameters, right.parameters, equalParameter);
 }
 
@@ -149,11 +151,11 @@ bool equalTemplate(
     };
     return std::tie(left.kind, left.accessibility, left.canonicalKey, left.moduleName,
                left.namespaceName, left.ownerName, left.name, left.parameters,
-               left.sourceText, left.dependencies, left.lifetimeParameters,
+               left.sourceText, left.dependencies, left.sourceImports, left.candidateReceiverTypeKeys, left.lifetimeParameters,
                left.lifetimeOutlivesConstraints) ==
         std::tie(right.kind, right.accessibility, right.canonicalKey, right.moduleName,
             right.namespaceName, right.ownerName, right.name, right.parameters,
-            right.sourceText, right.dependencies, right.lifetimeParameters,
+            right.sourceText, right.dependencies, right.sourceImports, right.candidateReceiverTypeKeys, right.lifetimeParameters,
             right.lifetimeOutlivesConstraints) &&
         vectorEqual(left.parameterContracts, right.parameterContracts, equalParameter);
 }
@@ -220,18 +222,18 @@ bool equalPlatformImport(
 
 bool sameHeader(const LibraryMetadata& left, const LibraryMetadata& right)
 {
-    return std::tie(left.formatMajor, left.formatMinor, left.targetId, left.pointerSize,
-               left.pointerAlignment, left.producerVersion, left.moduleName,
+    return std::tie(left.targetId, left.pointerSize,
+               left.pointerAlignment, left.moduleName,
                left.targetTriple, left.nativeAbiMajor, left.nativeAbiMinor,
                left.runtimeAbiMajor, left.runtimeAbiMinor, left.manglingAbiVersion,
                left.objectAbiVersion, left.delegateAbiVersion, left.exceptionAbiVersion,
-               left.managedDelegateCellSize) ==
-        std::tie(right.formatMajor, right.formatMinor, right.targetId, right.pointerSize,
-            right.pointerAlignment, right.producerVersion, right.moduleName,
+               left.managedDelegateCellSize, left.languageFeatureFlags) ==
+        std::tie(right.targetId, right.pointerSize,
+            right.pointerAlignment, right.moduleName,
             right.targetTriple, right.nativeAbiMajor, right.nativeAbiMinor,
             right.runtimeAbiMajor, right.runtimeAbiMinor, right.manglingAbiVersion,
             right.objectAbiVersion, right.delegateAbiVersion, right.exceptionAbiVersion,
-            right.managedDelegateCellSize);
+            right.managedDelegateCellSize, right.languageFeatureFlags);
 }
 
 /// Sorts records by a key built by value (a concatenation) and drops equal duplicates; reports a
@@ -348,6 +350,10 @@ bool canonicalizeNestedRecords(LibraryMetadata& metadata, std::string& error)
             return false;
     }
     canonicalizeStrings(metadata.externalTypeKeys);
+    canonicalizeStrings(metadata.sourceNamespaces);
+    canonicalizeStrings(metadata.trivialCleanupRootTypeKeys);
+    canonicalizeStrings(metadata.nonEscapingLifecycleTypeKeys);
+    canonicalizeStrings(metadata.identitySafeLifecycleTypeKeys);
     return true;
 }
 
@@ -479,6 +485,10 @@ bool LibraryMetadataMerger::merge(
     candidate.genericTemplates.clear();
     candidate.genericSpecializations.clear();
     candidate.externalTypeKeys.clear();
+    candidate.sourceNamespaces.clear();
+    candidate.trivialCleanupRootTypeKeys.clear();
+    candidate.nonEscapingLifecycleTypeKeys.clear();
+    candidate.identitySafeLifecycleTypeKeys.clear();
     candidate.dispatchTables.clear();
     candidate.exports.clear();
     candidate.binaryDependencies.clear();
@@ -503,6 +513,10 @@ bool LibraryMetadataMerger::merge(
         append(candidate.genericTemplates, fragment.genericTemplates);
         append(candidate.genericSpecializations, fragment.genericSpecializations);
         append(candidate.externalTypeKeys, fragment.externalTypeKeys);
+        append(candidate.sourceNamespaces, fragment.sourceNamespaces);
+        append(candidate.trivialCleanupRootTypeKeys, fragment.trivialCleanupRootTypeKeys);
+        append(candidate.nonEscapingLifecycleTypeKeys, fragment.nonEscapingLifecycleTypeKeys);
+        append(candidate.identitySafeLifecycleTypeKeys, fragment.identitySafeLifecycleTypeKeys);
         append(candidate.dispatchTables, fragment.dispatchTables);
         append(candidate.exports, fragment.exports);
         append(candidate.binaryDependencies, fragment.binaryDependencies);
@@ -525,6 +539,30 @@ bool LibraryMetadataMerger::merge(
             candidate.cppCRecordCatalog = fragment.cppCRecordCatalog;
         }
         append(candidate.platformImports, fragment.platformImports);
+        // EN: LKF-410: the candidate starts as a copy of the first fragment, so later fragments add their
+        //     trait implementations; a repeated one must match, a different one under the same key is a
+        //     conflict.
+        // ES: LKF-410: el candidato parte como copia del primer fragmento, así que los posteriores añaden sus
+        //     implementaciones de trait; una repetida debe coincidir y una distinta con la misma clave es un
+        //     conflicto.
+        if (ordinal == 0) continue;
+        for (const LibraryMetadataTraitImpl& impl : fragment.traitImpls)
+        {
+            const auto existing = std::find_if(
+                candidate.traitImpls.begin(), candidate.traitImpls.end(), [&](const LibraryMetadataTraitImpl& known)
+                { return known.targetTypeKey == impl.targetTypeKey && known.traitTypeKey == impl.traitTypeKey; });
+            if (existing == candidate.traitImpls.end())
+            {
+                candidate.traitImpls.push_back(impl);
+                continue;
+            }
+            if (!vectorEqual(existing->methods, impl.methods, equalMember))
+            {
+                error = "NSMETA fragments disagree on the implementation of '" + impl.traitTypeKey + "' for '" +
+                    impl.targetTypeKey + "'";
+                return false;
+            }
+        }
     }
     if (!canonicalizeModel(candidate, error)) return false;
     merged = std::move(candidate);

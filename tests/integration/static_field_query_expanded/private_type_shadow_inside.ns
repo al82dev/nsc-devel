@@ -1,0 +1,22 @@
+class Other { public struct Hidden { public long OtherValue; } }
+class Outer
+{
+    private struct Hidden { public int Value; }
+    private struct Record { public Hidden Item; public int Count; }
+    private static int Format(Hidden value) { return value.Value; }
+    private static int Format(int value) { return value; }
+    public static int Run()
+    {
+        Record value = default(Record);
+        value.Item.Value = 7;
+        value.Count = 3;
+        int sum = 0;
+        static foreach (field in Fields(Record))
+        {
+            field.Type item = field.Get(value);
+            sum = sum + Format(item);
+        }
+        return sum;
+    }
+}
+int Main() { return Outer.Run() == 10 ? 0 : 1; }

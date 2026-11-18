@@ -1,0 +1,11 @@
+noinline decimal Divide(decimal a, decimal b) { return checked(a / b); }
+
+int Main()
+{
+    unsafe("inspect maximum scaling exponent and repeated reduction")
+    {
+        decimal result = Divide(1m, 0.0000000000000000000000000001m);
+        i128 expected = ((i128)542101086 << 64) | ((i128)1042612833 << 32) | (i128)268435456;
+        return *((i128*)&result) == expected ? 0 : 1;
+    }
+}

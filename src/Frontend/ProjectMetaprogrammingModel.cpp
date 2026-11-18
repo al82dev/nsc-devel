@@ -34,7 +34,7 @@ StaticMemberKind staticKind(ClassMemberKind kind) noexcept
     }
     // NS304-T14-F01: a new ClassMemberKind without a visitor/introspection mapping must fail
     // loudly instead of silently collapsing to Field. The switch above is exhaustive for the
-    // kinds admitted in v3.0.4; reaching this trap is the defensive gate the audit requested.
+    // known kinds; reaching this trap is the defensive gate the audit requested.
     std::abort();
 }
 

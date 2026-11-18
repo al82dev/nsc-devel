@@ -137,6 +137,20 @@ public delegate int Reader();
 // 1. LA LINEA DEL CRITERIO: devolver una vista enraizada en un local.
 void testReturningAViewOfALocalIsRejected(TestContext& tests, const std::filesystem::path& root)
 {
+    // A borrowed descriptor can still contain storage of its own. A view of that
+    // storage cannot outlive the by-value descriptor parameter.
+    expectInvalid(tests, root, "ReturnViewOfBorrowedDescriptorParameter", prefix() + R"NS(
+public borrowed struct Descriptor
+{
+    public int value;
+    public Slice View() { return new Slice(&value, 1); }
+}
+class Case
+{
+    public static Slice Leak(Descriptor descriptor) { return descriptor.View(); }
+}
+)NS", "borrows from local 'descriptor' and cannot be returned");
+
     // Un arreglo local: la memoria muere al volver, el struct sobrevive, el puntero queda
     // colgando. Nada en el tipo de retorno lo delataria.
     expectInvalid(tests, root, "ReturnViewOfLocalArray", prefix() + R"NS(
@@ -330,6 +344,197 @@ public borrowed union Wrong
 // 5. LO QUE TIENE QUE SEGUIR COMPILANDO. Una regla de rechazo sin la mitad positiva no dice si
 // rechaza lo correcto o simplemente rechaza; la primera version de esta regla habria pasado los
 // cinco casos de arriba prohibiendo las vistas por completo.
+void testViewLastUseBeforeMutation(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string holder = prefix() + R"NS(
+class Holder
+{
+    private int[] storage;
+    public Holder() { storage = new int[1]; }
+    public Slice View() { return new Slice(&storage[0], 1); }
+    public void Clear() { delete[] storage; }
+    public int ClearWith(Slice slice) { delete[] storage; return slice.Get(0); }
+}
+public borrowed struct SliceBox {
+    public Slice item;
+    public SliceBox(Slice value) { item = value; }
+}
+)NS";
+    const std::string borrowedOutputs = holder + R"NS(
+class PairViews {
+    public static borrowed Holder Identity(borrowed Holder value) { return value; }
+    public static void Get(borrowed Holder first, borrowed Holder second,
+                           out Slice firstView, out Slice secondView) {
+        firstView = first.View();
+        secondView = second.View();
+    }
+}
+)NS";
+    expectInvalid(tests, root, "BorrowedClassOutViewOutlivesOwner", borrowedOutputs + R"NS(
+class Case { public static int Run() {
+    Slice outside = default(Slice);
+    {
+        raii Holder first = new Holder(); raii Holder second = new Holder();
+        Slice other = default(Slice);
+        PairViews.Get(first, second, out outside, out other);
+    }
+    return outside.Get(0);
+} }
+)NS", "view output cannot outlive its possible owner");
+    expectValid(tests, root, "BorrowedClassOutViewWithLiveOwners", borrowedOutputs + R"NS(
+class Case { public static int Run() {
+    raii Holder first = new Holder(); raii Holder second = new Holder();
+    Slice left = default(Slice); Slice right = default(Slice);
+    PairViews.Get(first, second, out left, out right);
+    return left.Get(0) + right.Get(0);
+} }
+)NS");
+    expectInvalid(tests, root, "BorrowedClassOutViewThroughNestedCall", borrowedOutputs + R"NS(
+class Case { public static int Run() {
+    raii Holder second = new Holder(); Slice outside = default(Slice);
+    {
+        raii Holder first = new Holder(); Slice other = default(Slice);
+        PairViews.Get(PairViews.Identity(first), second, out outside, out other);
+    }
+    return outside.Get(0);
+} }
+)NS", "view output cannot outlive its possible owner");
+    expectInvalid(tests, root, "BorrowedClassOutViewProtectsOwner", borrowedOutputs + R"NS(
+class Case { public static int Run() {
+    raii Holder first = new Holder(); raii Holder second = new Holder();
+    Slice left = default(Slice); Slice right = default(Slice);
+    PairViews.Get(first, second, out left, out right);
+    first.Clear(); return left.Get(0);
+} }
+)NS", "cannot call potentially mutating method while a borrowed field view is alive");
+    expectInvalid(tests, root, "UnqualifiedClassOutViewOutlivesOwner", holder + R"NS(
+class PairViews {
+    public static void Get(Holder first, Holder second, out Slice left, out Slice right) {
+        left = first.View(); right = second.View();
+    }
+}
+class Case { public static int Run() {
+    Slice outside = default(Slice);
+    {
+        raii Holder first = new Holder(); raii Holder second = new Holder();
+        Slice other = default(Slice); PairViews.Get(first, second, out outside, out other);
+    }
+    return outside.Get(0);
+} }
+)NS", "view output cannot outlive its possible owner");
+    expectInvalid(tests, root, "OwnedClassOutViewOutlivesConsumedOwner", holder + R"NS(
+class Case {
+    public static void Get(owned Holder owner, out Slice view) { view = owner.View(); }
+    public static int Run() {
+        raii Holder owner = new Holder(); Slice view = default(Slice);
+        Get(move(owner), out view); return view.Get(0);
+    }
+}
+)NS", "view output cannot outlive its possible owner");
+    expectInvalid(tests, root, "OwnedClassForwardedOutViewOutlivesConsumedOwner", borrowedOutputs + R"NS(
+class Case {
+    public static void Get(owned Holder owner, borrowed Holder other, out Slice view, out Slice spare) {
+        PairViews.Get(owner, other, out view, out spare);
+    }
+    public static int Run() {
+        raii Holder owner = new Holder(); raii Holder other = new Holder();
+        Slice view = default(Slice); Slice spare = default(Slice);
+        Get(move(owner), other, out view, out spare); return view.Get(0);
+    }
+}
+)NS", "view output cannot outlive its possible owner");
+    expectInvalid(tests, root, "CustomViewLastUseRemainsConservative", holder + R"NS(
+class Case { public static int Run() {
+    raii Holder owner = new Holder(); Slice view = owner.View();
+    int result = view.Get(0); owner.Clear(); return result;
+} }
+)NS", "cannot call potentially mutating method while a borrowed field view is alive");
+    expectInvalid(tests, root, "ViewUsedAfterMutation", holder + R"NS(
+class Case { public static int Run() {
+    raii Holder owner = new Holder(); Slice view = owner.View();
+    owner.Clear(); return view.Get(0);
+} }
+)NS", "cannot call potentially mutating method while a borrowed field view is alive");
+    expectInvalid(tests, root, "NestedViewUsedAfterMutation", holder + R"NS(
+class Case { public static int Run() {
+    raii Holder owner = new Holder(); Slice view = owner.View(); SliceBox box = new SliceBox(view);
+    owner.Clear(); return box.item.Get(0);
+} }
+)NS", "cannot call potentially mutating method while a borrowed field view is alive");
+    expectInvalid(tests, root, "NestedViewOutlivesOriginalAlias", holder + R"NS(
+class Case { public static int Run() {
+    raii Holder owner = new Holder(); SliceBox box = default(SliceBox);
+    { Slice view = owner.View(); box = new SliceBox(view); }
+    owner.Clear(); return box.item.Get(0);
+} }
+)NS", "cannot call potentially mutating method while a borrowed field view is alive");
+    expectInvalid(tests, root, "RebuiltViewOutlivesOriginalAlias", holder + R"NS(
+class Case { public static int Run() {
+    raii Holder owner = new Holder(); SliceBox box = default(SliceBox);
+    { Slice view = owner.View(); box = new SliceBox(new Slice(view.start, view.count)); }
+    owner.Clear(); return box.item.Get(0);
+} }
+)NS", "cannot call potentially mutating method while a borrowed field view is alive");
+    expectInvalid(tests, root, "RebuiltViewThroughPointerAlias", holder + R"NS(
+class Case { public static int Run() {
+    raii Holder owner = new Holder(); SliceBox box = default(SliceBox);
+    { Slice view = owner.View(); int* pointer = view.start; box = new SliceBox(new Slice(pointer, view.count)); }
+    owner.Clear(); return box.item.Get(0);
+} }
+)NS", "cannot call potentially mutating method while a borrowed field view is alive");
+    expectInvalid(tests, root, "RebuiltViewThroughReassignedPointer", holder + R"NS(
+class Case { public static int Run() {
+    raii Holder owner = new Holder(); SliceBox box = default(SliceBox);
+    { Slice view = owner.View(); int* pointer = null; pointer = view.start;
+      box = new SliceBox(new Slice(pointer, view.count)); }
+    owner.Clear(); return box.item.Get(0);
+} }
+)NS", "cannot call potentially mutating method while a borrowed field view is alive");
+    expectInvalid(tests, root, "RebuiltViewThroughPointerAfterScope", holder + R"NS(
+class Case { public static int Run() {
+    raii Holder owner = new Holder(); int* pointer = null;
+    { Slice view = owner.View(); pointer = view.start; }
+    SliceBox box = new SliceBox(new Slice(pointer, 1));
+    owner.Clear(); return box.item.Get(0);
+} }
+)NS", "cannot call potentially mutating method while a borrowed field view is alive");
+    expectInvalid(tests, root, "RebuiltViewThroughIntegerAlias", holder + R"NS(
+class Case { public static int Run() {
+    raii Holder owner = new Holder(); int* pointer = null;
+    { Slice view = owner.View(); unsafe { nuint bits = (nuint)view.start; pointer = (int*)bits; } }
+    SliceBox box = new SliceBox(new Slice(pointer, 1));
+    owner.Clear(); return box.item.Get(0);
+} }
+)NS", "cannot call potentially mutating method while a borrowed field view is alive");
+    expectValid(tests, root, "RebuiltViewWithLiveOwner", holder + R"NS(
+class Case { public static int Run() {
+    raii Holder owner = new Holder(); int* pointer = null;
+    { Slice view = owner.View(); unsafe { nuint bits = (nuint)view.start; pointer = (int*)bits; } }
+    SliceBox box = new SliceBox(new Slice(pointer, 1));
+    return box.item.Get(0);
+} }
+)NS");
+    expectInvalid(tests, root, "AliasedViewUsedAfterMutation", holder + R"NS(
+class Case { public static int Run() {
+    raii Holder owner = new Holder(); Slice view = owner.View(); Slice alias = view;
+    owner.Clear(); return alias.Get(0);
+} }
+)NS", "cannot call potentially mutating method while a borrowed field view is alive");
+    expectInvalid(tests, root, "ViewUsedInsideMutationCall", holder + R"NS(
+class Case { public static int Run() {
+    raii Holder owner = new Holder(); Slice view = owner.View();
+    return owner.ClearWith(view);
+} }
+)NS", "cannot call potentially mutating method while a borrowed field view is alive");
+    expectInvalid(tests, root, "ViewUsedInNextIteration", holder + R"NS(
+class Case { public static int Run() {
+    raii Holder owner = new Holder(); Slice view = owner.View(); int result = 0;
+    for (int i = 0; i < 2; i = i + 1) { result = view.Get(0); owner.Clear(); }
+    return result;
+} }
+)NS", "cannot call potentially mutating method while a borrowed field view is alive");
+}
+
 void testSafeViewUsesAreAccepted(TestContext& tests, const std::filesystem::path& root)
 {
     expectValid(tests, root, "SafeViewUses", prefix() + R"NS(
@@ -421,6 +626,7 @@ int main()
     testReturningAViewOfALocalIsRejected(tests, root);
     testViewFieldsAreRejected(tests, root);
     testViewCapturesAreRejected(tests, root);
+    testViewLastUseBeforeMutation(tests, root);
     testBorrowedAppliesOnlyToStructs(tests, root);
     testSafeViewUsesAreAccepted(tests, root);
 

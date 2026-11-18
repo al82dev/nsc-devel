@@ -59,7 +59,7 @@ inline void addInteropContract(TestRegistry& registry, std::size_t contract, std
 inline interop::LibraryMetadata minimalMetadata(std::string module = "Test.Module")
 {
     interop::LibraryMetadata metadata;
-    metadata.producerVersion = "3.0.0";
+    metadata.producerVersion = "fixture-producer";
     metadata.moduleName = std::move(module);
     metadata.targetTriple = "x86_64-pc-windows-msvc";
     return metadata;

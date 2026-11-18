@@ -15,7 +15,7 @@ int main()
     using nativesharp::driver::Driver;
     nativesharp::tests::TestContext tests;
     const std::string project =
-        (std::filesystem::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").string();
+        (std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib/NativeSharp.Core/NativeSharp.Core.nsproj").string();
     const std::array<std::string_view, 3> arguments = {
         "--dump-project-oop-llvm", project, "--fp-mode=deterministic"};
     std::ostringstream output;

@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # NSC — Tracking sobrecalculado de rendimiento de compilación
 
 **Fecha:** 2026-10-21
@@ -481,7 +483,7 @@ que consumidores. Ninguna tanda se considera cerrada mientras alguno de sus reng
 | PERF-0279 | Inventario de productores y consumidores actuales de `TemplateParseCache` | PENDIENTE — REQUIERE DISEÑO |
 | PERF-0280 | Llave calculable antes de lexear o parsear una plantilla | PENDIENTE — REQUIERE DISEÑO |
 | PERF-0281 | Inclusión del digest del texto fuente en la llave de plantillas | PENDIENTE — REQUIERE DISEÑO |
-| PERF-0282 | Inclusión de versión de lenguaje, parser y compilador en la llave | PENDIENTE — REQUIERE DISEÑO |
+| PERF-0282 | Identidad de parser y compilador en la llave, sin versión de lenguaje | PENDIENTE — REQUIERE DISEÑO |
 | PERF-0283 | Inclusión de opciones e imports que alteran el parseo en la llave | PENDIENTE — REQUIERE DISEÑO |
 | PERF-0284 | Separación de la raíz persistente respecto de la caché MIR | PENDIENTE |
 | PERF-0285 | Extensión y cabecera exclusivas para payloads de plantillas | PENDIENTE |

@@ -2,7 +2,7 @@
 
 ## Español
 
-`never` es el tipo inferior interno de NativeSharp 3: describe una expresión que no produce un
+`never` es el tipo inferior interno de NativeSharp: describe una expresión que no produce un
 valor porque el control no continúa. No se escribe para declarar objetos y no tiene tamaño,
 alineación, representación ABI ni valor por defecto.
 
@@ -22,7 +22,7 @@ al contrato separado NS3-T03-F03.
 
 ## English
 
-`never` is NativeSharp 3's internal bottom type. It describes an expression that produces no
+`never` is NativeSharp's internal bottom type. It describes an expression that produces no
 value because control does not continue. It cannot be used to declare objects and has no size,
 alignment, ABI representation, or default value.
 

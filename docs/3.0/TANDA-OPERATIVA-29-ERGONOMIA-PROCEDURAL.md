@@ -1,5 +1,7 @@
 # Tanda operativa 29 — Ergonomía procedural y control de flujo
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 Fecha: 2026-09-30
 
 Rama: `development`
@@ -123,21 +125,21 @@ explicit '{ ... }' block`.
 - `src/Lexer/Lexer.cpp`: preservación de escapes dentro de holes runtime.
 - `include/nativesharp/Parser/Parser.h` y `src/Parser/Parser.cpp`: sentencia embebida, lista de
   expresiones y desazucaración de interpolación.
-- `tests/unit/NativeSharp3T01ExpressionTests.cpp`, `tests/unit/ParserTests.cpp` y
+- `tests/unit/NativeSharpT01ExpressionTests.cpp`, `tests/unit/ParserTests.cpp` y
   `tests/unit/ProjectConstructionModelTests.cpp`: actualización de contratos históricos.
 - `CMakeLists.txt`: registro de la prueba dirigida T29.
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T29ProceduralErgonomicsTests.cpp`: fixture O0 autocontenido que compila y
+- `tests/unit/NativeSharpT29ProceduralErgonomicsTests.cpp`: fixture O0 autocontenido que compila y
   ejecuta los cinco features, prueba formatos runtime, aliasing de `out`, dangling-else, cuerpo
   vacío, rechazo de declaración, rechazo de formato inválido y comportamiento `noheap`.
 - `docs/3.0/TANDA-OPERATIVA-29-ERGONOMIA-PROCEDURAL.md`: expediente de implementación, decisiones,
   archivos, mejora y validación de este commit.
 
 El fixture copia temporalmente sólo `String.ns` y `NumericLimits.ns` bajo su directorio de
-evidencia y los declara como edición 3. Esto evita usar `C:\native-sharp`, evita mezclar ediciones
-2/3 dentro del grafo y elimina el temporal cuando la prueba pasa.
+evidencia. Esto evita usar `C:\native-sharp` y elimina el temporal cuando la prueba pasa. La antigua
+selección de edición del fixture ya no forma parte del contrato.
 
 ## Validación dirigida ejecutada
 

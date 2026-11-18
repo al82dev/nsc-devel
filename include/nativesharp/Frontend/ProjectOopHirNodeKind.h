@@ -33,7 +33,7 @@ enum class ProjectOopHirNodeKind
     BlockExpression,
     LocalDeclaration,
     ExpressionStatement,
-    // NativeSharp 2.0 item 298. The complete, already-validated integrated-assembly contract.
+    // NativeSharp item 298. The complete, already-validated integrated-assembly contract.
     // stringValue preserves the exact bytes between the braces; children remain in source order
     // and are InlineAssemblyLine/Input/Output/Clobber nodes. Operand children contain the lowered
     // NativeSharp value (inputs) or storage address (outputs and memory inputs).
@@ -97,7 +97,7 @@ enum class ProjectOopHirNodeKind
     // Item 318. children[0] is caller-supplied T* storage, followed by argumentCount constructor
     // arguments and then synthesized field-initializer work. No allocation is performed.
     PlacementConstruction,
-    // NativeSharp 3.0 T01-F02. Materializes the expanded elements of a final
+    // NativeSharp T01-F02. Materializes the expanded elements of a final
     // params ReadOnlySpan<T> into readonly stack storage and yields the ordinary span value.
     // children are converted T values in source order; an empty list yields {null, 0}.
     ParameterPack,
@@ -107,7 +107,7 @@ enum class ProjectOopHirNodeKind
     // Elements the source did not mention are simply absent: the storage is zeroed first, which
     // is exactly the rule C gives a partial initializer.
     AggregateInitializer,
-    // NativeSharp 3.0 T01-F05. children[0] is one same-type spread source evaluated once;
+    // NativeSharp T01-F05. children[0] is one same-type spread source evaluated once;
     // children[1..] are AggregateElement descriptors for the still-unwritten target fields.
     AggregateSpread,
     // C7: one element of the above. integerValue is its byte offset from the start of the
@@ -212,7 +212,7 @@ enum class ProjectOopHirNodeKind
     ArrayElementAddress,
     RangeArrayElementValue,
     RangeArrayElementAddress,
-    // NativeSharp 3.0 T01-F04. children = [receiver, written-start-or-zero,
+    // NativeSharp T01-F04. children = [receiver, written-start-or-zero,
     // written-end-or-zero]. memberOrdinal is Slice(int,int), secondaryMemberOrdinal is
     // Length(). integerValue is a four-bit endpoint mask: has-start, start-from-end, has-end,
     // end-from-end; bit 4 records a compile-time bounds proof. The backend reuses one evaluated
@@ -467,7 +467,7 @@ enum class ProjectOopHirNodeKind
     // `c ? a : b`. children[0] condition, children[1] true branch, children[2] false branch.
     // Both branches are lazily evaluated, so this lowers to control flow, not a select.
     Conditional,
-    // NativeSharp 3.0 T01-F03. children[0] is evaluated once. children[1] is evaluated only
+    // NativeSharp T01-F03. children[0] is evaluated once. children[1] is evaluated only
     // when that pointer/reference value is null; the result is the non-null left value or RHS.
     NullCoalescing,
     // E017 `Optional<T> ?? fallback`. The carrier is evaluated once; memberOrdinal names
@@ -533,6 +533,7 @@ enum class ProjectOopHirNodeKind
     MatchValue,
     // NS304-T15-F05. `checked(expr)`/`saturating(expr)`. One operand; stringValue is the policy
     // ("checked"/"saturating"). The backend applies the policy to the decimal operations inside.
-    OverflowPolicy
+    OverflowPolicy,
+    SimdMaskElementValue
 };
 }

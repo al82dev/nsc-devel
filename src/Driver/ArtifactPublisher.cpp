@@ -107,6 +107,8 @@ bool ArtifactPublisher::prepareStaticLibrary(
     publication.destination = destination;
     publication.headerDestination = companionPath(destination, ".h");
     publication.metadataDestination = companionPath(destination, ".nsmeta");
+    publication.receiverContractDestination = destination;
+    publication.receiverContractDestination += ".nsreceiver";
     publication.productSidecarDestination =
         compilation::precompiledProductSidecarPath(publication.metadataDestination);
     if (!transaction_.add(publication.destination, publication.stage, error) ||
@@ -119,12 +121,21 @@ bool ArtifactPublisher::prepareStaticLibrary(
     }
     publication.productSidecarStage =
         compilation::precompiledProductSidecarPath(publication.metadataStage);
+    publication.receiverContractStage = publication.stage;
+    publication.receiverContractStage += ".nsreceiver";
     publication.thinLtoSidecarDestination = llvm_backend::ThinLtoLibrarySidecarCodec::pathFor(destination);
     publication.thinLtoSidecarStage = llvm_backend::ThinLtoLibrarySidecarCodec::pathFor(publication.stage);
     return transaction_.addStaged(
         publication.productSidecarDestination,
         publication.productSidecarStage,
         error);
+}
+
+bool ArtifactPublisher::addStaticLibraryReceiverContract(
+    const StaticLibraryPublication& publication, std::string& error)
+{
+    return transaction_.addStaged(
+        publication.receiverContractDestination, publication.receiverContractStage, error);
 }
 
 bool ArtifactPublisher::addStaticLibraryThinLtoSidecar(

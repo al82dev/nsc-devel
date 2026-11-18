@@ -1,0 +1,29 @@
+struct Pair
+{
+    public int Left;
+    public int Right;
+}
+
+static class Receiver
+{
+    public static int Calls;
+
+    public static Pair Next()
+    {
+        Calls = Calls + 1;
+        Pair value = default(Pair);
+        value.Left = 2;
+        value.Right = 5;
+        return value;
+    }
+}
+
+int Main()
+{
+    int sum = 0;
+    static foreach (field in Fields(Pair))
+    {
+        sum = sum + field.Get(Receiver.Next());
+    }
+    return sum == 7 && Receiver.Calls == 2 ? 0 : 1;
+}

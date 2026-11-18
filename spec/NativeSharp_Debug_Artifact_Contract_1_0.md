@@ -1,6 +1,6 @@
 # NativeSharp Debug Artifact Contract 1.0
 
-**Status:** normative candidate for NativeSharp 1.0.1 debug support  
+**Status:** normative candidate for NativeSharp 1.0 debug support<br>
 **Supported target:** x86_64-pc-windows-msvc  
 **Artifact format:** standard CodeView in COFF and Microsoft PDB (MSF)  
 **Private sidecar formats:** not supported and not required

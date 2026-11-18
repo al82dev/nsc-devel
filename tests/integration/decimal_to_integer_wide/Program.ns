@@ -1,0 +1,26 @@
+int Main()
+{
+    decimal maximum = 18446744073709551615m;
+    decimal scaled = checked(maximum * 1.0m);
+    if (scaled != maximum) return 1;
+    if ((ulong)maximum != 18446744073709551615ul) return 2;
+    if ((ulong)scaled != 18446744073709551615ul) return 3;
+    if ((u128)scaled != (u128)18446744073709551615ul) return 4;
+    if ((i128)scaled != (i128)18446744073709551615ul) return 5;
+    decimal positive = checked(9223372036854775807m * 1.0m);
+    decimal negative = -positive;
+    if ((long)negative != -9223372036854775807L) return 6;
+    if ((i128)negative != (i128)-9223372036854775807L) return 7;
+    if ((int)-12.99m != -12 || (int)12.99m != 12) return 8;
+    if ((int)-0.999m != 0 || (int)0.999m != 0) return 9;
+    decimal scale20 = checked(1.0000000000m * 1.0000000000m);
+    if (scale20 != 1m || (int)scale20 != 1) return 10;
+    if ((int)0.0000000000000000000000000001m != 0) return 11;
+    decimal fractional20 = checked(2.9000000000m * 1.0000000000m);
+    if (fractional20 != 2.9m) return 12;
+    if ((int)fractional20 != 2) return 13;
+    decimal fractional28 = checked(1.90000000000000m * 1.00000000000000m);
+    if (fractional28 != 1.9m) return 14;
+    if ((int)fractional28 != 1) return 15;
+    return 0;
+}

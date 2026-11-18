@@ -7,8 +7,8 @@
 
 int nscLlvmOptimizationLegacyEntry();
 int nscLlvmOptimizationLegacyChildEntry(int argumentCount, char** arguments);
-int nscNativeSharp3E046SmartPointerLegacyEntry();
-int nscNativeSharp3T10CoroutineLegacyEntry();
+int nscNativeSharpE046SmartPointerLegacyEntry();
+int nscNativeSharpT10CoroutineLegacyEntry();
 int nscStage46NativeLibrariesLegacyEntry();
 
 namespace nsc::test
@@ -40,13 +40,13 @@ void registerArgumentLegacyUnitTests(TestRegistry& registry)
     addArgumentLegacyEntry(
         registry, "nsc.llvm-optimization", "llvm", nscLlvmOptimizationLegacyEntry);
     addArgumentLegacyEntry(registry,
-        "nsc.ns3.e046.smart-pointer-contract",
+        "nsc.language.e046.smart-pointer-contract",
         "frontend",
-        nscNativeSharp3E046SmartPointerLegacyEntry);
+        nscNativeSharpE046SmartPointerLegacyEntry);
     addArgumentLegacyEntry(registry,
-        "nsc.ns3.t10.coroutines",
+        "nsc.language.t10.coroutines",
         "frontend",
-        nscNativeSharp3T10CoroutineLegacyEntry);
+        nscNativeSharpT10CoroutineLegacyEntry);
     addArgumentLegacyEntry(registry,
         "nsc.stage46.native-libraries",
         "interop",

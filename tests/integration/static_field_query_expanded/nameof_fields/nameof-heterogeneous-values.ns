@@ -1,0 +1,1 @@
+struct H { public int X; public long Y; } int Main() { H h=default(H); int mask=0; static foreach (field in Fields(H)) { if(nameof(field)!="field" || nameof(field.Name)!="Name" || nameof(field.Get(h))!="Get") return 1; if(field.Name=="X") mask=mask+1; if(field.Name=="Y") mask=mask+2; } return mask==3 ? 0 : 1; }

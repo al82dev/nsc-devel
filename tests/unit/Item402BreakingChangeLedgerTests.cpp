@@ -22,26 +22,41 @@ int main()
     tests.expect(ledger.find("entry_count=1\n") != std::string::npos,
         "ledger declares its complete entry count");
     for (const std::string_view field : {
-             "2x_contract", "consumer", "compatible_alternatives_rejected", "new_semantics",
+             "previous_contract", "consumer", "compatible_alternatives_rejected", "new_semantics",
              "impact", "diagnostics_migration", "minimum_component_version", "compatibility_tests"})
     {
         tests.expect(ledger.find("change.001." + std::string(field) + "=") != std::string::npos,
             "ledger entry contains required field " + std::string(field));
     }
     tests.expect(ledger.find("runtime-abi:1.1") != std::string::npos &&
-            ledger.find("nsmeta:1.33") != std::string::npos,
-        "ledger records the 3.0 runtime and metadata migration");
+            ledger.find("nsmeta:") == std::string::npos,
+        "ledger retains the runtime ABI without a metadata version");
+    tests.expect(ledger.find("accept-incompatible-runtime-abi") != std::string::npos &&
+            ledger.find("incompatible-runtime-or-native-abi") != std::string::npos &&
+            ledger.find("minimum_component_version=runtime-abi:1.1") != std::string::npos &&
+            ledger.find("unsupported-producer") == std::string::npos,
+        "ledger identifies actual ABI incompatibilities without gating producer labels");
 
     const std::filesystem::path root =
         nativesharp::tests::evidenceRoot("nativesharp_item402_breaking_change_ledger_tests");
     std::error_code ignored;
     std::filesystem::remove_all(root, ignored);
-    const std::filesystem::path path = root / "NativeSharp3BreakingChanges.ledger";
+    const std::filesystem::path path = root / "NativeSharpBreakingChanges.ledger";
     std::string verificationError;
     tests.expect(writeBreakingChangeLedger(path, verificationError),
         "canonical ledger writes: " + verificationError);
     tests.expect(verifyBreakingChangeLedger(path, verificationError),
         "canonical ledger verifies: " + verificationError);
+    {
+        std::string legacy = ledger;
+        const auto position = legacy.find("runtime-abi:1.1");
+        legacy.insert(position, "nsmeta:opaque-value;");
+        std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+        stream << legacy;
+    }
+    tests.expect(verifyBreakingChangeLedger(path, verificationError),
+        "metadata annotations do not block ledger verification");
+    tests.expect(writeBreakingChangeLedger(path, verificationError), "canonical ledger restored");
 
     std::ostringstream output;
     std::ostringstream error;

@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Declaraciones `trait` / Trait declarations
 
 ## Español
@@ -37,9 +39,9 @@ public class Number : IScore
 - `where T : Trait` conserva el despacho estático del tipo concreto. `dyn Trait` solicita despacho
   dinámico explícito sobre el ABI de interfaces nativo existente.
 
-Un trait no es una interfaz CLR: NativeSharp 3.0 es AOT nativo Windows x64, no requiere metadata
+Un trait no es una interfaz CLR: NativeSharp es AOT nativo Windows x64, no requiere metadata
 .NET ni runtime administrado. Tampoco es una clase abstracta: no tiene campos, constructor, objeto
-propio ni vtable de clase. Su contrato público se publica en NSMETA 1.28, incluido el orden de slots
+propio ni vtable de clase. Su contrato público se publica en NSMeta, incluido el orden de slots
 de métodos; cambiar ese orden es un cambio de compatibilidad observable para defaults
 precompilados.
 
@@ -62,8 +64,8 @@ the sealed-coherence contract in [trait-implementations.md](trait-implementation
 - `where T : Trait` keeps concrete static dispatch. `dyn Trait` requests explicit dynamic dispatch
   over NativeSharp's existing native interface ABI.
 
-A trait is not a CLR interface: NativeSharp 3.0 is native Windows x64 AOT and requires neither .NET
+A trait is not a CLR interface: NativeSharp is native Windows x64 AOT and requires neither .NET
 metadata nor a managed runtime. A trait is not an abstract class either: it has no fields,
-constructor, standalone object, or class vtable. NSMETA 1.28 publishes its public contract and
+constructor, standalone object, or class vtable. NSMeta publishes its public contract and
 normative method-slot order; reordering those slots is an observable compatibility change for
 precompiled defaults.

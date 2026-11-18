@@ -1,8 +1,10 @@
 # Tanda documental 06: vistas de terminados y pendientes
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Objetivo
 
-Separar el tracking integral de NativeSharp 3.0 en dos consultas operativas reproducibles sin
+Separar el tracking integral de NativeSharp en dos consultas operativas reproducibles sin
 crear otra autoridad de estado.
 
 ## Cambios
@@ -21,10 +23,10 @@ crear otra autoridad de estado.
 
 ## Archivos
 
-- Modificado: `tools/native_sharp_3_catalog.py`.
-- Modificado: `tools/verify_native_sharp_3_catalog.py`.
-- Modificado: `tools/native_sharp_3_source_inventory.py` para inventariar ambas vistas raíz.
-- Nuevo: `tools/generate_native_sharp_3_status_views.py`.
+- Modificado: `tools/native_sharp_catalog.py`.
+- Modificado: `tools/verify_native_sharp_catalog.py`.
+- Modificado: `tools/native_sharp_source_inventory.py` para inventariar ambas vistas raíz.
+- Nuevo: `tools/generate_native_sharp_status_views.py`.
 - Nuevo: `tests/unit/test_native_sharp_3_status_views.py`.
 - Nuevos productos generados en la raíz de `A:`: los dos documentos solicitados.
 - El verificador canónico comprueba también que ambas vistas coincidan byte a byte.

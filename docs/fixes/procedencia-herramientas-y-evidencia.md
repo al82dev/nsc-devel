@@ -1,0 +1,118 @@
+# Procedencia de herramientas y alcance de la evidencia
+
+Durante la integración se constató que algunos agentes ejecutaron copias
+experimentales de `nsc.exe` mediante rutas propias en A. Los lineamientos
+exigen herramientas por nombre mediante el PATH vigente y la excepción
+expresamente autorizada para el compilador es
+`A:/nsc-fixes-evidencia/build/bin/nsc.exe`. Por ello, las ejecuciones con las
+copias de los agentes se conservan como evidencia técnica de investigación,
+pero no se consideran validación conforme. Esto incluye los compiladores
+híbridos y congelados identificados en los informes de agentes de genéricos,
+capturas y excepciones. Los hashes y resultados anteriores siguen reflejando
+lo que se observó; no deben confundirse con una validación aceptada.
+
+Las comprobaciones denominadas «verificación integrada» en los informes de
+esta tanda se repitieron con el compilador autorizado de A, el runtime aislado
+de A y temporales en A. Esas pruebas utilizaron `nslink.exe` por nombre: el
+PATH vigente lo resolvió a `C:/native-sharp/bin/nslink.exe`, como herramienta
+externa de solo lectura. No acredita que NSLink proceda de la copia del
+compilador. Ninguna de esas comprobaciones certifica una revisión limpia cuando
+el propio informe indica que había cambios locales.
+
+Una prueba exploratoria adicional invocó una copia de NSLink por ruta en A;
+no se considera validación conforme. El agente informó el incidente y dejó de
+usar esa copia. Las pruebas posteriores deben usar herramientas por nombre,
+salvo las excepciones concretas ya autorizadas por el usuario. Los resultados
+históricos de otras tandas conservan su procedencia y necesitan una revisión
+individual antes de presentarse como evidencia conforme.
+
+Revisión posterior: algunos ejecutores iniciaron procesos hijos con el
+directorio de trabajo en temporales de A, aunque el comando exterior partiera
+del repositorio. Esas ejecuciones se conservan como observaciones no conformes
+con la regla de iniciar cada comando desde la copia autorizada. También se
+detectaron pruebas CTest que invocaron CMake o Python por rutas absolutas de
+configuración, sin autorización específica, y una consulta `where` de la
+ubicación de `nslink`. No se cuentan como validación conforme. Los controles
+de alias, limpieza débil y construcción fallida identificados en sus informes
+se repitieron tras corregir sus ejecutores; el detalle está en
+`A:/nsc-fixes-evidencia/repo-cwd-corrections-20261112.json` y sus logs.
+Las demás pruebas deben revisarse individualmente: un comando exterior iniciado
+desde el repositorio no demuestra por sí solo el directorio de sus hijos.
+El agente que preparó las pruebas de limpieza confirmó además que sus
+comandos exteriores originales se iniciaron desde `A:/`, no desde su copia;
+esas mediciones tampoco se consideran conformes. Sus repeticiones posteriores
+desde el repositorio principal se identifican por separado.
+
+Los registros nuevos de visibilidad y de las dos pruebas ASan de limpieza se
+ajustaron para invocar `python` por nombre y establecer el directorio de
+trabajo del repositorio. Las repeticiones documentadas se ejecutaron
+directamente; la nueva configuración CTest aún no se ha ejecutado.
+
+Los ejecutores CMake de Dictionary, lambda global y alias anidado usaban
+`CMAKE_COMMAND` como ruta absoluta para un proceso hijo, por lo que sus
+ejecuciones anteriores tampoco cuentan como conformes. Se sustituyó esa llamada
+por variables de entorno locales al proceso CMake, y se repitieron los tres
+ejecutores desde el repositorio con `cmake` y `nslink.exe` por nombre. Pasaron
+las seis compilaciones y ejecuciones O0/O2; comandos y salidas están en
+`A:/nsc-fixes-evidencia/cmake-runner-corrections-20261112.json` y los logs
+`runner-correction-*-20261112.log`. Los registros CTest de esos tres casos se
+ajustaron al mismo directorio y nombres; se comprobó su generación, sin ejecutar
+CTest. El log `cmake-repo-cwd-fixes-configure-20261112.log` fue sobrescrito al
+repetir la configuración y conserva solo la última ejecución.
+
+Revisión adicional: el TEMP heredado por defecto apunta a `C:/WINDOWS/TEMP`.
+Algunas consultas, comandos Git y lanzadores Python se iniciaron sin fijar las
+variables temporales en A, aunque algunos de sus hijos sí las fijaran. Esas
+invocaciones no cumplen el procedimiento; no se ha establecido si escribieron
+en C. Las afirmaciones previas de conformidad de cada repetición quedan
+pendientes de comprobar el proceso inicial y todos sus hijos. En adelante se
+usa `A:/nsc-fixes-evidencia/run-with-a-temp.cmd` o un lanzador equivalente que
+establece TEMP, TMP, APPDATA y LOCALAPPDATA en A antes de invocar herramientas.
+
+El build incremental existente contiene también llamadas automáticas a
+`A:/apps/cmake/bin/cmake.exe` en `build/CMakeFiles/rules.ninja`. Las excepciones
+de rutas discutidas anteriormente nombraban Ninja y LLVM/Clang; la autorización
+específica de esa ruta de CMake se solicitó al usuario y está pendiente. La
+procedencia conforme de los builds recientes y de los tests dependientes queda
+pendiente de esa aclaración y de su comprobación individual. Sus salidas y
+hashes se conservan como evidencia técnica, no como cierre certificado.
+
+Además, los pasos generados de import libraries y del runtime pasan
+`C:/native-sharp/bin/nslink.exe` por ruta absoluta y ejecutan el auxiliar
+generado `A:/nsc-fixes-evidencia/build/bin/nsc_windows_runtime_imports.exe`.
+La autorización específica de esas dos rutas para el build aislado se solicitó
+al usuario y está pendiente. No se ha demostrado que se haya escrito en C; el
+destino configurado de esos artefactos es A. Hasta aclarar estas rutas y revisar
+los pasos realmente ejecutados, la conformidad de esos builds no está acreditada.
+
+Actualización: el usuario autorizó expresamente la ruta de CMake anterior y
+las dos rutas del auxiliar y NSLink para continuar con este build aislado. La
+autorización no cambia el requisito de temporales en A ni borra las incidencias
+previas de directorio o entorno; los builds y pruebas posteriores deben
+registrarse por separado y comprobarse con esas condiciones.
+
+Tras la autorización se ejecutó `authorized-build-20261112.cmd` desde el
+repositorio, con temporales en A. El objetivo incremental `nsc` terminó con
+código 0; el log muestra nueve pasos y reenlace del compilador. Las cinco
+pruebas dirigidas de capturas, emisión del receptor, argumentos ASan, productor
+estático y destructor con débil devolvieron 0 con Python y NSLink por nombre;
+comandos, hashes y resultados en
+`A:/nsc-fixes-evidencia/authorized-targeted-after-build-20261112.json` y logs
+`authorized-after-build-*-20261112.log`. El SHA-256 del compilador fue
+`bfd555f60eeb82d28186d0076e0dc743e78e9ef4ddca79f683b3e92f73549b98`.
+El valor se cotejó con los registros antes y después del JSON y del log de
+`weak-destructor` indicados arriba; corrige una transcripción anterior errónea.
+
+La compilación incremental reutilizó objetos existentes, incluidos objetos
+producidos antes de la autorización y de la corrección del entorno. No se ha
+reconstruido ni certificado cada objeto desde una revisión limpia. El Core
+binario usado era preexistente y no se regeneró. Estas ejecuciones acreditan
+los recorridos probados con dichos artefactos, no la procedencia conforme
+completa de todos sus componentes ni el cierre de la campaña.
+
+Una tarea del agente que preparaba la repetición del constructor implícito
+con Core binario fue interrumpida por el filtro automático de la plataforma;
+dos intentos posteriores del mismo agente también terminaron con el mismo
+mensaje. El ejecutor con comprobación estricta de temporales quedó preparado
+pero esa repetición no se completó. Las demás tareas independientes continúan;
+no se atribuye el bloqueo al compilador ni se considera pasada esa repetición.

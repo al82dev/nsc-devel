@@ -3,6 +3,8 @@
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/HistoricalMetadataProjection.h"
+#include "../support/MetadataHeaderControl.h"
 #include "../support/TestContext.h"
 
 #include <algorithm>
@@ -78,6 +80,22 @@ public:
 private:
     nativesharp::tests::TestContext tests_;
 };
+
+// NSC-META-001: no caller since the archive refresh was retired; kept for the test helpers' API.
+[[maybe_unused]] bool environmentFlag(const char* name)
+{
+#ifdef _WIN32
+    char* value = nullptr;
+    std::size_t length = 0;
+    if (_dupenv_s(&value, &length, name) != 0 || value == nullptr) return false;
+    const bool enabled = std::string_view(value) == "1";
+    std::free(value);
+    return enabled;
+#else
+    const char* value = std::getenv(name);
+    return value != nullptr && std::string_view(value) == "1";
+#endif
+}
 
 void writeFile(const std::filesystem::path& path, std::string_view text)
 {
@@ -305,20 +323,19 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
     tests.expect(error.empty() && std::filesystem::is_regular_file(metadataPath),
                  "explicit metadata generation creates parent directories and "
                  "keeps stderr empty");
+    tests.expect(output.find("format: NSMETA\n") != std::string::npos &&
+            output.find("abi-fingerprint:") != std::string::npos,
+        "explicit metadata emission reports format and ABI fingerprint");
+
     LibraryMetadataCodec codec;
     LibraryMetadata metadata;
     tests.expect(codec.read(metadataPath, metadata, error), "generated metadata round-trips through the Stage 48.2 reader");
-    const std::string metadataFormat = std::to_string(metadata.formatMajor) + "." +
-        std::to_string(metadata.formatMinor);
-    tests.expect(output.find("format: NSMETA " + metadataFormat) != std::string::npos &&
-            output.find("abi-fingerprint:") != std::string::npos,
-        "explicit metadata emission reports the serialized format and ABI fingerprint");
     tests.expect(error.empty() && codec.verifyCurrentCompiler(metadata, error),
         "round-tripped metadata is compatible with the current compiler/target");
     tests.expect(metadata.producerVersion == nativesharp::kCompilerVersion && metadata.moduleName == "MetaLib",
         "metadata persists exact producer and module identity");
     tests.expect(metadata.targetTriple == "x86_64-pc-windows-msvc" && metadata.pointerSize == 8 && metadata.pointerAlignment == 8,
-        "metadata freezes the NativeSharp 1.0.1 Windows x64 target contract");
+        "metadata preserves the NativeSharp Windows x64 target contract");
     tests.expect(metadata.types.size() == 10, "all root-module named types are persisted as compiler metadata");
     tests.expect(metadata.exports.size() == 3, "three explicit Stage47 C ABI exports are persisted");
     tests.expect(LibraryMetadataCodec::fingerprintHex(metadata.abiFingerprint).size() == 64,
@@ -330,8 +347,7 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
             metadata.manglingAbiVersion == 1 && metadata.objectAbiVersion == 3 &&
             metadata.delegateAbiVersion == 1 && metadata.exceptionAbiVersion == 1 &&
             metadata.managedDelegateCellSize == 32,
-                 "NSMETA separates its file version from the frozen "
-                 "NativeSharp/runtime ABI contract");
+                 "metadata preserves the NativeSharp/runtime ABI contract");
 
     const LibraryMetadataType* pair = findType(metadata, "::Meta.Pair");
     tests.expect(pair != nullptr && pair->kind == LibraryMetadataTypeKind::Struct,
@@ -375,14 +391,14 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
     tests.expect(transform != nullptr && transform->kind == LibraryMetadataTypeKind::Delegate &&
             transform->delegateFlags == 1U && transform->delegateReturnTypeKey == "builtin:int" &&
             transform->delegateParameterTypeKeys == std::vector<std::string>{"builtin:int"},
-                 "NSMETA 1.8 preserves the complete extern C delegate signature "
+                 "NSMETA preserves the complete extern C delegate signature "
                  "introduced in 1.5");
     const LibraryMetadataType* managedTransform = findType(metadata, "::Meta.ManagedTransform");
     tests.expect(managedTransform != nullptr && managedTransform->kind == LibraryMetadataTypeKind::Delegate &&
             managedTransform->delegateFlags == 0U && managedTransform->referenceSize == 8 &&
             managedTransform->referenceAlignment == 8 &&
             managedTransform->delegateReturnTypeKey == "builtin:int",
-                 "NSMETA 1.8 distinguishes a managed delegate cell from a raw "
+                 "NSMETA distinguishes a managed delegate cell from a raw "
                  "callback and freezes its pointer carrier");
 
     const LibraryMetadataType* derived = findType(metadata, "::Meta.Derived");
@@ -401,11 +417,11 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
     }), "compile-time integral const values survive precompiled metadata");
     tests.expect(std::ranges::any_of(metadata.members, [](const auto& member) {
         return member.name == "Label" && member.constantKind == 6 && member.constantText == "NativeSharp";
-    }), "NSMETA 1.9 preserves the UTF-8 payload of a compile-time string constant");
+    }), "NSMETA preserves the UTF-8 payload of a compile-time string constant");
     tests.expect(std::ranges::any_of(metadata.members, [](const auto& member) {
         return member.name == "GetCurrentThreadId" && member.importDllName == "kernel32.dll" &&
             (member.flags & (1U << 20U)) != 0U;
-    }), "NSMETA 1.10 preserves the owning DLL of a public imported C declaration");
+    }), "NSMETA preserves the owning DLL of a public imported C declaration");
     tests.expect(std::ranges::any_of(metadata.members, [](const auto& member) {
         return member.name == "Add" && !member.mangledName.empty() && member.cAbiName == "Add";
     }),
@@ -521,9 +537,8 @@ public class Api
     tests.expect(codec.read(goldenPath, goldenDecoded, error),
         "the ABI 1.0 golden metadata model round-trips");
     const std::string goldenHex = LibraryMetadataCodec::fingerprintHex(goldenDecoded.abiFingerprint);
-    // Freeze 3.0 P8: Object ABI 3 changes the root contract, so the reviewed fingerprint changes with it.
-    tests.expect(goldenHex == "81d5bb9ceca1c22e507e4a66d9d305d414358a2fd00be9767973139d4d6cdea0",
-        "ABI root contract with Object ABI 3 retains its reviewed golden fingerprint (" +
+    tests.expect(goldenHex == "74bd8bcabadb073599c7deca1671595760126f33886f7f0c1bd9ce5eb660a94a",
+        "ABI root contract retains its reviewed golden fingerprint (" +
             goldenHex + ")");
 }
 
@@ -899,7 +914,9 @@ namespace ClosedGenericProducerApi
             Values = new Bucket<ProducerValue>();
         }
 
-        public static int CountValues(Bucket<ProducerValue> values)
+        // The argument is a borrowed owned field; since 921cef466 an unqualified class parameter
+        // may retain it and is refused, so the producer declares what it does: it only borrows.
+        public static int CountValues(borrowed Bucket<ProducerValue> values)
         {
             return values.Count();
         }
@@ -1379,8 +1396,85 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     LibraryMetadata metadata;
     tests.expect(codec.read(validPath, metadata, error), "valid integrity fixture passes payload and ABI checks");
 
-    // NSMETA has a single contract: the one the current compiler reads and writes. There are no historical
-    // format versions to write or archived goldens to read back; the current format is checked below.
+    // Exercise each cumulative content profile under varied reserved header bytes.
+    for (std::uint16_t sample = 0; sample < 44; ++sample)
+    {
+        LibraryMetadata historical = metadata;
+        nativesharp::tests::projectFixtureMetadata(historical, sample % 6U);
+        historical.abiFingerprint = {};
+        LibraryMetadata unlabelled = historical;
+        const auto historicalPath = directory / ("header-sample-" + std::to_string(sample) + ".nsmeta");
+        const auto unlabelledPath = directory / ("content-sample-" + std::to_string(sample) + ".nsmeta");
+        error.clear();
+        const bool wrote = codec.writeModel(historical, historicalPath, error) &&
+            codec.writeModel(unlabelled, unlabelledPath, error);
+        tests.expect(wrote,
+                     "metadata content sample writes (" + error + ")");
+        tests.expect(wrote && readBytes(historicalPath) == readBytes(unlabelledPath),
+                     "identical content produces identical bytes");
+        tests.expect(wrote && nativesharp::tests::metadataSurvivesReservedBytes(
+                codec, historical, sample, historicalPath, error),
+            "metadata content survives varied reserved bytes (" + error + ")");
+        LibraryMetadata decoded;
+        error.clear();
+        const bool read = wrote && codec.read(historicalPath, decoded, error);
+        std::vector<std::string> expectedTypes;
+        std::vector<std::string> decodedTypes;
+        for (const auto& type : historical.types) expectedTypes.push_back(type.identityKey);
+        for (const auto& type : decoded.types) decodedTypes.push_back(type.identityKey);
+        std::sort(expectedTypes.begin(), expectedTypes.end());
+        std::sort(decodedTypes.begin(), decodedTypes.end());
+        std::vector<std::string> expectedTemplates;
+        std::vector<std::string> decodedTemplates;
+        for (const auto& entry : historical.genericTemplates) expectedTemplates.push_back(entry.canonicalKey);
+        for (const auto& entry : decoded.genericTemplates) decodedTemplates.push_back(entry.canonicalKey);
+        tests.expect(read && expectedTypes == decodedTypes && expectedTemplates == decodedTemplates &&
+                         decoded.members.size() == historical.members.size() &&
+                         decoded.namespaceFunctions.size() == historical.namespaceFunctions.size() &&
+                         decoded.dispatchTables.size() == historical.dispatchTables.size(),
+                     "reader preserves each content profile (" + error + ")");
+        error.clear();
+        tests.expect(read && codec.verifyCurrentCompiler(decoded, error),
+                     "compiler accepts each compatible content profile (" + error + ")");
+    }
+
+    // Archived bytes remain immutable. Unreadable records must fail structurally;
+    // the content profiles written above are positive controls.
+    const auto goldenDirectory = std::filesystem::path(NSC_SOURCE_DIR) / "tests" / "fixtures" / "nsmeta";
+    std::size_t goldenCount = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(goldenDirectory))
+    {
+        if (entry.path().extension() != ".nsmeta") continue;
+        ++goldenCount;
+        LibraryMetadata golden;
+        error.clear();
+        const bool goldenRead = codec.read(entry.path(), golden, error);
+        const bool structural = error.find("metadata") != std::string::npos &&
+            (error.find("invalid") != std::string::npos || error.find("truncated") != std::string::npos) &&
+            error.find("magic") == std::string::npos && error.find("version") == std::string::npos &&
+            error.find("format") == std::string::npos;
+        tests.expect(!goldenRead && structural,
+                     "archived " + entry.path().filename().string() +
+                         " is refused for a malformed record, not for its label (" + error + ")");
+    }
+    tests.expect(goldenCount == 40, "all forty archived NSMETA files are still checked");
+
+    // Incompatible object ABI contracts are rejected; the valid model is the control.
+    for (const std::uint16_t objectAbi : {std::uint16_t{1}, std::uint16_t{2}})
+    {
+        LibraryMetadata older = metadata;
+        older.objectAbiVersion = objectAbi;
+        error.clear();
+        const bool olderCompatible = codec.verifyCurrentCompiler(older, error);
+        tests.expect(!olderCompatible &&
+                         error.find("object ABI expected 3, found " + std::to_string(objectAbi) +
+                                    "; recompile the library with the current compiler") != std::string::npos,
+                     "a file declaring object ABI " + std::to_string(objectAbi) +
+                         " is rejected at the explicit Object ABI 3 boundary (" + error + ")");
+    }
+    error.clear();
+    const bool currentAbiAccepted = codec.verifyCurrentCompiler(metadata, error);
+    tests.expect(currentAbiAccepted, "the same file at object ABI 3 is accepted (" + error + ")");
 
     std::vector<std::uint8_t> corrupted = readBytes(validPath);
     corrupted.back() ^= 0x5aU;
@@ -1391,34 +1485,24 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     tests.expect(!codec.read(corruptedPath, ignored, error) && error.find("checksum mismatch") != std::string::npos,
         "single-byte payload corruption is detected before metadata is accepted");
 
-    std::vector<std::uint8_t> versionMismatch = readBytes(validPath);
-    versionMismatch[8] = 2;
-    versionMismatch[9] = 0;
-    const auto versionPath = directory / "version.nsmeta";
-    writeBytes(versionPath, versionMismatch);
+    std::vector<std::uint8_t> firstReservedSample = readBytes(validPath);
+    firstReservedSample[8] = 2;
+    firstReservedSample[9] = 0;
+    const auto firstSamplePath = directory / "reserved-first.nsmeta";
+    writeBytes(firstSamplePath, firstReservedSample);
     error.clear();
-    tests.expect(codec.read(versionPath, ignored, error) && codec.verifyCurrentCompiler(ignored, error),
-        "metadata with a different version label is accepted when its payload is compatible");
+    tests.expect(codec.read(firstSamplePath, ignored, error) && codec.verifyCurrentCompiler(ignored, error),
+        "metadata with varied reserved bytes is accepted when its payload is compatible");
 
-    LibraryMetadata currentFormat = metadata;
-    currentFormat.formatMinor = nativesharp::interop::kMetadataFormatMinor;
-    const auto currentFormatPath = directory / "current-format.nsmeta";
+    std::vector<std::uint8_t> secondReservedSample = readBytes(validPath);
+    secondReservedSample[10] = 0xfeU;
+    secondReservedSample[11] = 0;
+    const auto secondSamplePath = directory / "reserved-second.nsmeta";
+    writeBytes(secondSamplePath, secondReservedSample);
     error.clear();
-    const bool wroteCurrentFormat = codec.writeModel(currentFormat, currentFormatPath, error);
-    tests.expect(wroteCurrentFormat, "current-format payload for future-label test writes (" + error + ")");
-    std::vector<std::uint8_t> futureMinor = wroteCurrentFormat ? readBytes(currentFormatPath) : std::vector<std::uint8_t>{};
-    if (futureMinor.size() >= 12U)
-    {
-        futureMinor[10] = static_cast<std::uint8_t>(nativesharp::interop::kMetadataFormatMinor + 1U);
-        futureMinor[11] = 0;
-        const auto futureMinorPath = directory / "future-minor.nsmeta";
-        writeBytes(futureMinorPath, futureMinor);
-        error.clear();
-        tests.expect(codec.read(futureMinorPath, ignored, error) &&
-                         codec.verifyCurrentCompiler(ignored, error),
-                     "a future NSMETA label is accepted when the payload remains compatible (" + error + ")");
-    }
-    else tests.expect(false, "current-format payload contains a complete metadata header");
+    tests.expect(codec.read(secondSamplePath, ignored, error) &&
+                     codec.verifyCurrentCompiler(ignored, error),
+                 "other reserved bytes are accepted when the payload remains compatible");
 
     std::vector<std::uint8_t> badMagic = readBytes(validPath);
     badMagic[0] = 'X';
@@ -1427,6 +1511,19 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     error.clear();
     tests.expect(!codec.read(magicPath, ignored, error) && error.find("magic") != std::string::npos,
         "wrong NSMETA magic is rejected explicitly");
+
+    std::vector<std::uint8_t> badTerminator = readBytes(validPath);
+    const auto terminatorPath = directory / "bad-signature-terminator.nsmeta";
+    error.clear();
+    const bool hasTerminator = badTerminator.size() > 7U;
+    if (hasTerminator)
+    {
+        badTerminator[7] = 1U;
+        writeBytes(terminatorPath, badTerminator);
+    }
+    tests.expect(hasTerminator && !codec.read(terminatorPath, ignored, error) &&
+            error.find("magic") != std::string::npos,
+        "a corrupted signature terminator is rejected even when reserved bytes are ignored");
 
     const auto truncatedPath = directory / "truncated.nsmeta";
     writeBytes(truncatedPath, std::vector<std::uint8_t>(20, 0));
@@ -1450,7 +1547,7 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
         "-dev+build.20000101T000000Z.0000000000000000";
     error.clear();
     tests.expect(codec.verifyCurrentCompiler(incompatible, error),
-                  "a prerelease suffix preserves the 3.0.0 compatibility line");
+                  "a prerelease suffix does not block content-compatible metadata");
     incompatible = metadata;
     incompatible.pointerSize = 4;
     error.clear();
@@ -1627,9 +1724,7 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     output.clear(); error.clear();
     tests.expect(verifyMetadata(validPath, output, error) == ExitCode::Success &&
             output.find("NativeSharp library metadata: valid") != std::string::npos &&
-                     output.find("format: NSMETA " + std::to_string(metadata.formatMajor) + "." +
-                                     std::to_string(metadata.formatMinor)) !=
-                         std::string::npos &&
+                     output.find("format: NSMETA\n") != std::string::npos &&
                      output.find("native-abi: 1.0") != std::string::npos &&
                      output.find("runtime-abi: 1.2") != std::string::npos &&
                      output.find("object-abi: 3") != std::string::npos &&
@@ -2218,7 +2313,7 @@ void testTypedParameterPackRoundTrip(
     const auto producer = root / "TypedParameterPackProducer";
     writeFile(producer / "TypedParameterPackProducer.nsproj",
         "<Project><PropertyGroup><Name>TypedParameterPackProducer</Name>"
-        "<OutputType>StaticLibrary</OutputType><Language>3</Language></PropertyGroup>"
+        "<OutputType>StaticLibrary</OutputType></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
     writeFile(producer / "Api.ns", R"NS(
 namespace TypedPacks
@@ -2255,7 +2350,7 @@ namespace TypedPacks
     const std::array<std::string_view, 5> producerArgs = {
         "-O0", "--emit-project-oop-lib", producerProject, "-o", producerLibrary};
     tests.expect(runDriver(producerArgs, output, error) == ExitCode::Success,
-        "language 3 producer emits an O0 library with a typed parameter pack (" + error + ")");
+        "producer emits an O0 library with a typed parameter pack (" + error + ")");
 
     LibraryMetadataCodec codec;
     LibraryMetadata metadata;
@@ -2266,26 +2361,33 @@ namespace TypedPacks
         metadata.members, [](const LibraryMetadataMember& candidate) {
             return candidate.name == "Sum";
         });
-    tests.expect(read && metadata.formatMinor >= 24U &&
+    tests.expect(read &&
                      member != metadata.members.end() && member->parameters.size() == 1U &&
                      member->parameters.front().isParameterPack,
-        "NSMETA 1.24 preserves params on the public signature (" +
+        "NSMETA preserves params on the public signature (" +
             error + ")");
 
+    // Vary the reserved bytes and verify the decoded parameter-pack contract, rather than
+    // comparing two files whose headers were never changed.
     LibraryMetadata downlevel = metadata;
-    downlevel.formatMinor = 23U;
     error.clear();
-    tests.expect(
-        !codec.writeModel(
-            downlevel, producer / "TypedParameterPackProducer-1.23.nsmeta", error) &&
-            error.find("before 1.24 cannot represent a params") != std::string::npos,
-        "NSMETA 1.23 rejects rather than silently erases a typed parameter-pack contract (" +
-            error + ")");
+    const auto relabelledPath = producer / "TypedParameterPackProducer-sample-23.nsmeta";
+    LibraryMetadata relabelled;
+    const bool relabelledRead = nativesharp::tests::metadataSurvivesReservedBytes(
+            codec, downlevel, 23U, relabelledPath, error) &&
+        codec.read(relabelledPath, relabelled, error);
+    const auto relabelledMember = std::ranges::find_if(
+        relabelled.members, [](const LibraryMetadataMember& candidate) {
+            return candidate.name == "Sum";
+        });
+    tests.expect(relabelledRead && relabelledMember != relabelled.members.end() &&
+            relabelledMember->parameters.size() == 1U && relabelledMember->parameters.front().isParameterPack,
+        "varied reserved header bytes preserve the typed parameter-pack contract (" + error + ")");
 
     const auto consumer = root / "TypedParameterPackConsumer";
     writeFile(consumer / "TypedParameterPackConsumer.nsproj",
         "<Project><PropertyGroup><Name>TypedParameterPackConsumer</Name>"
-        "<Language>3</Language></PropertyGroup><ItemGroup>"
+        "</PropertyGroup><ItemGroup>"
         "<Compile Include=\"**/*.ns\" />"
         "<LibraryReference Include=\"" + producerLibrary + "\" Metadata=\"" +
         (producer / "TypedParameterPackProducer.nsmeta").generic_string() +

@@ -1,0 +1,8 @@
+int RemInt(int a, int b) { return a % b; }
+long RemLong(long a, long b) { return a % b; }
+int Main()
+{
+    if (RemInt(-17, 5) != -2 || RemInt(17, -5) != 2) return 1;
+    if (RemLong(-17L, 5L) != -2L || RemLong(17L, -5L) != 2L) return 2;
+    return 0;
+}

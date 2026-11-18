@@ -4,7 +4,7 @@
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Lexer/TokenKind.h"
-#include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Language/LanguageSurface.h"
 
 #include <algorithm>
 #include <optional>
@@ -20,16 +20,16 @@ namespace
 {
 using lexer::TokenKind;
 
-void reportDeferredTypeLanguage3(
+void reportDeferredLanguageType(
     diagnostics::DiagnosticEngine& diagnostics,
     SourceRange range,
-    language::Language3Feature feature)
+    language::LanguageFeature feature)
 {
     diagnostics.report(
         diagnostics::DiagnosticId::NS3049DeferredLanguageSurface,
         diagnostics::DiagnosticSeverity::Error,
         range,
-        language::language3SurfaceDiagnostic(feature));
+        language::languageSurfaceDiagnostic(feature));
 }
 }
 bool Parser::canStartType(const lexer::Token& token) const noexcept
@@ -589,8 +589,8 @@ void Parser::parseDeferredTypePrefix(TypeParseState& state)
     if (at(TokenKind::KwLong) && peek().kind() == TokenKind::KwDouble)
     {
         state.longDoubleRange = join(current().range(), peek().range());
-        reportDeferredTypeLanguage3(
-            diagnostics_, state.longDoubleRange, language::Language3Feature::LongDouble);
+        reportDeferredLanguageType(
+            diagnostics_, state.longDoubleRange, language::LanguageFeature::LongDouble);
         consume();
         state.recoverLongDoubleAsDouble = true;
     }
@@ -1452,7 +1452,7 @@ std::string Parser::parseOptionalLifetimeAnnotation(std::string_view context)
     return result;
 }
 
-ast::TypeSyntax* Parser::parseAllocationElementType()
+ast::TypeSyntax* Parser::parseAllocationElementType(std::string_view allocationKeyword)
 {
     if (!lexer::isBuiltinTypeKeyword(current().kind()) && !at(TokenKind::Identifier))
     {
@@ -1481,13 +1481,16 @@ ast::TypeSyntax* Parser::parseAllocationElementType()
         completeRange = base.range();
     }
 
-    if (baseKind == TokenKind::KwVoid)
+    if (baseKind == TokenKind::KwVoid && !at(TokenKind::Star))
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::InvalidType,
             diagnostics::DiagnosticSeverity::Error,
             completeRange,
-            "void cannot be used as an allocation element type");
+            // The parser stops here, so the semantic diagnostic that explains the rule is never
+            // reached. Its reason is appended here, naming the same construct.
+            "void cannot be used as an allocation element type; " + std::string(allocationKeyword) +
+                " requires an element type with a size");
     }
 
     ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(

@@ -1,8 +1,10 @@
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
 # NS3-T12-F03 — Visibilidad granular / Granular visibility
 
 ## Español
 
-La edición 3 distingue cuatro fronteras semánticas:
+NativeSharp distingue cuatro fronteras semánticas:
 
 - `private`: sólo la declaración/contenedor autorizado;
 - `module`: el proyecto que declara el símbolo;
@@ -29,7 +31,7 @@ consumidor del mismo paquete y otro autorizado por Friend, y rechaza un paquete 
 
 ## English
 
-Edition 3 distinguishes four semantic boundaries: `private`, `module`, logical `package`, and
+NativeSharp distinguishes four semantic boundaries: `private`, `module`, logical `package`, and
 `public`. Existing `internal` remains compatible and means `module`.
 
 Namespace types accept contextual `module` and `package` modifiers. The parser retains that

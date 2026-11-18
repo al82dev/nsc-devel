@@ -1,0 +1,14 @@
+using NativeSharp.Compiler.Types;
+
+int Main()
+{
+    raii TypeTable types = new TypeTable();
+    int signedByte = types.Intern("sbyte");
+    if (signedByte != types.Find("sbyte")) return 1;
+    if (types.Get(signedByte).Size() != 1 || types.Get(signedByte).Alignment() != 1) return 2;
+    if (!types.IsInteger(signedByte) || !types.IsNumeric(signedByte)) return 3;
+    int array = types.Intern("sbyte[4]");
+    if (types.Get(array).Size() != 4 || types.Get(array).Alignment() != 1) return 4;
+    if (types.Get(array).ElementType() != signedByte) return 5;
+    return 0;
+}

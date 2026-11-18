@@ -1,0 +1,642 @@
+#include "nativesharp/Frontend/ProjectCompilation.h"
+#include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "nativesharp/Frontend/ProjectOopHirModel.h"
+#include "nativesharp/Frontend/ProjectOopHirNode.h"
+#include "nativesharp/Frontend/ProjectOopMirModel.h"
+#include "nativesharp/Frontend/ProjectOopMirNode.h"
+#include "nativesharp/LLVM/ProjectOopMirCacheIdentity.h"
+
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace nativesharp::frontend
+{
+struct ProjectOopHirModelTestAccess final
+{
+    static std::size_t restoredPolls(const ProjectOopMirModel& model)
+    {
+        std::size_t result = 0;
+        const auto count = std::min(model.functions_.size(), model.mirCachePayloads_.size());
+        for (std::size_t i = 0; i < count; ++i)
+            if (model.functions_[i].mangledName.find("$moveNext$poll") != std::string::npos &&
+                model.mirCachePayloads_[i].has_value()) ++result;
+        return result;
+    }
+};
+}
+
+using namespace nativesharp::frontend;
+
+struct Pending final
+{
+    const ProjectOopMirNode* node;
+    std::string path;
+    bool inYieldOperand;
+};
+
+std::vector<const ProjectOopMirNode*> nodesByPreorder(const ProjectOopMirNode* root)
+{
+    std::vector<const ProjectOopMirNode*> result;
+    std::vector<const ProjectOopMirNode*> pending;
+    if (root != nullptr) pending.push_back(root);
+    while (!pending.empty())
+    {
+        const auto* node = pending.back();
+        pending.pop_back();
+        result.push_back(node);
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            if (*child) pending.push_back(child->get());
+    }
+    return result;
+}
+
+bool reportFacts(const ProjectOopMirModel& model, const ProjectOopHirModel& hir,
+    const ProjectMethodBodyModel& bindings, bool expectUnknown)
+{
+    std::size_t count = 0;
+    std::size_t unknown = 0;
+    std::size_t genericInt = 0;
+    std::size_t genericPayload = 0;
+    std::size_t genericBool = 0;
+    std::size_t genericDouble = 0;
+    std::size_t refFacts = 0;
+    std::size_t classRef = 0;
+    std::size_t namespaceRef = 0;
+    std::size_t classMut = 0;
+    std::size_t namespaceMut = 0;
+    std::size_t unknownMode = 0;
+    std::size_t scalarRoots = 0;
+    std::size_t boolLiteral = 0;
+    std::size_t doubleLiteral = 0;
+    std::size_t localScalar = 0;
+    std::size_t borrowedRoots = 0;
+    std::size_t unknownConditional = 0;
+    std::size_t scalarConditional = 0;
+    std::size_t mixedConditional = 0;
+    std::size_t simdConditional = 0;
+    std::size_t unknownWrapper = 0;
+    std::size_t semanticOwnedBranches = 0;
+    std::size_t staticFieldBranches = 0;
+    for (const auto& function : model.functions())
+    {
+        const auto hirFunctions = hir.functions();
+        const auto hirFunction = std::ranges::find_if(hirFunctions, [&](const auto& source) {
+            return source.mangledName == function.mangledName;
+        });
+        if (hirFunction == hirFunctions.end()) return false;
+        const auto nodes = nodesByPreorder(function.body.get());
+        for (std::size_t i = 0; i < function.asyncYieldFacts.size(); ++i)
+        {
+            const auto& fact = function.asyncYieldFacts[i];
+            if (fact.itemMode != hirFunction->asyncYieldItemMode) return false;
+            const auto mode = fact.itemMode;
+            const bool isRefMut = function.mangledName.find("GenRefMut") != std::string::npos;
+            const bool isRef = !isRefMut && function.mangledName.find("GenRef") != std::string::npos;
+            const bool syntheticUnknown = expectUnknown && function.mangledName.find("Wrapped") != std::string::npos;
+            const auto expected = syntheticUnknown ? ProjectOopYieldItemMode::Unknown :
+                isRefMut ? ProjectOopYieldItemMode::MutableReference :
+                isRef ? ProjectOopYieldItemMode::Reference : ProjectOopYieldItemMode::Value;
+            if (mode != expected) return false;
+            const bool root = !fact.parentFact.has_value();
+            const bool expectedBorrow = root && (isRef || isRefMut);
+            const bool genericIntRoot = root && function.mangledName.find("Generator") != std::string::npos &&
+                fact.typeKey == "builtin:int";
+            const bool genericBoolRoot = root && function.mangledName.find("Generator") != std::string::npos &&
+                fact.typeKey == "builtin:bool";
+            const bool genericDoubleRoot = root && function.mangledName.find("Generator") != std::string::npos &&
+                fact.typeKey == "builtin:double";
+            const bool literalRoot = root && function.mangledName.find("Wrapped") != std::string::npos &&
+                fact.nodeKind == ProjectOopMirNodeKind::IntegerConstant && !syntheticUnknown;
+            const bool boolRoot = root && function.mangledName.find("ScalarBool") != std::string::npos &&
+                fact.nodeKind == ProjectOopMirNodeKind::BooleanConstant;
+            const bool doubleRoot = root && function.mangledName.find("ScalarDouble") != std::string::npos &&
+                fact.nodeKind == ProjectOopMirNodeKind::FloatingConstant;
+            const bool localRoot = root && function.mangledName.find("ScalarLocal") != std::string::npos &&
+                fact.nodeKind == ProjectOopMirNodeKind::LocalValue;
+            const bool conditionalRoot = root && function.mangledName.find("ScalarConditional") != std::string::npos &&
+                fact.nodeKind == ProjectOopMirNodeKind::Conditional && !expectUnknown;
+            const auto expectedKind = expectedBorrow ? ProjectOopYieldResultKind::BorrowedReference :
+                (genericIntRoot || genericBoolRoot || genericDoubleRoot || literalRoot ||
+                 boolRoot || doubleRoot || localRoot || conditionalRoot) ?
+                    ProjectOopYieldResultKind::TrivialScalar :
+                ProjectOopYieldResultKind::Unknown;
+            if (fact.resultKind != expectedKind) return false;
+            const bool payloadBranch = fact.parentFact && *fact.parentFact < i &&
+                function.asyncYieldFacts[*fact.parentFact].nodeKind == ProjectOopMirNodeKind::Conditional &&
+                fact.typeKey.find("Payload") != std::string::npos;
+            const bool removedOwned = expectUnknown && function.mangledName.find("Program__Gen__") != std::string::npos &&
+                fact.parentFact && fact.childIndex == 1 && !fact.hasBinding;
+            const auto expectedBranch = payloadBranch && fact.childIndex == 1 && !removedOwned ?
+                ProjectOopYieldBranchEvidence::SemanticFreshOwnedTransfer :
+                payloadBranch && fact.childIndex == 2 ? ProjectOopYieldBranchEvidence::StaticFieldNonOwning :
+                ProjectOopYieldBranchEvidence::Unknown;
+            if (fact.branchEvidence != expectedBranch) return false;
+            if (fact.branchEvidence == ProjectOopYieldBranchEvidence::SemanticFreshOwnedTransfer)
+                ++semanticOwnedBranches;
+            if (fact.branchEvidence == ProjectOopYieldBranchEvidence::StaticFieldNonOwning)
+                ++staticFieldBranches;
+            if (boolRoot) ++boolLiteral;
+            if (doubleRoot) ++doubleLiteral;
+            if (localRoot) ++localScalar;
+            if (fact.resultKind == ProjectOopYieldResultKind::TrivialScalar) ++scalarRoots;
+            if (fact.resultKind == ProjectOopYieldResultKind::BorrowedReference) ++borrowedRoots;
+            if (root && fact.nodeKind == ProjectOopMirNodeKind::Conditional &&
+                fact.resultKind == ProjectOopYieldResultKind::Unknown) ++unknownConditional;
+            if (root && function.mangledName.find("ScalarConditional") != std::string::npos &&
+                fact.nodeKind == ProjectOopMirNodeKind::Conditional && fact.typeKey == "builtin:int" &&
+                fact.resultKind == (expectUnknown ? ProjectOopYieldResultKind::Unknown :
+                    ProjectOopYieldResultKind::TrivialScalar)) ++scalarConditional;
+            if (root && function.mangledName.find("MixedConditional") != std::string::npos &&
+                fact.nodeKind == ProjectOopMirNodeKind::Conditional &&
+                fact.resultKind == ProjectOopYieldResultKind::Unknown) ++mixedConditional;
+            if (root && function.mangledName.find("SimdConditional") != std::string::npos &&
+                fact.nodeKind == ProjectOopMirNodeKind::Conditional &&
+                fact.resultKind == ProjectOopYieldResultKind::Unknown) ++simdConditional;
+            if (root && fact.nodeKind == ProjectOopMirNodeKind::FullExpressionCleanup &&
+                fact.resultKind == ProjectOopYieldResultKind::Unknown) ++unknownWrapper;
+            if (mode == ProjectOopYieldItemMode::Unknown) ++unknownMode;
+            if (isRef && function.namespaceFunctionOrdinal) ++namespaceRef;
+            if (isRef && !function.namespaceFunctionOrdinal) ++classRef;
+            if (isRefMut && function.namespaceFunctionOrdinal) ++namespaceMut;
+            if (isRefMut && !function.namespaceFunctionOrdinal) ++classMut;
+            if (fact.yieldPreorder >= nodes.size() || fact.nodePreorder >= nodes.size()) return false;
+            const auto* yield = nodes[fact.yieldPreorder];
+            const auto* node = nodes[fact.nodePreorder];
+            if (yield->kind != ProjectOopMirNodeKind::AsyncYieldValue || node->kind != fact.nodeKind)
+                return false;
+            const ProjectOopMirNode* parent = yield;
+            if (fact.parentFact.has_value())
+            {
+                if (*fact.parentFact >= i) return false;
+                const auto& parentFact = function.asyncYieldFacts[*fact.parentFact];
+                if (parentFact.yieldPreorder != fact.yieldPreorder || parentFact.nodePreorder >= nodes.size())
+                    return false;
+                parent = nodes[parentFact.nodePreorder];
+            }
+            if (fact.childIndex >= parent->children.size() || parent->children[fact.childIndex].get() != node)
+                return false;
+            const auto* binding = node->syntax == nullptr ? nullptr :
+                bindings.expressionTypeBinding(node->syntax, function.memberOrdinal);
+            if (fact.hasBinding != (binding != nullptr)) return false;
+            if (binding != nullptr && (fact.typeKey != binding->typeKey || fact.valueCategory != binding->valueCategory ||
+                fact.ownership != binding->ownership || fact.ownershipTransfer != binding->ownershipTransfer ||
+                fact.ownershipFreshOwner != binding->ownershipFreshOwner ||
+                fact.objectLifetimeOwnership != binding->objectLifetimeOwnership ||
+                fact.storageOwnership != binding->storageOwnership)) return false;
+            ++count;
+            if (function.mangledName.find("GenRef") != std::string::npos) ++refFacts;
+            if (function.mangledName.find("Generator") != std::string::npos && fact.typeKey == "builtin:int")
+                ++genericInt;
+            if (function.mangledName.find("Generator") != std::string::npos && fact.typeKey == "builtin:bool")
+                ++genericBool;
+            if (function.mangledName.find("Generator") != std::string::npos && fact.typeKey == "builtin:double")
+                ++genericDouble;
+            if (function.mangledName.find("Generator") != std::string::npos &&
+                fact.typeKey.find("Payload") != std::string::npos) ++genericPayload;
+            std::cout << "fact " << function.mangledName << " yield=" << fact.yieldPreorder
+                      << " node=" << fact.nodePreorder << " parent=";
+            if (fact.parentFact) std::cout << *fact.parentFact;
+            else std::cout << "root";
+            std::cout << " child=" << fact.childIndex << " kind=" << static_cast<int>(fact.nodeKind)
+                      << " item-mode=" << static_cast<int>(fact.itemMode)
+                      << " result-kind=" << static_cast<int>(fact.resultKind)
+                      << " branch-evidence=" << static_cast<int>(fact.branchEvidence);
+            if (!fact.hasBinding) { ++unknown; std::cout << " UNKNOWN\n"; continue; }
+            std::cout << " type=" << fact.typeKey << " category=" << static_cast<int>(fact.valueCategory)
+                      << " ownership=" << static_cast<int>(fact.ownership) << " transfer=" << fact.ownershipTransfer
+                      << " fresh=" << fact.ownershipFreshOwner << " object="
+                      << static_cast<int>(fact.objectLifetimeOwnership) << " storage="
+                      << static_cast<int>(fact.storageOwnership) << '\n';
+        }
+    }
+    std::cout << "fact-coverage unknown=" << unknown << " generic-int=" << genericInt
+              << " generic-payload=" << genericPayload << " generic-bool=" << genericBool
+              << " generic-double=" << genericDouble << " ref=" << refFacts
+              << " class-ref=" << classRef << " namespace-ref=" << namespaceRef
+              << " class-mut=" << classMut << " namespace-mut=" << namespaceMut
+              << " unknown-mode=" << unknownMode << " scalar=" << scalarRoots
+              << " scalar-bool-literal=" << boolLiteral << " scalar-double-literal=" << doubleLiteral
+              << " scalar-local=" << localScalar
+              << " borrowed=" << borrowedRoots << " unknown-conditional=" << unknownConditional
+              << " scalar-conditional=" << scalarConditional << " mixed-conditional-unknown=" << mixedConditional
+              << " simd-conditional-unknown=" << simdConditional
+              << " unknown-wrapper=" << unknownWrapper << " semantic-owned-branches=" << semanticOwnedBranches
+              << " static-field-branches=" << staticFieldBranches << '\n';
+    return count > 0 && (!expectUnknown || (unknown > 0 && unknownMode > 0)) &&
+        genericInt > 0 && genericPayload > 0 && genericBool > 0 && genericDouble > 0 && refFacts > 0 &&
+        classRef > 0 && namespaceRef > 0 && classMut > 0 && namespaceMut > 0 &&
+        scalarRoots > 0 && boolLiteral > 0 && doubleLiteral > 0 && localScalar > 0 &&
+        borrowedRoots > 0 && unknownConditional > 0 && scalarConditional == 1 && mixedConditional == 1 &&
+        simdConditional == 1 &&
+        unknownWrapper > 0 && semanticOwnedBranches == (expectUnknown ? 1U : 2U) && staticFieldBranches == 2;
+}
+
+bool removeOneYieldSyntax(const ProjectOopHirModel& hir)
+{
+    for (const auto& function : hir.functions())
+    {
+        if (function.mangledName.find("ScalarConditional") == std::string::npos || !function.body) continue;
+        std::vector<ProjectOopHirNode*> pending{function.body.get()};
+        while (!pending.empty())
+        {
+            auto* node = pending.back();
+            pending.pop_back();
+            if (node->kind == ProjectOopHirNodeKind::AsyncYieldValue && !node->children.empty() &&
+                node->children.front() && node->children.front()->kind == ProjectOopHirNodeKind::Conditional &&
+                node->children.front()->children.size() == 3 && node->children.front()->children[1])
+            {
+                node->children.front()->children[1]->syntax = nullptr;
+                return true;
+            }
+            for (const auto& child : node->children) if (child) pending.push_back(child.get());
+        }
+    }
+    return false;
+}
+
+bool removeOneYieldMode(const ProjectOopHirModel& hir)
+{
+    for (const auto& function : hir.functions())
+    {
+        if (!function.isAsyncPoll || function.mangledName.find("Wrapped") == std::string::npos) continue;
+        const_cast<ProjectOopHirFunction&>(function).asyncYieldItemMode = ProjectOopYieldItemMode::Unknown;
+        return true;
+    }
+    return false;
+}
+
+bool removeOwnedBranchSyntax(const ProjectOopHirModel& hir)
+{
+    for (const auto& function : hir.functions())
+    {
+        if (!function.isAsyncPoll || function.mangledName.find("Program__Gen__") == std::string::npos ||
+            !function.body) continue;
+        std::vector<ProjectOopHirNode*> pending{function.body.get()};
+        while (!pending.empty())
+        {
+            auto* node = pending.back();
+            pending.pop_back();
+            if (node->kind == ProjectOopHirNodeKind::AsyncYieldValue && node->children.size() == 1 &&
+                node->children[0] && node->children[0]->kind == ProjectOopHirNodeKind::Conditional &&
+                node->children[0]->children.size() == 3 && node->children[0]->children[1])
+            {
+                node->children[0]->children[1]->syntax = nullptr;
+                return true;
+            }
+            for (const auto& child : node->children) if (child) pending.push_back(child.get());
+        }
+    }
+    return false;
+}
+
+// Synthetic guard check: this deliberately mismatches the condition MIR type and its bool binding.
+// It exercises fail-closed classification without requiring an AsyncIterator<SIMD> frame layout.
+bool setSyntheticSimdCondition(const ProjectOopHirModel& hir)
+{
+    for (const auto& function : hir.functions())
+    {
+        if (!function.isAsyncPoll || function.mangledName.find("SimdConditional") == std::string::npos ||
+            !function.body) continue;
+        std::vector<ProjectOopHirNode*> pending{function.body.get()};
+        while (!pending.empty())
+        {
+            auto* node = pending.back();
+            pending.pop_back();
+            if (node->kind == ProjectOopHirNodeKind::AsyncYieldValue && node->children.size() == 1 &&
+                node->children[0] && node->children[0]->kind == ProjectOopHirNodeKind::Conditional &&
+                node->children[0]->children.size() == 3 && node->children[0]->children[0])
+            {
+                node->children[0]->children[0]->typeKey = "mask<builtin:int,4>";
+                return true;
+            }
+            for (const auto& child : node->children) if (child) pending.push_back(child.get());
+        }
+    }
+    return false;
+}
+
+std::string factSnapshot(const ProjectOopMirModel& model)
+{
+    std::ostringstream out;
+    for (const auto& function : model.functions())
+        for (const auto& fact : function.asyncYieldFacts)
+        {
+            out << function.mangledName.size() << ':' << function.mangledName << ' ' << fact.yieldPreorder << ' '
+                << fact.nodePreorder << ' ' << fact.parentFact.has_value() << ' '
+                << fact.parentFact.value_or(0) << ' ' << fact.childIndex << ' ' << static_cast<int>(fact.nodeKind)
+                << ' ' << static_cast<int>(fact.itemMode) << ' ' << static_cast<int>(fact.resultKind) << ' '
+                << static_cast<int>(fact.branchEvidence) << ' '
+                << fact.hasBinding << ' '
+                << fact.typeKey.size() << ':' << fact.typeKey << ' '
+                << static_cast<int>(fact.valueCategory) << ' ' << static_cast<int>(fact.ownership) << ' '
+                << fact.ownershipTransfer << ' ' << fact.ownershipFreshOwner << ' '
+                << static_cast<int>(fact.objectLifetimeOwnership) << ' '
+                << static_cast<int>(fact.storageOwnership) << '\n';
+        }
+    return out.str();
+}
+
+// Exploratory only: today LLVM does not consume these facts, so an unchanged
+// digest is an observation, not a product failure or a claim about future keys.
+bool probeYieldObjectIdentity(const ProjectOopMirModel& model)
+{
+    using nativesharp::llvm_backend::projectOopMirCacheIdentity;
+    using Fact = ProjectOopMirYieldFact;
+    const auto functions = model.functions();
+    std::size_t classProbes = 0;
+    std::size_t namespaceProbes = 0;
+    for (std::size_t ordinal = 0; ordinal < functions.size(); ++ordinal)
+    {
+        auto& function = const_cast<ProjectOopMirFunction&>(functions[ordinal]);
+        if (function.mangledName.find("Program__Gen__") == std::string::npos &&
+            function.mangledName.find("Helpers__Gen__") == std::string::npos) continue;
+        auto found = std::ranges::find_if(function.asyncYieldFacts, [](const Fact& fact) {
+            return fact.branchEvidence == ProjectOopYieldBranchEvidence::SemanticFreshOwnedTransfer;
+        });
+        if (found == function.asyncYieldFacts.end()) continue;
+        Fact& fact = *found;
+        const Fact original = fact;
+        const std::vector<std::size_t> selected{ordinal};
+        const std::vector<std::size_t> empty;
+        const auto definition = [&] { return projectOopMirCacheIdentity(model, selected, selected); };
+        const auto declaration = [&] { return projectOopMirCacheIdentity(model, empty, selected); };
+        const std::string before = definition();
+        const std::string declarationBefore = declaration();
+        if (before.empty() || declarationBefore.empty()) return false;
+        std::cout << "identity-probe function=" << function.mangledName << " definition=" << before
+                  << " declaration=" << declarationBefore << '\n';
+        const std::vector<std::pair<std::string, std::function<void(Fact&)>>> mutations{
+            {"yield-preorder", [](Fact& value) { ++value.yieldPreorder; }},
+            {"node-preorder", [](Fact& value) { ++value.nodePreorder; }},
+            {"parent", [](Fact& value) { value.parentFact.reset(); }},
+            {"child", [](Fact& value) { ++value.childIndex; }},
+            {"node-kind", [](Fact& value) { value.nodeKind = ProjectOopMirNodeKind::StaticFieldLoad; }},
+            {"item-mode", [](Fact& value) { value.itemMode = ProjectOopYieldItemMode::Unknown; }},
+            {"result-kind", [](Fact& value) { value.resultKind = ProjectOopYieldResultKind::TrivialScalar; }},
+            {"branch-evidence", [](Fact& value) { value.branchEvidence = ProjectOopYieldBranchEvidence::Unknown; }},
+            {"binding", [](Fact& value) { value.hasBinding = false; }},
+            {"type", [](Fact& value) { value.typeKey += "-changed"; }},
+            {"category", [](Fact& value) { value.valueCategory = nativesharp::sema::ValueCategory::Place; }},
+            {"ownership", [](Fact& value) { value.ownership = nativesharp::sema::OwnershipKind::None; }},
+            {"transfer", [](Fact& value) { value.ownershipTransfer = false; }},
+            {"fresh", [](Fact& value) { value.ownershipFreshOwner = false; }},
+            {"object-ownership", [](Fact& value) { value.objectLifetimeOwnership = nativesharp::sema::OwnershipKind::None; }},
+            {"storage-ownership", [](Fact& value) { value.storageOwnership = nativesharp::sema::OwnershipKind::None; }},
+        };
+        for (const auto& [name, mutate] : mutations)
+        {
+            fact = original;
+            mutate(fact);
+            const bool changed = definition() != before;
+            const bool declarationChanged = declaration() != declarationBefore;
+            std::cout << "identity-mutation " << name << " definition-changed=" << changed
+                      << " declaration-changed=" << declarationChanged << '\n';
+        }
+        fact = original;
+        const bool restored = definition() == before && declaration() == declarationBefore;
+        std::cout << "identity-probe-restored=" << restored << '\n';
+        if (!restored) return false;
+        if (function.namespaceFunctionOrdinal) ++namespaceProbes;
+        else ++classProbes;
+    }
+    std::cout << "identity-probe-class=" << classProbes << " namespace=" << namespaceProbes << '\n';
+    return classProbes == 1 && namespaceProbes == 1;
+}
+
+bool writeFixture(const std::filesystem::path& directory)
+{
+    std::filesystem::create_directories(directory);
+    std::ofstream source(directory / "Main.ns", std::ios::binary);
+    source << R"NS(using NativeSharp.Core;
+namespace NativeSharp.Core { public class Exception {} }
+class Payload { ~Payload() {} }
+class Generator<T> { public static AsyncIterator<T, Exception> Gen(T value) {
+ try { yield return value; } finally { yield return value; } } }
+class Program { public static Payload Shared;
+ public static owned Payload Make() { return new Payload(); }
+ public static bool Choose(bool value) { return value; }
+ public static int Identity(int value) { return value; }
+ public static int InspectString(borrowed string value) { return 0; }
+ public static AsyncIterator<Payload, Exception> Gen(bool choose) {
+  try { yield return Shared; } finally { yield return Choose(choose) ? Make() : Shared; }
+ }
+ public static AsyncIterator<ref int, Exception> GenRef() { int value = 5; yield return value; }
+ public static AsyncIterator<ref mut int, Exception> GenRefMut() { int value = 5; yield return value; }
+ public static int Main() { AsyncIterator<int, Exception> ints = Generator<int>.Gen(5);
+  AsyncIterator<bool, Exception> bools = Generator<bool>.Gen(true);
+  AsyncIterator<double, Exception> doubles = Generator<double>.Gen(1.0);
+  owned Payload owner = new Payload(); AsyncIterator<Payload, Exception> objects = Generator<Payload>.Gen(owner);
+  return 0; }
+}
+namespace Helpers {
+ public AsyncIterator<bool, Exception> ScalarBool() { yield return true; }
+ public AsyncIterator<double, Exception> ScalarDouble() { yield return 1.0; }
+ public AsyncIterator<int, Exception> ScalarLocal() { int value = 5; yield return value; }
+ public AsyncIterator<int, Exception> ScalarConditional(bool choose, int first, int second) {
+  yield return Program.Choose(choose) ? first : second;
+ }
+ public AsyncIterator<int, Exception> MixedConditional(bool choose, int first, int second) {
+  yield return choose ? first : Program.Identity(second);
+ }
+ public AsyncIterator<int, Exception> SimdConditional(bool choose, int first, int second) {
+  yield return choose ? first : second;
+ }
+ public AsyncIterator<ref int, Exception> GenRef() { int value = 5; yield return value; }
+ public AsyncIterator<ref mut int, Exception> GenRefMut() { int value = 5; yield return value; }
+ public AsyncIterator<Payload, Exception> Gen(bool choose) {
+  try { yield return Program.Shared; }
+  finally { yield return Program.Choose(choose) ? Program.Make() : Program.Shared; }
+ }
+ public AsyncIterator<int, Exception> Wrapped() {
+  try { yield return 5; } finally { yield return Program.InspectString("a" + "b"); }
+ }
+}
+)NS";
+    std::ofstream project(directory / "Probe.nsproj", std::ios::binary);
+    project << "<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>"
+               "<ItemGroup><Compile Include=\"Main.ns\" /></ItemGroup></Project>";
+    return source.good() && project.good();
+}
+
+bool reportProducers(const ProjectOopMirModel& model, const ProjectMethodBodyModel& bindings, bool expectUnknown)
+{
+    std::size_t conditionalCount = 0;
+    std::size_t namespaceConditionals = 0;
+    std::size_t scalarConditionals = 0;
+    std::size_t wrappers = 0;
+    std::size_t temporaries = 0;
+    std::size_t mixedOwnershipConditionals = 0;
+    std::size_t temporaryCleanupIdentities = 0;
+    for (const auto& function : model.functions())
+    {
+        if (function.mangledName.find("$moveNext$poll") == std::string::npos) continue;
+        std::vector<Pending> pending{{function.body.get(), "root", false}};
+        while (!pending.empty())
+        {
+            Pending item = std::move(pending.back());
+            pending.pop_back();
+            if (item.node == nullptr) continue;
+            for (std::size_t i = item.node->children.size(); i > 0; --i)
+                pending.push_back({item.node->children[i - 1].get(), item.path + "/" + std::to_string(i - 1),
+                    item.inYieldOperand || (item.node->kind == ProjectOopMirNodeKind::AsyncYieldValue && i == 1)});
+            if (item.inYieldOperand && function.namespaceFunctionOrdinal.has_value() &&
+                (item.node->kind == ProjectOopMirNodeKind::FullExpressionCleanup ||
+                 item.node->kind == ProjectOopMirNodeKind::OwnedTemporaryBorrow))
+            {
+                if (item.node->kind == ProjectOopMirNodeKind::FullExpressionCleanup) ++wrappers;
+                else
+                {
+                    ++temporaries;
+                    if (!item.node->localOrdinal || !item.node->cleanupRegionOrdinal) return false;
+                    const auto region = std::ranges::find_if(function.cleanupRegions, [&](const auto& cleanup) {
+                        return cleanup.ordinal == *item.node->cleanupRegionOrdinal &&
+                            cleanup.localOrdinal == item.node->localOrdinal && cleanup.action == item.node &&
+                            cleanup.kind == ProjectOopMirCleanupKind::TemporaryOwner;
+                    });
+                    if (region == function.cleanupRegions.end()) return false;
+                    ++temporaryCleanupIdentities;
+                }
+                const auto* binding = item.node->syntax == nullptr ? nullptr :
+                    bindings.expressionTypeBinding(item.node->syntax, function.memberOrdinal);
+                std::cout << "wrapper " << function.mangledName << ' ' << item.path
+                          << " kind=" << static_cast<int>(item.node->kind);
+                if (binding == nullptr) std::cout << " UNKNOWN\n";
+                else std::cout << " type=" << binding->typeKey << '\n';
+            }
+            if (item.node->kind != ProjectOopMirNodeKind::AsyncYieldValue || item.node->children.size() != 1 ||
+                !item.node->children[0] || item.node->children[0]->kind != ProjectOopMirNodeKind::Conditional)
+                continue;
+            const auto* conditional = item.node->children[0].get();
+            if (conditional->children.size() != 3 || !conditional->children[1] || !conditional->children[2])
+                return false;
+            ++conditionalCount;
+            if (function.namespaceFunctionOrdinal.has_value()) ++namespaceConditionals;
+            if (conditional->typeKey.find("Payload") != std::string::npos)
+            {
+                const auto* outer = conditional->syntax == nullptr ? nullptr :
+                    bindings.expressionTypeBinding(conditional->syntax, function.memberOrdinal);
+                const auto* ownedNode = conditional->children[1].get();
+                const auto* borrowedNode = conditional->children[2].get();
+                const auto* owned = ownedNode->syntax == nullptr ? nullptr :
+                    bindings.expressionTypeBinding(ownedNode->syntax, function.memberOrdinal);
+                const auto* borrowed = borrowedNode->syntax == nullptr ? nullptr :
+                    bindings.expressionTypeBinding(borrowedNode->syntax, function.memberOrdinal);
+                const bool removedOwned = expectUnknown &&
+                    function.mangledName.find("Program__Gen__") != std::string::npos && !owned;
+                if (!outer || (!owned && !removedOwned) || !borrowed ||
+                    outer->ownership != nativesharp::sema::OwnershipKind::None ||
+                    outer->ownershipTransfer || outer->ownershipFreshOwner ||
+                    (owned && (owned->ownership != nativesharp::sema::OwnershipKind::Owned ||
+                     !owned->ownershipTransfer || !owned->ownershipFreshOwner)) ||
+                    borrowed->ownership != nativesharp::sema::OwnershipKind::None ||
+                    borrowed->ownershipTransfer || borrowed->ownershipFreshOwner) return false;
+                ++mixedOwnershipConditionals;
+            }
+            if (function.mangledName.find("ScalarConditional") != std::string::npos)
+            {
+                const auto* condition = conditional->children[0].get();
+                const auto* binding = condition == nullptr || condition->syntax == nullptr ? nullptr :
+                    bindings.expressionTypeBinding(condition->syntax, function.memberOrdinal);
+                if (condition == nullptr || condition->typeKey != "builtin:bool" || binding == nullptr ||
+                    binding->typeKey != "builtin:bool" || conditional->typeKey != "builtin:int") return false;
+                ++scalarConditionals;
+            }
+            if (function.mangledName.find("SimdConditional") != std::string::npos)
+            {
+                const auto* condition = conditional->children[0].get();
+                const auto* binding = condition == nullptr || condition->syntax == nullptr ? nullptr :
+                    bindings.expressionTypeBinding(condition->syntax, function.memberOrdinal);
+                if (condition == nullptr || condition->typeKey != "mask<builtin:int,4>" || binding == nullptr ||
+                    binding->typeKey != "builtin:bool" || conditional->typeKey != "builtin:int") return false;
+            }
+            for (std::size_t branch = 1; branch <= 2; ++branch)
+            {
+                const auto* producer = conditional->children[branch].get();
+                const auto* binding = producer->syntax == nullptr ? nullptr :
+                    bindings.expressionTypeBinding(producer->syntax, function.memberOrdinal);
+                std::cout << "producer " << function.mangledName << ' ' << item.path << "/0/" << branch;
+                if (binding == nullptr)
+                {
+                    std::cout << " UNKNOWN\n";
+                    if (expectUnknown && function.mangledName.find("ScalarConditional") != std::string::npos &&
+                        branch == 1) continue;
+                    if (expectUnknown && function.mangledName.find("Program__Gen__") != std::string::npos &&
+                        branch == 1) continue;
+                    return false;
+                }
+                if (function.mangledName.find("ScalarConditional") != std::string::npos &&
+                    (producer->typeKey != "builtin:int" || binding->typeKey != "builtin:int" ||
+                     binding->ownership != nativesharp::sema::OwnershipKind::None || binding->ownershipTransfer ||
+                     binding->ownershipFreshOwner ||
+                     binding->objectLifetimeOwnership != nativesharp::sema::OwnershipKind::None ||
+                     binding->storageOwnership != nativesharp::sema::OwnershipKind::None)) return false;
+                std::cout << " type=" << binding->typeKey << " ownership=" << static_cast<int>(binding->ownership)
+                          << " transfer=" << binding->ownershipTransfer << " fresh=" << binding->ownershipFreshOwner
+                          << " object=" << static_cast<int>(binding->objectLifetimeOwnership)
+                          << " storage=" << static_cast<int>(binding->storageOwnership) << '\n';
+            }
+        }
+    }
+    std::cout << "scalar-conditional-verified=" << scalarConditionals
+              << " mixed-ownership-conditional=" << mixedOwnershipConditionals
+              << " temporary-cleanup-identity=" << temporaryCleanupIdentities << '\n';
+    return conditionalCount == 5 && namespaceConditionals == 4 && scalarConditionals == 1 &&
+        wrappers > 0 && temporaries > 0 && mixedOwnershipConditionals == 2 &&
+        temporaryCleanupIdentities == temporaries;
+}
+
+int main(int argc, char** argv)
+{
+    if (argc != 4) { std::cerr << "usage: test <shared-directory> <cold|warm|unknown> <1|4>\n"; return 2; }
+    const std::filesystem::path root = argv[1];
+    const std::string phase = argv[2];
+    const std::string workersText = argv[3];
+    if (workersText != "1" && workersText != "4") return 2;
+    const std::size_t workers = workersText == "1" ? 1U : 4U;
+    if (phase != "cold" && phase != "warm" && phase != "unknown" && phase != "identity-probe") return 2;
+    if ((phase == "cold" || phase == "unknown" || phase == "identity-probe") && !writeFixture(root)) return 2;
+    ProjectCompilation compilation;
+    compilation.setCompilationJobs(workers);
+    std::string error;
+    if (!compilation.compileProjectOopHir(root / "Probe.nsproj", error) ||
+        !compilation.methodBodyModel() || !compilation.oopHirModel() || !compilation.nameLookup() ||
+        !compilation.memberModel() || !compilation.objectLayoutModel() || !compilation.virtualDispatchModel() ||
+        !compilation.interfaceModel() || !compilation.destructionModel() || !compilation.namespaceFunctionModel())
+    { std::cerr << "HIR failed: " << error << '\n'; return 1; }
+    if (!setSyntheticSimdCondition(*compilation.oopHirModel()))
+    { std::cerr << "could not create synthetic SIMD condition\n"; return 1; }
+    if (phase == "unknown" && (!removeOneYieldSyntax(*compilation.oopHirModel()) ||
+        !removeOwnedBranchSyntax(*compilation.oopHirModel()) ||
+        !removeOneYieldMode(*compilation.oopHirModel())))
+    { std::cerr << "could not create a synthetic missing-binding case\n"; return 1; }
+    ProjectOopMirModel model;
+    model.setMirCacheRoot(root / "cache");
+    if (!model.build(*compilation.nameLookup(), *compilation.memberModel(), *compilation.objectLayoutModel(),
+        *compilation.virtualDispatchModel(), *compilation.interfaceModel(), *compilation.destructionModel(),
+        *compilation.oopHirModel(), *compilation.namespaceFunctionModel(), error, workers))
+    { std::cerr << "MIR failed: " << error << '\n'; return 1; }
+    const std::size_t restored = ProjectOopHirModelTestAccess::restoredPolls(model);
+    std::cout << "restored-polls=" << restored << '\n';
+    if (((phase == "cold" || phase == "unknown") && restored != 0) ||
+        (phase == "warm" && restored == 0)) return 1;
+    if (phase == "identity-probe") return probeYieldObjectIdentity(model) ? 0 : 1;
+    const bool observations = reportProducers(model, *compilation.methodBodyModel(), phase == "unknown") &&
+        reportFacts(model, *compilation.oopHirModel(), *compilation.methodBodyModel(), phase == "unknown");
+    const std::string before = factSnapshot(model);
+    std::string secondError;
+    const bool secondBuild = model.build(*compilation.nameLookup(), *compilation.memberModel(),
+        *compilation.objectLayoutModel(), *compilation.virtualDispatchModel(), *compilation.interfaceModel(),
+        *compilation.destructionModel(), *compilation.oopHirModel(), *compilation.namespaceFunctionModel(),
+        secondError, workers);
+    const std::string after = factSnapshot(model);
+    const bool rejected = !secondBuild && secondError == "ProjectOopMirModel instances are single-use";
+    std::cout << "single-use-rebuild-rejected=" << rejected << " facts-preserved=" << (before == after) << '\n';
+    return observations && rejected && before == after ? 0 : 1;
+}

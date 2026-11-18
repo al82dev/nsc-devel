@@ -5,7 +5,7 @@
 
 ## Auditoría (línea base)
 
-- `async`/`await` están RECHAZADOS por el parser vía `reportDeferredLanguage3(..., Language3Feature::AsyncAwait)`
+- `async`/`await` están RECHAZADOS por el parser vía `reportDeferredLanguage3(..., LanguageFeature::AsyncAwait)`
   en varios puntos: Parser.cpp:2560, :3367, :5236, :5310, :5634, :6207 y `await` en :13729.
 - El diagnóstico es `NS3049DeferredLanguageSurface` (Parser.cpp:198-208).
 

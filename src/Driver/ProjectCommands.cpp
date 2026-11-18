@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <charconv>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -81,14 +82,6 @@ bool boolMember(const Json& object, std::string_view name, bool fallback)
 {
     const Json* value = member(object, name);
     return value != nullptr && value->boolean() != nullptr ? *value->boolean() : fallback;
-}
-
-std::optional<double> numberMember(const Json& object, std::string_view name)
-{
-    const Json* value = member(object, name);
-    if (value == nullptr) return std::nullopt;
-    if (const double* number = std::get_if<double>(&value->value)) return *number;
-    return std::nullopt;
 }
 
 bool readText(const fs::path& path, std::string& text, std::string& error)
@@ -157,7 +150,16 @@ bool loadSidecar(const fs::path& project, Sidecar& sidecar, std::string& error, 
         sidecar.linkerSpecified = member(*build, "linker") != nullptr;
         sidecar.build.configuration = stringMember(*build, "configuration", "Debug");
         sidecar.build.optimization = stringMember(*build, "optimization", "O0");
-        sidecar.build.debugInformation = stringMember(*build, "debug_information", "full");
+        if (const Json* debugInformation = member(*build, "debug_information"))
+        {
+            const std::string* value = debugInformation->string();
+            if (value == nullptr || (*value != "none" && *value != "line-tables-only" && *value != "full"))
+            {
+                error = "debug_information must be none, line-tables-only, or full";
+                return false;
+            }
+            sidecar.build.debugInformation = *value;
+        }
         sidecar.build.linker = stringMember(*build, "linker", "NSLink");
         sidecar.build.linkTimeOptimization = stringMember(*build, "link_time_optimization", "none");
         sidecar.build.target = stringMember(*build, "target", "x86_64-pc-windows-msvc");
@@ -622,12 +624,13 @@ bool makeRestorePlan(const fs::path& project, const Sidecar& sidecar,
     return true;
 }
 
-bool verifyPlan(const RestorePlan& plan, std::size_t& verified, std::string& error)
+bool verifyPlanAtRoot(const RestorePlan& plan, const fs::path& root,
+                      std::size_t& verified, std::string& error)
 {
     for (const RestoredPackage& package : plan.packages)
         for (const Artifact& artifact : package.artifacts)
         {
-            const fs::path destination = plan.root / artifact.relativeDestination;
+            const fs::path destination = root / artifact.relativeDestination;
             basic::Sha256Digest digest{};
             std::uintmax_t size = 0;
             if (!basic::sha256File(destination, digest, size, error))
@@ -639,7 +642,12 @@ bool verifyPlan(const RestorePlan& plan, std::size_t& verified, std::string& err
     return true;
 }
 
-bool materialize(const RestorePlan& plan, std::size_t& copied, std::string& error)
+bool verifyPlan(const RestorePlan& plan, std::size_t& verified, std::string& error)
+{
+    return verifyPlanAtRoot(plan, plan.root, verified, error);
+}
+
+bool materialize(const RestorePlan& plan, std::size_t& copied, fs::path& publishedBackup, std::string& error)
 {
     const fs::path parent = plan.root.parent_path();
 #if defined(_WIN32)
@@ -665,17 +673,26 @@ bool materialize(const RestorePlan& plan, std::size_t& copied, std::string& erro
                 fs::copy_file(artifact.source, destination, fs::copy_options::overwrite_existing, fileError);
             if (fileError)
             {
-                fs::remove_all(staging, fileError);
                 error = "cannot stage package artifact '" + artifact.source.string() + "': " + fileError.message();
+                std::error_code cleanupError;
+                fs::remove_all(staging, cleanupError);
                 return false;
             }
             ++copied;
         }
+    std::size_t stagedVerified = 0;
+    if (!verifyPlanAtRoot(plan, staging, stagedVerified, error))
+    {
+        std::error_code cleanupError;
+        fs::remove_all(staging, cleanupError);
+        return false;
+    }
     if (fs::exists(plan.root)) fs::rename(plan.root, backup, fileError);
     if (fileError)
     {
-        fs::remove_all(staging, fileError);
         error = "cannot begin restore transaction: " + fileError.message();
+        std::error_code cleanupError;
+        fs::remove_all(staging, cleanupError);
         return false;
     }
     fs::rename(staging, plan.root, fileError);
@@ -683,11 +700,15 @@ bool materialize(const RestorePlan& plan, std::size_t& copied, std::string& erro
     {
         std::error_code rollbackError;
         if (fs::exists(backup)) fs::rename(backup, plan.root, rollbackError);
-        fs::remove_all(staging, rollbackError);
+        std::error_code cleanupError;
+        fs::remove_all(staging, cleanupError);
         error = "cannot publish restored packages: " + fileError.message();
+        if (rollbackError)
+            error += "; rollback failed: " + rollbackError.message() +
+                     "; previous packages remain in backup '" + backup.string() + "'";
         return false;
     }
-    fs::remove_all(backup, fileError);
+    publishedBackup = backup;
     return true;
 }
 
@@ -746,9 +767,11 @@ ExitCode executeRestore(const RestoreOptions& options, bool json, std::ostream& 
                               "\"verified\":" + std::to_string(verified));
     }
     std::size_t copied = 0;
+    fs::path publishedBackup;
     if (!current || options.force)
     {
-        if (!materialize(plan, copied, message)) return result.failure(error, message, ExitCode::InternalError);
+        if (!materialize(plan, copied, publishedBackup, message))
+            return result.failure(error, message, ExitCode::InternalError);
         verified = 0;
         if (!verifyPlan(plan, verified, message)) return result.failure(error, message, ExitCode::InternalError);
     }
@@ -759,6 +782,14 @@ ExitCode executeRestore(const RestoreOptions& options, bool json, std::ostream& 
         !(readText(lockPath, existingLock, ignoredReadError) && existingLock == plan.lock);
     if (rewriteLock && !atomicWrite(lockPath, plan.lock, message))
         return result.failure(error, message, ExitCode::InternalError);
+    if (!publishedBackup.empty())
+    {
+        std::error_code cleanupError;
+        fs::remove_all(publishedBackup, cleanupError);
+        if (cleanupError)
+            return result.failure(error, "restored packages were published and lock updated, but cannot remove backup '" +
+                publishedBackup.string() + "': " + cleanupError.message(), ExitCode::InternalError);
+    }
     if (completedPlan != nullptr) *completedPlan = std::move(plan);
     return result.success(output,
         copied == 0 ? "Restore is current: " + std::to_string(verified) + " artifact(s)" :
@@ -807,9 +838,21 @@ bool makeGeneratedProject(const fs::path& project, const RestorePlan& plan, fs::
         std::vector<const Artifact*> runtimes;
         for (const Artifact& artifact : package.artifacts)
         {
-            if (artifact.type == "library") libraries.push_back(&artifact);
+            if (artifact.type == "library")
+            {
+                libraries.push_back(&artifact);
+                runtimes.push_back(nullptr);
+            }
             else if (artifact.type == "metadata") metadata.push_back(&artifact);
-            else if (artifact.type == "runtime") runtimes.push_back(&artifact);
+            else if (artifact.type == "runtime")
+            {
+                if (runtimes.empty() || runtimes.back() != nullptr)
+                {
+                    error = "package runtime does not follow a unique library";
+                    return false;
+                }
+                runtimes.back() = &artifact;
+            }
         }
         if (libraries.size() != metadata.size()) { error = "package library/metadata count mismatch"; return false; }
         for (std::size_t index = 0; index < libraries.size(); ++index)
@@ -819,7 +862,7 @@ bool makeGeneratedProject(const fs::path& project, const RestorePlan& plan, fs::
             const fs::path meta = fs::absolute(plan.root / metadata[index]->relativeDestination);
             references << "    <LibraryReference Include=\"" << xmlEscape(pathText(library))
                        << "\" Metadata=\"" << xmlEscape(pathText(meta)) << '"';
-            if (index < runtimes.size())
+            if (runtimes[index] != nullptr)
             {
                 const fs::path runtime = fs::absolute(plan.root / runtimes[index]->relativeDestination);
                 references << " Runtime=\"" << xmlEscape(pathText(runtime)) << '"';
@@ -928,14 +971,16 @@ bool publishContentStaging(
     fs::rename(staging, destination, fileError);
     if (fileError)
     {
-        const std::string publishError = fileError.message();
+        std::string publishError = "cannot publish Content directory: " + fileError.message();
         if (destinationExists)
         {
             std::error_code rollbackError;
             fs::rename(backup, destination, rollbackError);
+            if (rollbackError)
+                publishError += "; rollback failed: " + rollbackError.message() +
+                    "; previous Content remains in backup '" + backup.string() + "'";
         }
-        return failContentStaging(
-            staging, "cannot publish Content directory: " + publishError, error);
+        return failContentStaging(staging, std::move(publishError), error);
     }
     if (!destinationExists) return true;
     fs::remove_all(backup, fileError);
@@ -1134,6 +1179,62 @@ bool parseBuildOptions(std::span<const std::string_view> arguments, bool run, Bu
     return true;
 }
 
+// Read a lock size from the original JSON spelling, without double rounding.
+bool exactLockSize(const Json& value, std::uintmax_t& result)
+{
+    if (!std::holds_alternative<double>(value.value) || value.numberText.empty()) return false;
+    const std::string_view text = value.numberText;
+    std::size_t pos = 0;
+    const bool negative = text[pos] == '-';
+    if (negative) ++pos;
+    std::string digits;
+    std::size_t fractional = 0;
+    bool afterPoint = false;
+    while (pos < text.size() && text[pos] != 'e' && text[pos] != 'E')
+    {
+        if (text[pos] == '.') afterPoint = true;
+        else
+        {
+            digits.push_back(text[pos]);
+            if (afterPoint) ++fractional;
+        }
+        ++pos;
+    }
+    long long exponent = 0;
+    if (pos < text.size())
+    {
+        ++pos;
+        bool negativeExponent = false;
+        if (text[pos] == '+' || text[pos] == '-') negativeExponent = text[pos++] == '-';
+        while (pos < text.size())
+        {
+            if (exponent < 10000000) exponent = (std::min)(10000000LL, exponent * 10 + text[pos] - '0');
+            ++pos;
+        }
+        if (negativeExponent) exponent = -exponent;
+    }
+    const auto first = digits.find_first_not_of('0');
+    if (first == std::string::npos) { result = 0; return true; }
+    if (negative) return false;
+    digits.erase(0, first);
+    const long long scale = exponent - static_cast<long long>(fractional);
+    if (scale < 0)
+    {
+        const auto remove = static_cast<unsigned long long>(-scale);
+        if (remove >= digits.size()) return false;
+        for (std::size_t i = digits.size() - static_cast<std::size_t>(remove); i < digits.size(); ++i)
+            if (digits[i] != '0') return false;
+        digits.resize(digits.size() - static_cast<std::size_t>(remove));
+    }
+    else if (scale > 0)
+    {
+        if (scale > 20 || digits.size() + static_cast<std::size_t>(scale) > 20) return false;
+        digits.append(static_cast<std::size_t>(scale), '0');
+    }
+    const auto parsed = std::from_chars(digits.data(), digits.data() + digits.size(), result);
+    return parsed.ec == std::errc{} && parsed.ptr == digits.data() + digits.size();
+}
+
 bool loadPlanFromLock(
     const fs::path& project,
     RestorePlan& plan,
@@ -1163,11 +1264,10 @@ bool loadPlanFromLock(
             artifact.type = stringMember(artifactValue, "type");
             artifact.relativeDestination = fs::path(stringMember(artifactValue, "path"));
             artifact.hash = stringMember(artifactValue, "sha256");
-            const std::optional<double> size = numberMember(artifactValue, "size");
+            const Json* size = member(artifactValue, "size");
             if (!isSafeRelative(artifact.relativeDestination) || artifact.type.empty() ||
-                artifact.hash.size() != 64U || !size.has_value() || *size < 0.0)
+                artifact.hash.size() != 64U || size == nullptr || !exactLockSize(*size, artifact.size))
             { error = "lock file contains an invalid artifact"; return false; }
-            artifact.size = static_cast<std::uintmax_t>(*size);
             package.artifacts.push_back(std::move(artifact));
         }
         plan.packages.push_back(std::move(package));
@@ -1827,6 +1927,11 @@ bool launch(const fs::path &executable, const std::vector<std::string> &argument
     std::wstring command = quoteWindows(executable.wstring());
     for (const std::string& argument : arguments)
     {
+        if (argument.empty())
+        {
+            command += L" \"\"";
+            continue;
+        }
         const int size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, argument.data(),
                                              static_cast<int>(argument.size()), nullptr, 0);
         if (size <= 0) { error = "program argument is not valid UTF-8"; return false; }
@@ -1859,7 +1964,10 @@ bool launch(const fs::path &executable, const std::vector<std::string> &argument
 ExitCode runRun(std::span<const std::string_view> raw, std::ostream& output, std::ostream& error,
                 const PreparedDriverExecutor& executor)
 {
-    CommonArguments parsed = stripOutputFormat(raw);
+    std::size_t separator = 0;
+    while (separator < raw.size() && raw[separator] != "--") ++separator;
+    CommonArguments parsed = stripOutputFormat(raw.first(separator));
+    for (const std::string_view argument : raw.subspan(separator)) parsed.values.push_back(argument);
     CommandOutput result{parsed.json, "run", {}};
     BuildOptions options;
     std::string message;

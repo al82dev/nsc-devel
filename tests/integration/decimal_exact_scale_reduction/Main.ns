@@ -1,0 +1,25 @@
+noinline decimal Add(decimal a, decimal b) { return checked(a + b); }
+noinline decimal Sub(decimal a, decimal b) { return checked(a - b); }
+int Main()
+{
+    unsafe("check decimal carrier after exact scale reduction") {
+        i128 maxBits = ((i128)1 << 96) - (i128)1;
+        i128 sign = (i128)1 << 127;
+        decimal maximum = *((decimal*)&maxBits);
+        i128 negBits = maxBits | sign;
+        decimal negative = *((decimal*)&negBits);
+        decimal r1 = Add(maximum, 0.0m);
+        if (*((i128*)&r1) != maxBits) return 1;
+        decimal r2 = Add(0.0m, maximum);
+        if (*((i128*)&r2) != maxBits) return 2;
+        decimal r3 = Add(maximum, 0.00m);
+        if (*((i128*)&r3) != maxBits) return 3;
+        decimal r4 = Add(negative, 0.00m);
+        if (*((i128*)&r4) != negBits) return 4;
+        decimal r5 = Sub(negative, 0.0m);
+        if (*((i128*)&r5) != negBits) return 5;
+        decimal r6 = Add(1.0m, 0.0m);
+        if (*((i128*)&r6) != ((i128)10 | ((i128)1 << 96))) return 6;
+    }
+    return 0;
+}

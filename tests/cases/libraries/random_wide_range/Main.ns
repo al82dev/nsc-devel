@@ -1,0 +1,41 @@
+using NativeSharp.Core;
+public class Program
+{
+    public static int Check(int minimum, int maximum, long seed)
+    {
+        raii Random actual = new Random(seed);
+        raii Random control = new Random(seed);
+        ulong raw = (ulong)control.NextInt64();
+        long span = (long)maximum - (long)minimum;
+        long expected = (long)minimum + (long)(raw % (ulong)span);
+        int value = actual.Next(minimum, maximum);
+        if ((long)value != expected || value < minimum || value >= maximum) { return 1; }
+        if (actual.NextInt64() != control.NextInt64()) { return 2; }
+        return 0;
+    }
+    public static int Main()
+    {
+        if (Check(-2147483647 - 1, 2147483647, 123L) != 0) { return 1; }
+        if (Check(-2147483647 - 1, 0, 23L) != 0) { return 2; }
+        if (Check(-100, 100, 99L) != 0) { return 3; }
+        if (Check(2, 3, 7L) != 0) { return 4; }
+        if (Check(-20, -3, 42L) != 0) { return 5; }
+        raii Random actual = new Random(4L);
+        raii Random control = new Random(4L);
+        if (actual.Next(5, 5) != 5 || actual.Next(9, -1) != 9) { return 6; }
+        if (actual.NextInt64() != control.NextInt64()) { return 7; }
+        raii Random edge = new Random(-1985619515811535784L);
+        raii Random edgeControl = new Random(-1985619515811535784L);
+        int rejected = (int)((ulong)edgeControl.NextInt64() >> 33);
+        if (rejected != 2147483647) { return 8; }
+        int expectedNext = (int)((ulong)edgeControl.NextInt64() >> 33);
+        if (expectedNext == 2147483647 || edge.Next() != expectedNext) { return 9; }
+        if (edge.NextInt64() != edgeControl.NextInt64()) { return 10; }
+        raii Random ordinary = new Random(123L);
+        raii Random ordinaryControl = new Random(123L);
+        int ordinaryExpected = (int)((ulong)ordinaryControl.NextInt64() >> 33);
+        if (ordinaryExpected == 2147483647 || ordinary.Next() != ordinaryExpected) { return 11; }
+        if (ordinary.NextInt64() != ordinaryControl.NextInt64()) { return 12; }
+        return 0;
+    }
+}

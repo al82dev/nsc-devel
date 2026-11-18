@@ -1,0 +1,34 @@
+#[attribute NativeSharp.DeriveIgnore targets(field) repeatable(false) retention(compiletime)]
+
+record struct Point(int X, int Y) derive(Equality, Hash, Clone)
+{
+    #[NativeSharp.DeriveIgnore]
+    private int Cache;
+
+    public void SetCache(int value) { Cache = value; }
+}
+
+struct Plain
+{
+    public int X;
+    public int Cache;
+}
+
+int Main()
+{
+    Point first = new Point(20, 22);
+    Point same = first.Clone();
+    same.SetCache(42);
+    Point different = new Point(20, 23);
+    if (!first.Equals(same) || first != same) return 1;
+    if (first.GetHashCode() != same.GetHashCode()) return 2;
+    if (first.Equals(different) || first == different) return 3;
+    Plain plain;
+    Plain other;
+    plain.X = 20;
+    plain.Cache = 0;
+    other.X = 20;
+    other.Cache = 42;
+    if (plain.Equals(other)) return 4;
+    return 0;
+}

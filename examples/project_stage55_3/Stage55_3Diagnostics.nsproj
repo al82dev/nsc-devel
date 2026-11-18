@@ -2,7 +2,7 @@
   <PropertyGroup><Name>Stage55_3Diagnostics</Name></PropertyGroup>
   <ItemGroup>
     <Compile Include="**/*.ns" />
-    <ProjectReference Include="../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
-    <ProjectReference Include="../../lib/NativeSharp.Core.Diagnostics/NativeSharp.Core.Diagnostics.nsproj" />
+    <LibraryReference Include="NativeSharpCore.lib" Metadata="NativeSharpCore.nsmeta" />
+    <LibraryReference Include="NativeSharpCoreDiagnostics.lib" Metadata="NativeSharpCoreDiagnostics.nsmeta" />
   </ItemGroup>
 </Project>

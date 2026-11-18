@@ -1,10 +1,14 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
 # NS3-T10-F07 — Memoria atómica y `volatile` consolidados
 
 ## Español
 
 ### Resultado
 
-NativeSharp 3.0 tiene una sola autoridad productiva para su modelo de memoria. El análisis
+NativeSharp tiene una sola autoridad productiva para su modelo de memoria. El análisis
 semántico y el backend LLVM consultan `MemoryModel` en vez de mantener matrices independientes de
 órdenes. Los valores públicos de `MemoryOrder` permanecen separados de los ordinales LLVM.
 
@@ -27,7 +31,7 @@ metadata corrupta no puede saltarse el contrato del frontend.
 
 ### Prueba dirigida
 
-`nsc_ns3_t10_memory_model_tests` compila un programa edición 3 en O0, inspecciona LLVM para cargas,
+`nsc_ns3_t10_memory_model_tests` compila un programa NativeSharp en O0, inspecciona LLVM para cargas,
 stores, RMW, fence y accesos `volatile`, lo enlaza con NSLink y ejecuta el resultado. También prueba
 diagnósticos de órdenes inválidos. Resultado local: **12/12**.
 
@@ -37,7 +41,7 @@ No se ejecutó baseline, minibaseline ni suite general.
 
 ### Result
 
-NativeSharp 3.0 now has one production authority for its memory model. Semantic analysis and the
+NativeSharp now has one production authority for its memory model. Semantic analysis and the
 LLVM backend query `MemoryModel` rather than maintaining independent ordering matrices. Public
 `MemoryOrder` values remain explicitly decoupled from LLVM ordinals.
 
@@ -60,7 +64,7 @@ so malformed metadata cannot bypass the frontend contract.
 
 ### Directed verification
 
-`nsc_ns3_t10_memory_model_tests` compiles an edition-3 program at O0, inspects LLVM for atomic
+`nsc_ns3_t10_memory_model_tests` compiles a NativeSharp program at O0, inspects LLVM for atomic
 loads/stores/RMW/fences and volatile accesses, links it with NSLink, and executes it. It also checks
 precise diagnostics for invalid orders. Local result: **12/12**.
 

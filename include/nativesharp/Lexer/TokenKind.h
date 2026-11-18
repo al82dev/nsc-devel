@@ -49,7 +49,7 @@ enum class TokenKind
     KwInline,
     KwForceInline,
     KwNoInline,
-    // NativeSharp 2.0 item 321. Declares a callable whose body cannot allocate from the heap.
+    // NativeSharp item 321. Declares a callable whose body cannot allocate from the heap.
     KwNoHeap,
     KwPublic,
     KwInternal,
@@ -80,7 +80,7 @@ enum class TokenKind
     KwUsing,
     KwNew,
     KwDelete,
-    // NativeSharp 2.0 item 319. Ends an object's lifetime without releasing its storage.
+    // NativeSharp item 319. Ends an object's lifetime without releasing its storage.
     KwDestroy,
     KwStackalloc,
     KwSizeof,
@@ -91,7 +91,7 @@ enum class TokenKind
     KwExtern,
     KwExport,
     KwC,
-    // NativeSharp 2.0 item 344. Microsoft x64 vector calling convention.
+    // NativeSharp item 344. Microsoft x64 vector calling convention.
     KwVectorCall,
     KwTrue,
     KwFalse,
@@ -169,7 +169,7 @@ enum class TokenKind
     LessLessEqual,
     GreaterGreaterEqual,
 
-    // NativeSharp 3.0 T01 tokens are appended so the numeric identity of every 2.x token stays
+    // NativeSharp T01 tokens are appended so the numeric identity of every 2.x token stays
     // stable for serialized diagnostics and syntax caches.
     InterpolatedStringLiteral,
     QuestionQuestion,
@@ -178,7 +178,7 @@ enum class TokenKind
     // NS304-T10-F05: null-conditional index `?[` (READ/WRITE residual).
     QuestionBracket,
     DotDot,
-    // NativeSharp 3.0 T09-F02. Inclusive lazy-range delimiter. Appended to
+    // NativeSharp T09-F02. Inclusive lazy-range delimiter. Appended to
     // preserve every serialized token identity from earlier compiler lines.
     DotDotEqual,
     // NS304-T10-F01: `u8"..."` — a typed UTF-8 literal (ReadOnlySpan<byte>), not the `byte` keyword.

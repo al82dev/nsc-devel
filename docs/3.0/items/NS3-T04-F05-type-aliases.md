@@ -1,3 +1,7 @@
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # NS3-T04-F05 — Type aliases and opaque aliases
 
 ## Estado
@@ -7,7 +11,7 @@ nominal, layout sin wrapper y una frontera de representación limitada al módul
 
 ## Qué se hizo
 
-- Se añadió la sintaxis Edition 3 `opaque type Name = Representation;`, incluidos parámetros y
+- Se añadió la sintaxis de NativeSharp `opaque type Name = Representation;`, incluidos parámetros y
   constraints genéricos.
 - El preescaneo de tipos reconoce alias opacos en todos los archivos antes del parseo productivo,
   por lo que las referencias adelantadas y los ciclos llegan al modelo nominal ordinario.

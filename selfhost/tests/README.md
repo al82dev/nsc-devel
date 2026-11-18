@@ -1,7 +1,7 @@
 # Pruebas de self-hosting
 
 `profile/positive` contiene código perteneciente al Bootstrap Profile 2.0 que `nsc0` debe compilar
-y ejecutar. `profile/negative` contiene construcciones válidas o reconocibles de NativeSharp 2.0
+y ejecutar. `profile/negative` contiene construcciones válidas o reconocibles de NativeSharp
 que el perfil deliberadamente rechaza antes del bootstrap; `cases.json` fija sus códigos `NSBP`.
 
 `host/CompilerHostWorkload` es la carga certificada de SH02. Lee el corpus hostil de `host/corpus`,

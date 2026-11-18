@@ -9,7 +9,8 @@ seguía esperando el formato técnico histórico y marcaba NSC 2.0 compatible co
 
 - Se agrega --print-compiler-identity.
 - La salida usa el encabezado versionado NSCOMPILER 1 y campos clave=valor.
-- Publica versión completa, release, lenguaje, stage y hash de build.
+- Publica versión completa y release del producto, stage y hash de build. No publica
+  una versión ni edición del lenguaje.
 - No contiene banner, copyright ni texto localizado.
 - --version permanece orientado a personas y no cambia.
 

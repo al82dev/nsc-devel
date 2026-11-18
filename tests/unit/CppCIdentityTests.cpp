@@ -407,7 +407,7 @@ bool checkUsrStability(CppClangSessionFactory& factory, const std::string& resou
                 metadata_detail::CDependencyCatalog combinedDependencies;
                 const bool combinedOk = metadata_detail::encodeCTypeCatalogWithAnonymousCarriers(
                     snapshots, {}, dependencies, combined, error) &&
-                    metadata_detail::decodeCTypeCatalogAndDependencies(combined, 48, combinedRecords,
+                    metadata_detail::decodeCTypeCatalogAndDependencies(combined, combinedRecords,
                         combinedEnums, combinedDependencies, error);
                 std::size_t combinedCarriers = 0;
                 for (const auto& item : combinedRecords)
@@ -472,13 +472,11 @@ bool checkUsrStability(CppClangSessionFactory& factory, const std::string& resou
                             std::vector<CppCRecordSnapshot> dispatchedRecords;
                             std::vector<CppCEnumSnapshot> dispatchedEnums;
                             metadata_detail::CDependencyCatalog dispatchedDependencies;
-                            const bool acceptedOld = metadata_detail::decodeCTypeCatalogAndDependencies(provenanceBytes,
-                                48, dispatchedRecords, dispatchedEnums, dispatchedDependencies, error);
                             const bool acceptedNew = metadata_detail::decodeCTypeCatalogAndDependencies(provenanceBytes,
-                                49, dispatchedRecords, dispatchedEnums, dispatchedDependencies, error);
-                            carriersOk &= expect(!acceptedOld && acceptedNew && dispatchedEnums.size() == 1 &&
+                                dispatchedRecords, dispatchedEnums, dispatchedDependencies, error);
+                            carriersOk &= expect(acceptedNew && dispatchedEnums.size() == 1 &&
                                 dispatchedEnums[0].declaration.sourceProvenance == enumeration->sourceProvenance,
-                                "enum provenance envelope requires metadata 1.49");
+                                "enum provenance envelope decodes by content");
                             provenanceBytes.push_back(0);
                             const auto oldCount = provenanceEnums.size();
                             carriersOk &= expect(!metadata_detail::decodeCTypeCatalogWithEnumProvenance(provenanceBytes,
@@ -499,11 +497,9 @@ bool checkUsrStability(CppClangSessionFactory& factory, const std::string& resou
                     std::vector<CppCRecordSnapshot> dispatched;
                     std::vector<CppCEnumSnapshot> dispatchedEnums;
                     metadata_detail::CDependencyCatalog dispatchedDependencies;
-                    const bool oldAccepted = metadata_detail::decodeCTypeCatalogAndDependencies(
-                        bytes, 47, dispatched, dispatchedEnums, dispatchedDependencies, error);
                     const bool currentAccepted = metadata_detail::decodeCTypeCatalogAndDependencies(
-                        bytes, 48, dispatched, dispatchedEnums, dispatchedDependencies, error);
-                    carriersOk &= expect(!oldAccepted && currentAccepted && dispatched.size() == 4,
+                        bytes, dispatched, dispatchedEnums, dispatchedDependencies, error);
+                    carriersOk &= expect(currentAccepted && dispatched.size() == 4,
                         "anonymous carrier envelope requires the newer metadata version");
                 }
                 if (encoded)
@@ -795,7 +791,6 @@ bool checkTwoHeaderProject(CppClangSessionFactory& factory, const std::string& r
                 dependencies.aliases.push_back(decoded);
                 nativesharp::frontend::PrecompiledSyntaxModule module;
                 module.moduleName = decoded.moduleName;
-                module.cppCTypeCatalogFormatMinor = 46;
                 std::vector<nativesharp::frontend::CppImportedTypeAlias> fromMetadata;
                 aliasCaptured = metadata_detail::encodeCTypeCatalogWithDependencies({}, {}, dependencies,
                     module.cppCTypeCatalog, error) &&
@@ -1413,7 +1408,7 @@ void observeCatalogueEnvelope()
     std::vector<CppCRecordSnapshot> records;
     std::vector<CppCEnumSnapshot> decoded;
     std::string detail;
-    const bool roundTrip = encoded && decodeVersionedCTypeCatalog(legacy, records, decoded, detail, 42);
+    const bool roundTrip = encoded && decodeCTypeCatalogByContent(legacy, records, decoded, detail);
     std::cout << "OBSERVATION legacy enum-only C catalogue encoded=" << (encoded ? "yes" : "no")
               << " first bytes=" << prefix(legacy) << "classified-as-envelope="
               << (encoded && isCTypeCatalogWithProvenance(legacy) ? "yes" : "no") << " decoded="
@@ -1667,7 +1662,6 @@ bool checkGenericInstanceFactories(CppClangSessionFactory& factory, const std::s
     bool ok = expect(found && exact && initializers.size() == 2,
         "real C++ factories bind uniquely to distinct record owners in the generic body");
     LibraryMetadata published;
-    published.formatMinor = 46;
     for (const auto& record : compilation.genericModel()->templates())
         if (record.name == "Run")
         {
@@ -1682,15 +1676,10 @@ bool checkGenericInstanceFactories(CppClangSessionFactory& factory, const std::s
         resolved[0].methodName == "size0" && resolved[1].ownerIdentityKey.ends_with("Demo.Probe") &&
         resolved[1].methodName == "size0", "Clang-backed selector preserves each real method owner");
     LibraryMetadata argumentMetadata;
-    argumentMetadata.formatMinor = 46;
     LibraryMetadata ambiguousMetadata;
-    ambiguousMetadata.formatMinor = 46;
     LibraryMetadata arityMetadata;
-    arityMetadata.formatMinor = 46;
     LibraryMetadata variadicMetadata;
-    variadicMetadata.formatMinor = 46;
     LibraryMetadata chainedMetadata;
-    chainedMetadata.formatMinor = 46;
     for (const auto& record : compilation.genericModel()->templates())
         if (record.name == "RunArgs" || record.name == "Ambiguous" || record.name == "DifferentArity" ||
             record.name == "VariadicFactory" || record.name == "Chained")
@@ -1731,7 +1720,8 @@ bool checkGenericInstanceFactories(CppClangSessionFactory& factory, const std::s
     std::vector<CppCEnumSnapshot> enums;
     metadata_detail::CDependencyCatalog dependencies;
     const bool captured = provideCppCRecordMetadataCatalog(compilation, published, bytes, error) &&
-        !bytes.empty() && metadata_detail::decodeCTypeCatalogAndDependencies(bytes, 46, records, enums, dependencies, error);
+        !bytes.empty() &&
+        metadata_detail::decodeCTypeCatalogAndDependencies(bytes, records, enums, dependencies, error);
     if (!captured) std::cerr << "generic instance capture: " << error << '\n';
     ok &= expect(captured && dependencies.instanceMethods.size() == 2 &&
         dependencies.instanceMethods[0].receiverConst && dependencies.instanceMethods[1].receiverConst &&
@@ -1776,7 +1766,6 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
     if (!ready) std::cerr << "generic publication fixture: " << error << ' ' << diagnosticText(compilation) << '\n';
     if (!expect(ready && compilation.genericModel(), "generic publication fixture compiles with C project reference")) return false;
     LibraryMetadata metadata;
-    metadata.formatMinor = 46;
     for (const auto& record : compilation.genericModel()->templates())
         if (record.name == "Test" || record.name == "Call" || record.name == "Global" || record.name == "Record" ||
             record.name == "Packed" || record.name == "Variadic" || record.name == "Array")
@@ -1820,7 +1809,7 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
         provideCppCRecordMetadataCatalog(compilation, metadata, bytes, error);
     if (produced && bytes.empty()) error = "producer returned an empty C dependency catalogue";
     const bool captured = produced && !bytes.empty() &&
-        metadata_detail::decodeCTypeCatalogAndDependencies(bytes, 46, records, enums, dependencies, error) &&
+        metadata_detail::decodeCTypeCatalogAndDependencies(bytes, records, enums, dependencies, error) &&
         dependencies.aliases.size() == 1 && dependencies.aliases[0].declaration.name == "CIdInt";
     if (!captured) std::cerr << "generic alias publication: " << error << '\n';
     if (!expect(captured, "producer retains a template alias candidate from a real C project reference")) return false;
@@ -1877,7 +1866,6 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
     nativesharp::frontend::PrecompiledSyntaxModule observedModule, unobservedModule;
     observedModule.metadataPath = directory / "observed.nsmeta";
     unobservedModule.metadataPath = directory / "unobserved.nsmeta";
-    observedModule.cppCTypeCatalogFormatMinor = unobservedModule.cppCTypeCatalogFormatMinor = 46;
     observedModule.cppCTypeCatalog = bytes;
     if (!metadata_detail::encodeCTypeCatalogWithDependencies(withoutObservation, enums, dependencies,
             unobservedModule.cppCTypeCatalog, error)) return false;
@@ -1915,7 +1903,6 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
     dependencies.functions = capturedFunctions;
     if (!metadata_detail::encodeCTypeCatalogWithDependencies(records, enums, dependencies, bytes, error)) return false;
     module.cppCTypeCatalog = bytes;
-    module.cppCTypeCatalogFormatMinor = 46;
     nativesharp::frontend::ProjectCompilation consumer;
     const bool consumed = consumer.setPrecompiledModules({std::move(module)}, error) &&
         consumer.setCppTypeAliasProvider(
@@ -3666,11 +3653,9 @@ bool checkDependencyTypeCodec()
     std::vector<CppCEnumSnapshot> enumVersionEnums;
     CDependencyCatalog enumVersionDependencies;
     ok &= expect(encodeCTypeCatalogWithDependencies({}, {}, withEnumerator, enumeratorEnvelope, error) &&
-        !decodeCTypeCatalogAndDependencies(enumeratorEnvelope, 46, enumVersionRecords, enumVersionEnums,
-            enumVersionDependencies, error) && enumVersionDependencies.enumerators.empty() &&
-        decodeCTypeCatalogAndDependencies(enumeratorEnvelope, 47, enumVersionRecords, enumVersionEnums,
+        decodeCTypeCatalogAndDependencies(enumeratorEnvelope, enumVersionRecords, enumVersionEnums,
             enumVersionDependencies, error) && enumVersionDependencies.enumerators.size() == 1,
-        "anonymous enumerator dependencies require minor 47");
+        "anonymous enumerator dependencies decode by content");
     std::vector<std::uint8_t> envelope;
     std::vector<CppCRecordSnapshot> restoredRecords;
     std::vector<CppCEnumSnapshot> restoredEnums;
@@ -3683,25 +3668,21 @@ bool checkDependencyTypeCodec()
     CDependencyCatalog dispatched;
     std::vector<CppCRecordSnapshot> dispatchedRecords;
     std::vector<CppCEnumSnapshot> dispatchedEnums;
-    ok &= expect(decodeCTypeCatalogAndDependencies(envelope, 46, dispatchedRecords, dispatchedEnums,
+    ok &= expect(decodeCTypeCatalogAndDependencies(envelope, dispatchedRecords, dispatchedEnums,
         dispatched, error) && dispatched.functions.size() == 1 && dispatchedEnums.size() == 1,
-        "C dependency envelope dispatch accepts explicit future minor");
+        "C dependency envelope dispatch decodes by content");
     dispatchedEnums.clear();
-    ok &= expect(decodeVersionedCTypeCatalog(envelope, dispatchedRecords, dispatchedEnums, error, 46) &&
+    ok &= expect(decodeCTypeCatalogByContent(envelope, dispatchedRecords, dispatchedEnums, error) &&
         dispatchedEnums.size() == 1 && dispatchedEnums[0].identityKey == sourceEnums[0].identityKey,
         "versioned type reader extracts enums from the dependency envelope");
-    dispatchedEnums.clear();
-    ok &= expect(!decodeVersionedCTypeCatalog(envelope, dispatchedRecords, dispatchedEnums, error, 45) &&
-        dispatchedEnums.empty(), "versioned type reader does not accept the new envelope under minor 45");
-    dispatched.functions.clear();
-    ok &= expect(!decodeCTypeCatalogAndDependencies(envelope, 45, dispatchedRecords, dispatchedEnums,
-        dispatched, error) && dispatched.functions.empty(),
-        "C dependency envelope dispatch rejects an older minor without changing outputs");
-    std::vector<std::uint8_t> legacy;
-    ok &= expect(encodeCTypeCatalog({}, sourceEnums, legacy, error) &&
-        decodeCTypeCatalogAndDependencies(legacy, 42, dispatchedRecords, dispatchedEnums, dispatched, error) &&
-        dispatchedEnums.size() == 1 && dispatched.functions.empty(),
-        "C dependency dispatch preserves legacy enum-only catalogue");
+    // EN: Integration with `development`: NSMETA has no minor, so the rejections of an envelope under an older
+    //     minor no longer exist; the envelope is read by its tag.
+    // ES: Integracion con `development`: NSMETA no tiene minor, asi que ya no existen los rechazos de una
+    //     envoltura bajo un minor anterior; la envoltura se lee por su etiqueta.
+    // EN: The legacy enum-only catalogue was told apart from envelope 4 only by the declared NSMETA 1.42; without a
+    //     format number it is not read, and the current writer never emits it (T08-D24).
+    // ES: El catalogo heredado de solo enums se distinguia de la envoltura 4 solo por el NSMETA 1.42 declarado; sin
+    //     numero de formato no se lee, y el escritor actual nunca lo emite (T08-D24).
     if (!envelope.empty()) envelope.pop_back();
     restoredDependencies.functions.clear();
     ok &= expect(!decodeCTypeCatalogWithDependencies(envelope, restoredRecords, restoredEnums,
@@ -3892,7 +3873,7 @@ bool readProducerCatalogue(const std::filesystem::path& path, LibraryMetadata& m
         std::cerr << "NSMETA verification failed: " << error << '\n';
         return false;
     }
-    if (!metadata_detail::decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error, metadata.formatMinor))
+    if (!metadata_detail::decodeCTypeCatalogByContent(metadata.cppCRecordCatalog, records, enums, error))
     {
         std::cerr << "C catalogue decode failed: " << error << '\n';
         return false;
@@ -3927,7 +3908,6 @@ int verifyRestoredUsrs(char** argv)
     module.moduleName = metadata.moduleName;
     module.sourceText = "namespace CIdentityRestoredSurface { public struct Marker {} }\n";
     module.cppCTypeCatalog = metadata.cppCRecordCatalog;
-    module.cppCTypeCatalogFormatMinor = metadata.formatMinor;
     nativesharp::frontend::ProjectCompilation consumer;
     std::string error;
     const bool compiled = compileConsumer(consumer, std::move(module), project, error);
@@ -4280,8 +4260,7 @@ int inspectTemplateAlias(char** argv)
     std::vector<CppCRecordSnapshot> records;
     std::vector<CppCEnumSnapshot> enums;
     metadata_detail::CDependencyCatalog dependencies;
-    const bool found = metadata.formatMinor >= 46 &&
-        metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog, metadata.formatMinor,
+    const bool found = metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog,
             records, enums, dependencies, error) &&
         std::any_of(dependencies.aliases.begin(), dependencies.aliases.end(),
             [&](const auto& alias) { return alias.declaration.name == argv[3]; });
@@ -4299,8 +4278,7 @@ int inspectTemplateFunction(char** argv)
     std::vector<CppCRecordSnapshot> records;
     std::vector<CppCEnumSnapshot> enums;
     metadata_detail::CDependencyCatalog dependencies;
-    const bool found = metadata.formatMinor >= 46 &&
-        metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog, metadata.formatMinor,
+    const bool found = metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog,
             records, enums, dependencies, error) &&
         std::any_of(dependencies.functions.begin(), dependencies.functions.end(),
             [&](const auto& function) { return function.declaration.name == argv[3] && function.linkSymbol == argv[3]; });
@@ -4318,8 +4296,7 @@ int inspectTemplateGlobal(char** argv)
     std::vector<CppCRecordSnapshot> records;
     std::vector<CppCEnumSnapshot> enums;
     metadata_detail::CDependencyCatalog dependencies;
-    const bool found = metadata.formatMinor >= 46 &&
-        metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog, metadata.formatMinor,
+    const bool found = metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog,
             records, enums, dependencies, error) &&
         std::any_of(dependencies.globals.begin(), dependencies.globals.end(),
             [&](const auto& global) { return global.declaration.name == argv[3] && global.linkSymbol == argv[3]; });
@@ -4337,7 +4314,7 @@ int inspectTemplateEnumerator(char** argv)
     std::vector<CppCRecordSnapshot> records;
     std::vector<CppCEnumSnapshot> enums;
     metadata_detail::CDependencyCatalog dependencies;
-    if (!metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog, metadata.formatMinor,
+    if (!metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog,
             records, enums, dependencies, error))
     { std::cerr << "catalogue read: " << error << '\n'; return 1; }
     const bool found = std::any_of(dependencies.enumerators.begin(), dependencies.enumerators.end(),
@@ -4359,7 +4336,7 @@ int inspectCConstants(char** argv)
     if (!metadata.cppCRecordCatalog.empty())
     {
         const bool decoded =
-            metadata_detail::decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error, metadata.formatMinor);
+            metadata_detail::decodeCTypeCatalogByContent(metadata.cppCRecordCatalog, records, enums, error);
         if (!expect(decoded, "producer C catalogue decodes: " + error)) return 1;
     }
     bool ok = true;
@@ -4402,7 +4379,7 @@ enum class CatalogueLayout
     Unknown
 };
 
-CatalogueLayout proposedCatalogueLayout(std::uint16_t minor)
+[[maybe_unused]] CatalogueLayout proposedCatalogueLayout(std::uint16_t minor)
 {
     if (minor < 42) return CatalogueLayout::None;
     if (minor == 42) return CatalogueLayout::Legacy;
@@ -4414,7 +4391,7 @@ CatalogueLayout proposedCatalogueLayout(std::uint16_t minor)
 //     LibraryMetadataVerification.cpp: 1.43 only version 1, 1.44 up to 2, 1.45 versions 1-4.
 // ES: Versiones de envoltura que puede representar cada minor, como hoy las limitan el escritor y
 //     LibraryMetadataVerification.cpp: 1.43 solo la versión 1, 1.44 hasta la 2, 1.45 de la 1 a la 4.
-bool envelopeVersionAllowed(std::uint16_t minor, std::uint32_t version)
+[[maybe_unused]] bool envelopeVersionAllowed(std::uint16_t minor, std::uint32_t version)
 {
     if (minor == 43) return version == 1;
     if (minor == 44) return version >= 1 && version <= 2;
@@ -4436,7 +4413,7 @@ std::uint32_t leadingWord(std::span<const std::uint8_t> bytes)
 // ES: Decodificación propuesta: el minor declarado elige el decodificador y se rechaza una versión
 //     de envoltura que el minor no puede representar. Deja las salidas sin cambios si falla, como
 //     el codec.
-bool proposedCatalogueDecode(std::uint16_t minor, std::span<const std::uint8_t> bytes,
+[[maybe_unused]] bool proposedCatalogueDecode(std::uint16_t minor, std::span<const std::uint8_t> bytes,
                              std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums,
                              std::string& error)
 {
@@ -4516,23 +4493,14 @@ bool checkLegacyEnumOnlyFixture(const std::filesystem::path& directory)
         std::cerr << "legacy-enum-only.hex differs from the encoder; encoder bytes:\n" << hexText(encoded) << '\n';
         return false;
     }
-    std::vector<CppCRecordSnapshot> records;
-    std::vector<CppCEnumSnapshot> decoded;
-    std::string current;
-    const bool sniffed = metadata_detail::isCTypeCatalogWithProvenance(*fixture);
-    const bool currentDecodes = metadata_detail::decodeVersionedCTypeCatalog(*fixture, records, decoded, current, 42);
-    std::string proposed;
-    std::vector<CppCEnumSnapshot> proposedEnums;
-    const bool proposedDecodes = proposedCatalogueDecode(42, *fixture, records, proposedEnums, proposed);
-    const auto head = std::span(*fixture).first(std::min<std::size_t>(8, fixture->size()));
-    std::cout << "FIXTURE legacy-enum-only.hex bytes=" << fixture->size() << " first=" << hexText(head)
-              << " current: envelope=" << (sniffed ? "yes" : "no") << " decoded="
-              << (currentDecodes ? "yes" : "no") << " '" << current << "'; proposed 1.42: decoded="
-              << (proposedDecodes ? "yes" : "no") << " enums=" << proposedEnums.size() << '\n';
-    bool ok = expect(sniffed && currentDecodes && decoded.size() == 1,
-                     "declared 1.42 decodes the legacy enum-only catalogue despite its ambiguous prefix");
-    ok &= expect(proposedDecodes && proposedEnums.size() == 1, "proposed rule decodes it with the declared 1.42");
-    return ok;
+    // EN: Integration with `development`: NSMETA has no format number, so the declared 1.42 that told this
+    //     legacy form apart from envelope 4 no longer exists. The current writer never emits it (T08-D24); the
+    //     encoder control above remains.
+    // ES: Integracion con `development`: NSMETA no tiene numero de formato, asi que ya no existe el 1.42
+    //     declarado que distinguia esta forma heredada de la envoltura 4. El escritor actual nunca la emite
+    //     (T08-D24); el control del codificador de arriba se conserva.
+    std::cout << "FIXTURE legacy-enum-only.hex bytes=" << fixture->size() << " encoder matches\n";
+    return true;
 }
 
 // EN: Writes `metadata` down-level as NSMETA 1.<minor> with `catalogue`, reads it back with the
@@ -4542,38 +4510,6 @@ bool checkLegacyEnumOnlyFixture(const std::filesystem::path& directory)
 //     leer con el lector actual y compara la decodificación actual y la propuesta del catálogo.
 //     Imprime una fila. `expectCurrent` es el resultado que debe dar el lector actual. Devuelve
 //     false si no coincide.
-bool checkCatalogueVariant(const LibraryMetadata& metadata, const std::string& stem, std::uint16_t minor,
-                           const std::vector<std::uint8_t>& catalogue, const std::filesystem::path& directory,
-                           bool expectCurrent)
-{
-    LibraryMetadataCodec codec;
-    LibraryMetadata model = metadata;
-    model.formatMinor = minor;
-    model.cppCRecordCatalog = catalogue;
-    const auto path = directory / (stem + "-1." + std::to_string(minor) + ".nsmeta");
-    std::string writeError;
-    if (!codec.writeModel(model, path, writeError))
-    {
-        std::cout << "VARIANT " << stem << " 1." << minor << ": writer refused: " << writeError << '\n';
-        return expect(false, stem + " 1." + std::to_string(minor) + " can be written down-level");
-    }
-    LibraryMetadata decoded;
-    std::string readError;
-    const bool current = codec.read(path, decoded, readError) && codec.verifyCurrentCompiler(decoded, readError);
-    std::vector<CppCRecordSnapshot> records;
-    std::vector<CppCEnumSnapshot> enums;
-    std::string proposedError;
-    const bool proposed = proposedCatalogueDecode(minor, catalogue, records, enums, proposedError);
-    const auto head = std::span(catalogue).first(std::min<std::size_t>(8, catalogue.size()));
-    std::cout << "VARIANT " << stem << " 1." << minor << ": first=" << hexText(head)
-              << " sniffed-envelope=" << (metadata_detail::isCTypeCatalogWithProvenance(catalogue) ? "yes" : "no")
-              << " current=" << (current ? "reads" : "fails '" + readError + "'") << " proposed="
-              << (proposed ? "decodes" : "fails '" + proposedError + "'") << " records=" << records.size()
-              << " enums=" << enums.size() << '\n';
-    bool ok = expect(current == expectCurrent, stem + " 1." + std::to_string(minor) + ": current reader outcome");
-    ok &= expect(proposed, stem + " 1." + std::to_string(minor) + ": proposed rule decodes the catalogue");
-    return ok;
-}
 
 // EN: Compatibility controls for one real producer NSMETA. T08-D24: the writer always uses the current contract
 //     (kMetadataFormatMinor), whatever the envelope. Rewrites the catalogue for every minor that can represent
@@ -4592,27 +4528,22 @@ bool checkCatalogueVersions(const std::filesystem::path& nsmeta, const std::file
     if (!readProducerCatalogue(nsmeta, metadata, records, enums)) return false;
     const auto stem = nsmeta.stem().string();
     const auto version = leadingWord(metadata.cppCRecordCatalog);
-    std::cout << "PRODUCER " << stem << ": NSMETA 1." << metadata.formatMinor << " envelope=" << version
-              << " records=" << records.size() << " enums=" << enums.size() << '\n';
+    std::cout << "PRODUCER " << stem << ": envelope=" << version << " records=" << records.size()
+              << " enums=" << enums.size() << "\n";
+    // EN: The writer uses the current contract (T08-D24): envelope 7 or a provenance envelope, which the reader
+    //     tells apart by content and decodes to the same records and enums.
+    // ES: El escritor usa el contrato vigente (T08-D24): envoltura 7 o una envoltura con procedencia, que el
+    //     lector distingue por contenido y decodifica en los mismos records y enums.
+    bool ok = expect(version == 7 || metadata_detail::isCTypeCatalogWithProvenance(metadata.cppCRecordCatalog),
+        stem + " uses the current catalogue contract (T08-D24)");
+    std::vector<CppCRecordSnapshot> decodedRecords;
+    std::vector<CppCEnumSnapshot> decodedEnums;
     std::string error;
-    bool ok = expect(metadata.formatMinor == kMetadataFormatMinor && (version == 7 ||
-        metadata_detail::isCTypeCatalogWithProvenance(metadata.cppCRecordCatalog)),
-        stem + " uses the current NSMETA contract (T08-D24)");
-    std::vector<std::uint8_t> historical = metadata.cppCRecordCatalog;
-    if (version == 7 && !metadata_detail::encodeCTypeCatalogWithProvenance(records, enums, historical, error))
-        return expect(false, stem + " historical catalogue encoding");
-    const auto historicalVersion = leadingWord(historical);
-    if (historicalVersion == 1)
-    {
-        std::vector<std::uint8_t> legacy;
-        ok &= expect(metadata_detail::encodeCTypeCatalog(records, enums, legacy, error), stem + " legacy encoding");
-        ok &= checkCatalogueVariant(metadata, stem, 42, legacy, directory, true);
-    }
-    for (const std::uint16_t minor : {std::uint16_t{43}, std::uint16_t{44}, std::uint16_t{45}})
-    {
-        if (!envelopeVersionAllowed(minor, historicalVersion)) continue;
-        ok &= checkCatalogueVariant(metadata, stem, minor, historical, directory, true);
-    }
+    ok &= expect(metadata_detail::decodeCTypeCatalogByContent(metadata.cppCRecordCatalog, decodedRecords,
+                     decodedEnums, error) && decodedRecords.size() == records.size() &&
+                     decodedEnums.size() == enums.size(),
+        stem + " catalogue decodes by content (" + error + ")");
+    static_cast<void>(directory);
     return ok;
 }
 

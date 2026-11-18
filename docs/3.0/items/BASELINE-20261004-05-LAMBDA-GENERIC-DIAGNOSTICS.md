@@ -2,14 +2,12 @@
 
 ## Problema
 
-El verificador histórico de lambdas construía proyectos sin edición explícita. El frontend detenía
-los casos negativos en la barrera de Language 2 antes de alcanzar el contrato específico que la
-prueba quería medir. Además, el parser de `where` ahora admite restricciones de igualdad con `==`,
+El verificador histórico de lambdas encontró que una barrera de edición detenía los casos negativos antes de alcanzar el contrato específico que la prueba quería medir. Esa barrera ya no aplica. Además, el parser de `where` ahora admite restricciones de igualdad con `==`,
 pero una expectativa conservaba el texto anterior que sólo mencionaba `:`.
 
 ## Cambios
 
-- Los proyectos de Stage 43 se declaran con `<Language>3</Language>`.
+- Los proyectos de Stage 43 no necesitan seleccionar una versión del lenguaje.
 - Los dos casos de lambda sin tipos esperan la regla canónica de 3.0: cada parámetro de una lambda
   todavía no convertida necesita tipo explícito.
 - El caso `ConstraintWithoutConstraintList` espera el diagnóstico actual que enumera `:` y `==`.

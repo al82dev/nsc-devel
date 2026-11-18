@@ -2,7 +2,7 @@
 
 ## Español
 
-NativeSharp 3 acepta inicializadores con valores posicionales, miembros nombrados y un único
+NativeSharp acepta inicializadores con valores posicionales, miembros nombrados y un único
 spread. Los miembros se evalúan en el orden textual de la fuente, aunque sus destinos estén en
 otro orden físico. Un spread se evalúa una vez y sólo completa los slots que no fueron escritos
 explícitamente.
@@ -40,7 +40,7 @@ un destino final suministrado por el contexto.
 
 ## English
 
-NativeSharp 3 accepts positional values, named members, and one spread in an initializer. Entries
+NativeSharp accepts positional values, named members, and one spread in an initializer. Entries
 are evaluated in source order even when their physical destinations use a different order. A
 spread is evaluated once and fills only slots not written explicitly.
 

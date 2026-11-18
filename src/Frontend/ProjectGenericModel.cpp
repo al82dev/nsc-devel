@@ -377,6 +377,7 @@ void ProjectGenericModel::discoverTemplateDependenciesForBuild(
     // can then publish exactly the fixed-point closure of its public roots, and the NSMETA
     // verifier can prove that a same-module edge was not silently dropped.
     const GenericTelemetry::Scope phase(telemetry_, "generics.dependency-discovery");
+    declaredFieldContexts_.clear();
     for (std::size_t unitIndex = 0; unitIndex < units.size(); ++unitIndex)
     {
         const std::unique_ptr<ProjectSyntaxUnit>& unitPtr = units[unitIndex];
@@ -421,6 +422,11 @@ void ProjectGenericModel::discoverTemplateDependenciesForBuild(
                         left.typeKey == right.typeKey;
                 }),
             state.record.externalTypeReferences.end());
+        std::ranges::sort(state.record.candidateReceiverTypeKeys);
+        state.record.candidateReceiverTypeKeys.erase(
+            std::unique(state.record.candidateReceiverTypeKeys.begin(),
+                state.record.candidateReceiverTypeKeys.end()),
+            state.record.candidateReceiverTypeKeys.end());
     }
 }
 
@@ -456,6 +462,98 @@ void ProjectGenericModel::publishTemplateRecordsForBuild(
                 "duplicate generic type identity '" + state.record.canonicalKey +
                     "'; two generic types in the same namespace cannot share a name and an "
                     "arity -- rename one, or declare it 'partial' at namespace scope");
+        }
+        if (state.syntax == nullptr || state.record.extensionSyntaxes.empty()) continue;
+        const auto deferred = [&](const ast::AstNode* extension) {
+            return extension != nullptr && extension->isUnsafe() &&
+                std::ranges::find(state.syntax->typeSyntaxes(), extension->typeSyntax()) ==
+                    state.syntax->typeSyntaxes().end();
+        };
+        if (!std::ranges::any_of(state.record.extensionSyntaxes, deferred)) continue;
+
+        const auto isInterfaceIdentity = [&](const std::string& key) {
+            const auto separator = key.find("::");
+            if (!key.starts_with("type:") || separator == std::string::npos) return false;
+            std::string sourceName = key.substr(separator + 2U);
+            std::ranges::replace(sourceName, '+', '.');
+            const auto candidates = declaredTypeIdentitiesBySourceName_.find(sourceName);
+            if (candidates == declaredTypeIdentitiesBySourceName_.end()) return false;
+            bool found = false;
+            for (const std::size_t index : candidates->second)
+            {
+                const DeclaredTypeIdentity& declaration = declaredTypeIdentities_[index];
+                if ("type:" + declaration.identityKey != key) continue;
+                if (declaration.syntax == nullptr ||
+                    declaration.syntax->kind() != ast::AstNodeKind::InterfaceDeclaration) return false;
+                found = true;
+            }
+            return found;
+        };
+
+        // Deferred unsafe marker impls do not become unconditional bases.
+        // Compare identities resolved in each impl's own scope, not their
+        // textual spelling or terminal name.
+        std::unordered_map<std::string, std::pair<const ast::AstNode*, bool>> seenTraits;
+        for (const ast::AstNode* extension : state.record.extensionSyntaxes)
+        {
+            if (extension == nullptr || extension->typeSyntax() == nullptr) continue;
+            const SourceRange range = extension->typeSyntax()->range();
+            std::string identity;
+            bool ambiguous = !range.isValid();
+            for (const GenericTemplateExternalTypeReference& reference : state.record.externalTypeReferences)
+            {
+                if (reference.range.begin() != range.begin() || reference.range.end() != range.end()) continue;
+                if (!identity.empty() && identity != reference.typeKey) ambiguous = true;
+                identity = reference.typeKey;
+            }
+            if (ambiguous || identity.empty())
+            {
+                diagnostics.report(diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error, range,
+                    "cannot resolve a unique trait identity for conditional thread-safety coherence");
+                continue;
+            }
+            const bool isDeferred = deferred(extension);
+            if (isDeferred)
+            {
+                if (!isInterfaceIdentity(identity))
+                    diagnostics.report(diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error, range,
+                        "conditional thread-safety impl must name a trait or interface");
+                for (const ast::GenericConstraintClause& clause : extension->genericConstraints())
+                    for (const ast::TypeSyntax* constraint : clause.typeConstraints)
+                    {
+                        if (constraint == nullptr) continue;
+                        const SourceRange constraintRange = constraint->range();
+                        std::string resolved;
+                        bool ambiguousConstraint = !constraintRange.isValid();
+                        for (const GenericTemplateExternalTypeReference& reference : state.record.externalTypeReferences)
+                        {
+                            if (reference.range.begin() != constraintRange.begin() ||
+                                reference.range.end() != constraintRange.end()) continue;
+                            if (!resolved.empty() && resolved != reference.typeKey) ambiguousConstraint = true;
+                            resolved = reference.typeKey;
+                        }
+                        if (ambiguousConstraint || resolved.empty())
+                            diagnostics.report(diagnostics::DiagnosticId::InvalidType,
+                                diagnostics::DiagnosticSeverity::Error, constraintRange,
+                                "cannot resolve a unique trait identity for conditional thread-safety constraint");
+                        else if (!isInterfaceIdentity(resolved))
+                            diagnostics.report(diagnostics::DiagnosticId::InvalidType,
+                                diagnostics::DiagnosticSeverity::Error, constraintRange,
+                                "conditional thread-safety constraint must name a trait or interface");
+                    }
+            }
+            const auto [previous, inserted] = seenTraits.emplace(identity, std::pair{extension, isDeferred});
+            if (!inserted && (isDeferred || previous->second.second))
+            {
+                diagnostics.report(diagnostics::DiagnosticId::DuplicateSymbol,
+                    diagnostics::DiagnosticSeverity::Error, range,
+                    "duplicate trait impl for '" + identity + "' on generic type '" + state.record.name + "'");
+                diagnostics.report(diagnostics::DiagnosticId::PreviousDeclaration,
+                    diagnostics::DiagnosticSeverity::Note, previous->second.first->range(),
+                    "previous trait implementation is here");
+            }
         }
     }
 
@@ -524,9 +622,39 @@ void ProjectGenericModel::discoverRootDemandsForBuild(
     }
 }
 
+void ProjectGenericModel::addPrecompiledFieldCertificates(
+    std::span<const PrecompiledFieldCertificate> certificates)
+{
+    for (const PrecompiledFieldCertificate& certificate : certificates)
+    {
+        if (duplicatePrecompiledFieldCertificates_.contains(certificate.typeIdentity)) continue;
+        if (!precompiledFieldCertificates_.emplace(certificate.typeIdentity, certificate).second)
+        {
+            precompiledFieldCertificates_.erase(certificate.typeIdentity);
+            duplicatePrecompiledFieldCertificates_.insert(certificate.typeIdentity);
+        }
+    }
+}
+
+void ProjectGenericModel::addPrecompiledTemplateFieldCertificates(
+    std::span<const PrecompiledTemplateFieldCertificate> certificates)
+{
+    for (const auto& certificate : certificates)
+    {
+        if (duplicatePrecompiledTemplateFieldCertificates_.contains(certificate.templateKey)) continue;
+        if (!precompiledTemplateFieldCertificates_.emplace(certificate.templateKey, certificate).second)
+        {
+            precompiledTemplateFieldCertificates_.erase(certificate.templateKey);
+            duplicatePrecompiledTemplateFieldCertificates_.insert(certificate.templateKey);
+        }
+    }
+}
+
 bool ProjectGenericModel::materializePendingDemandsForBuild(
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    for (;;)
+    {
     // NSC305-G08. Apply the body-type demands first (they materialize directly and may collect
     // further type demands), then drain the type-demand waves (the two-pass).
     {
@@ -547,7 +675,26 @@ bool ProjectGenericModel::materializePendingDemandsForBuild(
             return false;
         }
     }
-    return true;
+        if (deferredStaticFieldIterations_.empty()) return true;
+        auto pending = std::move(deferredStaticFieldIterations_);
+        deferredStaticFieldIterations_.clear();
+        for (auto& [unit, node, namespaceName, ownerName, scope] : pending)
+        {
+            if (unit == nullptr || node == nullptr || node->typeSyntax() == nullptr ||
+                !node->typeSyntax()->typeArguments().empty())
+            {
+                if (node != nullptr)
+                    diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error, node->range(),
+                        "static field iteration generic type did not materialize");
+                built_ = true;
+                return false;
+            }
+            processNode(*unit, node, std::move(namespaceName), std::move(ownerName),
+                        std::move(scope), false, diagnostics);
+        }
+        if (diagnostics.hasErrors()) { built_ = true; return false; }
+    }
 }
 
 void ProjectGenericModel::finalizeBuildState(const diagnostics::DiagnosticEngine& diagnostics)
@@ -646,6 +793,58 @@ std::span<const GenericSpecializationRecord> ProjectGenericModel::specialization
     return specializations_;
 }
 
+const ast::AstNode* ProjectGenericModel::constructionCloneSource(const ast::AstNode* clone) const noexcept
+{
+    const auto found = constructionCloneSources_.find(clone);
+    return found == constructionCloneSources_.end() ? nullptr : found->second;
+}
+
+const ast::AstNode* ProjectGenericModel::fieldCloneSource(const ast::AstNode* clone) const noexcept
+{
+    const auto found = fieldCloneSources_.find(clone);
+    return found == fieldCloneSources_.end() ? nullptr : found->second;
+}
+
+const ast::TypeSyntax* ProjectGenericModel::substitutedTypeCloneSource(const ast::TypeSyntax* clone) const noexcept
+{
+    const auto found = substitutedTypeCloneSources_.find(clone);
+    return found == substitutedTypeCloneSources_.end() ? nullptr : found->second;
+}
+
+const ast::AstNode* ProjectGenericModel::genericCallCloneSource(const ast::AstNode* clone) const noexcept
+{
+    const auto found = genericCallCloneSources_.find(clone);
+    return found == genericCallCloneSources_.end() ? nullptr : found->second;
+}
+
+bool ProjectGenericModel::genericCallArgumentsWereInferred(const ast::AstNode* call) const noexcept
+{
+    return inferredGenericCalls_.contains(call);
+}
+
+const StaticFieldAccessSelection* ProjectGenericModel::staticFieldAccessSelection(
+    const ast::AstNode* expression) const noexcept
+{
+    // Clone edges are created together with their AST in the owning arena. A bounded
+    // traversal rejects malformed cycles without allocating in this noexcept query.
+    for (std::size_t depth = 0; expression != nullptr && depth < 1024; ++depth)
+    {
+        const auto found = staticFieldAccessSelections_.find(expression);
+        if (found != staticFieldAccessSelections_.end()) return &found->second;
+        const auto origin = memberCloneSources_.find(expression);
+        if (origin == memberCloneSources_.end()) return nullptr;
+        expression = origin->second;
+    }
+    return nullptr;
+}
+
+const StaticFieldIterationSelection* ProjectGenericModel::staticFieldIterationSelection(
+    const ast::AstNode* statement) const noexcept
+{
+    const auto found = staticFieldIterationSelections_.find(statement);
+    return found == staticFieldIterationSelections_.end() ? nullptr : &found->second;
+}
+
 const GenericSpecializationRecord* ProjectGenericModel::specializationForSyntax(
     const ast::AstNode* syntax) const noexcept
 {
@@ -670,6 +869,31 @@ const GenericSpecializationRecord* ProjectGenericModel::specializationForTypeKey
         return indexes_->genericSpecializationForName(terminal);
     }
     return nullptr;
+}
+
+std::span<const ast::TypeSyntax* const> ProjectGenericModel::rewrittenTypeArguments(
+    const ast::TypeSyntax* syntax) const noexcept
+{
+    const auto found = rewrittenTypeArgumentsBySyntax_.find(syntax);
+    return found == rewrittenTypeArgumentsBySyntax_.end()
+        ? std::span<const ast::TypeSyntax* const>{}
+        : std::span<const ast::TypeSyntax* const>(found->second);
+}
+
+std::span<const ast::TypeSyntax* const> ProjectGenericModel::rewrittenCallTypeArguments(
+    const ast::AstNode* call) const noexcept
+{
+    const auto found = rewrittenCallTypeArgumentsBySyntax_.find(call);
+    return found == rewrittenCallTypeArgumentsBySyntax_.end()
+        ? std::span<const ast::TypeSyntax* const>{}
+        : std::span<const ast::TypeSyntax* const>(found->second);
+}
+
+void ProjectGenericModel::preserveCallTypeArguments(const ast::AstNode* call)
+{
+    if (call == nullptr || call->typeSyntaxes().empty()) return;
+    auto& arguments = rewrittenCallTypeArgumentsBySyntax_[call];
+    arguments.assign(call->typeSyntaxes().begin(), call->typeSyntaxes().end());
 }
 
 std::string ProjectGenericModel::closedTypeKeyForTemplate(

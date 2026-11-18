@@ -598,6 +598,37 @@ class H
     }
 }
 
+void testExplicitInitializerCount(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto positive = root / "ExplicitInitializer";
+    writeProject(positive, "ExplicitInitializer");
+    writeFile(positive / "Main.ns",
+        "class H { public static void F() { int[] a = new int[2] { 7, 9 }; "
+        "int[] b = new int[] { 7, 9 }; delete[] a; delete[] b; } }");
+    ProjectCompilation accepted;
+    std::string error;
+    tests.expect(accepted.compileProjectOopMir(positive / "ExplicitInitializer.nsproj", error),
+        "matching explicit and inferred array initializers reach MIR");
+    const auto negative = root / "WrongInitializerCount";
+    writeProject(negative, "WrongInitializerCount");
+    writeFile(negative / "Main.ns",
+        "class H { public static void F() { int[] a = new int[2] { 7, 9, 11 }; } }");
+    ProjectCompilation rejected;
+    error.clear();
+    tests.expect(!rejected.compileProjectMethodBodies(negative / "WrongInitializerCount.nsproj", error) &&
+            hasDiagnosticText(rejected, "array initializer count must be constant and match its elements"),
+        "mismatched explicit array initializer count is diagnosed");
+    const auto dynamic = root / "DynamicInitializerCount";
+    writeProject(dynamic, "DynamicInitializerCount");
+    writeFile(dynamic / "Main.ns",
+        "class H { public static void F(int count) { int[] a = new int[count] { 7, 9 }; } }");
+    ProjectCompilation dynamicCount;
+    error.clear();
+    tests.expect(!dynamicCount.compileProjectMethodBodies(dynamic / "DynamicInitializerCount.nsproj", error) &&
+            hasDiagnosticText(dynamicCount, "array initializer count must be constant and match its elements"),
+        "runtime array count is rejected when an initializer fixes the length");
+}
+
 void testUtf8CodeUnitContract(TestContext& tests, const std::filesystem::path& root)
 {
     const auto directory = root / "Utf8";
@@ -642,6 +673,7 @@ int main()
     testLlvmBoundsPoolRuntimeAndCoff(tests, root);
     testCoreRuntimeBridge(tests);
     testNullAndNegativeBoundaries(tests, root);
+    testExplicitInitializerCount(tests, root);
     testUtf8CodeUnitContract(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);

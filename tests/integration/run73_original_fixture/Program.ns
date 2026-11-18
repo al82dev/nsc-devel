@@ -1,0 +1,10 @@
+int Compute()
+{
+    return 42;
+}
+
+int Main()
+{
+    int value = #run(Compute());
+    return value;
+}

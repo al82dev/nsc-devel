@@ -1,14 +1,16 @@
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
 # NS3-T06-F05 — Cleanup determinista / Deterministic cleanup
 
 ## Resultado
 
-NativeSharp 3.0 incorpora `defer` con capturas explícitas `ref`/`move` y lo baja al mismo grafo de
+NativeSharp incorpora `defer` con capturas explícitas `ref`/`move` y lo baja al mismo grafo de
 cleanup que ya gobierna `finally` y la destrucción RAII. El orden es LIFO y cubre salida normal,
 `return`, `break`, `continue` y unwind sin crear un runtime paralelo.
 
 ## Cambios principales
 
-- El parser reconoce `defer [captures] { body }` exclusivamente en edición 3.
+- El parser reconoce `defer [captures] { body }` exclusivamente en NativeSharp.
 - El bloque se transforma en una continuación `try/finally`; defers sucesivos quedan anidados.
 - `move` toma el valor al registrar; para owners transfiere ownership y para valores Copy conserva
   un snapshot. `ref` observa el storage al ejecutar el cleanup.
@@ -18,7 +20,7 @@ cleanup que ya gobierna `finally` y la destrucción RAII. El orden es LIFO y cub
 
 ## Archivos nuevos
 
-- `tests/unit/NativeSharp3T06DeterministicCleanupTests.cpp`: prueba dirigida O0/NSLink de orden,
+- `tests/unit/NativeSharpT06DeterministicCleanupTests.cpp`: prueba dirigida O0/NSLink de orden,
   exits, captura move-only, diagnósticos y edición.
 - `docs/3.0/language/deterministic-cleanup-and-defer.md`: contrato normativo bilingüe.
 - Este documento: mapa y evidencia del commit.
@@ -43,6 +45,5 @@ existente, no añade heap, objeto runtime, layout ni cambio de calling conventio
 - Ejecución LIFO por fallthrough, `return`, `continue` y `break`.
 - Captura move-only y destrucción exactamente una vez.
 - Dump de cuerpos con región `finally` y razones `return`, `break` y `continue`.
-- Rechazos de captura omitida, receiver implícito, duplicado, uso posterior de owner moved y
-  edición 2.
+- Rechazos de captura omitida, receiver implícito, duplicado, uso posterior de owner moved.
 - Baseline, suites y matrices: no ejecutados por prohibición expresa del proyecto.

@@ -2,13 +2,13 @@ namespace NativeSharp.BookExamples.BinarySearchTree
 {
     public class StudentNode
     {
-        public Student Value;
+        public owned Student Value;
         public StudentNode Left;
         public StudentNode Right;
 
-        public StudentNode(Student value)
+        public StudentNode(owned Student value)
         {
-            Value = value;
+            Value = move(value);
             Left = null;
             Right = null;
         }

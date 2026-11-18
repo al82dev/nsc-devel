@@ -21,7 +21,7 @@ eran cierres derivados porque el compilador self-hosted y varias pruebas consume
 ## Archivos
 
 - `src/Frontend/ProjectMethodBodyModel.cpp`
-- `tests/unit/NativeSharp3T06PartialMoveTests.cpp`
+- `tests/unit/NativeSharpT06PartialMoveTests.cpp`
 
 ## Verificacion puntual
 

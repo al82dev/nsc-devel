@@ -28,7 +28,7 @@ MIR/cost explorer sin volver a deducir el motivo desde un booleano.
 
 - `include/nativesharp/Language/IterationSemantics.h`: contrato de evaluación, solicitud y causa.
 - `src/Language/IterationSemantics.cpp`: análisis conservador y compatibilidad de `mayFuse`.
-- `tests/unit/NativeSharp3T09RangeEvaluationTests.cpp`: ocho comprobaciones puntuales.
+- `tests/unit/NativeSharpT09RangeEvaluationTests.cpp`: ocho comprobaciones puntuales.
 - `CMakeLists.txt`: target aislado `nsc_ns3_t09_range_evaluation_tests`.
 
 La prueba cubre laziness, orden, single/multi-pass, repetición, short-circuit, borrowing y el helper

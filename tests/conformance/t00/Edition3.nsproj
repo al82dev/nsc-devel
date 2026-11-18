@@ -1,9 +1,0 @@
-<Project>
-  <PropertyGroup>
-    <Name>Edition3Conformance</Name>
-    <OutputType>Library</OutputType>
-  </PropertyGroup>
-  <ItemGroup>
-    <Compile Include="Main.ns" />
-  </ItemGroup>
-</Project>

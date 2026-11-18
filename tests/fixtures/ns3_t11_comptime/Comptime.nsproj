@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <Name>NS3T11Comptime</Name>
-    <Language>3</Language>
+
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="*.ns" />

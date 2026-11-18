@@ -1,11 +1,6 @@
 <Project>
-  <PropertyGroup>
-    <Name>NativeSharpCoreIO</Name>
-    <OutputType>Library</OutputType>
-  </PropertyGroup>
+  <PropertyGroup><Name>NativeSharpCoreIOReference</Name><OutputType>Library</OutputType></PropertyGroup>
   <ItemGroup>
-    <Compile Include="**/*.ns" />
-    <LibraryReference Include="NativeSharpCore.lib"
-                      Metadata="NativeSharpCore.nsmeta" />
+    <ProjectReference Include="../../../nativesharp-libraries/stdlib/NativeSharp.Core.IO/NativeSharp.Core.IO.Sources.nsproj" />
   </ItemGroup>
 </Project>

@@ -1,5 +1,7 @@
 # Tanda operativa 17 — Carrier público `Optional<T>` para coalescencia
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 Fecha: 2026-09-29
 
 Rama: `development`
@@ -91,7 +93,7 @@ normal de método de instancia. No se introduce heap oculto ni se conoce el layo
 
 ## Archivos nuevos y por qué
 
-- `tests/cc1/c67_ns3_optional_coalescing/c67_ns3_optional_coalescing.nsproj`: proyecto edición 3
+- `tests/cc1/c67_ns3_optional_coalescing/c67_ns3_optional_coalescing.nsproj`: proyecto
   mínimo que queda registrado para el baseline futuro.
 - `tests/cc1/c67_ns3_optional_coalescing/Main.ns`: witness que comprueba resultado, evaluación única
   del carrier, fallback perezoso y payload Win64 directo (`int`) e indirecto (`LargeValue`, 24 B).

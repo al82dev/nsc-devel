@@ -74,9 +74,6 @@ int main()
 
     TestContext tests;
     const std::string contract = driver::currentToolchainContract();
-    const std::string metadataFormat =
-        std::to_string(interop::kMetadataFormatMajor) + "." +
-        std::to_string(interop::kMetadataFormatMinor);
     const std::string nativeAbi =
         std::to_string(interop::kNativeAbiMajor) + "." + std::to_string(interop::kNativeAbiMinor);
     const std::string runtimeAbi =
@@ -87,16 +84,16 @@ int main()
         std::to_string(frontend::kProjectOopMirSchemaMinor);
     tests.expect(contract.starts_with("NSTOOLCHAIN 2\n"), "contract has a versioned magic header");
     tests.expect(contract.ends_with('\n'), "contract has one canonical final newline");
-    tests.expect(contract.find("compiler_release=3.0.0\n") != std::string::npos,
+    tests.expect(contract.find("compiler_release=1.0.0\n") != std::string::npos,
         "contract identifies the compatible compiler release");
-    tests.expect(contract.find("language=3.0.0\n") != std::string::npos, "contract identifies the language line");
+    tests.expect(contract.find("language=") == std::string::npos, "contract does not require a language version");
     tests.expect(contract.find("stage=" + std::string(kCompilerStage) + "\n") != std::string::npos,
         "contract identifies the current compiler stage");
     tests.expect(contract.find("target=x86_64-pc-windows-msvc\n") != std::string::npos,
         "contract identifies the supported target");
     tests.expect(contract.find("llvm=23.x\n") != std::string::npos, "contract identifies the qualified LLVM line");
-    tests.expect(contract.find("nsmeta=" + metadataFormat + "\n") != std::string::npos,
-        "contract identifies the library metadata format");
+    tests.expect(contract.find("nsmeta=content-compatible\n") != std::string::npos,
+        "contract identifies metadata compatibility by content");
     tests.expect(contract.find("native_abi=" + nativeAbi + "\n") != std::string::npos &&
                      contract.find("runtime_abi=" + runtimeAbi + "\n") != std::string::npos,
         "contract identifies native and runtime ABI versions");
@@ -133,7 +130,7 @@ int main()
             ++lineCount;
         }
     }
-    tests.expect(lineCount == 24, "canonical contract has one header and twenty-three ordered fields");
+    tests.expect(lineCount == 23, "canonical contract has one header and twenty-two ordered fields");
 
     const std::filesystem::path evidence = nativesharp::tests::evidenceRoot("nativesharp_stage62_toolchain_contract");
     std::error_code filesystemError;
@@ -142,6 +139,33 @@ int main()
     std::filesystem::create_directories(evidence, filesystemError);
     tests.expect(!filesystemError, "isolated Stage 62 evidence directory is available");
 
+    {
+        const auto project = evidence / "metadata/Probe.nsproj";
+        const auto source = evidence / "metadata/Api.ns";
+        const auto metadata = evidence / "metadata/Probe.nsmeta";
+        std::filesystem::create_directories(project.parent_path());
+        tests.expect(writeFile(project,
+            "<Project><PropertyGroup><Name>Probe</Name><OutputType>StaticLibrary</OutputType>"
+            "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/></ItemGroup></Project>") &&
+            writeFile(source, "public class Api { public static int Value() { return 42; } }\n"),
+            "metadata output fixture is available");
+        const std::string projectText = project.string();
+        const std::string metadataText = metadata.string();
+        const std::vector<std::string_view> emitArgs{
+            "--emit-project-library-metadata", projectText, "-o", metadataText};
+        std::ostringstream emission, emissionError;
+        tests.expect(driver::Driver{}.run(emitArgs, emission, emissionError) == ExitCode::Success &&
+                emission.str().find("format: NSMETA\n") != std::string::npos &&
+                emission.str().find("format: NSMETA ") == std::string::npos,
+            "metadata emission identifies the format without a version label: " + emissionError.str());
+        const std::vector<std::string_view> verifyArgs{"--verify-library-metadata", metadataText};
+        std::ostringstream verification, verificationError;
+        tests.expect(driver::Driver{}.run(verifyArgs, verification, verificationError) == ExitCode::Success &&
+                verification.str().find("format: NSMETA\n") != std::string::npos &&
+                verification.str().find("native-abi:") != std::string::npos,
+            "metadata verification omits its version but preserves ABI output: " + verificationError.str());
+    }
+
     std::string error;
     const std::filesystem::path written = evidence / "nested/current.contract";
     tests.expect(driver::writeToolchainContract(written, error), "contract writer creates parent directories");
@@ -149,6 +173,22 @@ int main()
     tests.expect(readFile(written) == contract, "contract writer preserves canonical bytes");
     tests.expect(driver::verifyToolchainContract(written, error), "current compiler accepts its own contract");
     tests.expect(error.empty(), "successful contract verification keeps its error empty");
+    const std::filesystem::path legacy = evidence / "legacy-nsmeta.contract";
+    tests.expect(writeFile(legacy, replacing(contract, "nsmeta=content-compatible", "nsmeta=opaque-value")) &&
+                     driver::verifyToolchainContract(legacy, error),
+        "toolchain accepts opaque metadata annotations without treating them as compatibility gates");
+    tests.expect(writeFile(legacy, withoutLine(contract, "nsmeta=content-compatible")) &&
+                     driver::verifyToolchainContract(legacy, error),
+        "toolchain accepts a contract without a metadata annotation");
+    tests.expect(writeFile(legacy, replacing(contract, "nsmeta=content-compatible", "nsmeta=\nnsmeta=other")) &&
+                     driver::verifyToolchainContract(legacy, error),
+        "empty and repeated metadata annotations do not restrict the contract");
+    tests.expect(writeFile(legacy, replacing(contract, "stage=", "language=opaque-label\nstage=")) &&
+                     driver::verifyToolchainContract(legacy, error),
+        "a legacy language label does not restrict the contract");
+    tests.expect(writeFile(legacy, replacing(contract, "stage=", "language=\nlanguage=another-label\nstage=")) &&
+                     driver::verifyToolchainContract(legacy, error),
+        "empty and repeated legacy language labels do not restrict the contract");
 
     std::string crlf;
     crlf.reserve(contract.size() + lineCount);
@@ -172,7 +212,7 @@ int main()
         "future contract format is rejected with its header named");
     tests.expect(verifyFails(malformed, contract + "future_field=1\n", "unknown toolchain contract field", error),
         "unknown fields are rejected instead of silently ignored");
-    tests.expect(verifyFails(malformed, contract + "language=3.0.0\n", "duplicate toolchain contract field", error),
+    tests.expect(verifyFails(malformed, contract + "compiler_release=1.0.0\n", "duplicate toolchain contract field", error),
         "duplicate fields are rejected");
     tests.expect(verifyFails(malformed,
                      withoutLine(contract, "runtime_abi=" + runtimeAbi),
@@ -191,14 +231,14 @@ int main()
         "incompatible field values name found and expected contracts");
     tests.expect(verifyFails(malformed,
                      replacing(contract,
-                         "language=3.0.0\nstage=" + std::string(kCompilerStage),
-                         "stage=" + std::string(kCompilerStage) + "\nlanguage=3.0.0"),
+                         "compiler_release=1.0.0\nstage=" + std::string(kCompilerStage),
+                         "stage=" + std::string(kCompilerStage) + "\ncompiler_release=1.0.0"),
                      "out of canonical order",
                      error),
         "otherwise valid fields still require deterministic canonical order");
     tests.expect(
         verifyFails(
-            malformed, replacing(contract, "language=3.0.0", "language"), "malformed toolchain contract line", error),
+            malformed, replacing(contract, "compiler_release=1.0.0", "compiler_release"), "malformed toolchain contract line", error),
         "malformed key-value lines identify their line");
 
     driver::Driver compiler;

@@ -1,0 +1,1 @@
+struct H { public int X; public long Y; } int Main() { H h=default(H); h.X=3; h.Y=7; long sum=0; static foreach (field in Fields(H)) { var id=<U>(U x) => x; sum=sum+id<field.Type>(field.Get(h)); } return sum==10 ? 0 : 1; }

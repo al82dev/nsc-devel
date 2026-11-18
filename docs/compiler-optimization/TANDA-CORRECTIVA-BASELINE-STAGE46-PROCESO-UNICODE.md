@@ -50,7 +50,7 @@ las rutas UTF-16 a la página de códigos local mediante `path::string()`. Un di
 - `tests/unit/Stage46NativeLibrariesTests.cpp`
   - Ejecuta los consumidores DLL finales con el `nsc.exe` recién construido y expone el modo O0
     dirigido; en Windows usa `wmain` para no corromper la fixture Unicode.
-- `tests/unit/NativeSharp3T34LongPathPublicationTests.cpp`
+- `tests/unit/NativeSharpT34LongPathPublicationTests.cpp`
   - Añade la regresión de publicación en `paquete_áé_运行`.
 - `MANIFEST_SHA256.txt`
   - Actualiza los hashes de los archivos cubiertos por el manifiesto.

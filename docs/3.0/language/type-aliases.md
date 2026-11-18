@@ -1,8 +1,10 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Type aliases and opaque aliases / Alias de tipo y alias opacos
 
 ## Español
 
-NativeSharp 3 ofrece dos contratos distintos. Un alias transparente conserva la sintaxis
+NativeSharp ofrece dos contratos distintos. Un alias transparente conserva la sintaxis
 histórica `using Nombre = Tipo;`: el compilador sustituye el nombre por el tipo destino. No crea
 identidad, no cambia el layout y no puede distinguir overloads.
 
@@ -57,7 +59,7 @@ las mismas rutas que a cualquier otro tipo-valor.
 
 ## English
 
-NativeSharp 3 deliberately separates two contracts. `using Name = Type;` is transparent: the name
+NativeSharp deliberately separates two contracts. `using Name = Type;` is transparent: the name
 is substituted with its target and creates no new identity, layout, or overload distinction.
 
 `opaque type Name = Representation;` creates a nominal value type. The declaring module receives

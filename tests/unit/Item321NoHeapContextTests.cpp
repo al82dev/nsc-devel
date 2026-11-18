@@ -48,6 +48,7 @@ void expectAllocationReject(nativesharp::tests::TestContext& tests,
     const std::string source =
         "public delegate int Worker();\n"
         "public class Box { public int Value; }\n"
+        "public class Big { public byte[2097152] Data; }\n"
         "public class Program { public static noheap int Work() { " + std::string(body) +
         " } public static int Main() { return 0; } }\n";
     writeProject(caseRoot, source);
@@ -130,7 +131,11 @@ public class Program
                      "noheap permits caller-provided and stack storage");
     }
 
-    expectAllocationReject(tests, root, "class_new", "Box value = new Box(); return 0;",
+    // EN: Item 323 promotes a non-escaping object of at most 1 MiB to the frame, which a noheap
+    //     callable may use; an object too large to promote stays a direct heap allocation.
+    // ES: El elemento 323 promueve al marco un objeto que no escapa de hasta 1 MiB, que un
+    //     callable noheap puede usar; un objeto demasiado grande sigue siendo asignacion de heap.
+    expectAllocationReject(tests, root, "class_new", "Big value = new Big(); return 0;",
                            "object-construction");
     expectAllocationReject(tests, root, "raw_new", "int* value = new int; return 0;",
                            "raw-allocation");

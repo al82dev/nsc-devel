@@ -98,7 +98,7 @@ void printHelpUsagePart2(std::ostream &output)
            << "  nsc --write-smart-pointer-contract <file.contract>\n"
            << "  nsc --verify-smart-pointer-contract <file.contract>\n"
            << "  nsc --print-concurrency-contract\n"
-           << "  nsc --print-language-3-surface\n"
+           << "  nsc --print-language-surface\n"
            << "  nsc --write-concurrency-contract <file.contract>\n"
            << "  nsc --verify-concurrency-contract <file.contract>\n"
            << "  nsc --print-runtime-capabilities\n"
@@ -129,7 +129,7 @@ void printHelpUsagePart3(std::ostream &output)
            << "  nsc --migration-compatibility-matrix <old.nsmeta> <new.nsmeta>\n"
            << "  nsc --write-source-migration-guide <source.ns> -o <guide.md>\n"
            << "  nsc --print-deprecation-policy\n"
-           << "  nsc --simulate-deprecation-removal <feature> <major.minor> [--security-ub]\n"
+           << "  nsc --simulate-deprecation-removal <feature> [--security-ub]\n"
            << "  nsc --print-migration-guide\n"
            << "  nsc --write-migration-guide <file.guide>\n"
            << "  nsc --verify-migration-guide <file.guide>\n"
@@ -200,7 +200,7 @@ void printHelpUsagePart4(std::ostream &output)
            << "  nsc --print-runtime-abi-contract\n"
            << "  nsc --print-smart-pointer-contract\n"
            << "  nsc --print-concurrency-contract\n"
-           << "  nsc --print-language-3-surface\n"
+           << "  nsc --print-language-surface\n"
            << "  nsc --print-runtime-capabilities\n"
            << "  nsc --print-numeric-contract\n"
            << "  nsc --print-linker\n"
@@ -233,6 +233,8 @@ void printHelpSpanishPart1(std::ostream &output)
            << "Los proyectos EXE/LIB/DLL usan por defecto obj/nativesharp/artifact-cache (2 GiB).\n"
            << "--artifact-cache=<directorio-absoluto> reemplaza esa raíz; --no-artifact-cache la deshabilita.\n"
            << "--artifact-cache-max-mb=N cambia el límite y expulsa primero publicaciones antiguas completas.\n"
+           << "--sanitize-address instrumenta ejecutables de proyecto; requiere --asan-clang=<clang.exe> y "
+              "--asan-runtime=<clang_rt.asan_dynamic-x86_64.dll> compatibles. Sin LTO, PDB ni enlace incremental.\n"
            << "--library-reference-root <directorio-absoluto> resuelve referencias de biblioteca desde una raíz "
               "de configuración.\n"
            << "--cpp-clang-root=<directorio-absoluto> configura los recursos de Clang para C/C++; "
@@ -243,7 +245,7 @@ void printHelpSpanishPart1(std::ostream &output)
            << "--profile=debug selecciona O0 con depuración completa; --profile=release selecciona O2 con "
               "tablas de líneas.\n"
            << "NSC_LINKER selecciona NSLink o lld-link; NSC_LLVM_LIB selecciona el bibliotecario estático.\n"
-           << "Este ejecutable pertenece a la línea de desarrollo NativeSharp 3.0; "
+           << "Este ejecutable pertenece a NativeSharp; "
               "la documentación se distribuye por separado.\n";
 }
 void printHelpEnglishPart1(std::ostream &output)
@@ -288,6 +290,8 @@ void printHelpEnglishPart1(std::ostream &output)
            << "Project EXE/LIB/DLL builds default to obj/nativesharp/artifact-cache (2 GiB).\n"
            << "--artifact-cache=<absolute-directory> replaces that root; --no-artifact-cache disables it.\n"
            << "--artifact-cache-max-mb=N changes the bound and evicts complete oldest publications first.\n"
+           << "--sanitize-address instruments project executables; requires matching --asan-clang=<clang.exe> and "
+              "--asan-runtime=<clang_rt.asan_dynamic-x86_64.dll>. No LTO, PDB, or incremental link.\n"
            << "--library-reference-root <absolute-directory> resolves relative LibraryReference "
               "Include, Metadata, and Runtime paths from one configuration-specific directory.\n"
            << "--cpp-clang-root=<absolute-directory> selects Clang resources for C/C++; "
@@ -297,7 +301,7 @@ void printHelpEnglishPart1(std::ostream &output)
            << "--profile=debug selects O0 with full debug information; --profile=release selects "
               "O2 with line tables. Explicit -O and -g flags override profile defaults.\n"
            << "Debug flags -g0, -gline-tables-only and -g are independent from "
-              "optimization and currently apply to project OOP object/executable emission.\n"
+              "optimization and apply to project OOP object, executable, library and DLL emission.\n"
            << "NSC_LINKER selects NSLink or lld-link; NSC_LLVM_LIB independently "
               "selects the static librarian.\n"
            << "Stage 37 semantics remain preserved: static members, deterministic "
@@ -343,7 +347,7 @@ void printHelpEnglishPart2(std::ostream &output)
            << "switch/case. "
            << "The 1.0 library gates add component-level ABI diagnostics and "
               "standalone metadata/archive/DLL artifact verification. "
-           << "This executable belongs to the NativeSharp 3.0 development line; "
+           << "This executable belongs to NativeSharp; "
               "documentation is distributed separately.\n";
 }
 void Driver::printHelp(std::ostream &output)

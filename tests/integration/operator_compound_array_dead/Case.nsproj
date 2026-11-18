@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>DeadArray</Name><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>

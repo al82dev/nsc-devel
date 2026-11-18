@@ -1,0 +1,1 @@
+int Main() { int value=3; int total=0; { int value=7; total=total+value; } total=total+value; return total==10 ? 0 : 1; }

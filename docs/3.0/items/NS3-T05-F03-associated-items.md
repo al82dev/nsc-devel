@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # NS3-T05-F03 — Associated types and constants
 
 ## Estado
@@ -39,7 +41,7 @@ constraints de igualdad, diagnósticos y transporte NSMETA están conectados al 
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T05AssociatedItemTests.cpp`: 16 checks productivos O0/NSLink que cubren
+- `tests/unit/NativeSharpT05AssociatedItemTests.cpp`: 16 checks productivos O0/NSLink que cubren
   ejecución, negativos, genéricos, módulos separados y downgrade de metadata.
 - `tests/fixtures/nsmeta/historical-1.28.nsmeta`: fixture histórico generado por el mecanismo
   oficial; demuestra que 1.28 sigue siendo legible sin fingir soporte de escritura para F03.

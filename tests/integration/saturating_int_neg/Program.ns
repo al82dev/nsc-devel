@@ -1,0 +1,13 @@
+int Negate(int value) { return saturating(-value); }
+int NegateOrdinary(int value) { return -value; }
+int Main()
+{
+    int maximum = 2147483647;
+    int minimum = -2147483647 - 1;
+    if (Negate(minimum) != maximum) return 1;
+    if (Negate(maximum) != -maximum) return 2;
+    if (Negate(-maximum) != maximum) return 3;
+    if (Negate(0) != 0 || Negate(-7) != 7) return 4;
+    if (NegateOrdinary(minimum) != minimum) return 5;
+    return 0;
+}

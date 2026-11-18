@@ -200,15 +200,15 @@ LoopBlockAdvance ProjectOopHirModel::initializeScheduledAwaitExpressionFrame(
             return LoopBlockAdvance::Error;
         }
     }
-    // EN: Freeze 3.0 C-13: an await inside a try of an async body also hands its error to that
+    // EN: Freeze C-13: an await inside a try of an async body also hands its error to that
     //     catch; before, only a synchronous await did, so the async catch never ran.
-    // ES: Congelamiento 3.0 C-13: un await dentro de un try de un cuerpo async tambien entrega su
+    // ES: Congelamiento C-13: un await dentro de un try de un cuerpo async tambien entrega su
     //     error a ese catch; antes solo lo hacia un await sincrono, y el catch async nunca corria.
-    // EN: Freeze 3.0 C-17: this holds for every awaited future, not only a direct async call: the
+    // EN: Freeze C-17: this holds for every awaited future, not only a direct async call: the
     //     future of `MoveNextAsync` or of a variable also carries its error to the catch. Without a
     //     handler the await keeps every active cleanup region, as a `throw` does, so a synchronous
     //     await that propagates the error destroys the live locals of this callable.
-    // ES: Congelamiento 3.0 C-17: esto vale para todo future esperado, no solo para una llamada async
+    // ES: Congelamiento C-17: esto vale para todo future esperado, no solo para una llamada async
     //     directa: el future de `MoveNextAsync` o de una variable tambien lleva su error al catch. Sin
     //     handler el await conserva todas las regiones de cleanup activas, como un `throw`, para que
     //     un await sincrono que propaga el error destruya los locales vivos de este callable.

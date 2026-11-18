@@ -13,5 +13,6 @@ struct ProjectGenericModel::ProcessFrame final
     std::string ownerName;
     GenericLookupScope scope;
     bool insideTemplate;
+    std::size_t overloadGroup = 0;
 };
 }

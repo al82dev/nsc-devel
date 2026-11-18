@@ -1,0 +1,61 @@
+public class Resource { public static int drops; ~Resource() { drops = drops + 1; } }
+public struct Guard
+{
+    public static int drops;
+    public int value;
+    public owned Resource item;
+    public Guard(int x) { value = x; item = new Resource(); }
+    ~Guard() { drops = drops + 1; }
+    public static Guard operator +(in Guard left, in Guard right)
+    {
+        return new Guard(left.value + right.value);
+    }
+}
+public struct RefGuard
+{
+    public static int drops;
+    public int value;
+    public owned Resource item;
+    public RefGuard(int x) { value = x; item = new Resource(); }
+    ~RefGuard() { drops = drops * 10 + value; }
+    public static RefGuard operator +(in RefGuard left, ref RefGuard right)
+    {
+        right.value = right.value + 1;
+        return new RefGuard(left.value + right.value);
+    }
+}
+public class Program
+{
+    private static int Run()
+    {
+        Guard left = new Guard(1);
+        Guard right = new Guard(2);
+        left += right;
+        return left.value == 3 ? 42 : 1;
+    }
+    private static int RunAlias()
+    {
+        Guard value = new Guard(3);
+        value += value;
+        return value.value == 6 ? 42 : 1;
+    }
+    private static int RunRef()
+    {
+        RefGuard left = new RefGuard(4);
+        RefGuard right = new RefGuard(2);
+        left += right;
+        return left.value == 7 && right.value == 3 ? 42 : 1;
+    }
+    public static int Main()
+    {
+        int result = Run();
+        if (result != 42 || Guard.drops != 3 || Resource.drops != 3) return 1;
+        Guard.drops = 0;
+        Resource.drops = 0;
+        result = RunAlias();
+        if (result != 42 || Guard.drops != 2 || Resource.drops != 2) return 5;
+        Resource.drops = 0;
+        result = RunRef();
+        return result == 42 && RefGuard.drops == 437 && Resource.drops == 3 ? 42 : 1;
+    }
+}

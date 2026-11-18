@@ -179,12 +179,31 @@ bool ProjectGenericModel::processBodyTypeDemandWave(
         // it directly (do not re-collect) so the rest-capture Sema sees a materialized Span.
         TypeResolution resolution = resolveTypeTemplate(
             *demand.unit, demand.namespaceName, demand.syntax->baseName(),
-            demand.syntax->typeArguments().size());
+            demand.syntax->typeArguments().size(), demand.scope);
         if (resolution.kind != TypeResolutionKind::Unique)
         {
             resolution = resolveTypeTemplate(
                 *demand.unit, demand.namespaceName, demand.syntax->baseName(),
-                std::numeric_limits<std::size_t>::max());
+                std::numeric_limits<std::size_t>::max(), demand.scope);
+        }
+        // TL-LANG-357: the rest view is synthesized by the compiler, so the source need not import
+        //     NativeSharp.Core. Since a79b0d26f the lexical ladder alone resolves type templates and
+        //     misses an unimported Span<T>; Sema names the view by template name
+        //     (closedTypeKeyForTemplate), so the demand falls back to the first visible template of
+        //     that name and arity, the template Sema then finds.
+        if (resolution.kind == TypeResolutionKind::Missing)
+        {
+            const auto bucket = typesByVisibleName_.find(demand.syntax->baseName());
+            if (bucket != typesByVisibleName_.end())
+            {
+                for (TemplateState* state : bucket->second)
+                {
+                    if (!templateVisible(demand.unit->projectOrdinal(), state->record)) continue;
+                    if (!genericArityAccepts(state->record, demand.syntax->typeArguments().size())) continue;
+                    resolution = TypeResolution{TypeResolutionKind::Unique, state};
+                    break;
+                }
+            }
         }
         if (resolution.kind != TypeResolutionKind::Unique || resolution.state == nullptr)
             continue;
@@ -573,8 +592,33 @@ bool ProjectGenericModel::processTypeSyntax(
     const std::optional<bool> nestedResult =
         processNestedTypeSyntax(unit, syntax, namespaceName, scope, diagnostics);
     if (nestedResult.has_value()) return *nestedResult;
-    TypeResolution resolution = resolveTypeTemplate(
-        unit, namespaceName, syntax->baseName(), syntax->typeArguments().size());
+    const bool foreignOrigin = syntax->originProjectOrdinal().has_value() &&
+        *syntax->originProjectOrdinal() != unit.projectOrdinal();
+    TypeResolution resolution{TypeResolutionKind::Missing, nullptr};
+    if (foreignOrigin)
+    {
+        // A foreign type must use the template resolved at its actual source site. Do not
+        // reinterpret its spelling using this template's imports or namespace.
+        std::unordered_set<const ast::TypeSyntax*> visited;
+        const ast::TypeSyntax* source = syntax;
+        while (source != nullptr && visited.insert(source).second)
+        {
+            const auto found = resolvedGenericTypeTemplates_.find(source);
+            if (found != resolvedGenericTypeTemplates_.end())
+            {
+                TemplateState* const candidate = found->second;
+                if (candidate != nullptr &&
+                    templateVisible(*syntax->originProjectOrdinal(), candidate->record) &&
+                    genericArityAccepts(candidate->record, syntax->typeArguments().size()))
+                    resolution = TypeResolution{TypeResolutionKind::Unique, candidate};
+                break;
+            }
+            source = substitutedTypeCloneSource(source);
+        }
+    }
+    else
+        resolution = resolveTypeTemplate(
+            unit, namespaceName, syntax->baseName(), syntax->typeArguments().size(), scope);
     // EN: A bare nominal type in the lexical namespace wins before the arity-diagnostic fallback
     //     considers a visible generic template with the same terminal name. Otherwise
     //     `OpenXR.Raw.Result` binds to imported `Core.Result<T, E>` instead of `OpenXR.Result`.
@@ -587,10 +631,10 @@ bool ProjectGenericModel::processTypeSyntax(
         recordDeclaredTypeIdentity(syntax, unit.projectOrdinal(), namespaceName, scope);
         return true;
     }
-    if (resolution.kind != TypeResolutionKind::Unique)
+    if (!foreignOrigin && resolution.kind != TypeResolutionKind::Unique)
     {
         resolution = resolveTypeTemplate(
-            unit, namespaceName, syntax->baseName(), std::numeric_limits<std::size_t>::max());
+            unit, namespaceName, syntax->baseName(), std::numeric_limits<std::size_t>::max(), scope);
     }
     TemplateState* state = resolution.kind == TypeResolutionKind::Unique ? resolution.state : nullptr;
     if (state == nullptr)
@@ -609,21 +653,62 @@ bool ProjectGenericModel::processTypeSyntax(
         return true;
     }
 
-    if (!validateGenericTypeArgumentCount(*state, syntax, diagnostics)) return false;
-    if (!normalizeGenericArguments(
-            state->record, syntax->typeArguments(), syntax->range(), diagnostics))
-        return false;
+    if (templateVisible(syntax->originProjectOrdinal().value_or(unit.projectOrdinal()), state->record))
+    {
+        const auto [entry, inserted] = resolvedGenericTypeTemplates_.emplace(syntax, state);
+        if (!inserted && entry->second != state) entry->second = nullptr;
+    }
 
-    // NS304-T08-F06: an open generic reference whose argument is a scope parameter does not
-    // materialize a closed clone; record its template identity and keep its source spelling so a
-    // later substitution can still replace T.
+    if (!validateGenericTypeArgumentCount(*state, syntax, diagnostics)) return false;
+    // Freeze a namespace-alias-qualified generic argument while its caller scope is
+    // available. A surrounding specialization may clone it before its own demand
+    // is rewritten and then examine the clone in the template's declaration scope.
+    const std::string& written = syntax->baseName();
+    const std::size_t aliasEnd = written.find('.');
+    if (aliasEnd != std::string::npos && !state->record.moduleName.empty() &&
+        scope.aliases.read().contains(written.substr(0, aliasEnd)))
+    {
+        syntax->setBaseName(state->record.moduleName + "::" + state->qualifiedTypeSpelling);
+    }
+    // Open parameters are substituted later. Validate the concrete arguments now, but do not
+    // demand a compile-time value from an outer const parameter before specialization.
     if (hasOpenGenericParameter(syntax, scope))
     {
+        const auto packIndex = trailingPackIndex(state->record);
+        const auto arguments = syntax->typeArguments();
+        for (std::size_t i = 0; i < arguments.size(); ++i)
+        {
+            const ast::TypeSyntax* argument = arguments[i];
+            const std::size_t parameterIndex = packIndex.has_value() && i >= *packIndex ? *packIndex : i;
+            const ast::GenericParameterSyntaxKind kind = parameterIndex < state->record.parameterSyntaxes.size()
+                ? state->record.parameterSyntaxes[parameterIndex].kind : ast::GenericParameterSyntaxKind::Type;
+            const bool expectedConst = kind == ast::GenericParameterSyntaxKind::Constant ||
+                kind == ast::GenericParameterSyntaxKind::ConstantPack;
+            if (argument != nullptr && argument->typeArguments().empty() &&
+                scope.typeParameters.read().contains(argument->baseName()) &&
+                scope.constParameters.read().contains(argument->baseName()) == expectedConst)
+                continue;
+            if (!normalizeGenericArgument(
+                    state->record, arguments, i, packIndex, syntax->range(), diagnostics))
+                return false;
+        }
         std::string canonical = "generic:" + state->record.canonicalKey;
         appendTypeModifiers(canonical, syntax);
         resolvedTypeIdentityBySyntax_[syntax] = std::move(canonical);
         return true;
     }
+    if (!normalizeGenericArguments(
+            state->record, syntax->typeArguments(), syntax->range(), diagnostics))
+        return false;
+
+    // Preserve the resolved nested identity before the wave reserves its enclosing type.
+    // The later rewrite records the same identity after materialization.
+    std::vector<std::string> spellings;
+    std::vector<std::string> identities;
+    std::string canonical = "generic:" + computeSpecializationKey(
+        state->record, syntax->typeArguments(), spellings, identities);
+    appendTypeModifiers(canonical, syntax);
+    resolvedTypeIdentityBySyntax_[syntax] = std::move(canonical);
 
     // NSC305-G08. The two-pass: record the demand (the wave scheduler executes + rewrites later).
     collectTypeSpecializationDemand(unit, syntax, *state, namespaceName);

@@ -3,6 +3,7 @@
 
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
+#include "nativesharp/Language/CallableSemantics.h"
 
 #include <limits>
 #include <optional>
@@ -208,6 +209,11 @@ void ProjectOopHirModel::rejectNoHeapIndirectInvocation(
     {
         return;
     }
+    // LKF-378: a target typed with a noheap function type keeps the contract.
+    // LKF-378: un destino con tipo función noheap conserva el contrato.
+    if (const auto functionType = language::parseFunctionTypeIdentity(loweredChild->elementTypeKey);
+        functionType.has_value() && functionType->isNoHeap)
+        return;
     error = "NS3030: noheap callable '" + activeMember.signatureKey +
         "' cannot invoke an indirect target without a noheap contract";
     child.reset();
@@ -455,15 +461,13 @@ void ProjectOopHirModel::initializeCoroutineValueStatementFrame(
     state.node->cleanupContinuationKind = MethodCleanupContinuationKind::Return;
 
     frame.addressContext = false;
-    if (memberModel_ == nullptr ||
-        statementMemberOrdinal >= memberModel_->members().size()) return;
-    const ClassMemberSymbol& member =
-        memberModel_->members()[statementMemberOrdinal];
+    const ClassMemberSymbol* member = callableSymbol(statementMemberOrdinal);
+    if (member == nullptr) return;
     std::optional<std::string_view> itemInner =
-        language::iteratorInnerTypeKey(member.declaredTypeKey);
+        language::iteratorInnerTypeKey(member->declaredTypeKey);
     if (!itemInner.has_value())
     {
-        itemInner = language::asyncIteratorInnerTypeKey(member.declaredTypeKey);
+        itemInner = language::asyncIteratorInnerTypeKey(member->declaredTypeKey);
     }
     frame.addressContext = itemInner.has_value() &&
         (itemInner->starts_with("ref:") || itemInner->starts_with("refmut:"));
@@ -504,9 +508,9 @@ bool ProjectOopHirModel::initializeUsingStatementFrame(
     state.node->disposeImplementationMemberOrdinal =
         binding->disposeImplementationMemberOrdinal;
     state.node->interfaceCleanupDispatch = binding->interfaceDispatch;
-    // EN: Freeze 3.0 C-01: a using local initialized by `new` owns its resource, so the using
+    // EN: Freeze C-01: a using local initialized by `new` owns its resource, so the using
     //     cleanup destroys it after Dispose.
-    // ES: Congelamiento 3.0 C-01: un local de using inicializado con `new` posee su recurso, asi
+    // ES: Congelamiento C-01: un local de using inicializado con `new` posee su recurso, asi
     //     que el cleanup del using lo destruye despues de Dispose.
     state.node->automaticDestruction = methodBodyModel_ != nullptr &&
         binding->resourceLocalOrdinal < methodBodyModel_->locals().size() &&

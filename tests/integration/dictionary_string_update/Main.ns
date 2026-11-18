@@ -1,0 +1,20 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+
+/// <summary>Checks replacement of an equal, separately owned string key.</summary>
+int Main()
+{
+    owned Dictionary<string, int> values = new Dictionary<string, int>();
+    values.AddOrUpdate(String.Copy("red"), 1);
+    values.AddOrUpdate(String.Copy("red"), 2);
+    if (values.Count() != 1 || values["red"] != 2)
+    {
+        return 1;
+    }
+    values.AddOrUpdate(String.Copy("blue"), 3);
+    if (values.Count() != 2 || values["red"] != 2 || values["blue"] != 3)
+    {
+        return 2;
+    }
+    return 0;
+}

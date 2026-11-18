@@ -1,9 +1,13 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Tanda operativa 14 — T06 pin, escape, drop glue y frontera DLL
 
 ## Objetivo
 
 Conectar una vertical productiva y conservadora de T06-F06/F08 al compilador real Windows x64:
-un owner edition 3 puede fijarse con `pin raii`, permanecer prestable pero no relocatable, conservar
+un owner puede fijarse con `pin raii`, permanecer prestable pero no relocatable, conservar
 cleanup léxico y ser destruido exactamente una vez incluso cuando su implementación y allocator
 pertenecen a una DLL precompilada.
 
@@ -27,7 +31,7 @@ summary público derivado del cuerpo, versionado en NSMETA y consumido por calls
 ### `pin raii T`
 
 `pin` es contextual: sólo se interpreta como feature cuando precede inmediatamente a `raii`, por
-lo que no roba el identificador ordinario `pin`. Está disponible únicamente en `<Language>3`.
+lo que no roba el identificador ordinario `pin`. No requiere seleccionar una versión del lenguaje.
 
 Un local `pin raii T owner = ...`:
 
@@ -51,7 +55,7 @@ no publique `destructionEntryName`, con un diagnóstico de producer-owned destru
 
 El witness DLL demuestra el camino físico:
 
-1. productor edition 3 emite `.dll`, import `.lib` y `.nsmeta`;
+1. productor emite `.dll`, import `.lib` y `.nsmeta`;
 2. consumidor materializa la API pública desde LibraryReference;
 3. construye un `Payload` del productor dentro de un local `pin raii`;
 4. el scope del consumidor lee el descriptor y llama el drop entry de la DLL;
@@ -64,7 +68,7 @@ El witness DLL demuestra el camino físico:
 
 - `src/Parser/Parser.cpp`
   - reconoce contextualmente `pin raii` en declaraciones locales;
-  - exige edition 3 y conserva el marcador semántico en el AST.
+  - conserva el marcador semántico en el AST sin seleccionar una edición.
 - `include/nativesharp/Frontend/ProjectMethodBodyModel.h`
   - añade `MethodLocalSymbol::isPinned` como estado productivo del local.
 - `src/Frontend/ProjectMethodBodyModel.cpp`
@@ -84,7 +88,7 @@ El witness DLL demuestra el camino físico:
 ### Nuevos
 
 - `tests/cc1/c64_ns3_pin_drop_boundary/c64_ns3_pin_drop_boundary.nsproj`
-  - fixture edition 3 mínima.
+  - fixture mínima.
 - `tests/cc1/c64_ns3_pin_drop_boundary/Main.ns`
   - pin, borrow, lectura y destructor exactamente una vez; devuelve 42.
 - `docs/3.0/TANDA-OPERATIVA-14-T06-PIN-ESCAPE-DROP-DLL.md`
@@ -108,7 +112,7 @@ ejecutables y temporales usados fueron de `A:`.
 2. c64 emitido con el `nsc.exe` recién construido en O0: proceso termina en 42.
 3. Method-body dump: `stable` conserva `raii=true pinned=true`, borrow y cleanup region.
 4. Cuatro negativos individuales:
-   - edition 2: NS3002 `pin raii locals requires <Language>3</Language>`;
+   - la antigua comprobación por edición dejó de aplicarse;
    - move de owner pinned: exit 1 con `cannot move pinned owner 'stable'`;
    - replacement: exit 1 con `cannot replace pinned owner 'stable'`.
    - partial move: exit 1 con `cannot partially move from pinned owner 'stable'`.

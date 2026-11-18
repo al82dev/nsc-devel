@@ -20,7 +20,7 @@ Estado: terminado.
 - `src/Frontend/ProjectConversionClassifier.cpp`: conversión semántica recursiva por elemento.
 - `include/nativesharp/Frontend/ProjectMethodBodyModel.h`: helper causal y contrato de desempate.
 - `src/Frontend/ProjectMethodBodyModel.cpp`: diagnósticos por elemento y mejor destino de overload.
-- `tests/unit/NativeSharp3T02TupleLiteralTests.cpp`: prueba O0 independiente (nuevo).
+- `tests/unit/NativeSharpT02TupleLiteralTests.cpp`: prueba O0 independiente (nuevo).
 - `CMakeLists.txt`: registra el target dirigido.
 - `docs/3.0/language/tuple-literals-and-conversions.md`: contrato ES/EN (nuevo).
 - `docs/3.0/TANDA-OPERATIVA-07-T02-TUPLAS-DECONSTRUCCION.md`: actualiza evidencia histórica.

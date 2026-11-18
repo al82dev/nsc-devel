@@ -1,9 +1,0 @@
-namespace NativeSharp.Core.Numerics
-{
-    // Two double-precision lanes in a stable sequential 16-byte carrier (the C/C++ __m128d).
-    public copy struct Float64x2
-    {
-        public double X;
-        public double Y;
-    }
-}

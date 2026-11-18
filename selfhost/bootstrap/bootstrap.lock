@@ -3,7 +3,7 @@
   "version": 1,
   "target": {
     "host": "windows-x64",
-    "language": "NativeSharp 3.0",
+    "language": "NativeSharp",
     "runtime_abi": "1.2"
   },
   "artifacts": [
@@ -13,7 +13,7 @@
       "state": "locked",
       "sha256": "b7eefc5336aa268ebd952abdaf4cd331048766785225fb943654008cfe9d028c",
       "version_args": ["--version"],
-      "version_contains": "NativeSharp Compiler 3.0.0 (nsc)"
+      "version_contains": "NativeSharp Compiler 1.0.0 (nsc)"
     },
     {
       "id": "clang-cl",

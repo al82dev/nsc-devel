@@ -2,10 +2,15 @@
 
 #include "nativesharp/Frontend/ProjectCallableAnalysisResult.h"
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "Bodies/Support/NameBindingContextConflicts.h"
+#include "Bodies/Support/NameBindingCrossShardConflicts.h"
+#include "Bodies/Support/FnOnceCreationCandidateStorage.h"
 
 #include <algorithm>
+#include <limits>
 #include <optional>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -109,6 +114,13 @@ void remapLocal(
     remapCommon(local, scopeBase, localBase, 0, lambdaBase, localBorrowBase);
     remapEscapeOrigin(local.referenceEscapeOrigin, scopeBase, localBase);
     remapEscapeOrigin(local.pointerValueOrigin, scopeBase, localBase);
+    for (ViewSourceIdentity& source : local.viewSourceIdentities)
+        if (source.kind == ViewSourceIdentityKind::Local) source.ordinal += localBase;
+    for (ViewUnknownOrigin& origin : local.viewUnknownOrigins)
+    {
+        addBase(origin.producerScopeOrdinal, scopeBase);
+        addBase(origin.observedLocalCount, localBase);
+    }
 }
 
 void remapLambdaCapture(MethodLambdaCapture& capture, std::size_t localBase) noexcept
@@ -223,6 +235,7 @@ void ProjectCallableResultMerger::appendShardCollections(
     NSC_APPEND(scopes_);
     NSC_APPEND(locals_);
     NSC_APPEND(nameBindings_);
+    NSC_APPEND(fnOnceCreationCandidates_);
     NSC_APPEND(shadowingEvents_);
     NSC_APPEND(expressionTypes_);
     NSC_APPEND(constructionSites_);
@@ -262,6 +275,8 @@ void ProjectCallableResultMerger::mergeShardState(
     ProjectMethodBodyModel& source,
     ProjectCallableAnalysisResult& result)
 {
+    detail::mergeFnOnceCandidateLimit(destination.fnOnceCreationCandidateLimitReached_,
+        source.fnOnceCreationCandidateLimitReached_);
     for (auto& [syntax, value] : source.staticInterpolationValues_)
         destination.staticInterpolationValues_.insert_or_assign(syntax, std::move(value));
     destination.assignedOutParameters_.insert(
@@ -270,25 +285,51 @@ void ProjectCallableResultMerger::mergeShardState(
         source.assignedRequiredFields_.begin(), source.assignedRequiredFields_.end());
     destination.constructorsWithNormalExit_.insert(
         source.constructorsWithNormalExit_.begin(), source.constructorsWithNormalExit_.end());
-    // EN: Freeze 3.0 (owned arrays): the HIR reads which `delete[]` sites clear an owned field.
-    // ES: Congelamiento 3.0 (arreglos owned): el HIR lee que sitios `delete[]` vacian un campo owned.
+    // EN: Freeze (owned arrays): the HIR reads which `delete[]` sites clear an owned field.
+    // ES: Congelamiento (arreglos owned): el HIR lee que sitios `delete[]` vacian un campo owned.
     destination.arrayDeleteClearsOwnedField_.insert(
         source.arrayDeleteClearsOwnedField_.begin(), source.arrayDeleteClearsOwnedField_.end());
-    // EN: Freeze 3.0 (item 121): the HIR reads which `delete p` sites consume an owned parameter.
-    // ES: Congelamiento 3.0 (elemento 121): el HIR lee que sitios `delete p` consumen un parametro owned.
+    // EN: Freeze (item 121): the HIR reads which `delete p` sites consume an owned parameter.
+    // ES: Congelamiento (elemento 121): el HIR lee que sitios `delete p` consumen un parametro owned.
     destination.deleteClearsOwnedParameter_.insert(
         source.deleteClearsOwnedParameter_.begin(), source.deleteClearsOwnedParameter_.end());
-    // EN: Freeze 3.0 (item 130, F2): the HIR reads which `delete[]` sites keep the elements alive.
-    // ES: Congelamiento 3.0 (elemento 130, F2): el HIR lee que sitios `delete[]` no destruyen elementos.
+    // EN: Freeze (item 130, F2): the HIR reads which `delete[]` sites keep the elements alive.
+    // ES: Congelamiento (elemento 130, F2): el HIR lee que sitios `delete[]` no destruyen elementos.
     destination.arrayDeleteKeepsElements_.insert(
         source.arrayDeleteKeepsElements_.begin(), source.arrayDeleteKeepsElements_.end());
+    // EN: The HIR lowers these generic scalar deletes of arrays as `delete[]`.
+    // ES: El HIR baja estos delete escalares genericos de arreglos como `delete[]`.
+    destination.scalarDeleteReleasesArray_.insert(
+        source.scalarDeleteReleasesArray_.begin(), source.scalarDeleteReleasesArray_.end());
     destination.analyzedCallableMembers_.insert(result.callableOrdinal());
+    // EN: Borrowed-view sites the shard deferred to finalizeStorageViewCalls.
+    // ES: Sitios con vista prestada que el shard difirio a finalizeStorageViewCalls.
+    destination.deferredStorageViewCalls_.insert(destination.deferredStorageViewCalls_.end(),
+        std::make_move_iterator(source.deferredStorageViewCalls_.begin()),
+        std::make_move_iterator(source.deferredStorageViewCalls_.end()));
+    for (auto& edge : source.prototypeViewOutputEdges_)
+    {
+        // The shard owns observations for precisely this callable.
+        if (edge.size() == 3 && edge[0] == result.callableOrdinal())
+            destination.prototypeViewOutputEdges_.push_back(std::move(edge));
+    }
+    for (const auto callable : source.prototypeDirectViewProducerCandidates_)
+        if (callable == result.callableOrdinal())
+            destination.prototypeDirectViewProducerCandidates_.push_back(callable);
+    if (source.callablesWithoutNormalExit_.contains(result.callableOrdinal()))
+        destination.callablesWithoutNormalExit_.insert(result.callableOrdinal());
+    else
+        destination.callablesWithoutNormalExit_.erase(result.callableOrdinal());
     if (source.isolatedCallableOrdinal_.has_value() &&
         *source.isolatedCallableOrdinal_ == result.callableOrdinal() &&
         result.callableOrdinal() < destination.parameterEscapeSummaries_.size())
     {
         destination.parameterEscapeSummaries_[result.callableOrdinal()] =
             std::move(source.isolatedParameterEscapeSummary_);
+        destination.directArrayReferenceWrites_[result.callableOrdinal()] =
+            std::move(source.isolatedDirectArrayReferenceWrites_);
+        destination.directArrayReferenceWritesUnknown_[result.callableOrdinal()] =
+            source.isolatedDirectArrayReferenceWritesUnknown_;
     }
     ++destination.callableAnalysisStatistics_.resultsMerged;
     destination.nextLambdaOrdinal_ += source.nextLambdaOrdinal_;
@@ -379,6 +420,57 @@ void ProjectCallableResultMerger::merge(
     const std::size_t loopBreakBase = destination.loopBreakBindings_.size();
     const std::size_t callBase = destination.calls_.size();
     const std::size_t namespaceCallBase = destination.namespaceFunctionCalls_.size();
+
+    bool crossShardDuplicate = false;
+    for (const auto& binding : source.nameBindings_)
+        if (binding.syntax && destination.nameBindingIndex_.latest(binding.syntax, binding.methodMemberOrdinal))
+        { crossShardDuplicate = true; break; }
+    if (crossShardDuplicate)
+        detail::invalidateCrossShardNameContexts(destination.nameBindings_, source.nameBindings_);
+    // Bindings are recorded before their enclosing lambda may have completed.
+    // Validate in the completed shard before any collection is moved/remapped.
+    std::unordered_map<std::size_t, std::size_t> lambdaCounts;
+    std::unordered_map<std::size_t, std::size_t> lambdaOwners;
+    for (const auto& lambda : source.lambdaBindings_)
+    {
+        ++lambdaCounts[lambda.lambdaOrdinal];
+        lambdaOwners.insert_or_assign(lambda.lambdaOrdinal, lambda.ownerMemberOrdinal);
+    }
+    std::vector<unsigned char> eligible(source.nameBindings_.size(), 0);
+    for (std::size_t i = 0; i < source.nameBindings_.size(); ++i)
+    {
+        const auto& binding = source.nameBindings_[i];
+        if (!binding.analysisContextRecorded || !binding.syntax || result.diagnostics().hasErrors() ||
+            binding.methodMemberOrdinal != result.callableOrdinal() || binding.scopeOrdinal >= source.scopes_.size() ||
+            source.scopes_[binding.scopeOrdinal].methodMemberOrdinal != result.callableOrdinal()) continue;
+        if (binding.recordedLambdaOrdinal)
+        {
+            const auto ordinal = *binding.recordedLambdaOrdinal;
+            const auto count = lambdaCounts.find(ordinal);
+            if (count == lambdaCounts.end() || count->second != 1 ||
+                lambdaOwners[ordinal] != result.callableOrdinal() || ordinal >= source.nextLambdaOrdinal_ ||
+                ordinal > std::numeric_limits<std::size_t>::max() - lambdaBase) continue;
+        }
+        eligible[i] = 1;
+    }
+    const auto contextConflicts = detail::nameBindingContextConflicts(source.nameBindings_, eligible);
+    for (std::size_t bindingIndex = 0; bindingIndex < source.nameBindings_.size(); ++bindingIndex)
+    {
+        auto& binding = source.nameBindings_[bindingIndex];
+        binding.analysisContext = MethodNameBindingContext::Unknown;
+        if (!eligible[bindingIndex] || contextConflicts[bindingIndex])
+        {
+            binding.recordedLambdaOrdinal.reset();
+            continue;
+        }
+        if (!binding.recordedLambdaOrdinal)
+        {
+            binding.analysisContext = MethodNameBindingContext::TopLevel;
+            continue;
+        }
+        binding.analysisContext = MethodNameBindingContext::Lambda;
+        *binding.recordedLambdaOrdinal += lambdaBase;
+    }
 
     mergeScopeNames(destination, source, localBase);
     appendShardCollections(

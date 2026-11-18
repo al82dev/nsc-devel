@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Host.Interop — NSMETA, API/ABI, headers C y cierre de bibliotecas
 
 ## 1. Estado y procedencia
@@ -17,7 +19,7 @@
 Host.Interop publica el contrato reutilizable de una biblioteca NativeSharp. Recibe el modelo semántico/MIR de
 `Host.Frontend` y produce o consume cinco superficies observables:
 
-1. archivos `.nsmeta` versionados y con fingerprint;
+1. archivos `.nsmeta` con contenido verificable y fingerprint;
 2. headers C para la ABI pública;
 3. manifiestos, huellas y diferencias de API/ABI;
 4. reportes y auditorías de capacidades de bibliotecas instaladas;
@@ -67,7 +69,7 @@ menos un archivo, lee cada modelo con `LibraryMetadataCodec` y conserva el prime
 
 ## 7. Esquema NSMETA vigente
 
-El formato público actual es `NSMETA 1.39`. El modelo contiene identidad de productor y módulo, target/puntero,
+El formato público es `NSMETA` sin versión. El modelo contiene identidad de productor y módulo, target/puntero,
 contratos ABI y las colecciones de tipos, miembros, funciones/estado de namespace, templates, especializaciones,
 tipos externos, dispatch, exports, dependencias binarias e imports de plataforma.
 
@@ -76,9 +78,8 @@ drop-glue y reference return. Los callables conservan ownership, pass kind, defa
 escape, typed throws y FFI. Las plantillas conservan fuente canónica, dependencias, clases de parámetros,
 restricciones nominales/de igualdad/de capacidad y outlives.
 
-El historial de comentarios del header no está ordenado cronológicamente y repite los minors 23, 34 y 38. Es
-proveniencia vigente, no una tabla normativa adicional. La lógica ejecutable usa las constantes y compuertas del
-códec.
+Los comentarios históricos sobre revisiones anteriores son procedencia, no una tabla normativa ni una
+condición de aceptación. El códec determina la lectura por el contenido y los contratos aplicables.
 
 ## 8. Primitivas binarias y límites
 
@@ -102,9 +103,8 @@ ausentes, referencias externas no canonizables, defaults no literales y cierres 
 
 ## 10. Escritura y proyección ABI
 
-La codificación es aditiva por `formatMinor`: cada catálogo se escribe sólo desde el minor que lo introdujo.
-Antes de publicar se normalizan resúmenes de escape, se valida target y contrato ABI, y se comprueba que el minor
-solicitado pueda representar todos los features presentes.
+La codificación refleja los catálogos y contratos presentes en el modelo. Antes de publicar se normalizan
+resúmenes de escape y se validan el contenido, el target y el contrato ABI, sin seleccionar una versión de NSMeta.
 
 La proyección ABI elimina información sólo semántica y privada, conserva lo físicamente observable y calcula su
 SHA-256. Desde 1.25 la clausura binaria privada no contamina el fingerprint ABI público. La publicación del
@@ -112,20 +112,17 @@ archivo es atómica.
 
 ## 11. Lectura y compatibilidad de formato
 
-El lector valida tamaño, magic, header, endian, longitud, checksum y fingerprint antes de entregar el modelo.
-`decodePayload` reconstruye de 1.0 a 1.39 usando las mismas compuertas aditivas; cuenta registros antes de
-reservar, valida enums y longitudes paralelas, y rechaza bytes sobrantes.
-
-Desde minor 23 existe un byte histórico de revisión de fuente. El lector actual lo consume y descarta; no usa
-ese byte para rechazar una edición de lenguaje. En cambio, la verificación conserva una ventana explícita para
-productores conocidos incompatibles mediante `producerVersion`; esta política es independiente del byte legado.
+El lector valida tamaño, firma, endian, longitud, checksum y fingerprint antes de entregar el modelo.
+`decodePayload` reconstruye el contenido disponible, cuenta registros antes de reservar, valida enums y
+longitudes paralelas y rechaza bytes sobrantes. Los bytes reservados no seleccionan una edición ni un formato.
+La identidad del productor es informativa; la aceptación depende del contenido y de los contratos ABI.
 
 ## 12. Verificación semántica del modelo
 
-`verifyCurrentCompiler` comprueba formato soportado, target Windows x64, puntero 8/8, triple, ABI congelada e
+`verifyCurrentCompiler` comprueba contenido, target Windows x64, puntero 8/8, triple, ABI congelada e
 identidad de módulo. Después valida, entre otros:
 
-- flags permitidos por minor y combinaciones type/trait/variant/opaque/Copy/drop-glue;
+- flags y combinaciones válidas de type/trait/variant/opaque/Copy/drop-glue;
 - unicidad de tipos, miembros, símbolos, dispatch, namespace, exports, dependencias e imports;
 - layouts de referencia, firmas delegate y marcadores dyn;
 - tablas de dispatch, slots, métodos virtuales/abstractos y destrucción;
@@ -157,7 +154,7 @@ errores no publican modelos o archivos parciales.
 
 1. Misma superficie lógica produce manifiesto, reporte, header, payload y fingerprint deterministas.
 2. Source compatibility y ABI compatibility son decisiones independientes.
-3. Un minor antiguo sólo puede escribirse si representa toda la superficie del modelo.
+3. El escritor conserva la superficie representable del modelo o informa una incompatibilidad de contenido.
 4. Ningún checksum sustituye la validación del modelo.
 5. Duplicados exactos se colapsan; duplicados divergentes fallan.
 6. Layout, orden de variant cases y slots de dispatch son observables.
@@ -165,25 +162,23 @@ errores no publican modelos o archivos parciales.
 
 ## 16. Riesgos y hallazgos conservados
 
-1. `LibraryMetadata.cpp` concentra construcción, códec y verificación en 5,181 líneas; una futura modularización
-   debe preservar estos contratos, no sus fronteras internas actuales.
-2. El comentario de minor 23 todavía habla de edición 2/3, mientras el lector descarta el byte como legado.
-3. La verificación sí conserva una ventana de `producerVersion`; debe distinguirse de edición de lenguaje.
-4. Los comentarios históricos de minors están duplicados y fuera de orden.
-5. Header C no puede representar todos los layouts NativeSharp; los rechazos son explícitos.
-6. La compatibilidad con minors anteriores amplía considerablemente la matriz del lector y escritor.
+1. La auditoría histórica registró concentración de responsabilidades; la separación actual debe
+   preservar los contratos de contenido y ABI.
+2. Los hallazgos históricos sobre ediciones, ventanas de productor y minors ya no describen la
+   política vigente. La identidad del productor no selecciona compatibilidad.
+3. Header C no puede representar todos los layouts NativeSharp; los rechazos son explícitos.
 
-No se corrigió ninguno de estos puntos en esta fase.
+Los cambios posteriores a la auditoría requieren validación con las pruebas correspondientes.
 
 ## 17. Estrategia futura de pruebas
 
 Las pruebas unitarias usarán builders de metadata mínimos y oráculos estructurales independientes. El códec se
-probará por catálogo y por minor, con truncamientos en cada frontera, límites, permutaciones y round-trip. Las
+probará por catálogo y contenido, con bytes reservados variados, truncamientos, límites, permutaciones y round-trip. Las
 pruebas de integración usarán proyectos NativeSharp mínimos para header C y construcción de metadata, sin
 duplicar todo Frontend dentro de Interop.
 
 Los casos se agrupan en un ejecutable unitario consolidado y fixtures `.ns` externos. El nightly reserva matrices
-de escala, permutaciones amplias y compatibilidad de todos los minors.
+de escala, permutaciones amplias y compatibilidad de contenido y ABI.
 
 ## 18. Estado de cierre
 

@@ -1,3 +1,5 @@
+> **Vigencia:** Este documento conserva evidencia histórica. El producto es 1.0; el lenguaje es único y acumulativo. NSMeta no se versiona ni debe rechazarse por una etiqueta de versión.
+
 # NSC 3.0.5 — R04B1: cadenas `else if` iterativas
 
 ## SCOPE LOCK

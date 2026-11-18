@@ -17,7 +17,8 @@ class PrecompiledMemberIdentityIndex final
 {
 public:
     explicit PrecompiledMemberIdentityIndex(
-        std::span<const PrecompiledMemberIdentity> identities);
+        std::span<const PrecompiledMemberIdentity> identities,
+        bool includeWithoutPhysicalName = false);
 
     PrecompiledMemberIdentityMatch find(
         ClassMemberKind kind,
@@ -42,6 +43,7 @@ private:
         std::string_view signatureKey) noexcept;
 
     std::span<const PrecompiledMemberIdentity> identities_;
+    bool includeWithoutPhysicalName_ = false;
     std::unordered_multimap<std::size_t, std::size_t> ordinalsByHash_;
     std::size_t indexedIdentityCount_ = 0;
     mutable std::size_t lookupCount_ = 0;

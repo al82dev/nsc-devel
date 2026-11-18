@@ -31,6 +31,7 @@
 #include <filesystem>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -179,7 +180,16 @@ void ProjectMemberModel::collectExternalTraitImplMembers(
         if (!targetOrdinal.has_value()) continue;
         NamedTypeDeclaration extended = nameLookup.namedTypes()[*targetOrdinal];
         extended.parts.push_back(part);
-        collectTypeMembers(*targetOrdinal, extended, nameLookup, diagnostics);
+        // EN: Only the impl part is new. Collecting every part again registered the target's own
+        //     members a second time, so `new Foreign()` became an ambiguous constructor invocation.
+        // ES: Solo la parte impl es nueva. Recolectar todas las partes otra vez registraba por
+        //     segunda vez los miembros del destino, y `new Foreign()` quedaba ambiguo.
+        std::unordered_map<std::string, std::vector<std::size_t>> byName;
+        std::unordered_map<std::string, const ast::AstNode*> propertyDeclarations;
+        std::unordered_map<std::string, const ast::AstNode*> ordinaryDeclarations;
+        collectTypePartMembers(
+            *targetOrdinal, extended, extended.parts.size() - 1U, extended.parts.back(), nameLookup,
+            byName, propertyDeclarations, ordinaryDeclarations, diagnostics);
     }
 }
 
@@ -206,13 +216,13 @@ void ProjectMemberModel::validateCopyType(
             continue;
         }
         if (field.kind != ClassMemberKind::Field || field.isStatic || field.isConst) continue;
-        // EN: Freeze 3.0 P3: a generic `copy` struct is Copy only when its type arguments allow it.
+        // EN: Freeze P3: a generic `copy` struct is Copy only when its type arguments allow it.
         //     `KeyValuePair<Guard, int>` keeps a move-only field, so that closed type is simply
         //     move-only (typeIsImplicitlyCopyable already derives this from the fields) instead of an
         //     error; `KeyValuePair<int, int>` stays Copy. An `owned` field is never Copy and is still
         //     rejected. Specializations are recognized by the `__g` arity marker in their name, as
         //     elsewhere in the compiler.
-        // ES: Congelamiento 3.0 P3: un struct `copy` generico es Copy solo si sus argumentos de tipo
+        // ES: Congelamiento P3: un struct `copy` generico es Copy solo si sus argumentos de tipo
         //     lo permiten. `KeyValuePair<Guard, int>` guarda un campo move-only, asi que ese tipo
         //     cerrado es simplemente move-only (typeIsImplicitlyCopyable ya lo deriva de los campos)
         //     en vez de un error; `KeyValuePair<int, int>` sigue siendo Copy. Un campo `owned` nunca
@@ -272,6 +282,22 @@ void ProjectMemberModel::validateRawUnion(
                 "field '" + member.name + "' of type '" + member.declaredTypeKey +
                     "' is not permitted in a raw union because it transitively contains owned "
                     "storage and the union has no discriminant that identifies the active member");
+        }
+        // EN: NSC-NEW-013: a field whose value needs destruction (an Rc handle, a struct with a
+        //     destructor) reached LLVM, which cannot tell which alternative to drop ("value drop
+        //     requires an active-member discriminator"). It is rejected here, like an owner.
+        // ES: NSC-NEW-013: un campo cuyo valor necesita destrucción (un handle Rc, un struct con
+        //     destructor) llegaba a LLVM, que no puede saber qué alternativa destruir ("value drop
+        //     requires an active-member discriminator"). Se rechaza aquí, como un dueño.
+        else if (typeRequiresValueDrop(member.declaredTypeKey))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                member.range,
+                "field '" + member.name + "' of type '" + member.declaredTypeKey +
+                    "' is not permitted in a raw union because its value needs destruction and the "
+                    "union has no discriminant that identifies the active member; use a variant");
         }
     }
 }
@@ -403,6 +429,36 @@ void ProjectMemberModel::scanCompilationUnits(
 }
 
 
+void ProjectMemberModel::addTrivialCleanupRootTypeKey(std::string key)
+{
+    trivialCleanupRootTypeKeys_.insert(std::move(key));
+}
+
+bool ProjectMemberModel::isTrivialCleanupRootTypeKey(const std::string& key) const noexcept
+{
+    return trivialCleanupRootTypeKeys_.contains(key);
+}
+
+void ProjectMemberModel::addNonEscapingLifecycleTypeKey(std::string key)
+{
+    nonEscapingLifecycleTypeKeys_.insert(std::move(key));
+}
+
+bool ProjectMemberModel::isNonEscapingLifecycleTypeKey(const std::string& key) const noexcept
+{
+    return nonEscapingLifecycleTypeKeys_.contains(key);
+}
+
+void ProjectMemberModel::addIdentitySafeLifecycleTypeKey(std::string key)
+{
+    identitySafeLifecycleTypeKeys_.insert(std::move(key));
+}
+
+bool ProjectMemberModel::isIdentitySafeLifecycleTypeKey(const std::string& key) const noexcept
+{
+    return identitySafeLifecycleTypeKeys_.contains(key);
+}
+
 bool ProjectMemberModel::bindPrecompiledPhysicalNames(
     std::span<const PrecompiledMemberIdentity> identities,
     std::span<const std::pair<std::string, std::string>> typeKeyAliases,
@@ -442,13 +498,14 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
         return value;
     };
     const PrecompiledMemberIdentityIndex identityIndex(identities);
+    std::optional<PrecompiledMemberIdentityIndex> contractIndex;
     // canonicalize is a pure function of its input, so the canonical key of each declaring type
     // is computed once and reused by its other members.
     std::unordered_map<std::size_t, std::string> declaringTypeKeys;
 
     for (ClassMemberSymbol& member : members_)
     {
-        if (!member.isPrecompiled || member.isImportedC || member.isAbstract ||
+        if (!member.isPrecompiled || member.isImportedC ||
             (member.kind != ClassMemberKind::Method && member.kind != ClassMemberKind::Constructor))
         {
             continue;
@@ -458,6 +515,9 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
             error = "precompiled member '" + member.signatureKey + "' has an invalid declaring type";
             return false;
         }
+        const bool interfaceContract = member.isAbstract &&
+            nameLookup_->namedTypes()[member.declaringTypeOrdinal].kind == NamedTypeDeclarationKind::Interface;
+        if (member.isAbstract && !interfaceContract) continue;
 
         auto declaringTypeEntry = declaringTypeKeys.find(member.declaringTypeOrdinal);
         if (declaringTypeEntry == declaringTypeKeys.end())
@@ -475,13 +535,16 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
                 internal::reportIndexShadowMismatch("bindPrecompiledPhysicalNames", declaringTypeKey);
         }
         const std::string signatureKey = canonicalize(member.signatureKey);
-        PrecompiledMemberIdentityMatch match = identityIndex.find(
+        if (interfaceContract && !contractIndex.has_value()) contractIndex.emplace(identities, true);
+        const PrecompiledMemberIdentityIndex& selectedIndex = interfaceContract ? *contractIndex : identityIndex;
+        PrecompiledMemberIdentityMatch match = selectedIndex.find(
             member.kind, declaringTypeKey, member.name, signatureKey);
         if (match.kind == PrecompiledMemberIdentityMatchKind::Missing)
-            match = identityIndex.findStructurally(
+            match = selectedIndex.findStructurally(
                 member.kind, declaringTypeKey, member.name, signatureKey);
         if (match.kind == PrecompiledMemberIdentityMatchKind::Missing)
         {
+            if (interfaceContract) continue; // Missing contract remains unknown.
             error = "precompiled callable '" + declaringTypeKey + "." + signatureKey +
                 "' has no physical identity in NSMETA";
             return false;
@@ -492,8 +555,12 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
                 "' has more than one published physical identity";
             return false;
         }
-        member.precompiledMangledName = match.identity->mangledName;
+        if (!interfaceContract) member.precompiledMangledName = match.identity->mangledName;
+        member.operatorInOperandsNoEscape = match.identity->operatorInOperandsNoEscape;
+        member.receiverNoReferenceFieldEffects = match.identity->receiverNoReferenceFieldEffects;
+        member.verifiedNoEscapeOut = match.identity->verifiedNoEscapeOut;
         member.parameterEscapeSummary = match.identity->parameterEscapeSummary;
+        member.pointerOutputObjectOrigins = match.identity->pointerOutputObjectOrigins;
         if (!member.parameterEscapeSummary.empty() &&
             member.parameterEscapeSummary.size() != member.parameters.size())
         {

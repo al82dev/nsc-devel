@@ -395,7 +395,11 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledInterpolationHandlerFrame(
         {
             current = frame.operandSyntaxes[frame.operands.size()];
             currentAddressContext = false;
-            currentMemberOrdinal = frame.core->builderMemberOrdinals[1];
+            // LKF-314: the next hole's own AppendFormatted overload.
+            // LKF-314: la sobrecarga de AppendFormatted del siguiente hueco.
+            const std::size_t hole = frame.operands.size();
+            currentMemberOrdinal = hole < frame.core->interpolationHoleMemberOrdinals.size()
+                ? frame.core->interpolationHoleMemberOrdinals[hole] : frame.core->builderMemberOrdinals[1];
             descend = true;
             break;
         }

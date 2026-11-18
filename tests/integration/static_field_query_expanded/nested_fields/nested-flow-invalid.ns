@@ -1,0 +1,1 @@
+struct Empty { } struct B { public int P; } int Main() { while (true) { static foreach (outer in Fields(Empty)) { static foreach (inner in Fields(B)) { break; } } break; } return 0; }

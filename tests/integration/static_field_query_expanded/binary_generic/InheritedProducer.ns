@@ -1,0 +1,5 @@
+namespace GenericInheritance
+{
+    public class Base { public int BaseValue; }
+    public class Box<T> : Base { public T Value; }
+}

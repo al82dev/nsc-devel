@@ -1,0 +1,1 @@
+namespace BinaryComplex { public struct Box<T> { public (int, int) Pair; public T Value; } }

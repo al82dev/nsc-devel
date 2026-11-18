@@ -358,6 +358,132 @@ class Case
 }
 )NS", "owned parameter 'owner' cannot be captured by a lambda");
 }
+
+void testArrayReferenceAfterOwnedDeletion(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string api = prefix() + R"NS(
+class Holder
+{
+    public static void Store(Resource item, Resource[] refs) { refs[0] = item; }
+    public static void Dispose(owned Resource item) { delete item; }
+}
+)NS";
+    expectInvalid(tests, root, "ArrayAliasAfterDelete", api + R"NS(
+class Case
+{
+    public static int Run()
+    {
+        Resource owner = new Resource(40);
+        Resource[] refs = new Resource[1];
+        Holder.Store(owner, refs);
+        int before = refs[0].Read();
+        Holder.Dispose(move(owner));
+        int after = refs[0].Read();
+        delete[] refs;
+        return before + after;
+    }
+}
+)NS", "reference to a destroyed object");
+
+    const auto deletedBranchDirectory = root / "ArrayAliasDeletedInBranch";
+    writeProject(deletedBranchDirectory, "ArrayAliasDeletedInBranch", api + R"NS(
+class Case
+{
+    public static int Run(bool shouldDispose)
+    {
+        Resource owner = new Resource(40);
+        Resource[] refs = new Resource[1];
+        Holder.Store(owner, refs);
+        if (shouldDispose) { Holder.Dispose(move(owner)); }
+        int result = refs[0].Read();
+        delete[] refs;
+        return result;
+    }
+}
+)NS");
+    ProjectCompilation deletedBranch;
+    std::string deletedBranchError;
+    const bool deletedBranchOk = deletedBranch.compileProjectConstructions(
+        deletedBranchDirectory / "ArrayAliasDeletedInBranch.nsproj", deletedBranchError);
+    tests.expect(!deletedBranchOk && hasDiagnosticText(deletedBranch, "reference to a destroyed object"),
+        "array reference destroyed on one reachable branch is rejected after construction (" + deletedBranchError + ")");
+
+    const auto directory = root / "ArrayAliasOwnerAlive";
+    writeProject(directory, "ArrayAliasOwnerAlive", api + R"NS(
+class Case
+{
+    public static int Run()
+    {
+        Resource owner = new Resource(40);
+        Resource[] refs = new Resource[1];
+        Holder.Store(owner, refs);
+        int result = refs[0].Read();
+        delete[] refs;
+        Holder.Dispose(move(owner));
+        return result;
+    }
+}
+)NS");
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMethodBodies(
+        directory / "ArrayAliasOwnerAlive.nsproj", error);
+    tests.expect(ok, "array reference can be read before its owner is destroyed (" + error + ")");
+
+    const auto transferDirectory = root / "ArrayAliasTransferredOwnerAlive";
+    writeProject(transferDirectory, "ArrayAliasTransferredOwnerAlive", prefix() + R"NS(
+class Holder
+{
+    public static void Store(Resource item, Resource[] refs) { refs[0] = item; }
+    public static owned Resource Forward(owned Resource item) { return move(item); }
+}
+class Case
+{
+    public static int Run()
+    {
+        Resource owner = new Resource(40);
+        Resource[] refs = new Resource[1];
+        Holder.Store(owner, refs);
+        raii Resource next = Holder.Forward(move(owner));
+        int result = refs[0].Read();
+        delete[] refs;
+        return result + next.Read();
+    }
+}
+)NS");
+    ProjectCompilation transferred;
+    error.clear();
+    const bool transferOk = transferred.compileProjectMethodBodies(
+        transferDirectory / "ArrayAliasTransferredOwnerAlive.nsproj", error);
+    tests.expect(transferOk, "array reference remains valid after owner transfer (" + error + ")");
+
+    const auto branchDirectory = root / "ArrayAliasLiveOnReachingPath";
+    writeProject(branchDirectory, "ArrayAliasLiveOnReachingPath", api + R"NS(
+class Case
+{
+    public static int Run(bool shouldDispose)
+    {
+        Resource owner = new Resource(40);
+        Resource[] refs = new Resource[1];
+        Holder.Store(owner, refs);
+        if (shouldDispose)
+        {
+            Holder.Dispose(move(owner));
+            delete[] refs;
+            return 0;
+        }
+        int result = refs[0].Read();
+        delete[] refs;
+        return result;
+    }
+}
+)NS");
+    ProjectCompilation branch;
+    error.clear();
+    const bool branchOk = branch.compileProjectMethodBodies(
+        branchDirectory / "ArrayAliasLiveOnReachingPath.nsproj", error);
+    tests.expect(branchOk, "array reference stays valid on the only path reaching its read (" + error + ")");
+}
 }
 
 int main()
@@ -373,6 +499,7 @@ int main()
     testReturnEscapes(tests, root);
     testStorageAndCallEscapes(tests, root);
     testClosureEscapes(tests, root);
+    testArrayReferenceAfterOwnedDeletion(tests, root);
 
     std::filesystem::remove_all(root, ignored);
     return tests.result();

@@ -339,11 +339,11 @@ void Parser::addExtensionMember(
     if (member->kind() == ast::AstNodeKind::FunctionDeclaration)
     {
         if (member->hasModifier(TokenKind::KwStatic))
-            member->setAuxiliaryText("ns3-extension-static");
+            member->setAuxiliaryText("nsc-extension-static");
         else
         {
             member->prependChild(makeExtensionReceiver(receiverType, receiverPass));
-            member->setAuxiliaryText("ns3-extension");
+            member->setAuxiliaryText("nsc-extension");
         }
         if (accessibility != TokenKind::Invalid)
         {
@@ -355,7 +355,7 @@ void Parser::addExtensionMember(
         return;
     }
     if (member->kind() == ast::AstNodeKind::MethodDeclaration &&
-        member->auxiliaryText().find("ns3-extension-static") != std::string::npos)
+        member->auxiliaryText().find("nsc-extension-static") != std::string::npos)
     {
         extension->addChild(member);
         return;
@@ -396,7 +396,7 @@ void Parser::addExtensionPropertyAccessors(
         function->prependChild(makeExtensionReceiver(receiverType, receiverPass));
         for (ast::AstNode* parameter : accessor->children())
             function->addChild(cloneDeclarationNode(parameter));
-        function->setAuxiliaryText("ns3-extension");
+        function->setAuxiliaryText("nsc-extension");
         extension->addChild(function);
     }
 }
@@ -567,7 +567,7 @@ ast::AstNode* Parser::parseInterfaceDeclaration(bool isPartial, bool isTrait)
         ast::AstNodeKind::InterfaceDeclaration, name.range());
     node->setText(std::string(name.lexeme()));
     node->setFlag(isPartial);
-    if (isTrait) node->setAuxiliaryText("ns3-trait");
+    if (isTrait) node->setAuxiliaryText("nsc-trait");
     parseGenericParameterList(node);
     KnownGenericTypeScope genericTypeScope(knownTypeNames_, node);
     parseInterfaceBaseTypes(node);
@@ -648,7 +648,7 @@ ast::AstNode* Parser::parseTraitImplementationDeclaration()
     consume(); // contextual impl
     ast::AstNode* node = arena_.make<ast::AstNode>(
         ast::AstNodeKind::ClassDeclaration, tokens_[beginIndex].range());
-    node->setAuxiliaryText("ns3-trait-impl");
+    node->setAuxiliaryText("nsc-trait-impl");
     parseGenericParameterList(node);
     KnownGenericTypeScope genericTypeScope(knownTypeNames_, node);
     ast::TypeSyntax* trait = parseType();
@@ -698,7 +698,7 @@ void Parser::validateTraitImplementationTarget(
             diagnostics::DiagnosticId::InvalidType,
             diagnostics::DiagnosticSeverity::Error,
             target == nullptr ? current().range() : target->range(),
-            "an impl target must be a direct unqualified class type owned by this module");
+            "an impl target must be a direct unqualified class or struct type owned by this module");
         return;
     }
     declaration->setText(target->baseName());
@@ -767,7 +767,11 @@ ast::AstNode* Parser::parseDelegateDeclaration()
         consume();
         returnLifetime = parseOptionalLifetimeAnnotation("delegate ref return");
     }
-    if (!canStartTypeAt(index_))
+    // A delegate's first type parameter is declared after its return type.
+    const bool genericReturn = at(TokenKind::Identifier) && peek().kind() == TokenKind::Identifier &&
+        peek(2U).kind() == TokenKind::Less && peek(3U).kind() == TokenKind::Identifier &&
+        peek(3U).lexeme() == current().lexeme();
+    if (!canStartTypeAt(index_) && !genericReturn)
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedType,
@@ -850,7 +854,7 @@ void Parser::parseVariantPayload(ParsedVariantCase& item, const lexer::Token& ca
                 diagnostics::DiagnosticId::InvalidType,
                 diagnostics::DiagnosticSeverity::Error,
                 item.payloadType->range(),
-                "borrowed variant payloads are outside the NativeSharp 3.0 storage contract; "
+                "borrowed variant payloads are outside the NativeSharp storage contract; "
                 "wrap the borrow in a borrowed struct view");
         }
     }
@@ -1580,9 +1584,9 @@ void Parser::parseClassBody(
     std::string_view className,
     bool isStatic)
 {
-    // EN: Freeze 3.0 P1: member `where` clauses may name this class's own generic parameters (not
+    // EN: Freeze P1: member `where` clauses may name this class's own generic parameters (not
     //     those of an enclosing type).
-    // ES: Congelamiento 3.0 P1: las clausulas `where` de miembros pueden nombrar los parametros
+    // ES: Congelamiento P1: las clausulas `where` de miembros pueden nombrar los parametros
     //     propios de esta clase (no los de un tipo que la contiene).
     std::vector<std::string> outerParameters = std::move(enclosingGenericParameters_);
     enclosingGenericParameters_ = declaration->genericParameters();
@@ -1915,9 +1919,9 @@ ast::AstNode* Parser::parseStructBody(
         return node;
     }
 
-    // EN: Freeze 3.0 P1: member `where` clauses may name this struct's own generic parameters (not
+    // EN: Freeze P1: member `where` clauses may name this struct's own generic parameters (not
     //     those of an enclosing type).
-    // ES: Congelamiento 3.0 P1: las clausulas `where` de miembros pueden nombrar los parametros
+    // ES: Congelamiento P1: las clausulas `where` de miembros pueden nombrar los parametros
     //     propios de este struct (no los de un tipo que lo contiene).
     std::vector<std::string> outerParameters = std::move(enclosingGenericParameters_);
     enclosingGenericParameters_ = node->genericParameters();
@@ -2107,7 +2111,7 @@ ast::AstNode* Parser::parseExternCDeclaration()
             diagnostics::DiagnosticSeverity::Error,
             current().range(),
             "expected 'C' after extern; extern namespace variables are not supported in "
-            "NativeSharp 3.0; declare exactly one namespace-state definition, or use 'extern C' "
+            "NativeSharp; declare exactly one namespace-state definition, or use 'extern C' "
             "for a native function boundary");
         synchronizeGlobal();
         return nullptr;
@@ -2228,7 +2232,7 @@ ast::AstNode* Parser::parseExtensionOperatorFunction(
     if (declaration == nullptr) return nullptr;
     declaration->addModifier(TokenKind::KwStatic);
     declaration->setAuxiliaryText(
-        declaration->auxiliaryText() + "|ns3-extension-static");
+        declaration->auxiliaryText() + "|nsc-extension-static");
     declaration->setReference(isReferenceReturn);
     return declaration;
 }

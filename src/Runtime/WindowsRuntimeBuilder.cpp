@@ -220,6 +220,127 @@ bool buildPanicEhFilter(LLVMContextRef context, LLVMModuleRef module)
     return true;
 }
 
+struct MainArgumentsState
+{
+    LLVMValueRef allocation = nullptr;
+    LLVMValueRef snapshot = nullptr;
+    LLVMValueRef count = nullptr;
+    LLVMValueRef cleanup = nullptr;
+    LLVMTypeRef cleanupType = nullptr;
+    LLVMValueRef value = nullptr;
+};
+
+LLVMValueRef findOrDeclare(LLVMModuleRef module, const char* name, LLVMTypeRef type)
+{
+    LLVMValueRef function = LLVMGetNamedFunction(module, name);
+    return function != nullptr ? function : LLVMAddFunction(module, name, type);
+}
+
+LLVMValueRef entryByteOffset(LLVMContextRef context, LLVMBuilderRef builder,
+    LLVMValueRef address, LLVMValueRef offset, const char* name)
+{
+    LLVMValueRef indices[] = {offset};
+    return LLVMBuildGEP2(builder, LLVMInt8TypeInContext(context), address, indices, 1, name);
+}
+
+bool buildMainArgumentsCleanup(LLVMContextRef context, LLVMModuleRef module, MainArgumentsState& state)
+{
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(context);
+    LLVMTypeRef voidType = LLVMVoidTypeInContext(context);
+    LLVMTypeRef freeType = functionType(voidType, {ptr});
+    LLVMValueRef freeFunction = findOrDeclare(module, "__nativesharp_free", freeType);
+    state.cleanupType = functionType(voidType, {ptr, ptr, i64});
+    state.cleanup = LLVMAddFunction(module, "nsc_entry_release_arguments", state.cleanupType);
+    if (freeFunction == nullptr || state.cleanup == nullptr) return false;
+    LLVMSetLinkage(state.cleanup, LLVMInternalLinkage);
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, state.cleanup, "entry");
+    LLVMBasicBlockRef check = LLVMAppendBasicBlockInContext(context, state.cleanup, "check");
+    LLVMBasicBlockRef body = LLVMAppendBasicBlockInContext(context, state.cleanup, "body");
+    LLVMBasicBlockRef done = LLVMAppendBasicBlockInContext(context, state.cleanup, "done");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+    LLVMValueRef indexSlot = LLVMBuildAlloca(builder, i64, "index");
+    LLVMBuildStore(builder, LLVMConstInt(i64, 0, 0), indexSlot);
+    LLVMBuildBr(builder, check);
+    LLVMPositionBuilderAtEnd(builder, check);
+    LLVMValueRef index = LLVMBuildLoad2(builder, i64, indexSlot, "current");
+    LLVMBuildCondBr(builder, LLVMBuildICmp(builder, LLVMIntULT, index,
+        LLVMGetParam(state.cleanup, 2), "more"), body, done);
+    LLVMPositionBuilderAtEnd(builder, body);
+    LLVMValueRef offset = LLVMBuildMul(builder, index, LLVMConstInt(i64, 8, 0), "offset");
+    LLVMValueRef slot = entryByteOffset(context, builder, LLVMGetParam(state.cleanup, 1), offset, "slot");
+    LLVMValueRef value = LLVMBuildLoad2(builder, ptr, slot, "value");
+    LLVMValueRef args[] = {value};
+    LLVMBuildCall2(builder, freeType, freeFunction, args, 1, "");
+    LLVMBuildStore(builder, LLVMBuildAdd(builder, index, LLVMConstInt(i64, 1, 0), "next"), indexSlot);
+    LLVMBuildBr(builder, check);
+    LLVMPositionBuilderAtEnd(builder, done);
+    LLVMValueRef block[] = {LLVMGetParam(state.cleanup, 0)};
+    LLVMBuildCall2(builder, freeType, freeFunction, block, 1, "");
+    LLVMBuildRetVoid(builder);
+    LLVMDisposeBuilder(builder);
+    return true;
+}
+
+bool buildMainArguments(LLVMContextRef context, LLVMModuleRef module, LLVMBuilderRef builder,
+    LLVMValueRef start, LLVMBasicBlockRef failure, MainArgumentsState& state)
+{
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef i32 = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(context);
+    LLVMTypeRef countType = functionType(i32, {});
+    LLVMTypeRef allocType = functionType(ptr, {i64});
+    LLVMTypeRef fillType = functionType(i32, {ptr});
+    LLVMValueRef getCount = findOrDeclare(module, "__nativesharp_environment_get_command_line_arg_count", countType);
+    LLVMValueRef allocate = findOrDeclare(module, "__nativesharp_alloc", allocType);
+    LLVMValueRef fill = findOrDeclare(module, "__nativesharp_environment_get_command_line_args", fillType);
+    if (getCount == nullptr || allocate == nullptr || fill == nullptr || !buildMainArgumentsCleanup(context, module, state)) return false;
+    LLVMBasicBlockRef allocateBlock = LLVMAppendBasicBlockInContext(context, start, "arguments_allocate");
+    LLVMBasicBlockRef fillBlock = LLVMAppendBasicBlockInContext(context, start, "arguments_fill");
+    LLVMBasicBlockRef partialFailure = LLVMAppendBasicBlockInContext(context, start, "arguments_partial_failure");
+    LLVMBasicBlockRef copyCheck = LLVMAppendBasicBlockInContext(context, start, "arguments_copy_check");
+    LLVMBasicBlockRef copyBody = LLVMAppendBasicBlockInContext(context, start, "arguments_copy_body");
+    LLVMBasicBlockRef ready = LLVMAppendBasicBlockInContext(context, start, "arguments_ready");
+    LLVMValueRef count32 = LLVMBuildCall2(builder, countType, getCount, nullptr, 0, "argument_count");
+    LLVMBuildCondBr(builder, LLVMBuildICmp(builder, LLVMIntSGT, count32, LLVMConstInt(i32, 0, 0), "has_program_name"), allocateBlock, failure);
+    LLVMPositionBuilderAtEnd(builder, allocateBlock);
+    state.count = LLVMBuildZExt(builder, count32, i64, "argument_count64");
+    LLVMValueRef bytes = LLVMBuildAdd(builder, LLVMBuildMul(builder, state.count, LLVMConstInt(i64, 16, 0), "argument_bytes"), LLVMConstInt(i64, 8, 0), "allocation_size");
+    LLVMValueRef allocationArgs[] = {bytes};
+    state.allocation = LLVMBuildCall2(builder, allocType, allocate, allocationArgs, 1, "arguments_allocation");
+    LLVMBuildCondBr(builder, LLVMBuildICmp(builder, LLVMIntNE, state.allocation, LLVMConstNull(ptr), "allocation_ok"), fillBlock, failure);
+    LLVMPositionBuilderAtEnd(builder, fillBlock);
+    LLVMBuildStore(builder, state.count, state.allocation);
+    LLVMValueRef firstSlot = entryByteOffset(context, builder, state.allocation, LLVMConstInt(i64, 8, 0), "first_slot");
+    LLVMValueRef snapshotOffset = LLVMBuildAdd(builder, LLVMConstInt(i64, 8, 0), LLVMBuildMul(builder, state.count, LLVMConstInt(i64, 8, 0), "items_size"), "snapshot_offset");
+    state.snapshot = entryByteOffset(context, builder, state.allocation, snapshotOffset, "snapshot");
+    LLVMValueRef fillArgs[] = {state.allocation};
+    LLVMValueRef filled32 = LLVMBuildCall2(builder, fillType, fill, fillArgs, 1, "filled_count");
+    LLVMValueRef indexSlot = LLVMBuildAlloca(builder, i64, "copy_index");
+    LLVMBuildStore(builder, LLVMConstInt(i64, 0, 0), indexSlot);
+    LLVMBuildCondBr(builder, LLVMBuildICmp(builder, LLVMIntEQ, filled32, count32, "all_filled"), copyCheck, partialFailure);
+    LLVMPositionBuilderAtEnd(builder, partialFailure);
+    LLVMValueRef partialCount = LLVMBuildZExt(builder, filled32, i64, "partial_count");
+    LLVMValueRef partialArgs[] = {state.allocation, firstSlot, partialCount};
+    LLVMBuildCall2(builder, state.cleanupType, state.cleanup, partialArgs, 3, "");
+    LLVMBuildBr(builder, failure);
+    LLVMPositionBuilderAtEnd(builder, copyCheck);
+    LLVMValueRef index = LLVMBuildLoad2(builder, i64, indexSlot, "copy_index_value");
+    LLVMBuildCondBr(builder, LLVMBuildICmp(builder, LLVMIntULT, index, state.count, "copy_more"), copyBody, ready);
+    LLVMPositionBuilderAtEnd(builder, copyBody);
+    LLVMValueRef offset = LLVMBuildMul(builder, index, LLVMConstInt(i64, 8, 0), "copy_offset");
+    LLVMValueRef original = entryByteOffset(context, builder, firstSlot, offset, "original_slot");
+    LLVMValueRef saved = entryByteOffset(context, builder, state.snapshot, offset, "saved_slot");
+    LLVMBuildStore(builder, LLVMBuildLoad2(builder, ptr, original, "original"), saved);
+    LLVMBuildStore(builder, LLVMBuildAdd(builder, index, LLVMConstInt(i64, 1, 0), "copy_next"), indexSlot);
+    LLVMBuildBr(builder, copyCheck);
+    LLVMPositionBuilderAtEnd(builder, ready);
+    state.value = firstSlot;
+    LLVMBuildStore(builder, LLVMBuildSub(builder, state.count, LLVMConstInt(i64, 1, 0), "user_count"), state.value);
+    return true;
+}
+
 bool buildStartFailurePaths(
     LLVMContextRef context,
     LLVMBuilderRef builder,
@@ -229,7 +350,8 @@ bool buildStartFailurePaths(
     LLVMValueRef panicEhFilter,
     LLVMValueRef exitProcess,
     LLVMTypeRef exitProcessType,
-    LLVMTypeRef i32Type)
+    LLVMTypeRef i32Type,
+    const MainArgumentsState& mainArguments)
 {
     LLVMPositionBuilderAtEnd(builder, panicUnwind);
     LLVMValueRef catchSwitch = LLVMBuildCatchSwitch(
@@ -246,6 +368,12 @@ bool buildStartFailurePaths(
     LLVMValueRef bundleArguments[] = {catchPad};
     LLVMOperandBundleRef bundle = LLVMCreateOperandBundle("funclet", 7, bundleArguments, 1);
     LLVMOperandBundleRef bundles[] = {bundle};
+    if (mainArguments.cleanup != nullptr)
+    {
+        LLVMValueRef cleanupArgs[] = {mainArguments.allocation, mainArguments.snapshot, mainArguments.count};
+        LLVMBuildCallWithOperandBundles(builder, mainArguments.cleanupType, mainArguments.cleanup,
+            cleanupArgs, 3, bundles, 1, "");
+    }
     LLVMBuildCallWithOperandBundles(
         builder, exitProcessType, exitProcess, panicExitArguments, 1, bundles, 1, "");
     LLVMDisposeOperandBundle(bundle);
@@ -274,12 +402,14 @@ bool buildStart(
     LLVMTypeRef ehInitType,
     LLVMValueRef panicEhFilter,
     std::string_view mainSymbol,
+    bool passArguments,
     std::string_view startSymbol = "__nativesharp_start",
     bool returnsResult = false)
 {
     LLVMTypeRef voidType = LLVMVoidTypeInContext(context);
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
-    LLVMTypeRef mainType = functionType(i32Type, {});
+    LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef mainType = passArguments ? functionType(i32Type, {pointerType}) : functionType(i32Type, {});
     LLVMValueRef mainFunction = LLVMGetNamedFunction(module, std::string(mainSymbol).c_str());
     if (mainFunction == nullptr)
         mainFunction = LLVMAddFunction(module, std::string(mainSymbol).c_str(), mainType);
@@ -313,10 +443,23 @@ bool buildStart(
 
     LLVMPositionBuilderAtEnd(builder, runMain);
     LLVMSetPersonalityFn(start, personality);
+    MainArgumentsState mainArguments;
+    if (passArguments && !buildMainArguments(context, module, builder, start, initFailed, mainArguments))
+    {
+        LLVMDisposeBuilder(builder);
+        return false;
+    }
+    LLVMValueRef mainArgs[] = {mainArguments.value};
     LLVMValueRef result = LLVMBuildInvoke2(
-        builder, mainType, mainFunction, nullptr, 0, mainReturned, panicUnwind, "result");
+        builder, mainType, mainFunction, passArguments ? mainArgs : nullptr,
+        passArguments ? 1U : 0U, mainReturned, panicUnwind, "result");
 
     LLVMPositionBuilderAtEnd(builder, mainReturned);
+    if (passArguments)
+    {
+        LLVMValueRef cleanupArgs[] = {mainArguments.allocation, mainArguments.snapshot, mainArguments.count};
+        LLVMBuildCall2(builder, mainArguments.cleanupType, mainArguments.cleanup, cleanupArgs, 3, "");
+    }
     if (returnsResult)
         LLVMBuildRet(builder, result);
     else
@@ -328,7 +471,7 @@ bool buildStart(
 
     if (!buildStartFailurePaths(
             context, builder, start, panicUnwind, initFailed, panicEhFilter,
-            exitProcess, exitProcessType, i32Type))
+            exitProcess, exitProcessType, i32Type, mainArguments))
     {
         LLVMDisposeBuilder(builder);
         return false;
@@ -1356,7 +1499,9 @@ bool buildFileDelete(
     LLVMContextRef context,
     LLVMModuleRef module,
     LLVMValueRef deleteFileA,
-    LLVMTypeRef deleteFileAType)
+    LLVMTypeRef deleteFileAType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType)
 {
     LLVMTypeRef voidType = LLVMVoidTypeInContext(context);
     LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
@@ -1372,7 +1517,8 @@ bool buildFileDelete(
     LLVMPositionBuilderAtEnd(builder, entry);
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     LLVMValueRef arguments[1] = {pathBuffer};
     LLVMBuildCall2(builder, deleteFileAType, deleteFileA, arguments, 1, "");
     // DeleteFileA's BOOL return is discarded -- same rationale as SetEnvironmentVariableA above:
@@ -1388,7 +1534,9 @@ bool buildDirectoryCreate(
     LLVMContextRef context,
     LLVMModuleRef module,
     LLVMValueRef createDirectoryA,
-    LLVMTypeRef createDirectoryAType)
+    LLVMTypeRef createDirectoryAType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType)
 {
     LLVMTypeRef voidType = LLVMVoidTypeInContext(context);
     LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
@@ -1404,7 +1552,8 @@ bool buildDirectoryCreate(
     LLVMPositionBuilderAtEnd(builder, entry);
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     // CreateDirectoryA(lpPathName, lpSecurityAttributes) -- NULL for the second argument means
     // "use default security attributes", the same thing every other allocation in this runtime
     // already does implicitly (HeapAlloc's process heap has no per-object security choice to
@@ -1427,7 +1576,9 @@ bool buildDirectoryDelete(
     LLVMContextRef context,
     LLVMModuleRef module,
     LLVMValueRef removeDirectoryA,
-    LLVMTypeRef removeDirectoryAType)
+    LLVMTypeRef removeDirectoryAType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType)
 {
     LLVMTypeRef voidType = LLVMVoidTypeInContext(context);
     LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
@@ -1443,7 +1594,8 @@ bool buildDirectoryDelete(
     LLVMPositionBuilderAtEnd(builder, entry);
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     LLVMValueRef arguments[1] = {pathBuffer};
     LLVMBuildCall2(builder, removeDirectoryAType, removeDirectoryA, arguments, 1, "");
     // BOOL return discarded -- same rationale as buildFileDelete/buildDirectoryCreate above.
@@ -1623,8 +1775,10 @@ bool buildFileReadAllText(
 bool buildFileGetSize(
     LLVMContextRef context,
     LLVMModuleRef module,
-    LLVMValueRef createFileA,
-    LLVMTypeRef createFileAType,
+    LLVMValueRef createFileW,
+    LLVMTypeRef createFileWType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType,
     LLVMValueRef getFileSizeEx,
     LLVMTypeRef getFileSizeExType,
     LLVMValueRef closeHandle,
@@ -1649,7 +1803,12 @@ bool buildFileGetSize(
     LLVMPositionBuilderAtEnd(builder, entry);
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    // EN: The path is UTF-8; CreateFileW receives it as UTF-16 so a non-ASCII path opens the same
+    //     file that File.Exists and ReadAllText see (CreateFileA read it in the ANSI code page).
+    // ES: La ruta es UTF-8; CreateFileW la recibe en UTF-16 para que una ruta no ASCII abra el
+    //     mismo archivo que ven File.Exists y ReadAllText (CreateFileA la leia en la pagina ANSI).
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     // Los mismos siete argumentos que buildFileReadAllText, y por los mismos motivos:
     // GENERIC_READ=0x80000000, FILE_SHARE_READ=0x1, sin atributos de seguridad, OPEN_EXISTING=3
     // (preguntar el tamano no puede CREAR el archivo), FILE_ATTRIBUTE_NORMAL=0x80, sin plantilla.
@@ -1661,7 +1820,7 @@ bool buildFileGetSize(
         LLVMConstInt(i32Type, 3, 0),
         LLVMConstInt(i32Type, 0x80, 0),
         LLVMConstNull(pointerType)};
-    LLVMValueRef handle = LLVMBuildCall2(builder, createFileAType, createFileA, createArguments, 7, "handle");
+    LLVMValueRef handle = LLVMBuildCall2(builder, createFileWType, createFileW, createArguments, 7, "handle");
     LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
     LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
     LLVMValueRef isInvalid = LLVMBuildICmp(builder, LLVMIntEQ, handleAsInt, invalidHandle, "is_invalid");
@@ -1725,8 +1884,10 @@ bool buildFileReadAllBytes(
     LLVMTypeRef getProcessHeapType,
     LLVMValueRef heapAlloc,
     LLVMTypeRef heapAllocType,
-    LLVMValueRef createFileA,
-    LLVMTypeRef createFileAType,
+    LLVMValueRef createFileW,
+    LLVMTypeRef createFileWType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType,
     LLVMValueRef getFileSizeEx,
     LLVMTypeRef getFileSizeExType,
     LLVMValueRef readFile,
@@ -1752,7 +1913,12 @@ bool buildFileReadAllBytes(
     LLVMPositionBuilderAtEnd(builder, entry);
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    // EN: The path is UTF-8; CreateFileW receives it as UTF-16 so a non-ASCII path opens the same
+    //     file that File.Exists and ReadAllText see (CreateFileA read it in the ANSI code page).
+    // ES: La ruta es UTF-8; CreateFileW la recibe en UTF-16 para que una ruta no ASCII abra el
+    //     mismo archivo que ven File.Exists y ReadAllText (CreateFileA la leia en la pagina ANSI).
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     LLVMValueRef createArguments[7] = {
         pathBuffer,
         LLVMConstInt(i32Type, 0x80000000u, 0),
@@ -1761,7 +1927,7 @@ bool buildFileReadAllBytes(
         LLVMConstInt(i32Type, 3, 0),
         LLVMConstInt(i32Type, 0x80, 0),
         LLVMConstNull(pointerType)};
-    LLVMValueRef handle = LLVMBuildCall2(builder, createFileAType, createFileA, createArguments, 7, "handle");
+    LLVMValueRef handle = LLVMBuildCall2(builder, createFileWType, createFileW, createArguments, 7, "handle");
     LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
     LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
     LLVMValueRef isInvalid = LLVMBuildICmp(builder, LLVMIntEQ, handleAsInt, invalidHandle, "is_invalid");
@@ -1869,8 +2035,10 @@ void buildFileReadBytesBody(
 bool buildFileReadBytes(
     LLVMContextRef context,
     LLVMModuleRef module,
-    LLVMValueRef createFileA,
-    LLVMTypeRef createFileAType,
+    LLVMValueRef createFileW,
+    LLVMTypeRef createFileWType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType,
     LLVMValueRef getFileSizeEx,
     LLVMTypeRef getFileSizeExType,
     LLVMValueRef readFile,
@@ -1896,7 +2064,12 @@ bool buildFileReadBytes(
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
     LLVMValueRef destination = LLVMGetParam(function, 1);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    // EN: The path is UTF-8; CreateFileW receives it as UTF-16 so a non-ASCII path opens the same
+    //     file that File.Exists and ReadAllText see (CreateFileA read it in the ANSI code page).
+    // ES: La ruta es UTF-8; CreateFileW la recibe en UTF-16 para que una ruta no ASCII abra el
+    //     mismo archivo que ven File.Exists y ReadAllText (CreateFileA la leia en la pagina ANSI).
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     LLVMValueRef createArguments[7] = {
         pathBuffer,
         LLVMConstInt(i32Type, 0x80000000u, 0),
@@ -1905,7 +2078,7 @@ bool buildFileReadBytes(
         LLVMConstInt(i32Type, 3, 0),
         LLVMConstInt(i32Type, 0x80, 0),
         LLVMConstNull(pointerType)};
-    LLVMValueRef handle = LLVMBuildCall2(builder, createFileAType, createFileA, createArguments, 7, "handle");
+    LLVMValueRef handle = LLVMBuildCall2(builder, createFileWType, createFileW, createArguments, 7, "handle");
     LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
     LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
     LLVMValueRef isInvalid = LLVMBuildICmp(builder, LLVMIntEQ, handleAsInt, invalidHandle, "is_invalid");
@@ -1985,8 +2158,10 @@ void buildFileWriteAllBytesBody(
 bool buildFileWriteAllBytes(
     LLVMContextRef context,
     LLVMModuleRef module,
-    LLVMValueRef createFileA,
-    LLVMTypeRef createFileAType,
+    LLVMValueRef createFileW,
+    LLVMTypeRef createFileWType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType,
     LLVMValueRef writeFile,
     LLVMTypeRef writeFileType,
     LLVMValueRef closeHandle,
@@ -2013,7 +2188,12 @@ bool buildFileWriteAllBytes(
     LLVMValueRef pathString = LLVMGetParam(function, 0);
     LLVMValueRef data = LLVMGetParam(function, 1);
     LLVMValueRef requestedCount = LLVMGetParam(function, 2);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    // EN: The path is UTF-8; CreateFileW receives it as UTF-16 so a non-ASCII path opens the same
+    //     file that File.Exists and ReadAllText see (CreateFileA read it in the ANSI code page).
+    // ES: La ruta es UTF-8; CreateFileW la recibe en UTF-16 para que una ruta no ASCII abra el
+    //     mismo archivo que ven File.Exists y ReadAllText (CreateFileA la leia en la pagina ANSI).
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     // GENERIC_WRITE=0x40000000, sin comparticion, CREATE_ALWAYS=2, FILE_ATTRIBUTE_NORMAL=0x80.
     LLVMValueRef createArguments[7] = {
         pathBuffer,
@@ -2023,7 +2203,7 @@ bool buildFileWriteAllBytes(
         LLVMConstInt(i32Type, 2, 0),
         LLVMConstInt(i32Type, 0x80, 0),
         LLVMConstNull(pointerType)};
-    LLVMValueRef handle = LLVMBuildCall2(builder, createFileAType, createFileA, createArguments, 7, "handle");
+    LLVMValueRef handle = LLVMBuildCall2(builder, createFileWType, createFileW, createArguments, 7, "handle");
     LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
     LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
     LLVMValueRef isInvalid = LLVMBuildICmp(builder, LLVMIntEQ, handleAsInt, invalidHandle, "is_invalid");
@@ -2415,8 +2595,10 @@ bool buildProcessRun(
 bool buildFileWriteAllText(
     LLVMContextRef context,
     LLVMModuleRef module,
-    LLVMValueRef createFileA,
-    LLVMTypeRef createFileAType,
+    LLVMValueRef createFileW,
+    LLVMTypeRef createFileWType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType,
     LLVMValueRef writeFile,
     LLVMTypeRef writeFileType,
     LLVMValueRef closeHandle,
@@ -2442,7 +2624,12 @@ bool buildFileWriteAllText(
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
     LLVMValueRef contentString = LLVMGetParam(function, 1);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    // EN: The path is UTF-8; CreateFileW receives it as UTF-16 so a non-ASCII path opens the same
+    //     file that File.Exists and ReadAllText see (CreateFileA read it in the ANSI code page).
+    // ES: La ruta es UTF-8; CreateFileW la recibe en UTF-16 para que una ruta no ASCII abra el
+    //     mismo archivo que ven File.Exists y ReadAllText (CreateFileA la leia en la pagina ANSI).
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     // GENERIC_WRITE=0x40000000, dwShareMode=0 (exclusive access -- no other process should be
     // reading or writing this file WHILE this call replaces its content), lpSecurityAttributes=
     // NULL, CREATE_ALWAYS=2 (create a new file, or truncate an existing one to zero length first
@@ -2457,7 +2644,7 @@ bool buildFileWriteAllText(
         LLVMConstInt(i32Type, 2, 0),
         LLVMConstInt(i32Type, 0x80, 0),
         LLVMConstNull(pointerType)};
-    LLVMValueRef handle = LLVMBuildCall2(builder, createFileAType, createFileA, createArguments, 7, "handle");
+    LLVMValueRef handle = LLVMBuildCall2(builder, createFileWType, createFileW, createArguments, 7, "handle");
     LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
     LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
     LLVMValueRef isInvalid = LLVMBuildICmp(builder, LLVMIntEQ, handleAsInt, invalidHandle, "is_invalid");
@@ -2538,8 +2725,10 @@ void buildFileAppendAllTextBody(
 bool buildFileAppendAllText(
     LLVMContextRef context,
     LLVMModuleRef module,
-    LLVMValueRef createFileA,
-    LLVMTypeRef createFileAType,
+    LLVMValueRef createFileW,
+    LLVMTypeRef createFileWType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType,
     LLVMValueRef setFilePointer,
     LLVMTypeRef setFilePointerType,
     LLVMValueRef writeFile,
@@ -2566,7 +2755,12 @@ bool buildFileAppendAllText(
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
     LLVMValueRef contentString = LLVMGetParam(function, 1);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    // EN: The path is UTF-8; CreateFileW receives it as UTF-16 so a non-ASCII path opens the same
+    //     file that File.Exists and ReadAllText see (CreateFileA read it in the ANSI code page).
+    // ES: La ruta es UTF-8; CreateFileW la recibe en UTF-16 para que una ruta no ASCII abra el
+    //     mismo archivo que ven File.Exists y ReadAllText (CreateFileA la leia en la pagina ANSI).
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     // Same as buildFileWriteAllText's CreateFileA call, except OPEN_ALWAYS=4 instead of
     // CREATE_ALWAYS=2 -- open the file if it exists (keeping its current content, which is the
     // entire point of "append"), or create it fresh if it does not exist yet (AppendAllText on a
@@ -2580,7 +2774,7 @@ bool buildFileAppendAllText(
         LLVMConstInt(i32Type, 4, 0),
         LLVMConstInt(i32Type, 0x80, 0),
         LLVMConstNull(pointerType)};
-    LLVMValueRef handle = LLVMBuildCall2(builder, createFileAType, createFileA, createArguments, 7, "handle");
+    LLVMValueRef handle = LLVMBuildCall2(builder, createFileWType, createFileW, createArguments, 7, "handle");
     LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
     LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
     LLVMValueRef isInvalid = LLVMBuildICmp(builder, LLVMIntEQ, handleAsInt, invalidHandle, "is_invalid");
@@ -2792,7 +2986,7 @@ bool buildEnvironmentGetCommandLineArgCount(
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
     LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
     LLVMTypeRef type = functionType(i32Type, {});
-    LLVMValueRef function = LLVMAddFunction(
+    LLVMValueRef function = findOrDeclare(
         module, "__nativesharp_environment_get_command_line_arg_count", type);
     if (function == nullptr)
     {
@@ -2936,7 +3130,7 @@ void buildCommandLineArgsWideElement(
     LLVMValueRef wideCharToMultiByte,
     LLVMTypeRef wideCharToMultiByteType,
     LLVMBasicBlockRef loopBody,
-    LLVMBasicBlockRef elementEmpty,
+    LLVMBasicBlockRef conversionSizeFailed,
     LLVMBasicBlockRef elementAlloc,
     LLVMValueRef& argvElementByteOffset,
     LLVMValueRef& wideArg,
@@ -2972,7 +3166,7 @@ void buildCommandLineArgsWideElement(
         builder, wideCharToMultiByteType, wideCharToMultiByte, sizeArguments, 8, "required_size");
     LLVMValueRef elementFailed = LLVMBuildICmp(
         builder, LLVMIntEQ, requiredSize, LLVMConstInt(i32Type, 0, 0), "element_failed");
-    LLVMBuildCondBr(builder, elementFailed, elementEmpty, elementAlloc);
+    LLVMBuildCondBr(builder, elementFailed, conversionSizeFailed, elementAlloc);
 }
 
 void buildCommandLineArgsElementResult(
@@ -2982,30 +3176,23 @@ void buildCommandLineArgsElementResult(
     LLVMTypeRef getProcessHeapType,
     LLVMValueRef heapAlloc,
     LLVMTypeRef heapAllocType,
+    LLVMValueRef heapFree,
+    LLVMTypeRef heapFreeType,
     LLVMValueRef wideCharToMultiByte,
     LLVMTypeRef wideCharToMultiByteType,
     LLVMValueRef wideArg,
     LLVMValueRef requiredSize,
     LLVMValueRef elementResultSlot,
-    LLVMBasicBlockRef elementEmpty,
     LLVMBasicBlockRef elementAlloc,
+    LLVMBasicBlockRef elementAllocReady,
+    LLVMBasicBlockRef conversionFailed,
+    LLVMBasicBlockRef allocationFailed,
     LLVMBasicBlockRef elementMerge)
 {
     LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
     LLVMTypeRef i8Type = LLVMInt8TypeInContext(context);
     LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
-    // Same deliberate "any failure collapses to an empty NativeSharp string" simplification as
-    // every prior Stage 53 wrapper's emptyResult block.
-    LLVMPositionBuilderAtEnd(builder, elementEmpty);
-    LLVMValueRef emptyHeap = LLVMBuildCall2(builder, getProcessHeapType, getProcessHeap, nullptr, 0, "empty_heap");
-    LLVMValueRef emptyAllocArguments[3] = {
-        emptyHeap, LLVMConstInt(i32Type, 0, 0), LLVMConstInt(i64Type, 8, 0)};
-    LLVMValueRef emptyElement = LLVMBuildCall2(
-        builder, heapAllocType, heapAlloc, emptyAllocArguments, 3, "empty_element");
-    LLVMBuildStore(builder, LLVMConstInt(i64Type, 0, 0), emptyElement);
-    LLVMBuildStore(builder, emptyElement, elementResultSlot);
-    LLVMBuildBr(builder, elementMerge);
     LLVMPositionBuilderAtEnd(builder, elementAlloc);
     LLVMValueRef requiredSize64 = LLVMBuildZExt(builder, requiredSize, i64Type, "required_size64");
     LLVMValueRef totalSize = LLVMBuildAdd(builder, requiredSize64, LLVMConstInt(i64Type, 8, 0), "total_size");
@@ -3013,6 +3200,10 @@ void buildCommandLineArgsElementResult(
     LLVMValueRef allocArguments[3] = {heap, LLVMConstInt(i32Type, 0, 0), totalSize};
     LLVMValueRef elementString = LLVMBuildCall2(
         builder, heapAllocType, heapAlloc, allocArguments, 3, "element_string");
+    LLVMBuildCondBr(builder,
+        LLVMBuildICmp(builder, LLVMIntEQ, elementString, LLVMConstNull(pointerType), "element_allocation_failed"),
+        allocationFailed, elementAllocReady);
+    LLVMPositionBuilderAtEnd(builder, elementAllocReady);
     LLVMValueRef charCount = LLVMBuildSub(builder, requiredSize64, LLVMConstInt(i64Type, 1, 0), "char_count");
     LLVMBuildStore(builder, charCount, elementString);
     LLVMValueRef elementDataIndex[1] = {LLVMConstInt(i64Type, 8, 0)};
@@ -3024,7 +3215,14 @@ void buildCommandLineArgsElementResult(
         LLVMConstInt(i32Type, 65001, 0), LLVMConstInt(i32Type, 0x80, 0), wideArg,
         LLVMConstInt(i32Type, 0xFFFFFFFFu, 0), elementData, requiredSize,
         LLVMConstNull(pointerType), LLVMConstNull(pointerType)};
-    LLVMBuildCall2(builder, wideCharToMultiByteType, wideCharToMultiByte, fillArguments, 8, "");
+    LLVMValueRef filled = LLVMBuildCall2(builder, wideCharToMultiByteType, wideCharToMultiByte, fillArguments, 8, "filled");
+    LLVMBasicBlockRef conversionOk = LLVMAppendBasicBlockInContext(context, LLVMGetBasicBlockParent(elementAllocReady), "conversion_ok");
+    LLVMBuildCondBr(builder, LLVMBuildICmp(builder, LLVMIntEQ, filled, requiredSize, "conversion_complete"), conversionOk, conversionFailed);
+    LLVMPositionBuilderAtEnd(builder, conversionFailed);
+    LLVMValueRef freeArguments[3] = {heap, LLVMConstInt(i32Type, 0, 0), elementString};
+    LLVMBuildCall2(builder, heapFreeType, heapFree, freeArguments, 3, "");
+    LLVMBuildBr(builder, allocationFailed);
+    LLVMPositionBuilderAtEnd(builder, conversionOk);
     LLVMBuildStore(builder, elementString, elementResultSlot);
     LLVMBuildBr(builder, elementMerge);
 }
@@ -3082,6 +3280,8 @@ bool buildEnvironmentGetCommandLineArgs(
     LLVMTypeRef getProcessHeapType,
     LLVMValueRef heapAlloc,
     LLVMTypeRef heapAllocType,
+    LLVMValueRef heapFree,
+    LLVMTypeRef heapFreeType,
     LLVMValueRef getCommandLineW,
     LLVMTypeRef getCommandLineWType,
     LLVMValueRef commandLineToArgvW,
@@ -3094,7 +3294,7 @@ bool buildEnvironmentGetCommandLineArgs(
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
     LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
     LLVMTypeRef type = functionType(i32Type, {pointerType});
-    LLVMValueRef function = LLVMAddFunction(
+    LLVMValueRef function = findOrDeclare(
         module, "__nativesharp_environment_get_command_line_args", type);
     if (function == nullptr)
     {
@@ -3108,8 +3308,10 @@ bool buildEnvironmentGetCommandLineArgs(
     LLVMBasicBlockRef useDestLength = LLVMAppendBasicBlockInContext(context, function, "use_dest_length");
     LLVMBasicBlockRef loopCheck = LLVMAppendBasicBlockInContext(context, function, "loop_check");
     LLVMBasicBlockRef loopBody = LLVMAppendBasicBlockInContext(context, function, "loop_body");
-    LLVMBasicBlockRef elementEmpty = LLVMAppendBasicBlockInContext(context, function, "element_empty");
     LLVMBasicBlockRef elementAlloc = LLVMAppendBasicBlockInContext(context, function, "element_alloc");
+    LLVMBasicBlockRef elementAllocReady = LLVMAppendBasicBlockInContext(context, function, "element_alloc_ready");
+    LLVMBasicBlockRef conversionFailed = LLVMAppendBasicBlockInContext(context, function, "conversion_failed");
+    LLVMBasicBlockRef allocationFailed = LLVMAppendBasicBlockInContext(context, function, "allocation_failed");
     LLVMBasicBlockRef elementMerge = LLVMAppendBasicBlockInContext(context, function, "element_merge");
     LLVMBasicBlockRef loopIncrement = LLVMAppendBasicBlockInContext(context, function, "loop_increment");
     LLVMBasicBlockRef loopDone = LLVMAppendBasicBlockInContext(context, function, "loop_done");
@@ -3135,11 +3337,15 @@ bool buildEnvironmentGetCommandLineArgs(
     LLVMValueRef requiredSize = nullptr;
     buildCommandLineArgsWideElement(
         context, builder, argv, index, wideCharToMultiByte, wideCharToMultiByteType,
-        loopBody, elementEmpty, elementAlloc, argvElementByteOffset, wideArg, requiredSize);
+        loopBody, allocationFailed, elementAlloc, argvElementByteOffset, wideArg, requiredSize);
     buildCommandLineArgsElementResult(
-        context, builder, getProcessHeap, getProcessHeapType, heapAlloc, heapAllocType,
+        context, builder, getProcessHeap, getProcessHeapType, heapAlloc, heapAllocType, heapFree, heapFreeType,
         wideCharToMultiByte, wideCharToMultiByteType, wideArg, requiredSize, elementResultSlot,
-        elementEmpty, elementAlloc, elementMerge);
+        elementAlloc, elementAllocReady, conversionFailed, allocationFailed, elementMerge);
+    LLVMPositionBuilderAtEnd(builder, allocationFailed);
+    LLVMValueRef freeArgv[] = {argv};
+    LLVMBuildCall2(builder, localFreeType, localFree, freeArgv, 1, "");
+    LLVMBuildRet(builder, LLVMBuildTrunc(builder, index, i32Type, "completed_count"));
     buildCommandLineArgsStoreAndFinish(
         context, builder, destination, argv, argvElementByteOffset, elementResultSlot,
         index, indexSlot, writeCount, localFree, localFreeType, elementMerge, loopIncrement,
@@ -5334,7 +5540,9 @@ bool buildFileCopy(
     LLVMContextRef context,
     LLVMModuleRef module,
     LLVMValueRef copyFileA,
-    LLVMTypeRef copyFileAType)
+    LLVMTypeRef copyFileAType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType)
 {
     LLVMTypeRef i1Type = LLVMInt1TypeInContext(context);
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
@@ -5351,8 +5559,10 @@ bool buildFileCopy(
     LLVMValueRef sourceString = LLVMGetParam(function, 0);
     LLVMValueRef destString = LLVMGetParam(function, 1);
     LLVMValueRef overwriteI1 = LLVMGetParam(function, 2);
-    LLVMValueRef sourceBuffer = buildNullTerminatedCopy(context, builder, function, sourceString);
-    LLVMValueRef destBuffer = buildNullTerminatedCopy(context, builder, function, destString);
+    LLVMValueRef sourceBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, sourceString, multiByteToWideChar, multiByteToWideCharType);
+    LLVMValueRef destBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, destString, multiByteToWideChar, multiByteToWideCharType);
     // overwrite -> bFailIfExists is a polarity flip: bFailIfExists = NOT(overwrite).
     LLVMValueRef failIfExistsI1 = LLVMBuildNot(builder, overwriteI1, "fail_if_exists");
     LLVMValueRef failIfExistsI32 = LLVMBuildZExt(builder, failIfExistsI1, i32Type, "fail_if_exists_i32");
@@ -5378,7 +5588,9 @@ bool buildMoveFile(
     LLVMContextRef context,
     LLVMModuleRef module,
     LLVMValueRef moveFileA,
-    LLVMTypeRef moveFileAType)
+    LLVMTypeRef moveFileAType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType)
 {
     LLVMTypeRef i1Type = LLVMInt1TypeInContext(context);
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
@@ -5394,8 +5606,10 @@ bool buildMoveFile(
     LLVMPositionBuilderAtEnd(builder, entry);
     LLVMValueRef sourceString = LLVMGetParam(function, 0);
     LLVMValueRef destString = LLVMGetParam(function, 1);
-    LLVMValueRef sourceBuffer = buildNullTerminatedCopy(context, builder, function, sourceString);
-    LLVMValueRef destBuffer = buildNullTerminatedCopy(context, builder, function, destString);
+    LLVMValueRef sourceBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, sourceString, multiByteToWideChar, multiByteToWideCharType);
+    LLVMValueRef destBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, destString, multiByteToWideChar, multiByteToWideCharType);
     LLVMValueRef arguments[2] = {sourceBuffer, destBuffer};
     LLVMValueRef moveResult = LLVMBuildCall2(builder, moveFileAType, moveFileA, arguments, 2, "move_result");
     LLVMValueRef succeeded = LLVMBuildICmp(
@@ -6410,10 +6624,10 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildEntry(
     if (exitProcess == nullptr || ehInit == nullptr || panicEhFilter == nullptr ||
         !buildStart(
             context, module, exitProcess, exitProcessType, ehInit, ehInitType,
-            panicEhFilter, mainSymbol) ||
+            panicEhFilter, mainSymbol, mainArguments_) ||
         (crtStartup_ && !buildStart(
             context, module, exitProcess, exitProcessType, ehInit, ehInitType,
-            panicEhFilter, mainSymbol, "main", true)))
+            panicEhFilter, mainSymbol, mainArguments_, "main", true)))
     {
         LLVMDisposeModule(module);
         LLVMContextDispose(context);
@@ -6431,6 +6645,232 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildEntry(
     if (!verifyRuntimeAbiContract(result->text(), RuntimeAbiImageKind::EntryPoint, verificationError))
     {
         error = "NativeSharp Windows runtime entry ABI contract verification failed: " + verificationError;
+        return nullptr;
+    }
+    return result;
+}
+
+std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildSanitizerEntryAdapter(
+    std::string& error) const
+{
+    error.clear();
+    LLVMContextRef context = LLVMContextCreate();
+    if (context == nullptr)
+    {
+        error = "LLVMContextCreate failed for sanitizer entry adapter";
+        return nullptr;
+    }
+    LLVMModuleRef module = LLVMModuleCreateWithNameInContext("nativesharp.sanitizer.entry", context);
+    if (module == nullptr)
+    {
+        LLVMContextDispose(context);
+        error = "LLVMModuleCreateWithNameInContext failed for sanitizer entry adapter";
+        return nullptr;
+    }
+    const std::string triple(target::TargetInfo::WindowsX64().llvmTriple());
+    LLVMSetTarget(module, triple.c_str());
+    LLVMTypeRef startType = functionType(LLVMVoidTypeInContext(context), {});
+    LLVMTypeRef mainType = functionType(LLVMInt32TypeInContext(context), {});
+    LLVMValueRef start = LLVMAddFunction(module, "__nativesharp_start", startType);
+    LLVMValueRef main = LLVMAddFunction(module, "main", mainType);
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, main, "entry");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+    LLVMBuildCall2(builder, startType, start, nullptr, 0, "");
+    LLVMBuildRet(builder, LLVMConstInt(LLVMInt32TypeInContext(context), 0, 0));
+    LLVMDisposeBuilder(builder);
+    auto result = std::unique_ptr<llvm_backend::LlvmModule>(new llvm_backend::LlvmModule(context, module));
+    std::string verificationError;
+    if (!result->verify(verificationError))
+    {
+        error = "sanitizer entry adapter LLVM verification failed: " + verificationError;
+        return nullptr;
+    }
+    return result;
+}
+
+namespace
+{
+enum class SanitizerHeapOperation { Allocate, Reallocate, Free };
+
+// A quarantined ASan allocation is no longer owned, but must still reach ASan's free/realloc
+// interceptor so it can diagnose a repeated release. Unknown pointers remain rejected.
+LLVMValueRef sanitizerKnownAllocation(
+    LLVMContextRef context, LLVMModuleRef module, LLVMBuilderRef builder,
+    LLVMValueRef function, LLVMValueRef memory, LLVMValueRef isOwned, LLVMValueRef isNull)
+{
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef i32 = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(context);
+    LLVMValueRef known = LLVMBuildOr(builder, isOwned, isNull, "owned.or.null");
+    LLVMBasicBlockRef previous = LLVMGetInsertBlock(builder);
+    LLVMBasicBlockRef inspect = LLVMAppendBasicBlockInContext(context, function, "asan.inspect.free");
+    LLVMBasicBlockRef merge = LLVMAppendBasicBlockInContext(context, function, "asan.known.merge");
+    LLVMBuildCondBr(builder, known, merge, inspect);
+    LLVMPositionBuilderAtEnd(builder, inspect);
+    LLVMValueRef trace = LLVMBuildAlloca(builder, ptr, "asan.free.trace");
+    LLVMValueRef thread = LLVMBuildAlloca(builder, i32, "asan.free.thread");
+    LLVMValueRef arguments[] = {memory, trace, LLVMConstInt(i64, 1, 0), thread};
+    LLVMValueRef count = LLVMBuildCall2(builder, functionType(i64, {ptr, ptr, i64, ptr}),
+        LLVMGetNamedFunction(module, "__asan_get_free_stack"), arguments, 4, "asan.free.frames");
+    LLVMValueRef wasFreed = LLVMBuildICmp(builder, LLVMIntNE, count, LLVMConstInt(i64, 0, 0), "asan.was.freed");
+    LLVMBuildBr(builder, merge);
+    LLVMPositionBuilderAtEnd(builder, merge);
+    LLVMValueRef result = LLVMBuildPhi(builder, LLVMInt1TypeInContext(context), "asan.known");
+    LLVMValueRef values[] = {known, wasFreed};
+    LLVMBasicBlockRef blocks[] = {previous, inspect};
+    LLVMAddIncoming(result, values, blocks, 2);
+    return result;
+}
+
+// A runtime may use only the process heap and zero flags; realloc additionally needs a live
+// pointer and a nonzero size so it retains the Windows failure semantics.
+LLVMValueRef sanitizerHeapArgumentsValid(
+    LLVMContextRef context, LLVMModuleRef module, LLVMBuilderRef builder,
+    LLVMValueRef function, SanitizerHeapOperation operation)
+{
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef i32 = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(context);
+    LLVMValueRef processHeap = LLVMBuildCall2(
+        builder, functionType(ptr, {}), LLVMGetNamedFunction(module, "GetProcessHeap"), nullptr, 0, "heap");
+    LLVMValueRef sameHeap = LLVMBuildICmp(builder, LLVMIntEQ, LLVMGetParam(function, 0), processHeap, "same.heap");
+    LLVMValueRef zeroFlags = LLVMBuildICmp(
+        builder, LLVMIntEQ, LLVMGetParam(function, 1), LLVMConstInt(i32, 0, 0), "zero.flags");
+    LLVMValueRef valid = LLVMBuildAnd(builder, sameHeap, zeroFlags, "valid.heap");
+    if (operation == SanitizerHeapOperation::Allocate) return valid;
+    LLVMValueRef memory = LLVMGetParam(function, 2);
+    LLVMValueRef arguments[] = {memory};
+    LLVMValueRef owned = LLVMBuildCall2(builder, functionType(i32, {ptr}),
+        LLVMGetNamedFunction(module, "__sanitizer_get_ownership"), arguments, 1, "ownership");
+    LLVMValueRef isOwned = LLVMBuildICmp(builder, LLVMIntNE, owned, LLVMConstInt(i32, 0, 0), "owned");
+    LLVMValueRef isNull = LLVMBuildICmp(builder, LLVMIntEQ, memory, LLVMConstNull(ptr), "is.null");
+    LLVMValueRef known = sanitizerKnownAllocation(context, module, builder, function, memory, isOwned, isNull);
+    valid = LLVMBuildAnd(builder, valid, known, "valid.owner");
+    if (operation != SanitizerHeapOperation::Reallocate) return valid;
+    LLVMValueRef nonNull = LLVMBuildICmp(
+        builder, LLVMIntNE, LLVMGetParam(function, 2), LLVMConstNull(ptr), "nonnull");
+    LLVMValueRef nonZero = LLVMBuildICmp(
+        builder, LLVMIntNE, LLVMGetParam(function, 3), LLVMConstInt(i64, 0, 0), "nonzero");
+    return LLVMBuildAnd(builder, valid, LLVMBuildAnd(builder, nonNull, nonZero, "valid.realloc"), "valid");
+}
+
+// The adapter's unsupported path cannot safely hand a foreign allocation to the ASan allocator.
+void emitUnsupportedSanitizerHeap(LLVMContextRef context, LLVMModuleRef module, LLVMBuilderRef builder)
+{
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef i32 = LLVMInt32TypeInContext(context);
+    LLVMValueRef message = LLVMBuildGlobalStringPtr(
+        builder, "NativeSharp ASan: unsupported heap, flags, allocation, or realloc arguments", "asan.heap.error");
+    LLVMValueRef messageArgs[] = {message};
+    LLVMBuildCall2(builder, functionType(i32, {ptr}), LLVMGetNamedFunction(module, "puts"), messageArgs, 1, "");
+    LLVMValueRef flushArgs[] = {LLVMConstNull(ptr)};
+    LLVMBuildCall2(builder, functionType(i32, {ptr}), LLVMGetNamedFunction(module, "fflush"), flushArgs, 1, "");
+    LLVMValueRef exitArgs[] = {LLVMConstInt(i32, 87, 0)};
+    LLVMBuildCall2(builder, functionType(LLVMVoidTypeInContext(context), {i32}),
+        LLVMGetNamedFunction(module, "ExitProcess"), exitArgs, 1, "");
+    LLVMBuildUnreachable(builder);
+}
+
+// Emit one process-heap adapter. Unsupported heap handles and flags terminate with a diagnostic
+// instead of passing memory between the Windows heap and the sanitizer allocator.
+void buildSanitizerHeapOperation(
+    LLVMContextRef context, LLVMModuleRef module, SanitizerHeapOperation operation)
+{
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef i32 = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(context);
+    LLVMTypeRef voidType = LLVMVoidTypeInContext(context);
+    const bool allocate = operation == SanitizerHeapOperation::Allocate;
+    const bool reallocate = operation == SanitizerHeapOperation::Reallocate;
+    LLVMTypeRef wrapperType = allocate ? functionType(ptr, {ptr, i32, i64}) :
+        reallocate ? functionType(ptr, {ptr, i32, ptr, i64}) : functionType(i32, {ptr, i32, ptr});
+    const char* name = allocate ? "nsc_asan_heap_alloc" :
+        reallocate ? "nsc_asan_heap_realloc" : "nsc_asan_heap_free";
+    LLVMValueRef function = LLVMAddFunction(module, name, wrapperType);
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
+    LLVMBasicBlockRef supported = LLVMAppendBasicBlockInContext(context, function, "supported");
+    LLVMBasicBlockRef unsupported = LLVMAppendBasicBlockInContext(context, function, "unsupported");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+    LLVMValueRef valid = sanitizerHeapArgumentsValid(context, module, builder, function, operation);
+    LLVMBuildCondBr(builder, valid, supported, unsupported);
+    LLVMPositionBuilderAtEnd(builder, unsupported);
+    emitUnsupportedSanitizerHeap(context, module, builder);
+    LLVMPositionBuilderAtEnd(builder, supported);
+    if (allocate)
+    {
+        LLVMValueRef arguments[] = {LLVMGetParam(function, 2)};
+        LLVMBuildRet(builder, LLVMBuildCall2(
+            builder, functionType(ptr, {i64}), LLVMGetNamedFunction(module, "malloc"), arguments, 1, "memory"));
+    }
+    else if (reallocate)
+    {
+        LLVMValueRef arguments[] = {LLVMGetParam(function, 2), LLVMGetParam(function, 3)};
+        LLVMBuildRet(builder, LLVMBuildCall2(builder, functionType(ptr, {ptr, i64}),
+            LLVMGetNamedFunction(module, "realloc"), arguments, 2, "memory"));
+    }
+    else
+    {
+        LLVMValueRef memory = LLVMGetParam(function, 2);
+        LLVMValueRef arguments[] = {memory};
+        LLVMBuildCall2(builder, functionType(voidType, {ptr}), LLVMGetNamedFunction(module, "free"), arguments, 1, "");
+        LLVMValueRef nonNull = LLVMBuildICmp(builder, LLVMIntNE, memory, LLVMConstNull(ptr), "nonnull");
+        LLVMBuildRet(builder, LLVMBuildZExt(builder, nonNull, i32, "released"));
+    }
+    LLVMDisposeBuilder(builder);
+}
+
+// Preserve the runtime's null-on-allocation-failure contract by default.
+void buildSanitizerDefaultOptions(LLVMContextRef context, LLVMModuleRef module)
+{
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(context, 0);
+    LLVMValueRef function = LLVMAddFunction(module, "__asan_default_options", functionType(ptr, {}));
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+    LLVMValueRef options = LLVMBuildGlobalStringPtr(builder, "allocator_may_return_null=1", "asan.options");
+    LLVMBuildRet(builder, options);
+    LLVMDisposeBuilder(builder);
+}
+}
+
+std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildSanitizerHeapAdapter(
+    std::string& error) const
+{
+    error.clear();
+    LLVMContextRef context = LLVMContextCreate();
+    if (context == nullptr) { error = "LLVMContextCreate failed for sanitizer heap adapter"; return nullptr; }
+    LLVMModuleRef module = LLVMModuleCreateWithNameInContext("nativesharp.sanitizer.heap", context);
+    if (module == nullptr)
+    {
+        LLVMContextDispose(context);
+        error = "LLVMModuleCreateWithNameInContext failed for sanitizer heap adapter";
+        return nullptr;
+    }
+    const std::string triple(target::TargetInfo::WindowsX64().llvmTriple());
+    LLVMSetTarget(module, triple.c_str());
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef i32 = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(context);
+    LLVMAddFunction(module, "GetProcessHeap", functionType(ptr, {}));
+    LLVMAddFunction(module, "puts", functionType(i32, {ptr}));
+    LLVMAddFunction(module, "fflush", functionType(i32, {ptr}));
+    LLVMAddFunction(module, "ExitProcess", functionType(LLVMVoidTypeInContext(context), {i32}));
+    LLVMAddFunction(module, "malloc", functionType(ptr, {i64}));
+    LLVMAddFunction(module, "realloc", functionType(ptr, {ptr, i64}));
+    LLVMAddFunction(module, "free", functionType(LLVMVoidTypeInContext(context), {ptr}));
+    LLVMAddFunction(module, "__sanitizer_get_ownership", functionType(i32, {ptr}));
+    LLVMAddFunction(module, "__asan_get_free_stack", functionType(i64, {ptr, ptr, i64, ptr}));
+    buildSanitizerDefaultOptions(context, module);
+    buildSanitizerHeapOperation(context, module, SanitizerHeapOperation::Allocate);
+    buildSanitizerHeapOperation(context, module, SanitizerHeapOperation::Reallocate);
+    buildSanitizerHeapOperation(context, module, SanitizerHeapOperation::Free);
+    auto result = std::unique_ptr<llvm_backend::LlvmModule>(new llvm_backend::LlvmModule(context, module));
+    std::string verificationError;
+    if (!result->verify(verificationError))
+    {
+        error = "sanitizer heap adapter LLVM verification failed: " + verificationError;
         return nullptr;
     }
     return result;
@@ -6571,11 +7011,13 @@ void declareRuntimeFilesystem(RuntimeModuleState& state)
     state.getFileAttributesW = LLVMAddFunction(
         state.module, "GetFileAttributesW", state.getFileAttributesWType);
     state.deleteFileAType = functionType(state.i32Type, {state.pointerType});
-    state.deleteFileA = LLVMAddFunction(state.module, "DeleteFileA", state.deleteFileAType);
+    // NSC-NEW-020: the fields keep their historical names; they now bind the W entry points.
+    // NSC-NEW-020: los campos conservan su nombre histórico; ahora enlazan los puntos de entrada W.
+    state.deleteFileA = LLVMAddFunction(state.module, "DeleteFileW", state.deleteFileAType);
     state.createDirectoryAType = functionType(
         state.i32Type, {state.pointerType, state.pointerType});
     state.createDirectoryA = LLVMAddFunction(
-        state.module, "CreateDirectoryA", state.createDirectoryAType);
+        state.module, "CreateDirectoryW", state.createDirectoryAType);
     // Stage 53.3b "Filesystem/Paths (contenido de archivo)". CreateFileA/CreateFileW return HANDLEs
     // pointer in the C API, even though it is opaque); GetFileSizeEx/ReadFile/CloseHandle/
     // SetFilePointer round out the sequence buildFileReadAllText/buildFileWriteAllText/
@@ -6611,7 +7053,7 @@ void declareRuntimeFilesystemClosure(RuntimeModuleState& state)
     // completo). Ambas ANSI (*A), misma razon de siempre.
     state.removeDirectoryAType = functionType(state.i32Type, {state.pointerType});
     state.removeDirectoryA = LLVMAddFunction(
-        state.module, "RemoveDirectoryA", state.removeDirectoryAType);
+        state.module, "RemoveDirectoryW", state.removeDirectoryAType);
     state.getFullPathNameWType = functionType(
         state.i32Type, {state.pointerType, state.i32Type, state.pointerType, state.pointerType});
     state.getFullPathNameW = LLVMAddFunction(
@@ -6870,10 +7312,10 @@ void declareRuntimeDiagnosticsAndUtilities(RuntimeModuleState& state)
     state.sleep = LLVMAddFunction(state.module, "Sleep", state.sleepType);
     state.copyFileAType = functionType(
         state.i32Type, {state.pointerType, state.pointerType, state.i32Type});
-    state.copyFileA = LLVMAddFunction(state.module, "CopyFileA", state.copyFileAType);
+    state.copyFileA = LLVMAddFunction(state.module, "CopyFileW", state.copyFileAType);
     state.moveFileAType = functionType(
         state.i32Type, {state.pointerType, state.pointerType});
-    state.moveFileA = LLVMAddFunction(state.module, "MoveFileA", state.moveFileAType);
+    state.moveFileA = LLVMAddFunction(state.module, "MoveFileW", state.moveFileAType);
 }
 
 // EN: T19-037. `overridableFltused` makes `_fltused` `weak_odr`. A support library shared by links with and
@@ -7000,7 +7442,8 @@ bool buildRuntimeFoundationFamily(
     RuntimeModuleState& state,
     std::string_view mainSymbol,
     bool includeStart,
-    bool crtStartup)
+    bool crtStartup,
+    bool mainArguments)
 {
     return buildExceptionCurrent(
             state.context, state.module, state.exceptionTlsIndex,
@@ -7027,11 +7470,12 @@ bool buildRuntimeFoundationFamily(
         (!includeStart || buildStart(
             state.context, state.module, state.exitProcess, state.exitProcessType,
             state.ehInit, state.ehInitType,
-            LLVMGetNamedFunction(state.module, "__nativesharp_panic_eh_filter"), mainSymbol)) &&
+            LLVMGetNamedFunction(state.module, "__nativesharp_panic_eh_filter"), mainSymbol, mainArguments)) &&
         (!includeStart || !crtStartup || buildStart(
             state.context, state.module, state.exitProcess, state.exitProcessType,
             state.ehInit, state.ehInitType,
-            LLVMGetNamedFunction(state.module, "__nativesharp_panic_eh_filter"), mainSymbol, "main", true));
+            LLVMGetNamedFunction(state.module, "__nativesharp_panic_eh_filter"), mainSymbol, mainArguments, "main",
+            true));
 }
 
 bool buildRuntimeConsoleAndEnvironmentFamily(RuntimeModuleState& state)
@@ -7087,9 +7531,11 @@ bool buildRuntimeFilesystemFamily(RuntimeModuleState& state)
             state.getFileAttributesWType,
             state.multiByteToWideChar, state.multiByteToWideCharType) &&
         buildFileDelete(
-            state.context, state.module, state.deleteFileA, state.deleteFileAType) &&
+            state.context, state.module, state.deleteFileA, state.deleteFileAType,
+            state.multiByteToWideChar, state.multiByteToWideCharType) &&
         buildDirectoryCreate(
-            state.context, state.module, state.createDirectoryA, state.createDirectoryAType) &&
+            state.context, state.module, state.createDirectoryA, state.createDirectoryAType,
+            state.multiByteToWideChar, state.multiByteToWideCharType) &&
         buildFileReadAllText(
             state.context, state.module, state.getProcessHeap, state.getProcessHeapType,
             state.heapAlloc, state.heapAllocType,
@@ -7098,21 +7544,25 @@ bool buildRuntimeFilesystemFamily(RuntimeModuleState& state)
             state.getFileSizeEx, state.getFileSizeExType,
             state.readFile, state.readFileType, state.closeHandle, state.closeHandleType) &&
         buildFileGetSize(
-            state.context, state.module, state.createFileA, state.createFileAType,
+            state.context, state.module, state.createFileW, state.createFileWType,
+            state.multiByteToWideChar, state.multiByteToWideCharType,
             state.getFileSizeEx, state.getFileSizeExType,
             state.closeHandle, state.closeHandleType) &&
         buildFileReadAllBytes(
             state.context, state.module, state.getProcessHeap, state.getProcessHeapType,
             state.heapAlloc, state.heapAllocType,
-            state.createFileA, state.createFileAType,
+            state.createFileW, state.createFileWType,
+            state.multiByteToWideChar, state.multiByteToWideCharType,
             state.getFileSizeEx, state.getFileSizeExType,
             state.readFile, state.readFileType, state.closeHandle, state.closeHandleType) &&
         buildFileReadBytes(
-            state.context, state.module, state.createFileA, state.createFileAType,
+            state.context, state.module, state.createFileW, state.createFileWType,
+            state.multiByteToWideChar, state.multiByteToWideCharType,
             state.getFileSizeEx, state.getFileSizeExType,
             state.readFile, state.readFileType, state.closeHandle, state.closeHandleType) &&
         buildFileWriteAllBytes(
-            state.context, state.module, state.createFileA, state.createFileAType,
+            state.context, state.module, state.createFileW, state.createFileWType,
+            state.multiByteToWideChar, state.multiByteToWideCharType,
             state.writeFile, state.writeFileType, state.closeHandle, state.closeHandleType);
 }
 
@@ -7129,14 +7579,17 @@ bool buildRuntimePathsAndCommandLineFamily(RuntimeModuleState& state)
             state.getExitCodeProcess, state.getExitCodeProcessType,
             state.closeHandle, state.closeHandleType) &&
         buildFileWriteAllText(
-            state.context, state.module, state.createFileA, state.createFileAType,
+            state.context, state.module, state.createFileW, state.createFileWType,
+            state.multiByteToWideChar, state.multiByteToWideCharType,
             state.writeFile, state.writeFileType, state.closeHandle, state.closeHandleType) &&
         buildFileAppendAllText(
-            state.context, state.module, state.createFileA, state.createFileAType,
+            state.context, state.module, state.createFileW, state.createFileWType,
+            state.multiByteToWideChar, state.multiByteToWideCharType,
             state.setFilePointer, state.setFilePointerType,
             state.writeFile, state.writeFileType, state.closeHandle, state.closeHandleType) &&
         buildDirectoryDelete(
-            state.context, state.module, state.removeDirectoryA, state.removeDirectoryAType) &&
+            state.context, state.module, state.removeDirectoryA, state.removeDirectoryAType,
+            state.multiByteToWideChar, state.multiByteToWideCharType) &&
         buildPathGetFullPath(
             state.context, state.module, state.getProcessHeap, state.getProcessHeapType,
             state.heapAlloc, state.heapAllocType,
@@ -7149,7 +7602,7 @@ bool buildRuntimePathsAndCommandLineFamily(RuntimeModuleState& state)
             state.localFree, state.localFreeType) &&
         buildEnvironmentGetCommandLineArgs(
             state.context, state.module, state.getProcessHeap, state.getProcessHeapType,
-            state.heapAlloc, state.heapAllocType,
+            state.heapAlloc, state.heapAllocType, state.heapFree, state.heapFreeType,
             state.getCommandLineW, state.getCommandLineWType,
             state.commandLineToArgvW, state.commandLineToArgvWType,
             state.wideCharToMultiByte, state.wideCharToMultiByteType,
@@ -7348,20 +7801,23 @@ bool buildRuntimeSystemAndDiagnosticsFamily(RuntimeModuleState& state)
             state.outputDebugStringA, state.outputDebugStringAType) &&
         // Pre-Stage-56 "utilidades basicas" round.
         buildThreadSleep(state.context, state.module, state.sleep, state.sleepType) &&
-        buildFileCopy(state.context, state.module, state.copyFileA, state.copyFileAType) &&
-        buildMoveFile(state.context, state.module, state.moveFileA, state.moveFileAType);
+        buildFileCopy(state.context, state.module, state.copyFileA, state.copyFileAType,
+            state.multiByteToWideChar, state.multiByteToWideCharType) &&
+        buildMoveFile(state.context, state.module, state.moveFileA, state.moveFileAType,
+            state.multiByteToWideChar, state.multiByteToWideCharType);
 }
 
 bool buildRuntimeFamilies(
     RuntimeModuleState& state,
     std::string_view mainSymbol,
     bool includeStart,
-    bool crtStartup)
+    bool crtStartup,
+    bool mainArguments)
 {
     return runtimeFoundationImportsReady(state) &&
         runtimeSynchronizationImportsReady(state) &&
         runtimeSystemImportsReady(state) &&
-        buildRuntimeFoundationFamily(state, mainSymbol, includeStart, crtStartup) &&
+        buildRuntimeFoundationFamily(state, mainSymbol, includeStart, crtStartup, mainArguments) &&
         buildRuntimeConsoleAndEnvironmentFamily(state) &&
         buildRuntimeFilesystemFamily(state) &&
         buildRuntimePathsAndCommandLineFamily(state) &&
@@ -7428,7 +7884,7 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
     declareRuntimeDiagnosticsAndUtilities(state);
     declareRuntimeExceptionState(state, !includeStart || crtStartup_);
 
-    if (!buildRuntimeFamilies(state, mainSymbol, includeStart, crtStartup_))
+    if (!buildRuntimeFamilies(state, mainSymbol, includeStart, crtStartup_, mainArguments_))
     {
         LLVMDisposeModule(state.module);
         LLVMContextDispose(state.context);

@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>MulSaturatingPositive</Name><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><Compile Include="MulSaturatingPositive.ns"/></ItemGroup></Project>

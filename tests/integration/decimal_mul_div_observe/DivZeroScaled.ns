@@ -1,0 +1,11 @@
+noinline decimal Divide(decimal a, decimal b) { return checked(a / b); }
+int Main()
+{
+    unsafe("inspect signed scaled decimal zero")
+    {
+        i128 bits = ((i128)1 << 127) | ((i128)28 << 96);
+        decimal zero = *((decimal*)&bits);
+        decimal result = Divide(1m, zero);
+        return result == 0m ? 1 : 2;
+    }
+}

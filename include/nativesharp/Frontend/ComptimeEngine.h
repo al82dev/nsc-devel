@@ -23,7 +23,7 @@
 
 namespace nativesharp::frontend
 {
-// Executes the deliberately small NativeSharp 2.0 comptime core. `comptime` is a contextual
+// Executes the deliberately small NativeSharp comptime core. `comptime` is a contextual
 // marker and `#run(integer-expression)` is replaced with its signed 64-bit result before lexing.
 // Replacements retain the original byte count, so every later source range still names the
 // original file offset. The engine never invokes native code or the host environment.
@@ -70,12 +70,14 @@ private:
         std::size_t& end,
         ComptimeResult& result) const;
     bool resolveRunExpression(
+        std::string_view source,
         std::string_view expression,
         std::size_t cursor,
         std::string& resolvedExpression,
         std::string& dependencyDigest,
         ComptimeResult& result) const;
     bool evaluateRunExpression(
+        std::string_view source,
         const std::string& resolvedExpression,
         const std::string& dependencyDigest,
         std::size_t cursor,

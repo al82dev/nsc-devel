@@ -1,28 +1,33 @@
-# Tanda correctiva G00: contratos de release NativeSharp 3.0
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
+# Tanda correctiva G00: contratos de release NativeSharp
 
 ## Problema
 
-Aunque el compilador ya era 3.0, la construccion continuaba generando e instalando siete
-artefactos llamados `NativeSharp2*`. Su contenido describia la migracion 1.0.1 a 2.0 y afirmaba
-que 2.0 estaba oficialmente promovido. Reutilizar esos artefactos en el staging 3.0 mezclaba dos
-generaciones y, peor aun, podia presentar 3.0 como estable antes del baseline final.
+En aquella campaña la construcción generaba siete artefactos heredados cuyo contenido describía
+una migración y una promoción anteriores. Reutilizarlos con el compilador de esa revisión podía
+mezclar contratos y presentar como estable una revisión que no había completado su baseline.
 
-## Cambios
+## Cambios históricos y estado actual
 
-- El ledger describe ahora la ruptura controlada 2.0 a 3.0: compilador, NSMETA, Runtime ABI y
-  runtime symbol set.
-- La guia migra desde 2.0, conserva Language 2 como edicion predeterminada y exige opt-in
-  explicito para Language 3.
+- El ledger histórico describía cambios del compilador, NSMeta, Runtime ABI y runtime symbol set.
+  El contenido vigente identifica el producto 1.0 sin seleccionar compatibilidad por versión de
+  lenguaje o NSMeta.
+- La guía histórica describía una selección por edición. Esa regla fue retirada: la guía vigente
+  no exige una etiqueta ni selecciona la semántica por versión.
 - El baseline de migracion publica los contratos fisicos actuales y queda
   `pending-final-baseline`.
-- El freeze apunta a `3.0.0-rc.1`, NSMETA 1.25, Runtime ABI 1.1, symbol set 3 y MIR 1.21.
+- El freeze de esa campaña registraba la candidata y los contratos físicos de su revisión. No
+  acredita el estado actual.
 - La matriz se marca `pending-final-baseline`; no se presenta como certificada antes de tiempo.
 - El contrato final distingue el staging que debe verificarse en
   `A:/native-sharp-3.0-baseline` del destino de promocion `C:/native-sharp`.
 - El acta de promocion publica canal `development` y decision `pending-final-baseline`. El cambio
   a `stable`/`officially-promoted` queda reservado para el gate final ejecutado por Alberto.
-- CMake, el manifiesto de instalacion y `InstallationVerifier` usan exclusivamente nombres
-  `NativeSharp3*` para los siete artefactos.
+- En esa campaña CMake, el manifiesto de instalación y `InstallationVerifier` usaban nombres
+  históricos para los siete artefactos; los nombres actuales no incluyen una versión de lenguaje.
 - Las pruebas dirigidas y sus fixtures de instalacion fueron migrados a los mismos nombres y
   contratos.
 
@@ -30,14 +35,13 @@ No se modifico ni se instalo nada en C:.
 
 ## Archivos nuevos
 
-Solo este documento. Los artefactos `NativeSharp3*` son productos generados del build, no archivos
-fuente versionados.
+Solo este documento. Los artefactos del contrato son productos generados del build, no archivos
+fuente; sus nombres actuales no incluyen una versión de lenguaje.
 
 ## Mejora
 
-El paquete de prueba deja de mezclar contratos 2.0 con el compilador 3.0. La promocion pasa a ser
-fail-closed: mientras no exista baseline final aprobado, todos los artefactos declaran de manera
-coherente que la promocion sigue pendiente.
+La campaña evitó mezclar contratos de revisiones distintas. La promoción permanece condicionada a
+la evidencia correspondiente; los resultados históricos no certifican cambios posteriores.
 
 ## Validacion especifica
 

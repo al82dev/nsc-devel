@@ -21,9 +21,7 @@ class ProjectCompilation;
 
 namespace nativesharp::interop::metadata_detail
 {
-constexpr std::array<std::uint8_t, 8> kMagic = {'N', 'S', 'M', 'E', 'T', 'A', '1', 0};
-constexpr std::uint16_t kFormatMajor = kMetadataFormatMajor;
-constexpr std::uint16_t kFormatMinor = kMetadataFormatMinor;
+constexpr std::array<std::uint8_t, 8> kMagic = {'N', 'S', 'M', 'E', 'T', 'A', 0, 0};
 constexpr std::uint32_t kEndianMarker = 0x01020304U;
 constexpr std::uint32_t kWindowsX64Target = 1;
 constexpr std::uint32_t kPointerSize = 8;
@@ -32,8 +30,6 @@ constexpr std::string_view kTargetTriple = "x86_64-pc-windows-msvc";
 constexpr std::size_t kHeaderSize = 100;
 constexpr std::uint64_t kMaximumPayloadSize = 128ULL * 1024ULL * 1024ULL;
 constexpr std::uint32_t kMaximumRecordCount = 1'000'000U;
-constexpr std::uint8_t kLegacySourceRevisionByte = 3U;
-constexpr std::uint8_t kLegacyAbiProjectionSourceRevisionByte = 0U;
 
 std::string foldedAscii(std::string value);
 std::string metadataBaseTypeKey(std::string typeKey);
@@ -43,7 +39,6 @@ std::optional<std::string> specializedTypeKey(
 bool looksLikeCompilerSpecializedType(std::string_view typeKey);
 bool readOwnership(
     ByteReader& reader,
-    std::uint16_t formatMinor,
     LibraryMetadataOwnershipKind& ownership);
 
 bool buildMetadataModel(
@@ -52,9 +47,7 @@ bool buildMetadataModel(
     std::string& error);
 
 std::vector<std::uint8_t> encodePayload(
-    const LibraryMetadata& metadata,
-    std::uint8_t legacySourceRevision,
-    bool includeTraitImpls);
+    const LibraryMetadata& metadata);
 std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata);
 bool decodePayload(
     std::span<const std::uint8_t> payload,
@@ -69,7 +62,7 @@ bool prepareWritableMetadata(
     const LibraryMetadata& model,
     LibraryMetadata& metadata,
     std::string& error);
-bool applyWritableMetadataDowngrade(
+bool validateWritableSourceImports(
     LibraryMetadata& metadata,
     std::string& error);
 bool writeMetadataFile(
@@ -84,8 +77,6 @@ bool readMetadataBytes(
     std::string& error);
 bool readMetadataHeader(
     ByteReader& reader,
-    std::uint16_t& major,
-    std::uint16_t& minor,
     std::uint32_t& targetId,
     std::uint32_t& pointerSize,
     std::uint32_t& pointerAlignment,
@@ -95,8 +86,6 @@ bool readMetadataHeader(
     std::string& error);
 void initializeDecodedMetadata(
     LibraryMetadata& decoded,
-    std::uint16_t major,
-    std::uint16_t minor,
     std::uint32_t targetId,
     std::uint32_t pointerSize,
     std::uint32_t pointerAlignment,
@@ -129,6 +118,6 @@ bool verifyNamespaceAndExportCatalogues(
     const LibraryMetadata& metadata,
     std::string& error);
 bool verifyBinaryClosureMetadata(const LibraryMetadata& metadata, std::string& error);
-bool verifyVersionedMemberContracts(const LibraryMetadata& metadata, std::string& error);
+bool verifyMemberContracts(const LibraryMetadata& metadata, std::string& error);
 bool verifyLifetimeMetadataContracts(const LibraryMetadata& metadata, std::string& error);
 }

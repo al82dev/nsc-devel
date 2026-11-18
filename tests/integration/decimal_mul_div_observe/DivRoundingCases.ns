@@ -1,0 +1,23 @@
+noinline decimal Divide(decimal a, decimal b) { return checked(a / b); }
+
+int Main()
+{
+    unsafe("inspect half-up decimal encodings")
+    {
+        decimal below = Divide(0.4m, 3m);
+        decimal half = Divide(0.5m, 4m);
+        decimal above = Divide(0.5m, 3m);
+        decimal negativeBelow = Divide(-0.4m, 3m);
+        decimal negativeHalf = Divide(-0.5m, 4m);
+        decimal negativeAbove = Divide(-0.5m, 3m);
+        i128 scale = (i128)2 << 96;
+        i128 sign = (i128)1 << 127;
+        if (*((i128*)&below) != (scale | (i128)13)) return 1;
+        if (*((i128*)&half) != (scale | (i128)13)) return 2;
+        if (*((i128*)&above) != (scale | (i128)17)) return 3;
+        if (*((i128*)&negativeBelow) != (scale | (i128)13 | sign)) return 4;
+        if (*((i128*)&negativeHalf) != (scale | (i128)13 | sign)) return 5;
+        if (*((i128*)&negativeAbove) != (scale | (i128)17 | sign)) return 6;
+    }
+    return 0;
+}

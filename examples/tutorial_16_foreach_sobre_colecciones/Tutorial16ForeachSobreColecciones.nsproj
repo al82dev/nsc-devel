@@ -2,7 +2,7 @@
   <PropertyGroup><Name>Tutorial16ForeachSobreColecciones</Name></PropertyGroup>
   <ItemGroup>
     <Compile Include="**/*.ns" />
-    <ProjectReference Include="../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
-    <ProjectReference Include="../../lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj" />
+    <LibraryReference Include="NativeSharpCore.lib" Metadata="NativeSharpCore.nsmeta" />
+    <LibraryReference Include="NativeSharpCoreCollectionsGeneric.lib" Metadata="NativeSharpCoreCollectionsGeneric.nsmeta" />
   </ItemGroup>
 </Project>

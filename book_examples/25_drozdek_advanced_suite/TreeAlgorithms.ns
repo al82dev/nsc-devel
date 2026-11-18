@@ -197,12 +197,21 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
 
     public class TreeAlgorithms
     {
+        private IntTreeNode treapRoot;
+        private ThreadedTreeNode threadedRoot;
+        private KdNode kdRoot;
+        private int threadedCount;
+
+        public TreeAlgorithms()
+        {
+            treapRoot = null;
+            threadedRoot = null;
+            kdRoot = null;
+            threadedCount = 0;
+        }
+
         private static ThreadedTreeNode InsertThreaded(ThreadedTreeNode root, int key)
         {
-            if (root == null)
-            {
-                return new ThreadedTreeNode(key);
-            }
             ThreadedTreeNode current = root;
             while (true)
             {
@@ -433,13 +442,10 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
 
         private static IntTreeNode InsertTreap(IntTreeNode node, int key, int priority)
         {
-            if (node == null)
-            {
-                return new IntTreeNode(key, priority);
-            }
             if (key < node.Key)
             {
-                node.Left = InsertTreap(node.Left, key, priority);
+                if (node.Left == null) { node.Left = new IntTreeNode(key, priority); }
+                else { node.Left = InsertTreap(node.Left, key, priority); }
                 if (node.Left.Priority < node.Priority)
                 {
                     node = RotateRight(node);
@@ -447,7 +453,8 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
             }
             else if (key > node.Key)
             {
-                node.Right = InsertTreap(node.Right, key, priority);
+                if (node.Right == null) { node.Right = new IntTreeNode(key, priority); }
+                else { node.Right = InsertTreap(node.Right, key, priority); }
                 if (node.Right.Priority < node.Priority)
                 {
                     node = RotateLeft(node);
@@ -540,18 +547,16 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
 
         private static KdNode InsertKd(KdNode node, int x, int y, int depth)
         {
-            if (node == null)
-            {
-                return new KdNode(x, y);
-            }
             bool goLeft = depth % 2 == 0 ? x < node.X : y < node.Y;
             if (goLeft)
             {
-                node.Left = InsertKd(node.Left, x, y, depth + 1);
+                if (node.Left == null) { node.Left = new KdNode(x, y); }
+                else { node.Left = InsertKd(node.Left, x, y, depth + 1); }
             }
             else
             {
-                node.Right = InsertKd(node.Right, x, y, depth + 1);
+                if (node.Right == null) { node.Right = new KdNode(x, y); }
+                else { node.Right = InsertKd(node.Right, x, y, depth + 1); }
             }
             return node;
         }
@@ -616,27 +621,41 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
 
         public static int Run()
         {
+            raii TreeAlgorithms owner = new TreeAlgorithms();
             IntTreeNode treap = null;
             int[] keys = new int[] { 40, 20, 60, 10, 30, 50, 70, 25, 65 };
             int[] priorities = new int[] { 50, 30, 40, 10, 35, 20, 60, 15, 25 };
             int index = 0;
             while (index < keys.Length)
             {
-                treap = InsertTreap(treap, keys[index], priorities[index]);
+                if (treap == null)
+                {
+                    owner.treapRoot = new IntTreeNode(keys[index], priorities[index]);
+                    treap = owner.treapRoot;
+                }
+                else { treap = InsertTreap(treap, keys[index], priorities[index]); owner.treapRoot = treap; }
                 index = index + 1;
             }
             int inorder = MorrisChecksum(treap);
             int preorder = IterativePreorderChecksum(treap);
             int postorder = IterativePostorderChecksum(treap);
             treap = Splay(treap, 65);
+            owner.treapRoot = treap;
             int splayed = treap.Key;
             treap = DeleteByMerging(treap, 40);
+            owner.treapRoot = treap;
 
             ThreadedTreeNode threaded = null;
             index = 0;
             while (index < keys.Length)
             {
-                threaded = InsertThreaded(threaded, keys[index]);
+                if (threaded == null)
+                {
+                    owner.threadedRoot = new ThreadedTreeNode(keys[index]);
+                    threaded = owner.threadedRoot;
+                }
+                else { threaded = InsertThreaded(threaded, keys[index]); }
+                owner.threadedCount = owner.threadedCount + 1;
                 index = index + 1;
             }
             int threadedChecksum = ThreadedInorderChecksum(threaded);
@@ -646,7 +665,12 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
             index = 0;
             while (index < points.Length)
             {
-                kd = InsertKd(kd, points[index], points[index + 1], 0);
+                if (kd == null)
+                {
+                    owner.kdRoot = new KdNode(points[index], points[index + 1]);
+                    kd = owner.kdRoot;
+                }
+                else { kd = InsertKd(kd, points[index], points[index + 1], 0); }
                 index = index + 2;
             }
             int inside = CountKdRange(kd, 0, 40, 0, 50, 0);
@@ -663,14 +687,18 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
 
             int result = btreeValid ? inorder + preorder + postorder + splayed + threadedChecksum + inside : -1;
             Console.WriteLine("trees: iterative traversals, threads, Morris, merging, splay, treap, k-d and B-tree");
-            DeleteThreadedTree(threaded, keys.Length);
-            DeleteIntTree(treap);
-            DeleteKdTree(kd);
             delete[] keys;
             delete[] priorities;
             delete[] points;
             delete[] btreeKeys;
             return result;
+        }
+
+        ~TreeAlgorithms()
+        {
+            DeleteThreadedTree(threadedRoot, threadedCount);
+            DeleteIntTree(treapRoot);
+            DeleteKdTree(kdRoot);
         }
     }
 } // namespace NativeSharp.BookExamples. DrozdekAdvanced

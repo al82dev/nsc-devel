@@ -8,8 +8,7 @@ ni de un bloque `unsafe`.
 
 ## Cambios
 
-- Los proyectos del fixture ya no escriben `<Language>2</Language>` ni
-  `<Language>3</Language>`.
+- Los proyectos del fixture ya no escriben la propiedad histórica `<Language>`.
 - Las operaciones de puntero usan directamente la sintaxis nativa del lenguaje.
 - El caso no-escape continúa aceptando la dirección de un local.
 - Los escapes globales cross-project y en el mismo proyecto deben rechazarse con el

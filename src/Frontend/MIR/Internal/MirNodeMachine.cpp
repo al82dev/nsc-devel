@@ -2,6 +2,7 @@
 #include "../../Internal/TypeIndexShadowCheck.h"
 #include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 #include "nativesharp/AST/AstNode.h"
+#include "nativesharp/Target/TargetDataLayout.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -456,7 +457,13 @@ int ProjectOopMirModel::MirNodeMachine::lowerRawElementAddress(
         error = "C2.1 raw element lowering requires name lookup and value layouts";
         return -1;
     }
-    const auto layout = model_.elementLayout(node->elementTypeKey);
+    auto layout = model_.elementLayout(node->elementTypeKey);
+    if (!layout.has_value() && node->elementTypeKey == "builtin:decimal")
+    {
+        const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(
+            target::BuiltinLayoutKind::Decimal);
+        layout = {{decimal.size, decimal.alignment}};
+    }
     if (!layout.has_value() || layout->first == 0)
     {
         error = "C2.1 cannot determine raw element layout for '" + node->elementTypeKey + "'";
@@ -529,7 +536,14 @@ int ProjectOopMirModel::MirNodeMachine::lowerRawStorage(
         error = "CC1 raw storage lowering requires name lookup and value layouts";
         return -1;
     }
-    const auto layout = model_.elementLayout(node->elementTypeKey);
+    auto layout = model_.elementLayout(node->elementTypeKey);
+    if (!layout.has_value() && node->kind == ProjectOopHirNodeKind::StackAllocation &&
+        node->elementTypeKey == "builtin:decimal")
+    {
+        const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(
+            target::BuiltinLayoutKind::Decimal);
+        layout = {{decimal.size, decimal.alignment}};
+    }
     if (!layout.has_value() || layout->first == 0)
     {
         error = "CC1 cannot determine the element layout of '" + node->elementTypeKey + "'";
@@ -1413,6 +1427,9 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup13(
         case ProjectOopHirNodeKind::EventInvoke:
             result->kind = ProjectOopMirNodeKind::EventInvoke;
             break;
+        case ProjectOopHirNodeKind::SimdMaskElementValue:
+            result->kind = ProjectOopMirNodeKind::SimdMaskElementLoad;
+            break;
         case ProjectOopHirNodeKind::ArrayAllocation:
         case ProjectOopHirNodeKind::RangeArrayAllocation:
         case ProjectOopHirNodeKind::ArrayElementValue:
@@ -1425,7 +1442,13 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup13(
                 error = "Stage 41 array lowering requires name lookup and value layouts";
                 return -1;
             }
-            const auto layout = model_.elementLayout(node->elementTypeKey);
+            auto layout = model_.elementLayout(node->elementTypeKey);
+            if (!layout.has_value() && node->elementTypeKey == "builtin:decimal")
+            {
+                const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(
+                    target::BuiltinLayoutKind::Decimal);
+                layout = {{decimal.size, decimal.alignment}};
+            }
             if (!layout.has_value() || layout->first == 0)
             {
                 error = "Stage 41 cannot determine native array element layout for '" + node->elementTypeKey + "'";
@@ -1527,6 +1550,27 @@ int ProjectOopMirModel::MirNodeMachine::lowerCompoundStore(
     std::string& error)
 {
     result->kind = ProjectOopMirNodeKind::CompoundStore;
+    if (node->memberOrdinal.has_value())
+    {
+        const ProjectOopHirFunction* target = model_.hirModel_ != nullptr
+            ? model_.hirModel_->functionForMember(*node->memberOrdinal) : nullptr;
+        if (target == nullptr || !target->isStatic)
+        {
+            error = "user increment/decrement has no static operator target";
+            return -1;
+        }
+        result->calleeName = target->mangledName;
+        if (node->secondaryMemberOrdinal.has_value())
+        {
+            const ProjectOopHirFunction* conversion = model_.hirModel_->functionForMember(*node->secondaryMemberOrdinal);
+            if (conversion == nullptr || !conversion->isStatic)
+            {
+                error = "compound operator has no static result conversion";
+                return -1;
+            }
+            result->secondaryCalleeName = conversion->mangledName;
+        }
+    }
     if (!node->elementTypeKey.empty())
     {
         if (model_.nameLookup_ == nullptr || model_.objectLayoutModel_ == nullptr)
@@ -1707,9 +1751,9 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup16(
             }
             const ProjectOopMirStructLayout* layout =
                 structLayoutForTypeKey(node->elementTypeKey);
-            // EN: Freeze 3.0 C-14: fields are found by member ordinal; a future without an error
+            // EN: Freeze C-14: fields are found by member ordinal; a future without an error
             //     slot has no member 4, so its Drop pointer (member 5) is not at index 5.
-            // ES: Congelamiento 3.0 C-14: los campos se buscan por ordinal de miembro; un future sin
+            // ES: Congelamiento C-14: los campos se buscan por ordinal de miembro; un future sin
             //     slot de error no tiene miembro 4, asi su puntero Drop (miembro 5) no esta en 5.
             const ObjectFieldLayout* field = nullptr;
             if (layout != nullptr)
@@ -1749,6 +1793,29 @@ int ProjectOopMirModel::MirNodeMachine::lowerAwaitFuture(
     result->typeKey = node->typeKey;
     result->elementTypeKey = node->elementTypeKey;
     result->calleeName = node->stringValue;
+    // EN: LKF-483: the poll of an awaited call was the statically selected member's, so awaiting
+    //     a virtual or interface async call ran the base body on the override's future
+    //     (`B b = c; await b.G()` returned B.G's value). A dynamically dispatched call is awaited
+    //     as a future value: the poll comes from the future it returned.
+    // ES: LKF-483: el poll de una llamada esperada era el del miembro elegido estáticamente, así que
+    //     esperar una llamada async virtual o de interfaz ejecutaba el cuerpo base sobre el future
+    //     de la redefinición (`B b = c; await b.G()` devolvía el valor de B.G). Una llamada con
+    //     despacho dinámico se espera como un valor future: el poll sale del future que devolvió.
+    const ProjectOopHirNode* operand = node->children.empty() ? nullptr : node->children.front().get();
+    if (!result->calleeName.empty() && operand != nullptr &&
+        operand->kind == ProjectOopHirNodeKind::InstanceCall && operand->memberOrdinal.has_value())
+    {
+        bool dynamicDispatch = operand->interfaceDispatch;
+        if (!dynamicDispatch && !operand->baseReceiver && model_.virtualDispatchModel_ != nullptr &&
+            model_.virtualDispatchModel_->slotForMember(*operand->memberOrdinal).has_value())
+        {
+            const bool sealedTarget = model_.memberModel_ != nullptr &&
+                *operand->memberOrdinal < model_.memberModel_->members().size() &&
+                model_.memberModel_->members()[*operand->memberOrdinal].isSealed;
+            dynamicDispatch = !sealedTarget;
+        }
+        if (dynamicDispatch) result->calleeName.clear();
+    }
     result->immediate = layout->fields[2].offset;
     result->integerValue = node->integerValue;
     return 1;
@@ -1931,9 +1998,12 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup19(
             const std::optional<std::size_t> slot = model_.virtualDispatchModel_ != nullptr
                 ? model_.virtualDispatchModel_->slotForMember(*node->memberOrdinal)
                 : std::nullopt;
-            const bool dynamicDispatch =
-                node->kind == ProjectOopHirNodeKind::InstanceCall && !node->baseReceiver && slot.has_value();
             const ProjectOopHirFunction* target = model_.hirModel_->functionForMember(*node->memberOrdinal);
+            const bool sealedTarget = target != nullptr && model_.memberModel_ != nullptr &&
+                *node->memberOrdinal < model_.memberModel_->members().size() &&
+                model_.memberModel_->members()[*node->memberOrdinal].isSealed;
+            const bool dynamicDispatch = node->kind == ProjectOopHirNodeKind::InstanceCall &&
+                !node->baseReceiver && slot.has_value() && !sealedTarget;
             if (!dynamicDispatch && target == nullptr)
             {
                 error = "Stage 35 direct/base call cannot target an abstract method";
@@ -2108,7 +2178,9 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup21(
                 spanLayout->fields[0].typeKey != node->elementTypeKey + "*" ||
                 spanLayout->fields[1].typeKey != "builtin:int")
             {
-                error = "T01-F02 ReadOnlySpan<T> layout requires leading T* data and int length fields";
+                // LKF-386: name the element and the expected shape. / LKF-386: nombra el elemento y la forma.
+                error = "T01-F02 a params pack of '" + node->elementTypeKey + "' requires a ReadOnlySpan<T> whose "
+                    "first fields are T* data and int length; declare it that way or use NativeSharp.Core.ReadOnlySpan<T>";
                 return -1;
             }
             result->kind = ProjectOopMirNodeKind::ParameterPack;

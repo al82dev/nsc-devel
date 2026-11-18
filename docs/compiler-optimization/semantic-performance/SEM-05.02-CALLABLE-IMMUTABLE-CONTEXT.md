@@ -12,8 +12,7 @@ estado mutable acumulado por `ProjectMethodBodyModel`.
 - ordinal estable del callable;
 - ordinal estable de la oleada;
 - catálogos de nombres, miembros, funciones libres, herencia e interfaces;
-- modelos opcionales de genéricos y constraints;
-- edición del lenguaje.
+- modelos opcionales de genéricos y constraints.
 
 Todas las dependencias se publican como lectura. El contexto no contiene vectores de salida ni
 scratch y no ofrece operaciones de mutación.

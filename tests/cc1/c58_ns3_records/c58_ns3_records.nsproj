@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <Name>c58_ns3_records</Name>
-    <Language>3</Language>
+
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="**/*.ns" />

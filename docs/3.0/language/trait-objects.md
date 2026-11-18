@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Objetos trait explícitos / Explicit trait objects
 
 ## Contrato / Contract
@@ -35,7 +37,7 @@ reference carrier.
 
 ## Metadata and DLL boundary
 
-NSMETA 1.31 publishes object-safety, descriptor-map dispatch, zero-null semantics, one-word
+NSMeta publishes object-safety, descriptor-map dispatch, zero-null semantics, one-word
 layout, and the no-allocation conversion rule. It also preserves the `dyn` marker on member,
 namespace-function, delegate, field, and namespace-state signatures. Removing `dyn` is a source
 contract change, but it is not by itself a physical ABI change because the nominal interface

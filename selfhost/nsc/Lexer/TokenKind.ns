@@ -25,7 +25,7 @@ namespace NativeSharp.Compiler.Lexer
         PipePipe, Amp, Pipe, Caret, Tilde, LessLess, GreaterGreater, Equal,
         PlusEqual, MinusEqual, StarEqual, SlashEqual, PercentEqual, AmpEqual,
         PipeEqual, CaretEqual, LessLessEqual, GreaterGreaterEqual,
-        // NativeSharp 3.0 tokens stay at the tail so every 2.x numeric identity remains stable.
+        // NativeSharp tokens stay at the tail so existing numeric identities remain stable.
         InterpolatedStringLiteral, QuestionQuestion, QuestionQuestionEqual,
         QuestionDot, DotDot
     }

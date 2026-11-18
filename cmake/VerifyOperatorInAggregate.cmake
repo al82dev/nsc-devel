@@ -1,0 +1,135 @@
+# Compile and run the aggregate in-operator regression without artifact cache.
+file(MAKE_DIRECTORY "${OUTPUT_DIR}")
+foreach(level IN ITEMS O0 O2)
+    set(program "${OUTPUT_DIR}/OperatorInAggregate_${level}.exe")
+    execute_process(
+        COMMAND cmake -E env
+            "NSC_WINDOWS_RUNTIME_LIBRARY=${RUNTIME_LIBRARY}"
+            "NSC_LINKER=${NSLINK_EXECUTABLE}"
+            "${NSC_EXECUTABLE}" --emit-project-oop-exe "${PROJECT_FILE}"
+            "-${level}" -o "${program}" --no-artifact-cache --no-error-log
+        RESULT_VARIABLE build_result OUTPUT_VARIABLE build_output ERROR_VARIABLE build_error)
+    if(NOT build_result EQUAL 0)
+        message(FATAL_ERROR "${level} build failed: ${build_result}\n${build_output}\n${build_error}")
+    endif()
+    execute_process(COMMAND "${program}" TIMEOUT 10
+        RESULT_VARIABLE run_result OUTPUT_VARIABLE run_output ERROR_VARIABLE run_error)
+    if(NOT "${run_result}" STREQUAL "0")
+        message(FATAL_ERROR "${level} run failed: ${run_result}\n${run_output}\n${run_error}")
+    endif()
+endforeach()
+
+get_filename_component(integration_dir "${PROJECT_FILE}" DIRECTORY)
+set(throw_project "${integration_dir}/../operator_compound_temporary_throw/Case.nsproj")
+set(replace_throw_project "${integration_dir}/../operator_value_replace_throw/Case.nsproj")
+set(compound_value_project "${integration_dir}/../operator_compound_value/Case.nsproj")
+set(compound_value_throw_project "${integration_dir}/../operator_compound_value_throw/Case.nsproj")
+set(compound_value_operator_throw_project "${integration_dir}/../operator_compound_value_operator_throw/Case.nsproj")
+set(value_instance_throw_project "${integration_dir}/../operator_value_replace_instance_throw/Case.nsproj")
+set(value_virtual_throw_project "${integration_dir}/../operator_value_replace_virtual_throw/Case.nsproj")
+set(value_interface_throw_project "${integration_dir}/../operator_value_replace_interface_throw/Case.nsproj")
+set(value_wrapped_throw_project "${integration_dir}/../operator_value_replace_wrapped_throw/Case.nsproj")
+set(value_conditional_throw_project "${integration_dir}/../operator_value_replace_conditional_throw/Case.nsproj")
+set(value_new_throw_project "${integration_dir}/../operator_value_replace_new_throw/Case.nsproj")
+set(value_move_throw_project "${integration_dir}/../operator_value_replace_move_throw/Case.nsproj")
+set(value_delegate_throw_project "${integration_dir}/../operator_value_replace_delegate_throw/Case.nsproj")
+set(value_parameter_throw_project "${integration_dir}/../operator_value_replace_parameter_throw/Case.nsproj")
+set(compound_parameter_project "${integration_dir}/../operator_compound_parameter/Case.nsproj")
+set(value_array_throw_project "${integration_dir}/../operator_value_replace_array_throw/Case.nsproj")
+set(compound_array_project "${integration_dir}/../operator_compound_array/Case.nsproj")
+set(compound_array_dead_project "${integration_dir}/../operator_compound_array_dead/Case.nsproj")
+set(compound_array_rhs_move_project "${integration_dir}/../operator_compound_array_rhs_move/Case.nsproj")
+foreach(level IN ITEMS O0 O2)
+    set(program "${OUTPUT_DIR}/OperatorCompoundThrow_${level}.exe")
+    execute_process(
+        COMMAND cmake -E env
+            "NSC_WINDOWS_RUNTIME_LIBRARY=${RUNTIME_LIBRARY}"
+            "NSC_LINKER=${NSLINK_EXECUTABLE}"
+            "${NSC_EXECUTABLE}" --emit-project-oop-exe "${throw_project}"
+            "-${level}" -o "${program}" --no-artifact-cache --no-error-log
+        RESULT_VARIABLE build_result OUTPUT_VARIABLE build_output ERROR_VARIABLE build_error)
+    if(NOT build_result EQUAL 0)
+        message(FATAL_ERROR "${level} throwing operator build failed: ${build_result}\n${build_output}\n${build_error}")
+    endif()
+    execute_process(COMMAND "${program}" TIMEOUT 10 RESULT_VARIABLE run_result)
+    if(NOT "${run_result}" STREQUAL "42")
+        message(FATAL_ERROR "${level} throwing operator cleanup failed: ${run_result}")
+    endif()
+    set(replace_program "${OUTPUT_DIR}/OperatorValueReplaceThrow_${level}.exe")
+    execute_process(
+        COMMAND cmake -E env
+            "NSC_WINDOWS_RUNTIME_LIBRARY=${RUNTIME_LIBRARY}"
+            "NSC_LINKER=${NSLINK_EXECUTABLE}"
+            "${NSC_EXECUTABLE}" --emit-project-oop-exe "${replace_throw_project}"
+            "-${level}" -o "${replace_program}" --no-artifact-cache --no-error-log
+        RESULT_VARIABLE build_result OUTPUT_VARIABLE build_output ERROR_VARIABLE build_error)
+    if(NOT build_result EQUAL 0)
+        message(FATAL_ERROR "${level} throwing value replacement build failed: ${build_result}\n${build_output}\n${build_error}")
+    endif()
+    execute_process(COMMAND "${replace_program}" TIMEOUT 10 RESULT_VARIABLE run_result)
+    if(NOT "${run_result}" STREQUAL "42")
+        message(FATAL_ERROR "${level} throwing value replacement cleanup failed: ${run_result}")
+    endif()
+    foreach(kind IN ITEMS compound_value compound_value_throw compound_value_operator_throw value_instance_throw value_virtual_throw value_interface_throw value_wrapped_throw value_conditional_throw value_new_throw value_move_throw value_delegate_throw value_parameter_throw compound_parameter value_array_throw compound_array)
+        set(value_program "${OUTPUT_DIR}/${kind}_${level}.exe")
+        execute_process(
+            COMMAND cmake -E env
+                "NSC_WINDOWS_RUNTIME_LIBRARY=${RUNTIME_LIBRARY}"
+                "NSC_LINKER=${NSLINK_EXECUTABLE}"
+                "${NSC_EXECUTABLE}" --emit-project-oop-exe "${${kind}_project}"
+                "-${level}" -o "${value_program}" --no-artifact-cache --no-error-log
+            RESULT_VARIABLE build_result OUTPUT_VARIABLE build_output ERROR_VARIABLE build_error)
+        if(NOT build_result EQUAL 0)
+            message(FATAL_ERROR "${level} ${kind} build failed: ${build_result}\n${build_output}\n${build_error}")
+        endif()
+        execute_process(COMMAND "${value_program}" TIMEOUT 10 RESULT_VARIABLE run_result)
+        if(NOT "${run_result}" STREQUAL "42")
+            message(FATAL_ERROR "${level} ${kind} cleanup failed: ${run_result}")
+        endif()
+    endforeach()
+    foreach(kind IN ITEMS compound_array_dead compound_array_rhs_move)
+        set(dead_program "${OUTPUT_DIR}/${kind}_${level}.exe")
+        execute_process(
+            COMMAND cmake -E env
+                "NSC_WINDOWS_RUNTIME_LIBRARY=${RUNTIME_LIBRARY}"
+                "NSC_LINKER=${NSLINK_EXECUTABLE}"
+                "${NSC_EXECUTABLE}" --emit-project-oop-exe "${${kind}_project}"
+                "-${level}" -o "${dead_program}" --no-artifact-cache --no-error-log
+            RESULT_VARIABLE build_result OUTPUT_VARIABLE build_output ERROR_VARIABLE build_error)
+        if(NOT build_result EQUAL 0)
+            message(FATAL_ERROR "${level} ${kind} build failed: ${build_result}\n${build_output}\n${build_error}")
+        endif()
+        execute_process(COMMAND "${dead_program}" TIMEOUT 10 RESULT_VARIABLE run_result)
+        if(NOT "${run_result}" STREQUAL "146")
+            message(FATAL_ERROR "${level} ${kind} expected dead-element trap 146, got ${run_result}")
+        endif()
+    endforeach()
+endforeach()
+set(invalid_project "${integration_dir}/../operator_in_aggregate_invalid/Invalid.nsproj")
+execute_process(
+    COMMAND "${NSC_EXECUTABLE}" --check-project-method-bodies "${invalid_project}"
+    RESULT_VARIABLE invalid_result OUTPUT_VARIABLE invalid_output ERROR_VARIABLE invalid_error)
+if(invalid_result EQUAL 0 OR NOT "${invalid_output}${invalid_error}" MATCHES "compound assignment requires compatible numeric operands")
+    message(FATAL_ERROR "missing operator was not rejected as expected: ${invalid_result}\n${invalid_output}\n${invalid_error}")
+endif()
+if(NOT "${invalid_output}${invalid_error}" MATCHES "no viable Stage 38 overload")
+    message(FATAL_ERROR "temporary ref operand was not rejected as expected: ${invalid_result}\n${invalid_output}\n${invalid_error}")
+endif()
+if(NOT "${invalid_output}${invalid_error}" MATCHES "compound operator result must have the destination type or an implicit user conversion")
+    message(FATAL_ERROR "missing result conversion was not rejected as expected: ${invalid_result}\n${invalid_output}\n${invalid_error}")
+endif()
+if(NOT "${invalid_output}${invalid_error}" MATCHES "use of moved-from move-only local")
+    message(FATAL_ERROR "moved-from compound target was not rejected: ${invalid_result}\n${invalid_output}\n${invalid_error}")
+endif()
+if(NOT "${invalid_output}${invalid_error}" MATCHES "use of moved-from parameter")
+    message(FATAL_ERROR "moved-from compound parameter was not rejected: ${invalid_result}\n${invalid_output}\n${invalid_error}")
+endif()
+if(NOT "${invalid_output}${invalid_error}" MATCHES "cannot be copied into local 'copied'")
+    message(FATAL_ERROR "copying a compound move-only result was not rejected: ${invalid_result}\n${invalid_output}\n${invalid_error}")
+endif()
+if(NOT "${invalid_output}${invalid_error}" MATCHES "compound assignment target is moved by its right-hand side")
+    message(FATAL_ERROR "moving the compound target in its own RHS was not rejected: ${invalid_result}\n${invalid_output}\n${invalid_error}")
+endif()
+if(NOT "${invalid_output}${invalid_error}" MATCHES "compound user operator does not support this destination or parameter passing mode")
+    message(FATAL_ERROR "unsupported ref operand for destructible destination was not rejected: ${invalid_result}\n${invalid_output}\n${invalid_error}")
+endif()

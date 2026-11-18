@@ -1,4 +1,4 @@
-// NativeSharp 3.0 / T05-F01 productive witness.
+// NativeSharp / T05-F01 productive witness.
 //
 // A trait is a storage-free nominal behavior contract. The first vertical deliberately reuses the
 // proven interface representation: constrained generic calls monomorphize to static dispatch and

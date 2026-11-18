@@ -29,10 +29,9 @@ std::vector<Field> fields()
     using namespace interop;
     return {
         {"source_compiler", std::string(kPreviousCompilerReleaseVersion)},
-        {"source_language", std::string(kPreviousCompilerReleaseVersion)},
         {"target_release", std::string(kCompilerReleaseVersion)},
         {"status", "pending-final-baseline"},
-        {"nsmeta", std::to_string(kMetadataFormatMajor) + "." + std::to_string(kMetadataFormatMinor)},
+        {"nsmeta", "content-compatible"},
         {"native_abi", std::to_string(kNativeAbiMajor) + "." + std::to_string(kNativeAbiMinor)},
         {"runtime_abi", std::to_string(kRuntimeAbiMajor) + "." + std::to_string(kRuntimeAbiMinor)},
         {"runtime_symbol_set", std::to_string(runtime::kRuntimeSymbolSetVersion)},
@@ -124,26 +123,40 @@ bool verifyMigrationBaseline(const std::filesystem::path& source, std::string& e
         error = "unsupported migration baseline header '" + line + "'; expected '" + header + "'";
         return false;
     }
-    const std::vector<Field> expected = fields();
+    std::vector<Field> expected;
+    for (const Field& field : fields())
+    {
+        if (field.first != "nsmeta") expected.push_back(field);
+    }
+    std::size_t lineNumber = 1U;
     for (std::size_t index = 0; index < expected.size(); ++index)
     {
-        if (!std::getline(stream, line))
+        bool found = false;
+        while (std::getline(stream, line))
+        {
+            ++lineNumber;
+            removeCarriageReturn(line);
+            if (line.starts_with("source_language=") || line.starts_with("nsmeta=")) continue;
+            found = true;
+            break;
+        }
+        if (!found)
         {
             error = "migration baseline is missing field '" + expected[index].first + "'";
             return false;
         }
-        removeCarriageReturn(line);
         const std::string expectedLine = expected[index].first + '=' + expected[index].second;
         if (line != expectedLine)
         {
-            error = "incompatible migration baseline field on line " + std::to_string(index + 2U) +
+            error = "incompatible migration baseline field on line " + std::to_string(lineNumber) +
                     ": found '" + line + "', expected '" + expectedLine + "'";
             return false;
         }
     }
-    if (std::getline(stream, line))
+    while (std::getline(stream, line))
     {
         removeCarriageReturn(line);
+        if (line.starts_with("source_language=") || line.starts_with("nsmeta=")) continue;
         error = "unexpected migration baseline field '" + line + "'";
         return false;
     }

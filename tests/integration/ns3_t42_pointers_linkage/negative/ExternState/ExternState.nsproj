@@ -1,1 +1,1 @@
-<Project><PropertyGroup><Name>ExternState</Name><Language>3</Language></PropertyGroup><ItemGroup><Compile Include="Main.ns" /></ItemGroup></Project>
+<Project><PropertyGroup><Name>ExternState</Name></PropertyGroup><ItemGroup><Compile Include="Main.ns" /></ItemGroup></Project>

@@ -2,7 +2,7 @@
 
 ## Español
 
-NativeSharp 3 incorpora re-exports productivos con `export import`. La forma de símbolo/trait
+NativeSharp incorpora re-exports productivos con `export import`. La forma de símbolo/trait
 puede publicar un nombre de fachada:
 
 ```nativesharp
@@ -27,7 +27,7 @@ rechaza fachadas en conflicto.
 
 ## English
 
-NativeSharp 3 provides productive re-exports through `export import`. Symbol and trait forms may
+NativeSharp provides productive re-exports through `export import`. Symbol and trait forms may
 publish a facade name, while module form republishes the selected namespace's public identities.
 
 `ProjectNameLookup` builds one module catalogue after declarations are finalized and before uses

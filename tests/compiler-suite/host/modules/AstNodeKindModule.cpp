@@ -25,7 +25,9 @@ struct ExpectedAstKind final
 
 // Independent CA-AST-003 oracle: order and spelling are intentionally explicit so a product-side
 // reorder, insertion, or rename cannot update the expected values implicitly.
-constexpr std::array<ExpectedAstKind, 108> ExpectedAstKinds = {{
+// TA-AST-023: typed static field iteration (94d35b132) appended StaticFieldIterationStatement at 108.
+// TA-AST-023: la iteración tipada de campos estáticos (94d35b132) añadió StaticFieldIterationStatement en 108.
+constexpr std::array<ExpectedAstKind, 109> ExpectedAstKinds = {{
     {AstNodeKind::CompilationUnit, "CompilationUnit"},
     {AstNodeKind::NamespaceDeclaration, "NamespaceDeclaration"},
     {AstNodeKind::UsingNamespaceDirective, "UsingNamespaceDirective"},
@@ -134,6 +136,7 @@ constexpr std::array<ExpectedAstKind, 108> ExpectedAstKinds = {{
     {AstNodeKind::SuspendStatement, "SuspendStatement"},
     {AstNodeKind::NameOfExpression, "NameOfExpression"},
     {AstNodeKind::OverflowPolicyExpression, "OverflowPolicyExpression"},
+    {AstNodeKind::StaticFieldIterationStatement, "StaticFieldIterationStatement"},
 }};
 
 constexpr std::size_t HistoricalKindCount = 83;
@@ -145,7 +148,7 @@ void addAstNodeKindCase(TestRegistry& registry, std::string id, TestFunction fun
         {"ast", "node-kind"}, std::move(function)});
 }
 
-// Compares all 108 valid values against the independently frozen public spelling.
+// Compares all 109 valid values against the independently frozen public spelling.
 void testExactNames(TestContext& context)
 {
     for (std::size_t index = 0; index < ExpectedAstKinds.size(); ++index)
@@ -218,8 +221,8 @@ void testAppendedKindOrder(TestContext& context)
 {
     using Underlying = std::underlying_type_t<AstNodeKind>;
     context.expect(ExpectedAstKinds[HistoricalKindCount].kind == AstNodeKind::NullCoalescingExpression &&
-            ExpectedAstKinds.back().kind == AstNodeKind::OverflowPolicyExpression,
-        "TA-AST-025 appended range must remain NullCoalescingExpression through OverflowPolicyExpression");
+            ExpectedAstKinds.back().kind == AstNodeKind::StaticFieldIterationStatement,
+        "TA-AST-025 appended range must remain NullCoalescingExpression through StaticFieldIterationStatement");
     for (std::size_t index = HistoricalKindCount; index < ExpectedAstKinds.size(); ++index)
     {
         context.expect(static_cast<Underlying>(ExpectedAstKinds[index].kind) ==

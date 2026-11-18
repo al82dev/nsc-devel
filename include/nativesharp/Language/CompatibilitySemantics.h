@@ -41,7 +41,7 @@ CompatibilityClassification classifyApiChange(
 
 bool validateMigrationGuide(std::span<const MigrationChapter> chapters, std::string& error);
 
-bool removalAllowedInThreeX(
+bool removalAllowed(
     bool securityOrUndefinedBehaviorFix,
     bool previouslyDeprecated) noexcept;
 }

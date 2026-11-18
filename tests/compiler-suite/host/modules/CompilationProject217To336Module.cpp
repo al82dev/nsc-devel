@@ -51,13 +51,13 @@ void projectPropertyContract(TestContext& context, std::size_t variant)
     if (variant == 2)
     {
         properties = "<Name>Game</Name><Package>Pkg</Package><OutputType>SharedLibrary</OutputType>"
-            "<OptimizationLevel>O2</OptimizationLevel><Language>999</Language>"
+            "<OptimizationLevel>O2</OptimizationLevel><Language>opaque-a</Language>"
             "<PanicProfile>abort</PanicProfile><PanicHandler>Pkg.Fail</PanicHandler>";
     }
     else if (variant == 3) properties = "<Name></Name>";
     else if (variant == 4) properties = "<OutputType>Object</OutputType>";
     else if (variant == 5) properties = "<Name>A</Name><Name>B</Name>";
-    else if (variant == 6) properties = "<Language>2</Language>";
+    else if (variant == 6) properties = "<Language>opaque-b</Language>";
     else if (variant == 8) properties = "<CompilerJobs>1024</CompilerJobs>";
     std::string error;
     const auto project = loadDocument(tree, projectDocument(properties), error);

@@ -4,7 +4,9 @@
 #include "nativesharp/Language/IterationSemantics.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
+#include <limits>
 #include <unordered_map>
 #include <vector>
 
@@ -12,12 +14,12 @@ namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
 
-// EN: Freeze 3.0 C-02. A poll (or a MoveNext) used to re-run its body from the top on every call
+// EN: Freeze C-02. A poll (or a MoveNext) used to re-run its body from the top on every call
 //     and skip each suspension point whose state did not match: code before the point ran again,
 //     every await shared state 1 and frame slot 0, and a local's address died with the poll's
 //     stack. Now the frame owns the locals, the entry switches on the state, and the switch jumps
 //     to the start of the statement that suspended.
-// ES: Congelamiento 3.0 C-02. Un poll (o un MoveNext) volvia a correr su cuerpo desde arriba en
+// ES: Congelamiento C-02. Un poll (o un MoveNext) volvia a correr su cuerpo desde arriba en
 //     cada llamada y saltaba cada punto de suspension cuyo estado no coincidia: el codigo previo
 //     se repetia, todos los await compartian el estado 1 y el slot 0 del frame, y la direccion de
 //     un local moria con la pila del poll. Ahora el frame posee los locales, la entrada hace switch
@@ -46,6 +48,144 @@ bool isSuspensionPoint(const frontend::ProjectOopMirNode& node) noexcept
         node.kind == frontend::ProjectOopMirNodeKind::AsyncYieldValue ||
         (node.kind == frontend::ProjectOopMirNodeKind::AwaitFuture && node.integerValue == 1);
 }
+
+// Helpers keep only node pointers belonging to the currently emitted MIR function.
+bool isLocalYieldAlias(const frontend::ProjectOopMirYieldFact& fact, const frontend::ProjectOopMirNode* node)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    if (!fact.hasBinding || fact.nodeKind != Kind::LocalValue || node->kind != Kind::LocalValue ||
+        !node->localOrdinal.has_value() || fact.typeKey != node->typeKey ||
+        fact.valueCategory != sema::ValueCategory::Place || fact.ownershipTransfer || fact.ownershipFreshOwner)
+        return false;
+    if (fact.ownership == sema::OwnershipKind::Owned) return true;
+    return fact.ownership == sema::OwnershipKind::None &&
+        fact.objectLifetimeOwnership == sema::OwnershipKind::None && fact.storageOwnership == sema::OwnershipKind::None;
+}
+
+bool isFreshYieldAllocation(const frontend::ProjectOopMirYieldFact& fact, const frontend::ProjectOopMirNode* node)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    return fact.hasBinding && fact.nodeKind == Kind::AllocateAndConstruct && node->kind == Kind::AllocateAndConstruct &&
+        fact.typeKey == node->typeKey && fact.ownership == sema::OwnershipKind::None &&
+        !fact.ownershipTransfer && fact.ownershipFreshOwner &&
+        fact.objectLifetimeOwnership == sema::OwnershipKind::Owned &&
+        fact.storageOwnership == sema::OwnershipKind::Owned && !node->stackPromotedObject && !node->placementConstructed;
+}
+
+void collectDirectYieldDiscard(const frontend::ProjectOopMirYieldFact& root,
+    const frontend::ProjectOopMirNode* yield, const frontend::ProjectOopMirNode* expression,
+    OopLlvmCoroutineState& state)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    const bool freshCall = root.nodeKind == Kind::DirectStaticCall &&
+        root.ownership == sema::OwnershipKind::Owned && root.ownershipTransfer && root.ownershipFreshOwner &&
+        root.objectLifetimeOwnership == sema::OwnershipKind::Owned &&
+        root.storageOwnership == sema::OwnershipKind::Owned;
+    const bool freshAllocation = isFreshYieldAllocation(root, expression);
+    const bool moved = root.nodeKind == Kind::MoveValue && expression->localOrdinal.has_value() &&
+        !expression->parameterOrdinal.has_value() && root.ownership == sema::OwnershipKind::Owned &&
+        root.ownershipTransfer && !root.ownershipFreshOwner;
+    const bool ownedResult = freshCall || freshAllocation || (moved && expression->booleanValue);
+    const bool staticAlias = root.nodeKind == Kind::StaticFieldLoad &&
+        root.ownership == sema::OwnershipKind::None && !root.ownershipTransfer && !root.ownershipFreshOwner &&
+        root.objectLifetimeOwnership == sema::OwnershipKind::None && root.storageOwnership == sema::OwnershipKind::None;
+    const bool localAlias = isLocalYieldAlias(root, expression);
+    const bool valueTemporary = root.nodeKind == Kind::ValueConstruct &&
+        root.valueCategory == sema::ValueCategory::Temporary && root.ownership == sema::OwnershipKind::None &&
+        !root.ownershipTransfer && !root.ownershipFreshOwner &&
+        root.objectLifetimeOwnership == sema::OwnershipKind::Owned &&
+        root.storageOwnership == sema::OwnershipKind::Owned && !expression->placementConstructed;
+    if ((ownedResult || staticAlias || localAlias || valueTemporary || moved) &&
+        !state.subtreeIds.contains(expression))
+        state.yieldDiscardPlans.emplace(yield, OopLlvmYieldDiscardPlan{
+            nullptr, expression, nullptr, ownedResult, false});
+}
+
+bool supportedYieldDiscardBranch(frontend::ProjectOopYieldBranchEvidence evidence)
+{
+    using Evidence = frontend::ProjectOopYieldBranchEvidence;
+    return evidence == Evidence::SemanticFreshOwnedTransfer || evidence == Evidence::StaticFieldNonOwning;
+}
+
+void collectConditionalYieldDiscard(const frontend::ProjectOopMirYieldFact& root,
+    const frontend::ProjectOopMirNode* yield, const frontend::ProjectOopMirNode* expression,
+    const std::array<std::size_t, 3>& index, const std::vector<frontend::ProjectOopMirYieldFact>& facts,
+    const std::vector<const frontend::ProjectOopMirNode*>& nodes, OopLlvmCoroutineState& state)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    using Evidence = frontend::ProjectOopYieldBranchEvidence;
+    if (root.nodeKind != Kind::Conditional || expression->children.size() != 3 ||
+        !expression->children[0] || !expression->children[1] || !expression->children[2] ||
+        expression->typeKey != root.typeKey) return;
+    if (index[0] >= facts.size() || index[1] >= facts.size() || index[2] >= facts.size()) return;
+    const auto& condition = facts[index[0]];
+    const auto& left = facts[index[1]];
+    const auto& right = facts[index[2]];
+    if (!condition.hasBinding || condition.typeKey != "builtin:bool" ||
+        expression->children[0]->typeKey != "builtin:bool" ||
+        condition.nodePreorder >= nodes.size() || left.nodePreorder >= nodes.size() ||
+        right.nodePreorder >= nodes.size() || nodes[condition.nodePreorder] != expression->children[0].get() ||
+        nodes[left.nodePreorder] != expression->children[1].get() ||
+        nodes[right.nodePreorder] != expression->children[2].get()) return;
+    const bool leftAlias = left.typeKey == root.typeKey && isLocalYieldAlias(left, nodes[left.nodePreorder]);
+    const bool rightAlias = right.typeKey == root.typeKey && isLocalYieldAlias(right, nodes[right.nodePreorder]);
+    const bool leftFresh = left.typeKey == root.typeKey && isFreshYieldAllocation(left, nodes[left.nodePreorder]);
+    const bool rightFresh = right.typeKey == root.typeKey && isFreshYieldAllocation(right, nodes[right.nodePreorder]);
+    if ((!supportedYieldDiscardBranch(left.branchEvidence) && !leftAlias && !leftFresh) ||
+        (!supportedYieldDiscardBranch(right.branchEvidence) && !rightAlias && !rightFresh) ||
+        state.subtreeIds.contains(expression->children[0].get()) ||
+        state.subtreeIds.contains(expression->children[1].get()) ||
+        state.subtreeIds.contains(expression->children[2].get())) return;
+    state.yieldDiscardPlans.emplace(yield, OopLlvmYieldDiscardPlan{
+        expression->children[0].get(), expression->children[1].get(), expression->children[2].get(),
+        leftFresh || left.branchEvidence == Evidence::SemanticFreshOwnedTransfer,
+        rightFresh || right.branchEvidence == Evidence::SemanticFreshOwnedTransfer});
+}
+
+// Index only evidenced selections; no node pointer escapes this function emission.
+void collectYieldDiscardPlans(const frontend::ProjectOopMirFunction& function, OopLlvmCoroutineState& state)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    constexpr std::size_t missing = std::numeric_limits<std::size_t>::max();
+    std::vector<const frontend::ProjectOopMirNode*> nodes;
+    std::vector<const frontend::ProjectOopMirNode*> work{function.body.get()};
+    while (!work.empty())
+    {
+        const auto* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        nodes.push_back(node);
+        for (auto it = node->children.rbegin(); it != node->children.rend(); ++it)
+            if (*it != nullptr) work.push_back(it->get());
+    }
+    const auto& facts = function.asyncYieldFacts;
+    std::vector<std::array<std::size_t, 3>> children(facts.size(), {missing, missing, missing});
+    for (std::size_t i = 0; i < facts.size(); ++i)
+    {
+        const auto& fact = facts[i];
+        if (!fact.parentFact || *fact.parentFact >= i || fact.childIndex >= 3 ||
+            facts[*fact.parentFact].yieldPreorder != fact.yieldPreorder) continue;
+        auto& child = children[*fact.parentFact][fact.childIndex];
+        child = child == missing ? i : facts.size();
+    }
+    for (std::size_t i = 0; i < facts.size(); ++i)
+    {
+        const auto& root = facts[i];
+        if (root.parentFact || !root.hasBinding ||
+            root.yieldPreorder >= nodes.size() || root.nodePreorder >= nodes.size()) continue;
+        const auto* yield = nodes[root.yieldPreorder];
+        const auto* expression = nodes[root.nodePreorder];
+        if (yield->kind != Kind::AsyncYieldValue || yield->children.size() != 1 ||
+            yield->children[0].get() != expression || expression->typeKey != root.typeKey) continue;
+        if (root.resultKind == frontend::ProjectOopYieldResultKind::BorrowedReference)
+            state.borrowedYieldReferences.insert(yield);
+        if (root.itemMode != frontend::ProjectOopYieldItemMode::Value) continue;
+        if (frontend::ProjectTypeConversion::isNumeric(root.typeKey) || root.typeKey == "builtin:bool")
+            state.scalarYieldValues.insert(yield);
+        collectDirectYieldDiscard(root, yield, expression, state);
+        collectConditionalYieldDiscard(root, yield, expression, children[i], facts, nodes, state);
+    }
+}
 }
 
 bool OopLlvmImplementation::isFrameResidentCoroutine(
@@ -53,11 +193,11 @@ bool OopLlvmImplementation::isFrameResidentCoroutine(
 {
         // EN: The async-generator poll ($moveNext$poll) keeps its own save/restore protocol.
         // ES: El poll del generador async ($moveNext$poll) conserva su protocolo de guardado.
-        // EN: Freeze 3.0 C-17: no longer. That protocol replayed the body from the top on every
+        // EN: Freeze C-17: no longer. That protocol replayed the body from the top on every
         //     MoveNextAsync (side effects before a yield ran again, a local made again leaked, and
         //     a resume after an error destroyed a local twice); the async-generator poll is now a
         //     coroutine too, with its state in the async-iterator.
-        // ES: Congelamiento 3.0 C-17: ya no. Ese protocolo repetia el cuerpo desde arriba en cada
+        // ES: Congelamiento C-17: ya no. Ese protocolo repetia el cuerpo desde arriba en cada
         //     MoveNextAsync (los efectos antes de un yield se repetian, un local creado otra vez se
         //     perdia y una reanudacion tras un error destruia un local dos veces); el poll del
         //     generador async ahora tambien es una corrutina, con su estado en el iterador async.
@@ -93,9 +233,9 @@ void OopLlvmImplementation::collectCoroutineSuspensions(const frontend::ProjectO
                     const auto parent = parents.find(ancestor);
                     ancestor = parent == parents.end() ? nullptr : parent->second;
                 }
-                // EN: Freeze 3.0 D-01: every slotted operand off the path from this await is
+                // EN: Freeze D-01: every slotted operand off the path from this await is
                 //     loaded, not evaluated, while the replay toward this id runs.
-                // ES: Congelamiento 3.0 D-01: todo operando con slot fuera del camino desde este
+                // ES: Congelamiento D-01: todo operando con slot fuera del camino desde este
                 //     await se carga, no se evalua, mientras corre la repeticion hacia este id.
                 const frontend::ProjectOopMirNode* onPath = node;
                 for (auto parent = parents.find(onPath); parent != parents.end();
@@ -142,6 +282,12 @@ LLVMValueRef OopLlvmImplementation::ensureCoroutineFrame(
         LLVMValueRef created = buildNoUnwindCall(
             allocationFunctionType_, allocationFunction_, allocArgs, 1, "coro.frame.new");
         if (created == nullptr) return failValue(error, "coroutine frame allocation failed");
+        // EN: LKF-447: the runtime allocator returns null when the heap is exhausted, and the frame
+        //     was stored and zeroed without a check. A null frame now traps with AllocationFailure.
+        // ES: LKF-447: el asignador del runtime devuelve null si el heap se agota, y el frame se
+        //     guardaba y ponía en cero sin comprobarlo. Un frame nulo atrapa ahora con AllocationFailure.
+        created = checkedStage42Allocation(created, "coro.frame.new", error);
+        if (created == nullptr) return nullptr;
         LLVMBuildStore(builder_, created, frameAddress);
         zeroCoroutineDropFlags(created, function);
         LLVMBasicBlockRef allocated = LLVMGetInsertBlock(builder_);
@@ -157,9 +303,9 @@ LLVMValueRef OopLlvmImplementation::ensureCoroutineFrame(
 void OopLlvmImplementation::zeroCoroutineDropFlags(
         LLVMValueRef frame, const frontend::ProjectOopMirFunction& function)
 {
-        // EN: Freeze 3.0 C-05: the whole frame starts zeroed, so the drop guards start cleared and
+        // EN: Freeze C-05: the whole frame starts zeroed, so the drop guards start cleared and
         //     the capture-cell slots start empty.
-        // ES: Congelamiento 3.0 C-05: todo el frame inicia en cero, asi las guardas de destruccion
+        // ES: Congelamiento C-05: todo el frame inicia en cero, asi las guardas de destruccion
         //     inician limpias y los slots de celdas de captura inician vacios.
         if (function.asyncFrameSize == 0 || memsetFunction_ == nullptr) return;
         LLVMValueRef arguments[] = {
@@ -202,17 +348,28 @@ bool OopLlvmImplementation::aliasCoroutineFrameLocals(
         for (const auto& [localOrdinal, typeKey] : coroutineCapturedLocals_)
             if (!localCaptureCells_.contains(localOrdinal))
                 return fail(error, "captured coroutine local has no frame slot for its cell");
+        // EN: A frame object's storage IS its bytes in the coroutine frame (doc 18).
+        // ES: El almacenamiento de un objeto de marco SON sus bytes en el frame de la corrutina (doc 18).
+        for (const auto& [localOrdinal, offset, typeKey] : function.asyncFrameObjects)
+        {
+            (void)typeKey;
+            // EN: A drop function shares the frame layout but never constructs the object.
+            // ES: Una funcion drop comparte el layout del frame pero nunca construye el objeto.
+            const auto storage = stackObjectStorage_.find(localOrdinal);
+            if (storage == stackObjectStorage_.end()) continue;
+            storage->second = byteOffset(coroutine_.frame, offset, "coro.object");
+        }
         return true;
 }
 
 LLVMValueRef OopLlvmImplementation::ensureCoroutineCaptureCell(
         LLVMValueRef cellSlot, std::string_view typeKey, std::size_t localOrdinal, std::string& error)
 {
-        // EN: Freeze 3.0 C-05 (found while porting the file-mode cases): a captured local of a
+        // EN: Freeze C-05 (found while porting the file-mode cases): a captured local of a
         //     coroutine got a new cell on every poll, so a lambda made before an `await` and the
         //     code after it saw different variables. The cell is made once and kept in the frame;
         //     the return that completes the coroutine releases it, a suspension does not.
-        // ES: Congelamiento 3.0 C-05 (hallazgo al portar los casos de modo archivo): un local
+        // ES: Congelamiento C-05 (hallazgo al portar los casos de modo archivo): un local
         //     capturado de una corrutina recibia una celda nueva en cada poll, asi que una lambda
         //     creada antes de un `await` y el codigo posterior veian variables distintas. La celda
         //     se crea una vez y se guarda en el frame; el return que completa la corrutina la
@@ -268,7 +425,17 @@ bool OopLlvmImplementation::beginCoroutineDispatch(
         const frontend::ProjectOopMirFunction& function, std::string& error)
 {
         coroutine_ = OopLlvmCoroutineState{};
-        if (!isFrameResidentCoroutine(function)) return true;
+        if (!isFrameResidentCoroutine(function))
+        {
+            // EN: Only a frame-resident coroutine can construct a frame object that survives suspensions
+            //     (doc 18). A drop function shares the frame layout but never constructs.
+            // ES: Solo una corrutina residente en su frame puede construir un objeto de marco que sobreviva a
+            //     las suspensiones (doc 18). Una funcion drop comparte el layout pero nunca construye.
+            for (const auto& object : function.asyncFrameObjects)
+                if (stackObjectStorage_.contains(std::get<0>(object)))
+                    return fail(error, "frame object in a coroutine that does not own its frame");
+            return true;
+        }
         LLVMTypeRef intType = llvmType("builtin:int", error);
         if (intType == nullptr) return false;
         coroutine_.active = true;
@@ -284,6 +451,33 @@ bool OopLlvmImplementation::beginCoroutineDispatch(
         if (coroutine_.frame == nullptr) return false;
         if (!aliasCoroutineFrameLocals(function, error)) return false;
         collectCoroutineSuspensions(function.body.get());
+        if (coroutine_.asyncGenerator) collectYieldDiscardPlans(function, coroutine_);
+        std::vector<const frontend::ProjectOopMirNode*> catches;
+        std::vector<const frontend::ProjectOopMirNode*> finallyOwners;
+        std::vector<const frontend::ProjectOopMirNode*> work{function.body.get()};
+        while (!work.empty())
+        {
+            const frontend::ProjectOopMirNode* node = work.back();
+            work.pop_back();
+            if (node == nullptr) continue;
+            if (node->kind == frontend::ProjectOopMirNodeKind::CatchRegion) catches.push_back(node);
+            if (node->kind == frontend::ProjectOopMirNodeKind::FinallyRegion &&
+                coroutine_.subtreeIds.contains(node)) finallyOwners.push_back(node);
+            for (const auto& child : node->children) work.push_back(child.get());
+        }
+        const std::uint64_t catchBytes = catches.size() * 8U;
+        const std::uint64_t finallyBytes = finallyOwners.size() * 8U;
+        const std::uint64_t flagsBegin = dropFlagBase(function);
+        if (flagsBegin < catchBytes + finallyBytes)
+            return fail(error, "coroutine exception owners exceed frame");
+        for (std::size_t index = 0; index < finallyOwners.size(); ++index)
+            coroutine_.finallyOwnerSlots.emplace(finallyOwners[index], byteOffset(
+                coroutine_.frame, flagsBegin - catchBytes - finallyBytes + index * 8U,
+                "coro.finally.owner"));
+        for (std::size_t index = 0; index < catches.size(); ++index)
+            coroutine_.catchOwnerSlots.emplace(catches[index], byteOffset(
+                coroutine_.frame, flagsBegin - catchBytes + index * 8U, "coro.catch.owner"));
+        coroutine_.nextSuspensionId = static_cast<std::int64_t>(coroutine_.suspensionIds.size()) + 1;
         coroutine_.resumeState = entryBlockAlloca(intType, 0, "coro.resume.state");
         LLVMValueRef state = LLVMBuildLoad2(builder_, intType, coroutine_.self, "coro.state");
         LLVMBuildStore(builder_, state, coroutine_.resumeState);
@@ -322,6 +516,23 @@ bool OopLlvmImplementation::finishCoroutineDispatch(std::string& error)
                     intType,
                     static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase - id), 1),
                 coroutine_.cancelBlocks[id]);
+        std::vector<std::int64_t> cancelledAwaitIds(
+            coroutine_.cancellationAwaitIds.begin(), coroutine_.cancellationAwaitIds.end());
+        std::ranges::sort(cancelledAwaitIds);
+        for (const std::int64_t id : cancelledAwaitIds)
+        {
+            const auto target = coroutine_.resumeBlocks.find(id);
+            if (target == coroutine_.resumeBlocks.end() || coroutine_.cancelBlocks.contains(id))
+                return fail(error, "cancelled await has no unique resume target");
+            LLVMBasicBlockRef resume = appendBlock("coro.cancel.await.resume");
+            LLVMAddCase(coroutine_.dispatch,
+                LLVMConstInt(intType, static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase - id), 1),
+                resume);
+            enterBlock(resume);
+            LLVMBuildStore(builder_, LLVMConstInt(intType, static_cast<unsigned long long>(id), 1),
+                coroutine_.resumeState);
+            LLVMBuildBr(builder_, target->second);
+        }
         coroutine_ = OopLlvmCoroutineState{};
         return true;
 }
@@ -340,18 +551,20 @@ void OopLlvmImplementation::enterCoroutineResumeTarget(const frontend::ProjectOo
         LLVMBasicBlockRef block = appendBlock("coro.resume.stmt");
         LLVMBuildBr(builder_, block);
         enterBlock(block);
-        for (const std::int64_t id : found->second)
+        if (!funcletStack_.empty() && funcletStack_.back().kind == FuncletKind::Cleanup) return;
+        for (const std::int64_t originalId : found->second)
         {
+            const std::int64_t id = coroutine_.emittedSuspensionId(originalId);
             if (coroutine_.loopResumeScopes.empty()) coroutine_.resumeBlocks[id] = block;
             else coroutine_.loopResumeScopes.back()[id] = block;
         }
 }
 
-// EN: Freeze 3.0 (plan item 117): the entry of a loop expression around suspension points. A fresh flow enters
+// EN: Freeze (plan item 117): the entry of a loop expression around suspension points. A fresh flow enters
 //     the body from the top; the replay toward an id of the body jumps to the statement that claimed it.
 //     Without this, the resume went straight into the body and the operands evaluated before the loop in its
 //     statement did not dominate their use after the loop.
-// ES: Congelamiento 3.0 (elemento 117 del plan): la entrada de una expresión loop alrededor de puntos de
+// ES: Congelamiento (elemento 117 del plan): la entrada de una expresión loop alrededor de puntos de
 //     suspensión. Un flujo nuevo entra al cuerpo desde arriba; la repetición hacia un id del cuerpo salta a la
 //     sentencia que lo reclamó. Sin esto, la reanudación entraba directo al cuerpo y los operandos evaluados
 //     antes del loop en su sentencia no dominaban su uso después del loop.
@@ -389,15 +602,25 @@ void OopLlvmImplementation::finishLoopResumeScope(LLVMValueRef reentry)
 void OopLlvmImplementation::markCoroutineReplayOperands(
         const frontend::ProjectOopMirNode* ancestor, const frontend::ProjectOopMirNode* onPath, std::int64_t id)
 {
-        // EN: Freeze 3.0 D-01: every slotted child of `ancestor` off the path is loaded while the
-        //     replay toward `id` runs. Freeze 3.0 DEC-11: an array element address has no slot; its
+        // EN: Freeze D-01: every slotted child of `ancestor` off the path is loaded while the
+        //     replay toward `id` runs. Freeze DEC-11: an array element address has no slot; its
         //     operands do (MIR assignReplaySpillSlotsBeside), so the walk goes into it.
-        // ES: Congelamiento 3.0 D-01: todo hijo con slot de `ancestor` fuera del camino se carga
-        //     mientras corre la repeticion hacia `id`. Congelamiento 3.0 DEC-11: la direccion de un
+        // ES: Congelamiento D-01: todo hijo con slot de `ancestor` fuera del camino se carga
+        //     mientras corre la repeticion hacia `id`. Congelamiento DEC-11: la direccion de un
         //     elemento de arreglo no tiene slot; sus operandos si, asi que el recorrido entra en ella.
         std::vector<const frontend::ProjectOopMirNode*> pending;
         for (const auto& child : ancestor->children)
-            if (child != nullptr && child.get() != onPath) pending.push_back(child.get());
+        {
+            if (child == nullptr || child.get() == onPath) continue;
+            if (ancestor->kind == frontend::ProjectOopMirNodeKind::AggregateInitialize &&
+                frontend::ProjectTypeConversion::tupleElementTypeKeys(ancestor->typeKey).has_value() &&
+                child->kind == frontend::ProjectOopMirNodeKind::AggregateElementStore)
+            {
+                for (const auto& operand : child->children)
+                    if (operand != nullptr) pending.push_back(operand.get());
+            }
+            else pending.push_back(child.get());
+        }
         while (!pending.empty())
         {
             const frontend::ProjectOopMirNode* operand = pending.back();
@@ -418,10 +641,10 @@ void OopLlvmImplementation::markCoroutineReplayOperands(
 bool OopLlvmImplementation::beginCoroutineReplaySpill(
         const frontend::ProjectOopMirNode* node, OopLlvmReplaySpill& spill, std::string& error)
 {
-        // EN: Freeze 3.0 D-01: the replay of a statement toward an await loads each operand the
+        // EN: Freeze D-01: the replay of a statement toward an await loads each operand the
         //     first pass already evaluated (a call, an index, a temporary), so its side effects
         //     run once. Any other flow evaluates the operand and stores it.
-        // ES: Congelamiento 3.0 D-01: la repeticion de una sentencia hacia un await carga cada
+        // ES: Congelamiento D-01: la repeticion de una sentencia hacia un await carga cada
         //     operando que la primera pasada ya evaluo (una llamada, un indice, un temporal), asi
         //     sus efectos corren una vez. Cualquier otro flujo evalua el operando y lo guarda.
         if (!coroutine_.active || node == nullptr || !node->replaySpillOffset.has_value() ||
@@ -440,8 +663,9 @@ bool OopLlvmImplementation::beginCoroutineReplaySpill(
         spill.slot = byteOffset(coroutine_.frame, *node->replaySpillOffset, "coro.replay.slot");
         LLVMValueRef seen = LLVMBuildLoad2(builder_, intType, coroutine_.resumeState, "coro.replay.seen");
         LLVMValueRef replaying = nullptr;
-        for (const std::int64_t id : ids->second)
+        for (const std::int64_t originalId : ids->second)
         {
+            const std::int64_t id = coroutine_.emittedSuspensionId(originalId);
             LLVMValueRef match = LLVMBuildICmp(
                 builder_, LLVMIntEQ, seen, LLVMConstInt(intType, static_cast<unsigned long long>(id), 1),
                 "coro.replay.is");
@@ -571,7 +795,7 @@ LLVMValueRef OopLlvmImplementation::coroutineResumeMatches(
         const auto found = coroutine_.suspensionIds.find(node);
         if (found == coroutine_.suspensionIds.end())
             return failValue(error, "coroutine suspension point has no state id");
-        id = found->second;
+        id = coroutine_.emittedSuspensionId(found->second);
         if (!coroutine_.resumeBlocks.contains(id))
             return failValue(error, "coroutine suspension point is outside a resumable statement");
         LLVMTypeRef intType = llvmType("builtin:int", error);
@@ -644,12 +868,32 @@ bool OopLlvmImplementation::emitCoroutineYieldCancel(
         enterBlock(cancel);
         const std::vector<std::size_t> savedActive = activeCleanupRegions_;
         const std::vector<FuncletContext> savedFunclets = funcletStack_;
+        const bool savedCancellationCleanup = coroutine_.emittingCancellationCleanup;
+        coroutine_.emittingCancellationCleanup = coroutine_.asyncGenerator;
+        const std::vector<ActiveCatchBody> catches = activeCatchExceptions_;
+        std::size_t catchCount = catches.size();
+        bool cleared = false;
         bool ok = true;
-        for (std::size_t index = node->cleanupRegionOrdinals.size(); index > 0 && ok; --index)
+        const auto releaseCatch = [&]() {
+            if (!cleared)
+            {
+                buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
+                cleared = true;
+            }
+            const ActiveCatchBody& frame = catches[--catchCount];
+            return frame.ownerSlot == nullptr || emitCaughtExceptionRelease(frame.ownerSlot, error);
+        };
+        for (std::size_t index = node->cleanupRegionOrdinals.size(); index > 0 && ok && !terminated(); --index)
         {
-            ok = emitOneStructuredCleanup(node->cleanupRegionOrdinals[index - 1], error);
+            const std::size_t ordinal = node->cleanupRegionOrdinals[index - 1];
+            const auto depth = activeCleanupIndex(ordinal, savedActive);
+            if (!depth.has_value()) { ok = fail(error, "cancel cleanup region is inactive"); break; }
+            while (catchCount > 0 && catches[catchCount - 1].cleanupDepthAtEntry > *depth && ok && !terminated())
+                ok = releaseCatch();
+            if (ok && !terminated()) ok = emitOneStructuredCleanup(ordinal, error);
             if (ok && terminated()) break;
         }
+        while (catchCount > 0 && ok && !terminated()) ok = releaseCatch();
         if (ok && !terminated())
         {
             LLVMTypeRef intType = llvmType("builtin:int", error);
@@ -665,6 +909,7 @@ bool OopLlvmImplementation::emitCoroutineYieldCancel(
         }
         activeCleanupRegions_ = savedActive;
         funcletStack_ = savedFunclets;
+        coroutine_.emittingCancellationCleanup = savedCancellationCleanup;
         return ok;
 }
 
@@ -672,10 +917,10 @@ bool OopLlvmImplementation::markCoroutineFinished(std::string& error)
 {
         // EN: Only a MoveNext needs it: a poll's return already publishes its result and state.
         // ES: Solo un MoveNext lo necesita: el return de un poll ya publica resultado y estado.
-        // EN: Freeze 3.0 C-17: and an async-generator poll: its return (the end of the body, or a
+        // EN: Freeze C-17: and an async-generator poll: its return (the end of the body, or a
         //     `throw` that leaves it) publishes in the demand future, and the async-iterator is
         //     parked as finished so a later MoveNextAsync answers false and runs nothing.
-        // ES: Congelamiento 3.0 C-17: y el poll de un generador async: su return (el fin del
+        // ES: Congelamiento C-17: y el poll de un generador async: su return (el fin del
         //     cuerpo, o un `throw` que sale de el) publica en el future de demanda, y el iterador
         //     async queda terminado para que un MoveNextAsync posterior responda false sin correr.
         if (coroutine_.active && coroutine_.asyncGenerator)
@@ -702,8 +947,8 @@ bool OopLlvmImplementation::markCoroutineFinished(std::string& error)
 
 bool OopLlvmImplementation::publishAsyncGeneratorEnd(std::string& error)
 {
-        // EN: Freeze 3.0 C-17: the demand future answers false and is ready; the poll ends.
-        // ES: Congelamiento 3.0 C-17: el future de demanda responde false y queda listo; el poll
+        // EN: Freeze C-17: the demand future answers false and is ready; the poll ends.
+        // ES: Congelamiento C-17: el future de demanda responde false y queda listo; el poll
         //     termina.
         LLVMTypeRef intType = llvmType("builtin:int", error);
         if (intType == nullptr) return false;
@@ -716,13 +961,83 @@ bool OopLlvmImplementation::publishAsyncGeneratorEnd(std::string& error)
         return true;
 }
 
+bool OopLlvmImplementation::emitCancelledYieldDiscard(
+        const frontend::ProjectOopMirNode* node, std::string& error)
+{
+        const auto plan = coroutine_.yieldDiscardPlans.find(node);
+        if (plan == coroutine_.yieldDiscardPlans.end())
+            return lowerAsyncYieldItem(node, coroutine_.frame, error) != nullptr;
+        if (plan->second.condition == nullptr)
+        {
+            LLVMValueRef value = lowerExpression(plan->second.whenTrue, error);
+            if (value == nullptr) return false;
+            if (!terminated() &&
+                (plan->second.whenTrue->kind == frontend::ProjectOopMirNodeKind::ValueConstruct ||
+                 plan->second.whenTrue->kind == frontend::ProjectOopMirNodeKind::MoveValue) &&
+                memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(plan->second.whenTrue->typeKey))
+            {
+                LLVMTypeRef carrier = llvmType(plan->second.whenTrue->typeKey, error);
+                if (carrier == nullptr || LLVMTypeOf(value) != carrier)
+                    return fail(error, "cancelled value yield has no matching carrier");
+                LLVMValueRef slot = entryBlockAlloca(carrier, structAlignmentFor(plan->second.whenTrue->typeKey),
+                    "coro.discard.value");
+                if (slot == nullptr) return fail(error, "cancelled value yield has no storage");
+                LLVMBuildStore(builder_, value, slot);
+                return emitValueDropAddress(slot, plan->second.whenTrue->typeKey, "coro.discard.value", error);
+            }
+            if (terminated() || !plan->second.trueOwned) return true;
+            return emitOwnedPointerDestroy(value, plan->second.whenTrue->typeKey, "coro.discard.owner", error);
+        }
+        LLVMValueRef condition = lowerExpression(plan->second.condition, error);
+        if (condition == nullptr) return false;
+        if (terminated()) return true;
+        LLVMBasicBlockRef yes = appendBlock("coro.discard.true");
+        LLVMBasicBlockRef no = appendBlock("coro.discard.false");
+        LLVMBasicBlockRef done = appendBlock("coro.discard.done");
+        LLVMBuildCondBr(builder_, condition, yes, no);
+        bool reachesDone = false;
+        const auto branch = [&](LLVMBasicBlockRef block, const frontend::ProjectOopMirNode* expression,
+                                bool owned) {
+            enterBlock(block);
+            LLVMValueRef value = lowerExpression(expression, error);
+            if (value == nullptr) return false;
+            if (terminated()) return true;
+            if (owned && !emitOwnedPointerDestroy(value, expression->typeKey, "coro.discard.owner", error))
+                return false;
+            if (!terminated())
+            {
+                reachesDone = true;
+                LLVMBuildBr(builder_, done);
+            }
+            return true;
+        };
+        if (!branch(yes, plan->second.whenTrue, plan->second.trueOwned) ||
+            !branch(no, plan->second.whenFalse, plan->second.falseOwned)) return false;
+        enterBlock(done);
+        if (!reachesDone) LLVMBuildUnreachable(builder_);
+        return true;
+}
+
 bool OopLlvmImplementation::lowerCoroutineAsyncYield(
         const frontend::ProjectOopMirNode* node, std::string& error)
 {
-        // EN: Freeze 3.0 C-17: `yield return v` in an async generator stores the item in the
+        const bool scalar = coroutine_.scalarYieldValues.contains(node) ||
+            coroutine_.borrowedYieldReferences.contains(node);
+        const bool hasItem = !node->children.empty() && node->children.front() != nullptr;
+        const bool classItem = hasItem && isClassReferenceType(nameLookup_, node->children.front()->typeKey);
+        const bool movedValue = hasItem && !classItem &&
+            node->children.front()->kind == frontend::ProjectOopMirNodeKind::MoveValue;
+        const bool objectPlan = hasItem && coroutine_.yieldDiscardPlans.contains(node) &&
+            (classItem || node->children.front()->kind == frontend::ProjectOopMirNodeKind::ValueConstruct ||
+             (movedValue && (funcletStack_.empty() || coroutine_.synchronousFuncletCleanup)));
+        if (coroutine_.emittingCancellationCleanup && (scalar || objectPlan))
+        {
+            return emitCancelledYieldDiscard(node, error);
+        }
+        // EN: Freeze C-17: `yield return v` in an async generator stores the item in the
         //     async-iterator, answers true in the demand future, parks the iterator at this id and
         //     leaves; the next MoveNextAsync resumes right after it.
-        // ES: Congelamiento 3.0 C-17: `yield return v` en un generador async guarda el elemento en
+        // ES: Congelamiento C-17: `yield return v` en un generador async guarda el elemento en
         //     el iterador async, responde true en el future de demanda, deja el iterador en este id
         //     y sale; el siguiente MoveNextAsync reanuda justo despues.
         std::int64_t id = 0;
@@ -735,11 +1050,30 @@ bool OopLlvmImplementation::lowerCoroutineAsyncYield(
         LLVMBasicBlockRef cancel = appendBlock("coro.agen.cancel");
         LLVMBuildCondBr(builder_, resuming, resumed, produce);
         enterBlock(produce);
+        LLVMBasicBlockRef discarded = nullptr;
+        if (coroutine_.finallyDepth > 0 && (scalar || objectPlan))
+        {
+            LLVMValueRef state = LLVMBuildLoad2(builder_, intType, coroutine_.self, "coro.yield.state");
+            LLVMValueRef cancelling = LLVMBuildICmp(builder_, LLVMIntSLT, state,
+                LLVMConstInt(intType, static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase), 1),
+                "coro.yield.cancelling");
+            LLVMBasicBlockRef discard = appendBlock("coro.yield.discard");
+            discarded = appendBlock("coro.yield.discarded");
+            LLVMBasicBlockRef publish = appendBlock("coro.yield.publish");
+            LLVMBuildCondBr(builder_, cancelling, discard, publish);
+            enterBlock(discard);
+            if (!emitCancelledYieldDiscard(node, error)) return false;
+            if (!terminated()) LLVMBuildBr(builder_, discarded);
+            enterBlock(publish);
+        }
         LLVMValueRef item = lowerAsyncYieldItem(node, coroutine_.frame, error);
         if (!node->children.empty() && item == nullptr) return false;
         if (terminated()) return true;
         if (item != nullptr)
-            LLVMBuildStore(builder_, item, byteOffset(coroutine_.self, 16, "coro.agen.item"));
+        {
+            LLVMValueRef stored = LLVMBuildStore(builder_, item, byteOffset(coroutine_.self, 16, "coro.agen.item"));
+            LLVMSetAlignment(stored, 1);
+        }
         LLVMBuildStore(
             builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0),
             byteOffset(coroutine_.future, 16, "coro.agen.result"));
@@ -749,18 +1083,28 @@ bool OopLlvmImplementation::lowerCoroutineAsyncYield(
             builder_, LLVMConstInt(intType, static_cast<unsigned long long>(id), 1), coroutine_.self);
         LLVMBuildRetVoid(builder_);
         coroutine_.cancelBlocks[id] = cancel;
-        if (!emitCoroutineYieldCancel(node, cancel, error)) return false;
+        if (discarded != nullptr && !coroutine_.emittingCancellationCleanup)
+        {
+            enterBlock(cancel);
+            LLVMBuildBr(builder_, resumed);
+        }
+        else if (!emitCoroutineYieldCancel(node, cancel, error)) return false;
         enterBlock(resumed);
         LLVMBuildStore(builder_, LLVMConstInt(intType, 0, 0), coroutine_.resumeState);
+        if (discarded != nullptr)
+        {
+            LLVMBuildBr(builder_, discarded);
+            enterBlock(discarded);
+        }
         return true;
 }
 
 bool OopLlvmImplementation::lowerAsyncGeneratorDrop(LLVMValueRef self, std::string& error)
 {
-        // EN: Freeze 3.0 C-17: an async generator parked at yield `k` is unwound by its own poll
+        // EN: Freeze C-17: an async generator parked at yield `k` is unwound by its own poll
         //     (state kCancelStateBase - k), driven with a demand future made here. One never
         //     started, or already finished, holds no live local.
-        // ES: Congelamiento 3.0 C-17: un generador async detenido en el yield `k` lo desenreda su
+        // ES: Congelamiento C-17: un generador async detenido en el yield `k` lo desenreda su
         //     propio poll (estado kCancelStateBase - k), movido con un future de demanda creado
         //     aqui. Uno que nunca empezo, o que ya termino, no tiene locales vivos.
         //     The poll may live in another code unit, so it is reached as the iterator does: its
@@ -780,22 +1124,30 @@ bool OopLlvmImplementation::lowerAsyncGeneratorDrop(LLVMValueRef self, std::stri
         LLVMValueRef state = LLVMBuildLoad2(builder_, intType, self, "drop.agen.state");
         LLVMBasicBlockRef unwind = appendBlock("drop.agen.unwind");
         LLVMBasicBlockRef done = appendBlock("drop.agen.done");
+        LLVMValueRef parked = LLVMBuildICmp(
+            builder_, LLVMIntSGT, state, LLVMConstInt(intType, 0, 0), "drop.agen.parked");
+        LLVMValueRef cancellationPending = LLVMBuildICmp(
+            builder_, LLVMIntSLT, state,
+            LLVMConstInt(intType, static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase), 1),
+            "drop.agen.cancel.pending");
         LLVMBuildCondBr(
-            builder_,
-            LLVMBuildICmp(builder_, LLVMIntSGT, state, LLVMConstInt(intType, 0, 0), "drop.agen.parked"),
-            unwind, done);
+            builder_, LLVMBuildOr(builder_, parked, cancellationPending, "drop.agen.needs.cleanup"), unwind, done);
         enterBlock(unwind);
-        LLVMValueRef cancelState = LLVMBuildSub(
+        LLVMValueRef requestedState = LLVMBuildSub(
             builder_,
             LLVMConstInt(intType, static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase), 1),
             state, "drop.agen.cancel.state");
+        LLVMValueRef cancelState = LLVMBuildSelect(
+            builder_, parked, requestedState, state, "drop.agen.cancel.dispatch");
         LLVMBuildStore(builder_, cancelState, self);
         LLVMValueRef demand = entryBlockAlloca(
             futureType, structAlignmentFor(futureKey), "drop.agen.future");
         if (demand == nullptr) return fail(error, "async generator drop could not reserve a future");
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        const std::uint64_t moveNextOffset = futureFieldOffset(iteratorKey, 3);
+        if (moveNextOffset == 0) return fail(error, "async iterator drop has no MoveNext layout");
         LLVMValueRef moveNextFn = LLVMBuildLoad2(
-            builder_, ptr, byteOffset(self, 24, "drop.agen.movenextfn.addr"), "drop.agen.movenextfn");
+            builder_, ptr, byteOffset(self, moveNextOffset, "drop.agen.movenextfn.addr"), "drop.agen.movenextfn");
         LLVMTypeRef moveNextParams[] = {ptr, ptr};
         LLVMTypeRef moveNextType = LLVMFunctionType(LLVMVoidTypeInContext(context_), moveNextParams, 2, 0);
         LLVMValueRef moveNextArgs[] = {demand, self};
@@ -834,9 +1186,15 @@ bool OopLlvmImplementation::lowerSyncGeneratorDrop(LLVMValueRef self, std::strin
             LLVMConstInt(intType, static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase), 1),
             state, "drop.gen.cancel.state");
         LLVMBuildStore(builder_, cancelState, self);
+        if (currentMirFunction_ == nullptr || currentMirFunction_->parameterTypeKeys.empty())
+            return fail(error, "iterator drop has no owning function");
+        std::string iteratorKey = currentMirFunction_->parameterTypeKeys.front();
+        if (iteratorKey.ends_with('*')) iteratorKey.pop_back();
+        const std::uint64_t moveNextOffset = futureFieldOffset(iteratorKey, 3);
+        if (moveNextOffset == 0) return fail(error, "iterator drop has no MoveNext layout");
         LLVMValueRef moveNextFn = LLVMBuildLoad2(
             builder_, LLVMPointerTypeInContext(context_, 0),
-            byteOffset(self, 24, "drop.gen.movenextfn.addr"), "drop.gen.movenextfn");
+            byteOffset(self, moveNextOffset, "drop.gen.movenextfn.addr"), "drop.gen.movenextfn");
         LLVMTypeRef fnParams[] = {LLVMPointerTypeInContext(context_, 0)};
         LLVMTypeRef fnType = LLVMFunctionType(LLVMInt1TypeInContext(context_), fnParams, 1, 0);
         LLVMValueRef args[] = {self};
@@ -847,11 +1205,11 @@ bool OopLlvmImplementation::lowerSyncGeneratorDrop(LLVMValueRef self, std::strin
         return true;
 }
 
-// EN: Freeze 3.0 C-14: F$drop releases a future that never ran: the owned parameters its constructor
+// EN: Freeze C-14: F$drop releases a future that never ran: the owned parameters its constructor
 //     stored in the frame are destroyed, then the frame is freed and the future parked as done. A
 //     future cannot be left suspended from source (only await polls it, to completion), so a
 //     started one holds no frame of its own to release here.
-// ES: Congelamiento 3.0 C-14: F$drop libera un future que nunca corrio: se destruyen los
+// ES: Congelamiento C-14: F$drop libera un future que nunca corrio: se destruyen los
 //     parametros owned que su constructor guardo en el frame, luego se libera el frame y el future
 //     queda terminado. Desde el codigo fuente un future no puede quedar suspendido (solo await lo
 //     consulta, hasta completar), asi que uno ya iniciado no tiene aqui frame propio que liberar.
@@ -934,10 +1292,10 @@ LLVMValueRef OopLlvmImplementation::pollCoroutineAwaitChild(
         return childSlot;
 }
 
-// EN: Freeze 3.0 (plan item 116): an await whose operand holds another await creates its child again when the
+// EN: Freeze (plan item 116): an await whose operand holds another await creates its child again when the
 //     resume belongs to that inner await. The operand has not produced the child yet, and evaluating it reaches
 //     the inner resume point; reusing the empty slot polled a zero future.
-// ES: Congelamiento 3.0 (elemento 116 del plan): un await cuyo operando contiene otro await vuelve a crear su
+// ES: Congelamiento (elemento 116 del plan): un await cuyo operando contiene otro await vuelve a crear su
 //     hijo cuando la reanudación es de ese await interior. El operando todavía no produjo el hijo, y evaluarlo
 //     llega al punto de reanudación interior; reutilizar el slot vacío consultaba un future en cero.
 LLVMValueRef OopLlvmImplementation::coroutineAwaitCreatesChild(
@@ -947,8 +1305,9 @@ LLVMValueRef OopLlvmImplementation::coroutineAwaitCreatesChild(
             builder_, LLVMIntEQ, seen, LLVMConstInt(intType, 0, 0), "coro.await.fresh");
         const auto nested = coroutine_.subtreeIds.find(node);
         if (nested == coroutine_.subtreeIds.end()) return creates;
-        for (const std::int64_t inner : nested->second)
+        for (const std::int64_t originalInner : nested->second)
         {
+            const std::int64_t inner = coroutine_.emittedSuspensionId(originalInner);
             if (inner == id) continue;
             LLVMValueRef resumesInner = LLVMBuildICmp(
                 builder_, LLVMIntEQ, seen, LLVMConstInt(intType, static_cast<unsigned long long>(inner), 1),
@@ -970,6 +1329,8 @@ LLVMValueRef OopLlvmImplementation::lowerCoroutineAwait(
         if (node->children.size() != 1U) return failValue(error, "await future requires one operand");
         std::int64_t id = 0;
         if (coroutineResumeMatches(node, id, error) == nullptr) return nullptr;
+        if (coroutine_.asyncGenerator && coroutine_.finallyDepth > 0)
+            coroutine_.cancellationAwaitIds.insert(id);
         LLVMTypeRef intType = llvmType("builtin:int", error);
         LLVMTypeRef carrier = llvmType(node->elementTypeKey, error);
         if (intType == nullptr || carrier == nullptr) return nullptr;
@@ -1006,9 +1367,9 @@ LLVMValueRef OopLlvmImplementation::lowerCoroutineAwait(
         LLVMBuildBr(builder_, selected);
         enterBlock(selected);
         if (pollCoroutineAwaitChild(node, childSlot, intType, error) == nullptr) return nullptr;
-        // EN: Freeze 3.0 C-14: every frame a coroutine child holds is heap (its constructor's, the
+        // EN: Freeze C-14: every frame a coroutine child holds is heap (its constructor's, the
         //     one attached above, or its poll's), so it is released when the child completes.
-        // ES: Congelamiento 3.0 C-14: todo frame que tiene un hijo de corrutina es heap (el de su
+        // ES: Congelamiento C-14: todo frame que tiene un hijo de corrutina es heap (el de su
         //     constructor, el adjuntado arriba, o el de su poll), asi que se libera al completar.
         (void)childFrameOnHeap;
         return finishSuspendingAwait(

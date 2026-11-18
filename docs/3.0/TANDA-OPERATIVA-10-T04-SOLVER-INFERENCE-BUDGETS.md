@@ -1,5 +1,7 @@
 # Tanda operativa 10 — T04 constraint solver, inferencia y budgets
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Actualización 2026-10-03:** `NS3-T04-F04` cerró la deuda contextual original. El solver ahora
 > propaga tipos exactos a llamadas anidadas, condicionales y tuples; usa parámetros escritos de
 > lambdas como evidencia y mantiene method groups/lambdas sin tipo bajo un destino delegate único.
@@ -13,7 +15,7 @@ Conectar al compilador real tres piezas de T04 que no podían quedarse como help
 2. inferir argumentos genéricos desde el tipo esperado sin abrir búsqueda de conversiones;
 3. garantizar que la monomorfización termina y deja un informe auditable.
 
-La entrega debía compilar un programa NativeSharp 3.0 hasta PE Windows x64 O0, conservar el camino
+La entrega debía compilar un programa NativeSharp hasta PE Windows x64 O0, conservar el camino
 de especialización y constraints ya usado por bibliotecas 2.x, y rechazar explosiones genéricas con
 causa estable. No incluye const generics, packs, opaque aliases ni partial specialization: esos son
 la tanda operativa 11.
@@ -113,7 +115,7 @@ al argumento y al contrato.
 - `tests/unit/GenericInferenceTests.cpp`
   - mueve retorno-only y `Identity(null)` al conjunto positivo contextual;
   - conserva como negativo el caso `var` sin evidencia.
-- `tests/unit/NativeSharp3T04GenericTests.cpp`
+- `tests/unit/NativeSharpT04GenericTests.cpp`
   - comprueba mensajes causales, profundidad observada y límite de cantidad independiente.
 - `tests/unit/Cc1CorrectnessTests.cpp`
   - registra c60 para el baseline final que ejecutará Alberto.
@@ -123,7 +125,7 @@ al argumento y al contrato.
 ### Nuevos
 
 - `tests/cc1/c60_ns3_generic_solver/c60_ns3_generic_solver.nsproj`
-  - proyecto edition 3 mínimo.
+  - proyecto mínimo.
 - `tests/cc1/c60_ns3_generic_solver/Main.ns`
   - cubre inicialización, retorno, asignación, `null`, constraints y cache; devuelve 42.
 - `docs/3.0/TANDA-OPERATIVA-10-T04-SOLVER-INFERENCE-BUDGETS.md`

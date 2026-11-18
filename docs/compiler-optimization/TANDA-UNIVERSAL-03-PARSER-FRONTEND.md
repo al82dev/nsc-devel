@@ -45,8 +45,8 @@ rechazo por manifiesto y obligaba a propagar un dato sin significado por cada un
 - `include/nativesharp/Frontend/ProjectSyntaxUnit.h`
 - `src/Frontend/ProjectSyntaxUnit.cpp`
 - `src/Frontend/ProjectCompilation.cpp`
-- `tests/unit/NativeSharp3T00ConstitutionTests.cpp`
-- `tests/unit/NativeSharp3T49LanguageSurfaceTests.cpp`
+- `tests/unit/NativeSharpT00ConstitutionTests.cpp`
+- `tests/unit/NativeSharpT49LanguageSurfaceTests.cpp`
 
 ## Verificación previa al commit
 

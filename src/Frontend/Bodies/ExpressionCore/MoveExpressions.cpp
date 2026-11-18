@@ -264,6 +264,13 @@ bool ProjectMethodBodyModel::rejectInvalidPartialMove(
     [[maybe_unused]] std::size_t scopeOrdinal,
     [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics) const
 {
+    if (hasActiveViewOfStorage(placeExpression, methodMemberOrdinal, scopeOrdinal))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error, moveExpression->range(),
+            "cannot partially move owner field while a borrowed view is alive");
+        return true;
+    }
     if (!root.has_value()) return false;
     const std::optional<std::string> operationPlace =
         storagePlaceKey(placeExpression, scopeOrdinal);
@@ -343,11 +350,12 @@ bool ProjectMethodBodyModel::analyzeMovedArrayElement(
         expression->first()->kind() != ast::AstNodeKind::IndexExpression) return false;
     const std::optional<ScopeName> partialRoot = partialMoveRoot(
         expression->first(), methodMemberOrdinal, scopeOrdinal);
+    // Bind an implicit array field before checking the provenance of its element.
+    const ExpressionResult element = analyzeExpression(
+        expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
     if (rejectInvalidPartialMove(
             partialRoot, expression->first(), expression,
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return true;
-    const ExpressionResult element = analyzeExpression(
-        expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
     // El analisis de la base se mantiene DENTRO del cortocircuito, igual que antes: si
     // el elemento ya no es valido, volver a analizar la base solo duplicaria sus
     // diagnosticos.
@@ -405,8 +413,7 @@ void ProjectMethodBodyModel::recordMovedArrayElement(
         move.partialSourceOwnerLocalOrdinal = partialRoot->semanticOrdinal;
     else if (partialRoot.has_value())
         move.partialSourceOwnerParameterOrdinal = partialRoot->semanticOrdinal;
-    move.clearSourceStorage = isReferenceTypeKey(element.typeKey) ||
-        element.typeKey == "builtin:string" ||
+    move.clearSourceStorage = typeKeyIsOwnable(element.typeKey) ||
         ProjectTypeConversion::isNativeArray(element.typeKey) ||
         (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(element.typeKey));
     moveBindings_.push_back(std::move(move));
@@ -526,8 +533,7 @@ bool ProjectMethodBodyModel::tryOwnedFieldMoveSource(
         move.partialSourceOwnerLocalOrdinal = partialRoot->semanticOrdinal;
     else if (partialRoot.has_value())
         move.partialSourceOwnerParameterOrdinal = partialRoot->semanticOrdinal;
-    move.clearSourceStorage = isReferenceTypeKey(fieldSource.typeKey) ||
-        fieldSource.typeKey == "builtin:string" ||
+    move.clearSourceStorage = typeKeyIsOwnable(fieldSource.typeKey) ||
         ProjectTypeConversion::isNativeArray(fieldSource.typeKey) ||
         memberModel_->typeRequiresValueDrop(fieldSource.typeKey);
     moveBindings_.push_back(std::move(move));
@@ -566,7 +572,7 @@ bool ProjectMethodBodyModel::analyzeMovedIteratorCurrent(
             "transferred it");
         return true;
     }
-    if (iteratorPlace.has_value()) movedIteratorItems_.insert(*iteratorPlace);
+    if (iteratorPlace.has_value()) movedIteratorItems_.emplace(*iteratorPlace, scopeOrdinal);
     MethodMoveBinding move;
     move.syntax = expression;
     move.methodMemberOrdinal = methodMemberOrdinal;
@@ -575,6 +581,9 @@ bool ProjectMethodBodyModel::analyzeMovedIteratorCurrent(
     move.sourceIsIteratorCurrent = true;
     move.clearSourceStorage = true;
     moveBindings_.push_back(std::move(move));
+    // EN: LKF-310: the moved item is a valid owned value; the result was left invalid.
+    // ES: LKF-310: el elemento movido es un valor owned válido; el resultado quedaba inválido.
+    result.valid = true;
     result.typeKey = member.typeKey;
     result.pointerPointeeVolatile = member.pointerPointeeVolatile;
     result.ownership = sema::OwnershipKind::Owned;
@@ -594,13 +603,15 @@ bool ProjectMethodBodyModel::analyzeMovedMember(
         expression->first()->kind() != ast::AstNodeKind::MemberExpression) return false;
     const std::optional<ScopeName> partialRoot = partialMoveRoot(
         expression->first(), methodMemberOrdinal, scopeOrdinal);
-    if (rejectInvalidPartialMove(
-            partialRoot, expression->first(), expression,
-            methodMemberOrdinal, scopeOrdinal, diagnostics)) return true;
+    // Bind the member path before consulting view provenance: an implicit
+    // field at the root does not have a name binding until it is analyzed.
     ++partialMoveSourceDepth_;
     const ExpressionResult member = analyzeExpression(
         expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
     --partialMoveSourceDepth_;
+    if (rejectInvalidPartialMove(
+            partialRoot, expression->first(), expression,
+            methodMemberOrdinal, scopeOrdinal, diagnostics)) return true;
     if (tryOwnedFieldMoveSource(
             result, member, expression, partialRoot,
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return true;
@@ -659,6 +670,7 @@ bool ProjectMethodBodyModel::validateLocalMoveState(
                 local.name + "' after a control-flow join");
         return false;
     }
+    if (expression == directReturnMoveOperand_) return true;
     if (!hasActiveBorrowOfOwnerLocal(sourceOrdinal, scopeOrdinal)) return true;
     diagnostics.report(
         diagnostics::DiagnosticId::InvalidOperand,
@@ -700,8 +712,10 @@ bool ProjectMethodBodyModel::completeLocalMove(
                 "' after one of its fields was moved; reinitialize the field first");
         return false;
     }
+    // LKF-003: an owned delegate cell is a heap owner like a class reference; typeKeyIsOwnable
+    // covers it, so the moved-from local is cleared and its cleanup does not free the cell twice.
     move.clearSourceStorage = sourceRequiresMove &&
-        (isReferenceTypeKey(local.typeKey) || local.typeKey == "builtin:string" ||
+        (typeKeyIsOwnable(local.typeKey) ||
          ProjectTypeConversion::isNativeArray(local.typeKey) ||
          memberModel_->typeRequiresValueDrop(local.typeKey));
     moveBindings_.push_back(std::move(move));
@@ -732,8 +746,8 @@ bool ProjectMethodBodyModel::analyzeNamedLocalMove(
 {
     if (source.semanticOrdinal >= locals_.size()) return false;
     const MethodLocalSymbol& local = locals_[source.semanticOrdinal];
-    // EN: Freeze 3.0 DEC-10: `move(e)` takes the caught exception out of its catch.
-    // ES: Congelamiento 3.0 DEC-10: `move(e)` saca la excepcion atrapada de su catch.
+    // EN: Freeze DEC-10: `move(e)` takes the caught exception out of its catch.
+    // ES: Congelamiento DEC-10: `move(e)` saca la excepcion atrapada de su catch.
     const bool sourceRequiresMove = local.isRaii || local.isMoveOnly || local.isCatchVariable ||
         compilerVariantResultTransfer;
     // `move` may spell an explicit copy for value-shaped inputs, but it must never
@@ -829,7 +843,7 @@ bool ProjectMethodBodyModel::completeParameterMove(
         return false;
     }
     move.clearSourceStorage = sourceRequiresMove &&
-        (isReferenceTypeKey(parameter.typeKey) || parameter.typeKey == "builtin:string" ||
+        (typeKeyIsOwnable(parameter.typeKey) ||
          ProjectTypeConversion::isNativeArray(parameter.typeKey) ||
          memberModel_->typeRequiresValueDrop(parameter.typeKey));
     moveBindings_.push_back(std::move(move));
@@ -867,12 +881,12 @@ bool ProjectMethodBodyModel::analyzeNamedParameterMove(
         compilerVariantResultTransfer;
     const bool genericCopyShapedMove = parameter.passKind == ParameterPassKind::Value &&
         callableBelongsToGenericTypeSpecialization(methodMemberOrdinal) && !sourceRequiresMove;
-    // EN: Freeze 3.0 (item 130, F3): in a closed generic type, move(p) of a parameter declared with a
+    // EN: Freeze (item 130, F3): in a closed generic type, move(p) of a parameter declared with a
     //     type argument (`T value`, T a class) copies the reference without transferring ownership,
     //     as it already does for a copyable T. A move-only T still consumes; handing the copy to an
     //     owned parameter is still rejected there. A parameter whose type the template names stays an
     //     error, as outside generics.
-    // ES: Congelamiento 3.0 (elemento 130, F3): en un tipo generico cerrado, move(p) de un parametro
+    // ES: Congelamiento (elemento 130, F3): en un tipo generico cerrado, move(p) de un parametro
     //     declarado con un argumento de tipo (`T value`, T una clase) copia la referencia sin
     //     transferir ownership, como ya hace con un T copiable. Un T move-only sigue consumiendo;
     //     entregar la copia a un parametro owned sigue rechazandose alli. Un parametro cuyo tipo
@@ -971,6 +985,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         const ExpressionResult implicitField = analyzeExpression(
             expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
         --partialMoveSourceDepth_;
+        if (hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal))
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "cannot partially move owner field while a borrowed view is alive");
+            return result;
+        }
         if (tryOwnedFieldMoveSource(
                 result, implicitField, expression, std::nullopt,
                 methodMemberOrdinal, scopeOrdinal, diagnostics)) return result;

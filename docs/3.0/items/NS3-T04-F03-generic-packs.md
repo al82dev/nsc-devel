@@ -2,7 +2,7 @@
 
 ## Estado
 
-`TERMINADA`. NativeSharp 3 materializa packs finales de tipos y valores const, expansión léxica,
+`TERMINADA`. NativeSharp materializa packs finales de tipos y valores const, expansión léxica,
 indexación comprobada, folds acotados y forwarding a través de source y `.nsmeta`.
 
 ## Qué se hizo
@@ -35,7 +35,7 @@ indexación comprobada, folds acotados y forwarding a través de source y `.nsme
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T04GenericPackTests.cpp`: cubre pack vacío, zip, nesting, forwarding,
+- `tests/unit/NativeSharpT04GenericPackTests.cpp`: cubre pack vacío, zip, nesting, forwarding,
   overloads, índices, folds, errores, presupuesto y frontera `.nsmeta` con O0/NSLink local.
 - `docs/3.0/language/generic-packs.md`: contrato bilingüe de usuario.
 - Este documento: evidencia atómica de F03.

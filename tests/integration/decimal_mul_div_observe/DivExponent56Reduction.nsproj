@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>DivExponent56Reduction</Name><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><Compile Include="DivExponent56Reduction.ns"/></ItemGroup>
+</Project>

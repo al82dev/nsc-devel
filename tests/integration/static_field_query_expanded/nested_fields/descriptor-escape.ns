@@ -1,0 +1,1 @@
+struct A { public int X; } int Main() { A a=default(A); static foreach (field in Fields(A)) { field.Type v=field.Get(a); } field.Type escaped; return 0; }

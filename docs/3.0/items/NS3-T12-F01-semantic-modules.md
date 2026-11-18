@@ -1,21 +1,23 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
 # NS3-T12-F01 — Módulos semánticos
 
 ## Español
 
 ### Resultado
 
-En edición 3, un proyecto NativeSharp define un módulo semántico: una unidad canónica de
+Un proyecto NativeSharp define un módulo semántico: una unidad canónica de
 declaraciones, visibilidad y metadata que puede contener cualquier cantidad de archivos. El orden
 de los archivos no define el módulo y un `ProjectReference` añade visibilidad de bindings; no
 incluye texto ni ejecuta inicializadores durante la importación.
 
-La carga del grafo ahora admite componentes cíclicos de módulos edición 3. El ciclo sólo elimina la
+La carga del grafo ahora admite componentes cíclicos de módulos. El ciclo sólo elimina la
 restricción artificial de orden de declaración: el frontend reúne primero los símbolos de todos los
 módulos visibles y los modelos de herencia/layout conservan la autoridad para rechazar ciclos no
 resolubles. Por ejemplo, dos clases pueden referirse mutuamente, pero dos structs que se contienen
 por valor siguen siendo un error de layout.
-
-Edición 2 conserva el diagnóstico histórico de ciclo; no se cambió su compatibilidad.
 
 ### Identidad y determinismo
 
@@ -33,7 +35,7 @@ Edición 2 conserva el diagnóstico histórico de ciclo; no se cambió su compat
 `nsc_ns3_t12_semantic_module_tests` verifica un módulo multi-file, un ciclo de bindings que compila
 y ejecuta en O0/NSLink, que importar no ejecuta un inicializador estático sin usar, el rechazo de un
 ciclo de layout, identidades duplicadas por casing, rutas Windows case-insensitive, reproducibilidad
-y el rechazo compatible de ciclos edición 2. Resultado local: **9/9**.
+y el rechazo compatible de ciclos. Resultado local: **9/9**.
 
 No se ejecutó baseline, minibaseline ni suite general.
 
@@ -41,17 +43,15 @@ No se ejecutó baseline, minibaseline ni suite general.
 
 ### Result
 
-In edition 3, a NativeSharp project defines a semantic module: a canonical declaration,
+A NativeSharp project defines a semantic module: a canonical declaration,
 visibility, and metadata unit that may contain any number of files. File order does not define the
 module, and a `ProjectReference` adds binding visibility; it neither textually includes a file nor
 executes initializers while importing.
 
-Graph loading now accepts cyclic edition-3 module components. A cycle only removes the artificial
+Graph loading now accepts cyclic module components. A cycle only removes the artificial
 declaration-order restriction: the frontend first gathers symbols from every visible module, while
 inheritance/layout models remain authoritative for unresolvable cycles. Two classes may therefore
 refer to each other, whereas two structs containing each other by value remain a layout error.
-
-Edition 2 retains its historical cycle diagnostic; its compatibility was not changed.
 
 ### Identity and determinism
 
@@ -68,7 +68,6 @@ Edition 2 retains its historical cycle diagnostic; its compatibility was not cha
 
 `nsc_ns3_t12_semantic_module_tests` covers a multi-file module, a binding cycle compiled and run at
 O0 with NSLink, import without eager static-initializer execution, layout-cycle rejection,
-case-folded duplicate identities, case-insensitive Windows paths, reproducibility, and compatible
-edition-2 cycle rejection. Local result: **9/9**.
+case-folded duplicate identities, case-insensitive Windows paths and reproducibility. The historical suite also covered a cycle rejection under a retired compatibility rule. Local result: **9/9**.
 
 No baseline, mini-baseline, or general suite was run.

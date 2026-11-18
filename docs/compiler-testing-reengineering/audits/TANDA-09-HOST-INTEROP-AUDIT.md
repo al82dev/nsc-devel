@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Segunda auditoría independiente — Host.Interop
 
 ## Método
@@ -34,7 +36,7 @@ contrastó documentos, contratos y casos.
 
 ## Hallazgos conservados
 
-1. NSMETA vigente es 1.39 y contiene compuertas aditivas desde 1.0.
+1. La revisión histórica documentó etiquetas de formato y compuertas aditivas; esa política ya no está vigente.
 2. El byte de revisión de fuente introducido en 1.23 se consume pero se descarta; no selecciona edición.
 3. `producerVersion` sí conserva una ventana de productores conocidos incompatibles.
 4. Los comentarios históricos duplican y desordenan minors 23, 34 y 38.

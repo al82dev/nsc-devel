@@ -45,7 +45,11 @@ void testGlobPattern(TestContext& tests)
     tests.expect(question.matches("Models/Player1.ns"), "question mark matches one character");
     tests.expect(!question.matches("Models/Player10.ns"), "question mark does not match two characters");
 
-    tests.expect(!GlobPattern("../Shared/*.ns").isValid(), "parent traversal glob is invalid");
+    const GlobPattern external("../Shared/*.ns");
+    tests.expect(external.isValid(), "explicit parent-relative glob is valid");
+    tests.expect(external.matches("../Shared/Main.ns"), "parent-relative glob matches an external source");
+    tests.expect(!GlobPattern("../Shared/*/../Main.ns").isValid(),
+        "parent traversal after a wildcard is invalid");
     tests.expect(!GlobPattern("C:/Project/*.ns").isValid(), "absolute drive glob is invalid");
     tests.expect(!GlobPattern("Models/**Player.ns").isValid(), "double star must occupy a segment");
 }
@@ -125,6 +129,30 @@ void testDefaultProject(TestContext& tests, const std::filesystem::path& root)
     tests.expect(dump.str().find("project Game\n") == 0, "project dump begins with module name");
     tests.expect(dump.str().find("output: static-library") != std::string::npos, "project dump contains output kind");
     tests.expect(dump.str().find("[1] Models/Player.ns") != std::string::npos, "project dump lists ordinals");
+}
+
+void testIgnoredLanguageLabels(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "IgnoredLanguageLabels";
+    writeFile(directory / "Main.ns", "int main() { return 0; }\n");
+    const auto projectPath = directory / "Labels.nsproj";
+    writeFile(projectPath,
+        "<Project><PropertyGroup><Name>Labels</Name><Language></Language>"
+        "<Language>opaque-label</Language></PropertyGroup></Project>\n");
+    ProjectLoader loader;
+    std::string error;
+    const auto project = loader.load(projectPath, error);
+    tests.expect(project.has_value(),
+        "empty and repeated historical language labels do not reject a project: " + error);
+
+    const auto invalidPath = directory / "EmptyOutput.nsproj";
+    writeFile(invalidPath,
+        "<Project><PropertyGroup><OutputType></OutputType></PropertyGroup></Project>\n");
+    ProjectLoader invalidLoader;
+    std::string invalidError;
+    const auto invalid = invalidLoader.load(invalidPath, invalidError);
+    tests.expect(!invalid.has_value() && invalidError.find("cannot be empty") != std::string::npos,
+        "an empty operational property remains invalid: " + invalidError);
 }
 
 void testItemsAndReferences(TestContext& tests, const std::filesystem::path& root)
@@ -235,8 +263,8 @@ void testInvalidProjects(TestContext& tests, const std::filesystem::path& root)
         "Exe', 'Library', 'StaticLibrary', or 'SharedLibrary",
         "invalid output kind is rejected");
 
-    writeFile(invalid / "Glob.nsproj", "<Project><ItemGroup><Compile Include=\"../*.ns\"/></ItemGroup></Project>\n");
-    expectLoadFailure(tests, invalid / "Glob.nsproj", "invalid glob pattern", "escaping glob is rejected");
+    writeFile(invalid / "Glob.nsproj", "<Project><ItemGroup><Compile Include=\"../*/../*.ns\"/></ItemGroup></Project>\n");
+    expectLoadFailure(tests, invalid / "Glob.nsproj", "after a wildcard segment", "parent after wildcard is rejected");
 
     writeFile(invalid / "Compile.nsproj", "<Project><ItemGroup><Compile/></ItemGroup></Project>\n");
     expectLoadFailure(tests, invalid / "Compile.nsproj", "exactly one", "empty Compile item is rejected");
@@ -303,6 +331,28 @@ void testInvalidProjects(TestContext& tests, const std::filesystem::path& root)
         invalid / "DuplicateLibrary.nsproj",
         "duplicate LibraryReference",
         "duplicate precompiled library reference is rejected");
+}
+
+void testBinaryAggregateWithoutSources(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "BinaryAggregate";
+    writeFile(directory / "Target.lib", "archive");
+    writeFile(directory / "Target.nsmeta", "metadata");
+    writeFile(directory / "Aggregate.nsproj",
+        "<Project><PropertyGroup><OutputType>Library</OutputType></PropertyGroup><ItemGroup>"
+        "<LibraryReference Include=\"Target.lib\"/></ItemGroup></Project>\n");
+    ProjectLoader loader;
+    std::string error;
+    const auto aggregate = loader.load(directory / "Aggregate.nsproj", error);
+    tests.expect(aggregate.has_value(), "binary aggregate without source loads");
+    if (aggregate.has_value())
+    {
+        tests.expect(aggregate->sourceSet().sources().empty(), "binary aggregate has no source");
+    }
+    writeFile(directory / "Executable.nsproj",
+        "<Project><ItemGroup><LibraryReference Include=\"Target.lib\"/></ItemGroup></Project>\n");
+    expectLoadFailure(tests, directory / "Executable.nsproj", "at least one",
+        "executable without source remains rejected");
 }
 
 void testLibraryReferenceRoot(TestContext& tests, const std::filesystem::path& root)
@@ -496,7 +546,9 @@ int main()
     std::filesystem::create_directories(root, error);
 
     testDefaultProject(tests, root);
+    testIgnoredLanguageLabels(tests, root);
     testItemsAndReferences(tests, root);
+    testBinaryAggregateWithoutSources(tests, root);
     testLibraryReferenceRoot(tests, root);
     testBuildSettings(tests, root);
     testCppConsumerVolatileConfiguration(tests, root);

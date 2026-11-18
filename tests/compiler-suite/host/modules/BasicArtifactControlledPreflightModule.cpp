@@ -353,14 +353,16 @@ std::filesystem::path stagingRootFrom(const std::filesystem::path& stage)
     return stage.parent_path().parent_path();
 }
 
-// Constructs the exact sibling name used by one commit ordinal.
+// Constructs the exact sibling name used by one commit ordinal. TB-BAS-067: since LKF-241 (6f8bd132f) the
+// name carries the publishing process id before the ordinal; the transaction runs in this process.
 std::filesystem::path siblingPath(
     const std::filesystem::path& destination,
     unsigned long long ordinal,
     std::string_view extension)
 {
     std::filesystem::path sibling = destination;
-    sibling += ".nsc-transaction-" + std::to_string(ordinal) + std::string(extension);
+    sibling += ".nsc-transaction-" + std::to_string(GetCurrentProcessId()) + "-" + std::to_string(ordinal) +
+        std::string(extension);
     return sibling;
 }
 

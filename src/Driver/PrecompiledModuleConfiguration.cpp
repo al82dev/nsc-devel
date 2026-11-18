@@ -21,6 +21,7 @@
 #endif
 
 #include <algorithm>
+#include <iostream>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -271,9 +272,9 @@ void addCompilationLinkIdentity(
             "extra-link-library-" + std::to_string(index),
             pathToUtf8(extraLinkLibraries[index].filename()));
     }
-    // EN: Freeze 3.0 DEC-13: a bundle built without the host-DLL check must not satisfy a build that
+    // EN: Freeze DEC-13: a bundle built without the host-DLL check must not satisfy a build that
     //     asks for it. The field exists only when requested, so default identities do not change.
-    // ES: Congelamiento 3.0 DEC-13: un bundle construido sin la comprobacion contra DLL del host no
+    // ES: Congelamiento DEC-13: un bundle construido sin la comprobacion contra DLL del host no
     //     debe satisfacer una compilacion que la pide. El campo solo existe cuando se pide, asi que
     //     las identidades por defecto no cambian.
     if (activeExecutionScope != nullptr && activeExecutionScope->validateSystemImports)
@@ -351,6 +352,7 @@ bool lookupCompilationBundle(
     std::string& error)
 {
     manifest.addProjectGraphInputs(closedGraph);
+    manifest.addIdentityField("receiver-contract-guards", std::string(compilation.receiverProductIdentity()));
     compilation::CompilationBundleCache bundleCache;
     const llvm_backend::CompilationArtifactCache* const artifactCache =
         llvm_backend::activeCompilationArtifactCache();
@@ -474,7 +476,8 @@ bool configurePrecompiledModules(
     }
 #endif
     const auto* artifactCache = llvm_backend::activeCompilationArtifactCache();
-    const bool captureCppInputs = artifactCache != nullptr && artifactCache->enabled();
+    // EN: Read only by the C/C++ interoperability path. / ES: Solo lo lee la ruta de interoperabilidad C/C++.
+    [[maybe_unused]] const bool captureCppInputs = artifactCache != nullptr && artifactCache->enabled();
     bool cppInputsComplete = true;
     std::vector<std::pair<std::string, std::size_t>> cppSessionOwners;
 #if defined(NSC_ENABLE_CPP_INTEROP)
@@ -717,7 +720,7 @@ bool configurePrecompiledModules(
             std::vector<interop::CppCEnumSnapshot> enums;
             interop::metadata_detail::CDependencyCatalog dependencies;
             if (!interop::metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
-                    module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+                    records, enums, dependencies, error)) return false;
             hasPrecompiledStaticMethods |= !dependencies.staticMethods.empty();
             hasPrecompiledInstanceMethods |= !dependencies.instanceMethods.empty();
             hasPrecompiledStaticFields |= !dependencies.staticFields.empty();
@@ -824,16 +827,30 @@ void publishCompilationBundle(
         if (artifactCache == nullptr || !artifactCache->enabled() || manifest.identity().empty()) return;
         compilation::CompilationBundleCache bundleCache;
         bundleCache.setRoot(artifactCache->root() / "compilation-bundles");
-        std::string ignoredError;
-        (void)bundleCache.store(
-            manifest.identity(),
-            manifest.bundleOutputDirectory(),
-            manifest.requiredBundleOutputNames(),
-            manifest.bundleResultOutput(),
-            ignoredError);
+        // EN: LKF-259: the build stays successful (the bundle is only a cache), but a publication that
+        //     failed is reported as a warning. A manifest without identity is not cacheable, not a failure.
+        // ES: LKF-259: la compilación sigue siendo exitosa (el bundle es solo caché), pero una publicación
+        //     fallida se informa como advertencia. Un manifiesto sin identidad no es cacheable, no es fallo.
+        if (manifest.identity().size() < 2) return;
+        std::string storeError;
+        if (!bundleCache.store(
+                manifest.identity(),
+                manifest.bundleOutputDirectory(),
+                manifest.requiredBundleOutputNames(),
+                manifest.bundleResultOutput(),
+                storeError))
+            std::cerr << "nsc: warning: compilation bundle cache entry was not published: " << storeError
+                      << '\n';
     }
     catch (...)
     {
+        try
+        {
+            std::cerr << "nsc: warning: compilation bundle cache entry was not published\n";
+        }
+        catch (...)
+        {
+        }
     }
 }
 

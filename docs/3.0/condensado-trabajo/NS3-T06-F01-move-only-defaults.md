@@ -1,30 +1,32 @@
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # NS3-T06-F01 — Move-only defaults
 
 ## Resultado
 
-NativeSharp 3.0 ya no considera copiables todos los structs por accidente. Los tipos valor de
-edición 3 son move-only por defecto y optan a copia con `copy`; el estado moved/maybe-moved es
+NativeSharp ya no considera copiables todos los structs por accidente. Los tipos valor de
+lenguaje son move-only por defecto y optan a copia con `copy`; el estado moved/maybe-moved es
 path-sensitive y una reasignación completa vuelve a habilitar el nombre.
 
 ## Cambios
 
 - Parser: acepta `copy struct`, `copy record struct`, `copy union`, `copy variant` y
-  `copy opaque type`, incluidos modificadores combinados y tipos anidados; edición 2 no adquiere
-  esta semántica.
+  `copy opaque type`, incluidos modificadores combinados y tipos anidados.
 - Member model: una sola consulta transitiva decide Copy/move-only para fields, fixed arrays y
   constraints; rechaza promesas Copy falsas.
 - Method bodies: inicialización, parámetros, funciones libres, delegates/eventos, constructores,
   returns y asignación exigen `move(...)` al consumir almacenamiento move-only. Branches y loops
   reutilizan los joins moved/maybe-moved existentes; la reasignación rehabilita el valor.
-- Genéricos: `where T : copy` usa la capacidad declarada en edición 3 y conserva la regla
-  estructural histórica para edición 2.
-- Bibliotecas: NSMETA sube a 1.33, publica `kMetadataTypeCopy`, rechaza downlevel con pérdida y
+- Genéricos: `where T : copy` usa la capacidad declarada en NativeSharp.
+- Bibliotecas: NSMETA publica `kMetadataTypeCopy` y
   reconstruye `copy` al consumir una `LibraryReference`.
-- Superficie: `--print-language-3-surface` publica `move-only-defaults=implemented`.
+- Superficie: `--print-language-surface` publica `move-only-defaults=implemented`.
 
 ## Archivos nuevos
 
-- `tests/unit/NativeSharp3T06MoveOnlyTests.cpp`: prueba dirigida autocontenida; existe para cubrir
+- `tests/unit/NativeSharpT06MoveOnlyTests.cpp`: prueba dirigida autocontenida; existe para cubrir
   semántica, flujo, diagnósticos, O0/NSLink y frontera de biblioteca sin ejecutar el baseline.
 - `tests/fixtures/nsmeta/historical-1.32.nsmeta`: golden inmutable del formato inmediatamente
   anterior; prueba que el lector 1.33 conserva la compatibilidad binaria hacia atrás.
@@ -33,8 +35,8 @@ path-sensitive y una reasignación completa vuelve a habilitar el nombre.
 
 ## Archivos modificados
 
-- `include/nativesharp/{Parser/Parser.h,Frontend/ProjectMemberModel.h,Frontend/ProjectMethodBodyModel.h,Frontend/ProjectConstructionModel.h,Interop/LibraryMetadata.h,Language/Language3Surface.h}`.
-- `src/{Parser/Parser.cpp,Frontend/ProjectMemberModel.cpp,Frontend/ProjectGenericConstraintModel.cpp,Frontend/ProjectMethodBodyModel.cpp,Frontend/ProjectConstructionModel.cpp,Interop/LibraryMetadata.cpp,Driver/Driver.cpp,Driver/BreakingChangeLedger.cpp,Driver/ReleaseCandidateFreeze.cpp,Language/Language3Surface.cpp}`.
+- `include/nativesharp/{Parser/Parser.h,Frontend/ProjectMemberModel.h,Frontend/ProjectMethodBodyModel.h,Frontend/ProjectConstructionModel.h,Interop/LibraryMetadata.h,Language/LanguageSurface.h}`.
+- `src/{Parser/Parser.cpp,Frontend/ProjectMemberModel.cpp,Frontend/ProjectGenericConstraintModel.cpp,Frontend/ProjectMethodBodyModel.cpp,Frontend/ProjectConstructionModel.cpp,Interop/LibraryMetadata.cpp,Driver/Driver.cpp,Driver/BreakingChangeLedger.cpp,Driver/ReleaseCandidateFreeze.cpp,Language/LanguageSurface.cpp}`.
 - `CMakeLists.txt` y pruebas/roadmaps directamente afectados por el nuevo contrato y NSMETA 1.33.
 
 ## Mejora observable

@@ -1,0 +1,16 @@
+int Main()
+{
+    decimal[2] values;
+    values[0] = 1.0m;
+    values[1] = 2.0m;
+    int[2] control;
+    control[0] = 3;
+    control[1] = 4;
+    if (control[0] != 3 || control[1] != 4) return 1;
+    double[2] doubleControl;
+    doubleControl[0] = 3.0;
+    doubleControl[1] = 4.0;
+    if (doubleControl[0] != 3.0 || doubleControl[1] != 4.0) return 3;
+    if (values[0] != 1.0m || values[1] != 2.0m) return 2;
+    return 0;
+}

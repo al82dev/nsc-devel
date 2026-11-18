@@ -45,12 +45,13 @@ ExitCode runDriver(std::span<const std::string_view> arguments, std::string& out
 bool buildExecutable(
     const std::filesystem::path& project,
     const std::filesystem::path& executable,
+    std::string_view level,
     std::string& diagnostic)
 {
     const std::string projectText = project.string();
     const std::string executableText = executable.string();
     const std::array<std::string_view, 5> arguments = {
-        "--emit-project-oop-exe", projectText, "-O2", "-o", executableText};
+        "--emit-project-oop-exe", projectText, level, "-o", executableText};
     std::string output;
     std::string error;
     const bool ok = runDriver(arguments, output, error) == ExitCode::Success;
@@ -62,14 +63,14 @@ bool buildExecutable(
 int main()
 {
     TestContext tests;
-    const auto sourceRoot = std::filesystem::path(NSC_SOURCE_DIR);
+    const auto sourceRoot = std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT);
     const auto root = std::filesystem::path(NSC_BINARY_DIR) / "item370_named_sync";
     std::error_code filesystemError;
     std::filesystem::remove_all(root, filesystemError);
     std::filesystem::create_directories(root, filesystemError);
 
     const std::string threadingProject =
-        (sourceRoot / "lib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj").generic_string();
+        (sourceRoot / "stdlib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj").generic_string();
     const std::array<std::string_view, 2> dumpArguments = {
         "--dump-project-oop-llvm", threadingProject};
     std::string libraryIr;
@@ -123,45 +124,48 @@ int main()
         "raii Event ready = new Event(false, false, \"" + uniqueName +
         "\"); ready.Set(); return 42; } }");
 
-    const auto waiterExecutable = waiterDirectory / "Waiter.exe";
-    const auto signalerExecutable = signalerDirectory / "Signaler.exe";
-    std::string waiterDiagnostic;
-    std::string signalerDiagnostic;
-    const bool waiterBuilt = buildExecutable(
-        waiterDirectory / "Waiter.nsproj", waiterExecutable, waiterDiagnostic);
-    const bool signalerBuilt = buildExecutable(
-        signalerDirectory / "Signaler.nsproj", signalerExecutable, signalerDiagnostic);
-    tests.expect(waiterBuilt, "the cross-process waiter builds (" + waiterDiagnostic + ")");
-    tests.expect(signalerBuilt, "the cross-process signaler builds (" + signalerDiagnostic + ")");
-
-    if (waiterBuilt && signalerBuilt)
+    for (const std::string_view level : {"-O0", "-O1", "-O2", "-O3"})
     {
-        auto waiter = std::async(std::launch::async, [&waiterExecutable]() {
-            return std::system(("\"" + waiterExecutable.string() + "\"").c_str());
-        });
-        bool waiterReady = false;
-        while (!waiterReady)
+        const auto waiterExecutable = waiterDirectory / ("Waiter" + std::string(level) + ".exe");
+        const auto signalerExecutable = signalerDirectory / ("Signaler" + std::string(level) + ".exe");
+        std::string waiterDiagnostic;
+        std::string signalerDiagnostic;
+        const bool waiterBuilt = buildExecutable(
+            waiterDirectory / "Waiter.nsproj", waiterExecutable, level, waiterDiagnostic);
+        const bool signalerBuilt = buildExecutable(
+            signalerDirectory / "Signaler.nsproj", signalerExecutable, level, signalerDiagnostic);
+        tests.expect(waiterBuilt, std::string(level) + ": the cross-process waiter builds (" + waiterDiagnostic + ")");
+        tests.expect(signalerBuilt, std::string(level) + ": the cross-process signaler builds (" + signalerDiagnostic + ")");
+
+        if (waiterBuilt && signalerBuilt)
         {
-            if (HANDLE event = OpenEventA(SYNCHRONIZE, FALSE, uniqueName.c_str()))
+            auto waiter = std::async(std::launch::async, [&waiterExecutable]() {
+                return std::system(("\"" + waiterExecutable.string() + "\"").c_str());
+            });
+            bool waiterReady = false;
+            while (!waiterReady)
             {
-                CloseHandle(event);
-                waiterReady = true;
+                if (HANDLE event = OpenEventA(SYNCHRONIZE, FALSE, uniqueName.c_str()))
+                {
+                    CloseHandle(event);
+                    waiterReady = true;
+                }
+                else
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                }
             }
-            else
-            {
-                std::this_thread::sleep_for(std::chrono::milliseconds(20));
-            }
+            tests.expect(waiterReady,
+                "the waiter creates the named event before the signaler starts");
+            const int signalerExit = waiterReady
+                ? std::system(("\"" + signalerExecutable.string() + "\"").c_str())
+                : 1;
+            const int waiterExit = waiter.get();
+            tests.expect(signalerExit == 42,
+                "the second process opens and signals the named event");
+            tests.expect(waiterExit == 42,
+                "the first process observes the signal through the shared named event");
         }
-        tests.expect(waiterReady,
-            "the waiter creates the named event before the signaler starts");
-        const int signalerExit = waiterReady
-            ? std::system(("\"" + signalerExecutable.string() + "\"").c_str())
-            : 1;
-        const int waiterExit = waiter.get();
-        tests.expect(signalerExit == 42,
-            "the second process opens and signals the named event");
-        tests.expect(waiterExit == 42,
-            "the first process observes the signal through the shared named event");
     }
 
     const int result = tests.result();

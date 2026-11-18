@@ -463,6 +463,8 @@ LLVMValueRef OopLlvmImplementation::lowerNullConditionalCall(
         // Semantic analysis admits only physical nullable carriers here; every such carrier uses
         // the opaque-pointer ABI.  Do not depend on LLVM's type-introspection C API merely to
         // repeat that already authoritative decision.
+        // EN: Optional<T> is admitted too (LKF-291); its zero constant is the empty Optional.
+        // ES: También se admite Optional<T> (LKF-291); su constante cero es el Optional vacío.
         if (resultType == nullptr) return nullptr;
         LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "nullcall");
         LLVMValueRef values[] = {LLVMConstNull(resultType), value};
@@ -999,10 +1001,10 @@ LLVMValueRef OopLlvmImplementation::staticFieldStorageAddress(const frontend::Pr
         return globalFound->second;
     }
 
-// EN: Freeze 3.0 (plan item 118): right before the call instruction, the hidden owner of each argument
+// EN: Freeze (plan item 118): right before the call instruction, the hidden owner of each argument
 //     handed to an `owned` parameter is cleared, so the callee owns it and the full-expression cleanup (or
 //     an unwind out of the callee) finds the slot empty. Until here the slot destroys it if anything throws.
-// ES: Congelamiento 3.0 (elemento 118 del plan): justo antes de la instrucción de llamada se limpia el dueño
+// ES: Congelamiento (elemento 118 del plan): justo antes de la instrucción de llamada se limpia el dueño
 //     oculto de cada argumento entregado a un parámetro `owned`, así el llamado es el dueño y el cleanup de la
 //     expresión completa (o un unwind desde el llamado) encuentra el slot vacío. Hasta aquí el slot lo destruye
 //     si algo lanza.
@@ -2141,6 +2143,13 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         {
             return failValue(error, "static call argument override count does not match MIR operands");
         }
+        const frontend::ProjectOopMirFunction* operatorSignature = nullptr;
+        if (memberModel_ != nullptr && node->memberOrdinal.has_value())
+        {
+            const auto members = memberModel_->members();
+            if (*node->memberOrdinal < members.size() && members[*node->memberOrdinal].isUserOperator)
+                operatorSignature = mirModel_.functionForMangledName(node->calleeName);
+        }
         for (std::size_t index = 0; index < node->children.size(); ++index)
         {
             const auto& child = node->children[index];
@@ -2155,7 +2164,25 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             if (node->returnsAssignedValue && index + 1U == node->children.size())
                 assignedValue = value;
             rawVectorCallArguments.push_back(value);
-            value = wrapIndirectArgument(value, child->typeKey, error);
+            const bool hasParameterOrdinal = node->argumentParameterOrdinals.empty() ||
+                index < node->argumentParameterOrdinals.size();
+            const std::size_t parameterOrdinal = node->argumentParameterOrdinals.empty()
+                ? index
+                : hasParameterOrdinal ? node->argumentParameterOrdinals[index] : 0U;
+            const bool operatorInParameter = operatorSignature != nullptr && hasParameterOrdinal &&
+                parameterOrdinal < operatorSignature->parameterPassKinds.size() &&
+                operatorSignature->parameterPassKinds[parameterOrdinal] == frontend::ParameterPassKind::In;
+            // The operand already is the address required by an operator's in parameter.
+            // Wrapping it as a by-value aggregate stores the address into an extra carrier.
+            // EN: Integration with `development`: a struct operand that already arrives as an address (a materialized
+            //     temporary of an `in` or C++ `const T&` operand) is passed as is; wrapping it would store the address
+            //     into a struct-sized copy. / ES: Integracion con `development`: un operando struct que ya llega como
+            //     direccion (un temporal materializado de un operando `in` o `const T&` de C++) se pasa tal cual;
+            //     envolverlo guardaria la direccion en una copia del tamano del struct.
+            const bool addressOfIndirectStruct = LLVMTypeOf(value) == LLVMPointerTypeInContext(context_, 0) &&
+                isIndirectStructTypeKey(child->typeKey);
+            if (!operatorInParameter && !addressOfIndirectStruct)
+                value = wrapIndirectArgument(value, child->typeKey, error);
             if (value == nullptr) return nullptr;
             // EN: T19-044. As Clang does on Windows x64, a 128-bit integer passed as a C variadic argument travels
             //     by the address of a copy aligned to 16.
@@ -2291,7 +2318,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             found->second.functionType, target,
             arguments.empty() ? nullptr : arguments.data(),
             static_cast<unsigned>(arguments.size()),
-            node->typeKey == "builtin:void" || sretSlot != nullptr ? "" : "static.call", error);
+            node->typeKey == "builtin:void" || sretSlot != nullptr ? "" : "static.call", error, node);
         if (call == nullptr) return nullptr;
         if (imported != nullptr && imported->cppSysVCall)
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
@@ -2368,9 +2395,11 @@ bool OopLlvmImplementation::prepareDynamicCallArguments(
         std::vector<LLVMTypeRef>& parameterTypes,
         LLVMValueRef& sretSlot,
         LLVMValueRef& assignedValue,
+        LLVMValueRef& terminatedValue,
         std::string& error)
 {
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        terminatedValue = nullptr;
         arguments.reserve(node->children.size() + 1);
         parameterTypes.reserve(node->children.size() + 1);
         arguments.push_back(receiver);
@@ -2394,8 +2423,20 @@ bool OopLlvmImplementation::prepareDynamicCallArguments(
             LLVMValueRef value = argumentOverrides != nullptr
                 ? (*argumentOverrides)[index - 1]
                 : lowerExpression(node->children[index].get(), error);
+            if (value == nullptr) return false;
+            // EN: LKF-440: an argument that never completes (`loop { throw ...; }`) ends the block. The
+            //     ordinary call path stops there; the virtual and interface paths asked for the ABI
+            //     type of `never` and failed. They stop too, as collectCallArguments does.
+            // ES: LKF-440: un argumento que nunca termina (`loop { throw ...; }`) cierra el bloque. La
+            //     ruta de llamada ordinaria se detiene ahí; las rutas virtual y de interfaz pedían el
+            //     tipo ABI de `never` y fallaban. Ahora también se detienen, como collectCallArguments.
+            if (terminated())
+            {
+                terminatedValue = value;
+                return true;
+            }
             LLVMTypeRef parameterType = abiParameterType(node->children[index]->typeKey, error);
-            if (value == nullptr || parameterType == nullptr)
+            if (parameterType == nullptr)
             {
                 return false;
             }
@@ -2431,6 +2472,13 @@ LLVMValueRef OopLlvmImplementation::lowerVirtualCall(
         LLVMValueRef receiver = receiverOverride != nullptr
             ? receiverOverride : lowerExpression(node->children.front().get(), error);
         if (receiver == nullptr) return nullptr;
+        // EN: LKF-440: the expression machine evaluates the arguments before this call; when one
+        //     never completes the block is already terminated, and the receiver check and target
+        //     load would be emitted after its terminator. Stop here.
+        // ES: LKF-440: la máquina de expresiones evalúa los argumentos antes de esta llamada; si uno
+        //     nunca termina, el bloque ya está terminado y la comprobación del receptor y la carga
+        //     del destino se emitirían tras su terminador. Se detiene aquí.
+        if (terminated()) return receiver;
         receiver = checkedReceiver(receiver, error);
         if (receiver == nullptr) return nullptr;
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
@@ -2443,9 +2491,11 @@ LLVMValueRef OopLlvmImplementation::lowerVirtualCall(
         // indirect struct parameters.
         LLVMValueRef sretSlot = nullptr;
         LLVMValueRef assignedValue = nullptr;
+        LLVMValueRef terminatedValue = nullptr;
         if (!prepareDynamicCallArguments(
                 node, receiver, argumentOverrides, arguments, parameterTypes,
-                sretSlot, assignedValue, error)) return nullptr;
+                sretSlot, assignedValue, terminatedValue, error)) return nullptr;
+        if (terminatedValue != nullptr) return terminatedValue;
         LLVMTypeRef returnType = node->referenceResult
             ? ptr
             : sretSlot != nullptr
@@ -2608,6 +2658,8 @@ LLVMValueRef OopLlvmImplementation::lowerInterfaceCall(
         {
             return nullptr;
         }
+        // LKF-440: as in lowerVirtualCall. / LKF-440: como en lowerVirtualCall.
+        if (terminated()) return receiver;
         receiver = checkedReceiver(receiver, error);
         if (receiver == nullptr)
         {
@@ -2624,9 +2676,11 @@ LLVMValueRef OopLlvmImplementation::lowerInterfaceCall(
         std::vector<LLVMValueRef> arguments;
         std::vector<LLVMTypeRef> parameterTypes;
         LLVMValueRef assignedValue = nullptr;
+        LLVMValueRef terminatedValue = nullptr;
         if (!prepareDynamicCallArguments(
                 node, receiver, argumentOverrides, arguments, parameterTypes,
-                sretSlot, assignedValue, error)) return nullptr;
+                sretSlot, assignedValue, terminatedValue, error)) return nullptr;
+        if (terminatedValue != nullptr) return terminatedValue;
         LLVMTypeRef returnType = node->referenceResult
             ? ptr
             : sretSlot != nullptr

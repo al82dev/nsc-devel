@@ -1,5 +1,7 @@
 # Tanda 49 — SH47: código especializado y NSAsm
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 | Campo | Valor |
 |---|---|
 | Estado | `LANDED` — gate dirigido y baseline acumulado aprobados |
@@ -11,7 +13,7 @@
 
 ## Objetivo
 
-Cerrar el código especializado exigido por NativeSharp 2.0: vectores, matrices, `Half`, formatos
+Cerrar el código especializado exigido por NativeSharp: vectores, matrices, `Half`, formatos
 empacados, instrucciones de hardware, ensamblador inline, modos de punto flotante y objetos NSAsm.
 La prueba debe compilar y ejecutar O0–O3 con LLD y NSLink y auditar el código máquina, no sólo la
 aceptación sintáctica.

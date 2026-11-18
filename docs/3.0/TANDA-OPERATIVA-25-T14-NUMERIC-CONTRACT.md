@@ -64,7 +64,7 @@ El estado FP no se duplica en una configuración paralela: se captura mediante
 - `include/nativesharp/Language/NumericSemantics.h`: reemplaza la API tautológica por self-check.
 - `src/Language/NumericSemantics.cpp`: referencia exhaustiva `int8` independiente.
 - `src/Driver/Driver.cpp`: comandos CLI y ayuda.
-- `tests/unit/NativeSharp3T14NumericTests.cpp`: exige el self-check real.
+- `tests/unit/NativeSharpT14NumericTests.cpp`: exige el self-check real.
 - `tests/unit/NativeSharp3T15IntegrationTests.cpp`: consume la nueva garantía.
 - `CMakeLists.txt`: integra código/test, genera el contrato después de enlazar `nsc` y lo añade al
   payload de una instalación futura.
@@ -74,7 +74,7 @@ El estado FP no se duplica en una configuración paralela: se captura mediante
 
 - `include/nativesharp/Driver/NumericContract.h`: API del contrato sobre el estado FP real.
 - `src/Driver/NumericContract.cpp`: manifest, fingerprint SHA-256, escritura y verificación exacta.
-- `tests/unit/NativeSharp3T14NumericContractTests.cpp`: nueve comprobaciones de perfiles,
+- `tests/unit/NativeSharpT14NumericContractTests.cpp`: nueve comprobaciones de perfiles,
   fingerprint, round-trip y rechazo causal.
 - `docs/3.0/TANDA-OPERATIVA-25-T14-NUMERIC-CONTRACT.md`: expediente completo de la tanda.
 

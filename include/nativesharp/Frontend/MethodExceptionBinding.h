@@ -51,7 +51,7 @@ struct MethodExceptionBinding final
     bool catchAll = false;
     bool hasFilter = false;
     bool filterAlwaysTrue = false;
-    // NativeSharp 3.0 T07-F03. Declared errors from the protected region that can reach this
+    // NativeSharp T07-F03. Declared errors from the protected region that can reach this
     // source-ordered type/wildcard pattern. `exhaustive` means this clause completes coverage of
     // every declared error still possible at the try boundary.
     std::vector<std::string> matchedErrorTypeKeys;

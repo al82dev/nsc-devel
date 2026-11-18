@@ -1,0 +1,8 @@
+int Main()
+{
+    BinaryComplex.Box<int> value = default(BinaryComplex.Box<int>);
+    value.Pair = (5, 2);
+    value.Value = 7;
+    var (first, second) = value.Pair;
+    return first + second + value.Value == 14 ? 0 : 1;
+}

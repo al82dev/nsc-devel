@@ -1,0 +1,2 @@
+class Inspector : BinaryHierarchy.Derived { public int Inspect() { return this.ReadBase() * 10 + this.Protected; } }
+int Main() { owned Inspector value = new Inspector(); return value.Inspect() == 34 ? 0 : 1; }

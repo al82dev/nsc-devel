@@ -2,7 +2,7 @@
   <PropertyGroup>
     <Name>NativeSharpSelfHostSh09Library</Name>
     <OutputType>StaticLibrary</OutputType>
-    <Sdk>NativeSharp/2.0</Sdk>
+    <Sdk>NativeSharp/1.0</Sdk>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Library.ns" />

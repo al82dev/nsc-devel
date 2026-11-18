@@ -2,7 +2,7 @@
 
 ## Español
 
-NativeSharp 3 permite separar la declaración física de una clase de la implementación de un
+NativeSharp permite separar la declaración física de una clase de la implementación de un
 trait sin crear un tipo, objeto ni tabla adicional:
 
 ```nativesharp
@@ -61,7 +61,7 @@ reutilizable de la plantilla en NSMETA; un consumidor separado obtiene la misma 
 
 ## English
 
-NativeSharp 3 can separate a class body from a trait implementation without creating another
+NativeSharp can separate a class body from a trait implementation without creating another
 type, object, or dispatch table. Members in an `impl` block are public contract witnesses even
 when `public` is omitted. They cannot be private/protected or introduce fields, constructors,
 destructors, or nested types.

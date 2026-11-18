@@ -2,7 +2,7 @@
 
 ## Español
 
-En edición 3, `expresion?` consume una `variant` compatible:
+En NativeSharp, `expresion?` consume una `variant` compatible:
 
 ```nativesharp
 variant Result<T, E> { Ok(T), Error(E) }
@@ -47,7 +47,7 @@ El `?` postfix y el ternario `?:` conviven. El parser conserva el ternario cuand
 
 ## English
 
-In edition 3, `expression?` consumes a compatible two-case variant with exactly `Ok(T)` and
+In NativeSharp, `expression?` consumes a compatible two-case variant with exactly `Ok(T)` and
 `Error(E)` payload cases. The contract is structural; the type does not need to be named `Result`.
 
 The carrier is evaluated once. The Ok edge yields `T`. The Error edge extracts `E`, applies an

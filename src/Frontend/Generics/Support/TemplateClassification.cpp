@@ -70,7 +70,7 @@ bool isStructuralGenericSurface(const ast::TypeSyntax* syntax) noexcept
     const std::size_t arity = syntax->typeArguments().size();
     if (syntax->isTuple()) return true;
     if (syntax->baseName() == "simd" || syntax->baseName() == "mask") return true;
-    if (syntax->baseName() == "Future") return arity == 1U;
+    if (syntax->baseName() == "Future") return arity == 1U || arity == 2U;
     if (syntax->baseName() == "Iterator") return arity == 1U || arity == 2U;
     return syntax->baseName() == "AsyncIterator" && arity == 2U;
 }

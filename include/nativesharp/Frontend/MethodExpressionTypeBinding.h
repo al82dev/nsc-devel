@@ -20,7 +20,7 @@ struct MethodExpressionTypeBinding final
     std::size_t methodMemberOrdinal = 0;
     std::size_t scopeOrdinal = 0;
     std::string typeKey;
-    // NativeSharp 3.0 T00-F03. This is the canonical value-category view consumed by
+    // NativeSharp T00-F03. This is the canonical value-category view consumed by
     // lowering/tooling. Ownership remains orthogonal: it explains who destroys a value, while
     // this field explains whether the expression denotes storage, a value, or a temporary.
     sema::ValueCategory valueCategory = sema::ValueCategory::Value;
@@ -43,7 +43,7 @@ struct MethodExpressionTypeBinding final
     // EN: Array whose initializer stored string literals: it does not own those slots (literals
     // last for the whole process), so `delete[]` releases the block only.
     bool borrowedElementSlots = false;
-    // NativeSharp 3.0 T03-F05. Flow facts belong to this exact expression occurrence.
+    // NativeSharp T03-F05. Flow facts belong to this exact expression occurrence.
     bool flowProvenNonNull = false;
     bool flowIntegerExcludesZero = false;
     std::optional<std::int64_t> flowIntegerMinimum;

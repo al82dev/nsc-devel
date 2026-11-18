@@ -1,0 +1,7 @@
+int Convert(i128 value) { return checked((int)value); }
+int Main()
+{
+    i128 value = (i128)2147483647 + (i128)1;
+    int result = Convert(value);
+    return result == 0 ? 1 : 2;
+}

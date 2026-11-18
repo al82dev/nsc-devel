@@ -19,7 +19,9 @@ int main()
         {ClassMemberKind::Constructor, "type:Math.Vector", ".ctor", ".ctor(int)", "?ctor", {}},
         {ClassMemberKind::Method, "type:Math.Vector", "Duplicate", "Duplicate()", "?dup1", {}},
         {ClassMemberKind::Method, "type:Math.Vector", "Duplicate", "Duplicate()", "?dup2", {}},
-        {ClassMemberKind::Method, "type:Math.Vector", "Ignored", "Ignored()", "", {}}};
+        {ClassMemberKind::Method, "type:Math.Vector", "Ignored", "Ignored()", "", {}},
+        {ClassMemberKind::Method, "type:Math.Box__g1__int__h1234567890abcdef", "Write",
+            "Write(int)", "", {}}};
 
     const PrecompiledMemberIdentityIndex index(identities);
     const auto exact = index.find(
@@ -40,6 +42,22 @@ int main()
         "indexed lookup preserves duplicate-identity diagnostics");
     tests.expect(index.indexedIdentityCount() == 5U && index.lookupCount() == 3U,
         "the table indexes every publishable identity once and performs one lookup per callable");
+
+    const PrecompiledMemberIdentityIndex contracts(identities, true);
+    const auto abstractMethod = contracts.find(
+        ClassMemberKind::Method, "type:Math.Vector", "Ignored", "Ignored()");
+    const auto abstractGeneric = contracts.findStructurally(
+        ClassMemberKind::Method, "type:Math.Box__g1__integer__h1234567890abcdef", "Write", "Write(int)");
+    const auto duplicateContract = contracts.find(
+        ClassMemberKind::Method, "type:Math.Vector", "Duplicate", "Duplicate()");
+    tests.expect(abstractMethod.kind == PrecompiledMemberIdentityMatchKind::Unique &&
+            abstractMethod.identity != nullptr && abstractMethod.identity->mangledName.empty(),
+        "contract lookup includes abstract members without physical symbols");
+    tests.expect(abstractGeneric.kind == PrecompiledMemberIdentityMatchKind::Unique &&
+            abstractGeneric.identity != nullptr && abstractGeneric.identity->mangledName.empty(),
+        "structural contract lookup includes generic abstract members");
+    tests.expect(duplicateContract.kind == PrecompiledMemberIdentityMatchKind::Ambiguous,
+        "contract lookup rejects ambiguous declarations");
 
     return tests.result();
 }

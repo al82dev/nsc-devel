@@ -77,6 +77,16 @@ std::span<const MethodNameBinding> ProjectMethodBodyModel::nameBindings() const 
     return nameBindings_;
 }
 
+std::span<const FnOnceCreationCandidate> ProjectMethodBodyModel::fnOnceCreationCandidates() const noexcept
+{
+    return fnOnceCreationCandidates_;
+}
+
+bool ProjectMethodBodyModel::fnOnceCreationCandidateLimitReached() const noexcept
+{
+    return fnOnceCreationCandidateLimitReached_;
+}
+
 const MethodNameBinding* ProjectMethodBodyModel::nameBinding(
     const ast::AstNode* syntax,
     std::size_t callableOrdinal) const noexcept
@@ -314,6 +324,11 @@ bool ProjectMethodBodyModel::callableBodyAnalyzed(std::size_t memberOrdinal) con
     return analyzedCallableMembers_.contains(memberOrdinal);
 }
 
+bool ProjectMethodBodyModel::verifiedNoEscapeOutImplementation(std::size_t memberOrdinal) const noexcept
+{
+    return verifiedNoEscapeOutImplementations_.contains(memberOrdinal);
+}
+
 bool ProjectMethodBodyModel::namespaceFunctionBodyAnalyzed(
     std::size_t functionOrdinal) const noexcept
 {
@@ -327,6 +342,78 @@ std::span<const language::EscapeClass> ProjectMethodBodyModel::parameterEscapeSu
     return callableOrdinal < parameterEscapeSummaries_.size()
         ? std::span<const language::EscapeClass>(parameterEscapeSummaries_[callableOrdinal])
         : std::span<const language::EscapeClass>(empty);
+}
+
+std::span<const std::vector<std::size_t>> ProjectMethodBodyModel::pointerOutputObjectOrigins(
+    std::size_t callableOrdinal) const noexcept
+{
+    return callableOrdinal < pointerOutputObjectOrigins_.size()
+        ? std::span<const std::vector<std::size_t>>(pointerOutputObjectOrigins_[callableOrdinal])
+        : std::span<const std::vector<std::size_t>>{};
+}
+
+std::span<const MethodDirectArrayReferenceWrite>
+ProjectMethodBodyModel::directArrayReferenceWrites(std::size_t callableOrdinal) const noexcept
+{
+    return callableOrdinal < directArrayReferenceWrites_.size()
+        ? std::span<const MethodDirectArrayReferenceWrite>(directArrayReferenceWrites_[callableOrdinal])
+        : std::span<const MethodDirectArrayReferenceWrite>{};
+}
+
+std::span<const MethodDirectArrayReferenceWrite>
+ProjectMethodBodyModel::arrayReferenceWriteSummary(std::size_t callableOrdinal) const noexcept
+{
+    return callableOrdinal < arrayReferenceWriteSummaries_.size()
+        ? std::span<const MethodDirectArrayReferenceWrite>(arrayReferenceWriteSummaries_[callableOrdinal])
+        : std::span<const MethodDirectArrayReferenceWrite>{};
+}
+
+bool ProjectMethodBodyModel::arrayReferenceWritesUnknown(std::size_t callableOrdinal) const noexcept
+{
+    return callableOrdinal >= arrayReferenceWritesUnknown_.size() ||
+        arrayReferenceWritesUnknown_[callableOrdinal];
+}
+
+ArrayReferenceOwnedEffect ProjectMethodBodyModel::arrayReferenceOwnedEffect(
+    std::size_t callableOrdinal, std::size_t parameterOrdinal) const noexcept
+{
+    return callableOrdinal < arrayReferenceOwnedEffects_.size() &&
+            parameterOrdinal < arrayReferenceOwnedEffects_[callableOrdinal].size()
+        ? arrayReferenceOwnedEffects_[callableOrdinal][parameterOrdinal]
+        : ArrayReferenceOwnedEffect::Unknown;
+}
+
+bool ProjectMethodBodyModel::arrayReferenceHasOnlyModeledPublication(
+    std::size_t callableOrdinal) const noexcept
+{
+    return callableOrdinal < arrayReferenceOnlyModeledPublication_.size() &&
+        arrayReferenceOnlyModeledPublication_[callableOrdinal];
+}
+
+bool ProjectMethodBodyModel::arrayReferencePrivateDefaultConstruction(
+    std::size_t typeOrdinal) const noexcept
+{
+    return typeOrdinal < arrayReferencePrivateDefaultConstruction_.size() &&
+        arrayReferencePrivateDefaultConstruction_[typeOrdinal];
+}
+
+bool ProjectMethodBodyModel::arrayReferenceLinearPublicationCoverage(
+    std::size_t callableOrdinal) const noexcept
+{
+    return callableOrdinal < arrayReferenceLinearPublicationCoverage_.size() &&
+        arrayReferenceLinearPublicationCoverage_[callableOrdinal];
+}
+
+std::span<const ArrayReferenceReplayObservation>
+ProjectMethodBodyModel::arrayReferenceReplayObservations() const noexcept
+{
+    return arrayReferenceReplayObservations_;
+}
+
+std::span<const ArrayReferenceForObservation>
+ProjectMethodBodyModel::arrayReferenceForObservations() const noexcept
+{
+    return arrayReferenceForObservations_;
 }
 
 const ProjectOwnershipFlowStatistics&

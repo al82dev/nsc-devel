@@ -292,6 +292,12 @@ void ProjectOopHirModel::scanParallelOrdinals(
         }
         if (current->hirRegionOrdinal.has_value())
             regionCount = std::max(regionCount, *current->hirRegionOrdinal + 1U);
+        // EN: LKF-380: an exit path (return, throw, structured exit) can name a synthetic region created
+        //     while lowering this body; it is counted and rebased like the region itself.
+        // ES: LKF-380: una ruta de salida (return, throw, salida estructurada) puede nombrar una región
+        //     sintética creada al bajar este cuerpo; se cuenta y se rebasa como la región misma.
+        for (const std::size_t ordinal : current->cleanupRegionOrdinals)
+            if (ordinal >= cleanupFloor) cleanupCount = std::max(cleanupCount, ordinal - cleanupFloor + 1U);
         for (auto child = current->children.rbegin(); child != current->children.rend(); ++child)
             stack.push_back(child->get());
     }
@@ -326,6 +332,10 @@ void ProjectOopHirModel::applyParallelOrdinalOffsets(
             *current->hirRegionOrdinal += regionOffset;
         if (current->exceptionTargetRegionOrdinal.has_value())
             *current->exceptionTargetRegionOrdinal += regionOffset;
+        // LKF-380: synthetic regions named by an exit path move with their region.
+        // LKF-380: las regiones sintéticas nombradas por una ruta de salida se mueven con su región.
+        for (std::size_t& ordinal : current->cleanupRegionOrdinals)
+            if (ordinal >= cleanupFloor) ordinal += cleanupOffset;
         for (auto child = current->children.rbegin(); child != current->children.rend(); ++child)
             stack.push_back(child->get());
     }
@@ -423,6 +433,7 @@ void ProjectOopHirModel::applyParallelOrdinalOffsets(
     case ProjectOopHirNodeKind::RangeArrayAllocation: return "range-array-allocation"; \
     case ProjectOopHirNodeKind::ArrayLength: return "array-length"; \
     case ProjectOopHirNodeKind::ArrayElementValue: return "array-element-value"; \
+    case ProjectOopHirNodeKind::SimdMaskElementValue: return "simd-mask-element-value"; \
     case ProjectOopHirNodeKind::ArrayElementAddress: return "array-element-address"; \
     case ProjectOopHirNodeKind::RangeArrayElementValue: return "range-array-element-value"; \
     case ProjectOopHirNodeKind::RangeArrayElementAddress: return "range-array-element-address"; \
@@ -657,7 +668,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
 
 std::string ProjectOopHirModel::mangleCallable(
     const NamedTypeDeclaration& type,
-    const ClassMemberSymbol& member)
+    const ClassMemberSymbol& member) const
 {
     const std::string prefix = member.kind == ClassMemberKind::Constructor
         ? (member.isStatic ? "__nsc_cctor_body_" : "__nsc_ctor_")
@@ -669,6 +680,47 @@ std::string ProjectOopHirModel::mangleCallable(
     // los simbolos ya existentes.
     std::string result = prefix + compilation::symbolFragmentForIdentityKey(type.identity.key()) +
         "__" + sanitize(member.name) + typeSuffix(member);
+    // LKF-062: overloads that differ only in the `owned`/`borrowed` qualifier of a parameter are
+    // distinct members that lower to the same machine signature, so they shared one symbol and the
+    // link failed with a duplicate definition. Only such a collision adds the qualifiers, so every
+    // other symbol keeps its name.
+    if (memberModel_ != nullptr && member.kind == ClassMemberKind::Method)
+    {
+        bool ownershipOverload = false;
+        for (const std::size_t siblingOrdinal : memberModel_->membersOfType(member.declaringTypeOrdinal))
+        {
+            if (siblingOrdinal >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& sibling = memberModel_->members()[siblingOrdinal];
+            if (&sibling == &member || sibling.kind != ClassMemberKind::Method || sibling.name != member.name ||
+                sibling.isStatic != member.isStatic || sibling.parameters.size() != member.parameters.size())
+                continue;
+            bool sameMachineSignature = true;
+            bool ownershipDiffers = false;
+            for (std::size_t index = 0; index < member.parameters.size(); ++index)
+            {
+                const MethodParameterSymbol& left = member.parameters[index];
+                const MethodParameterSymbol& right = sibling.parameters[index];
+                if (left.typeKey != right.typeKey || left.passKind != right.passKind)
+                {
+                    sameMachineSignature = false;
+                    break;
+                }
+                if (left.ownership != right.ownership) ownershipDiffers = true;
+            }
+            if (sameMachineSignature && ownershipDiffers)
+            {
+                ownershipOverload = true;
+                break;
+            }
+        }
+        for (std::size_t index = 0; ownershipOverload && index < member.parameters.size(); ++index)
+        {
+            const sema::OwnershipKind ownership = member.parameters[index].ownership;
+            result += ownership == sema::OwnershipKind::Owned ? "__p" + std::to_string(index) + "owned"
+                : ownership == sema::OwnershipKind::Borrowed ? "__p" + std::to_string(index) + "borrowed"
+                : std::string();
+        }
+    }
     if (member.isControlledSpecialization)
         result += "__specialize_" + stableSymbolSuffix(member.genericTemplateKey);
     return result;
@@ -856,9 +908,9 @@ bool ProjectOopHirModel::mergeParallelRegularFunctions(
     return true;
 }
 
-// EN: Freeze 3.0 C-05. A coroutine's body sits right after its wrapper: the poll (async, async
+// EN: Freeze C-05. A coroutine's body sits right after its wrapper: the poll (async, async
 //     generator) or the MoveNext (generator).
-// ES: Congelamiento 3.0 C-05. El cuerpo de una corrutina queda justo despues de su envoltorio: el
+// ES: Congelamiento C-05. El cuerpo de una corrutina queda justo despues de su envoltorio: el
 //     poll (async, generador async) o el MoveNext (generador).
 void ProjectOopHirModel::recordCoroutineBody(std::size_t wrapperIndex)
 {
@@ -887,8 +939,8 @@ bool ProjectOopHirModel::regularFunctionShouldBeSkipped(
         member.declaringTypeOrdinal < nameLookup_->namedTypes().size()
             ? nameLookup_->namedTypes()[member.declaringTypeOrdinal].syntax
             : nullptr;
-    // EN: Freeze 3.0 (item 130a): an instance constructor of a closed generic type is deferred too.
-    // ES: Congelamiento 3.0 (elemento 130a): un constructor de instancia de un tipo generico cerrado
+    // EN: Freeze (item 130a): an instance constructor of a closed generic type is deferred too.
+    // ES: Congelamiento (elemento 130a): un constructor de instancia de un tipo generico cerrado
     //     tambien se difiere.
     const bool deferredKind = (member.kind == ClassMemberKind::Method &&
         !member.isVirtual && !member.isOverride && !member.isAbstract) ||
@@ -1409,6 +1461,25 @@ bool ProjectOopHirModel::appendConstructorInitializerCall(
                     *initializerCall, *binding, selectedConstructor, error))
                 return false;
         }
+        // EN: LKF-346: a constructor written without an initializer calls base() implicitly. The
+        //     selected base constructor may take parameters with defaults; their values were not
+        //     passed and the LLVM verifier rejected the call ("Incorrect number of arguments").
+        // ES: LKF-346: un constructor escrito sin inicializador llama a base() de forma implícita. El
+        //     constructor base elegido puede tener parámetros con valor predeterminado; esos valores no
+        //     se pasaban y el verificador de LLVM rechazaba la llamada ("Incorrect number of arguments").
+        else if (binding->resolution == ConstructorInitializerResolutionKind::ResolvedExplicit &&
+                 binding->initializerSyntax == nullptr && !binding->selectedDefaultArguments.empty())
+        {
+            if (*binding->selectedEntryConstructorMemberOrdinal >= memberModel_->members().size())
+            {
+                error = "LKF-346 implicit base() call has no callable metadata";
+                return false;
+            }
+            if (!appendConstructorInitializerDefaults(
+                    *initializerCall, *binding,
+                    memberModel_->members()[*binding->selectedEntryConstructorMemberOrdinal], error))
+                return false;
+        }
         prefix.push_back(wrapFullExpressionCleanup(
             std::move(initializerCall), binding->initializerSyntax, hasOwnedTemporary));
     }
@@ -1442,6 +1513,10 @@ bool ProjectOopHirModel::appendConstructorFieldInitializerWork(
             {
                 appendInstanceFieldInitializers(typeOrdinal, prefix, error, memberOrdinal);
                 if (!error.empty()) return false;
+                auto completed = makeNode(ProjectOopHirNodeKind::Block, nullptr, "builtin:void");
+                completed->stringValue = "constructor.implicit.base.completed";
+                completed->targetTypeOrdinal = typeOrdinal;
+                prefix.push_back(std::move(completed));
             }
         }
         appendInstanceFieldInitializers(
@@ -1524,38 +1599,77 @@ void ProjectOopHirModel::promoteEligibleStackClassLocals(
     }
 }
 
-void ProjectOopHirModel::promoteScopeClassLocals(
-    const std::vector<ProjectOopHirNode*>& localDeclarations)
+bool ProjectOopHirModel::promoteScopeClassLocals(
+    const std::vector<ProjectOopHirNode*>& localDeclarations,
+    bool coroutine, std::string& error)
 {
     // NS304-T13-F03: `scope T x = new T(args)` forces frame storage even with constructor
     // arguments. Sema has already rejected escape, so the alloca cannot dangle.
     constexpr std::uint64_t kMaximumPromotedObjectBytes = std::uint64_t{1} << 20;
     for (ProjectOopHirNode* declaration : localDeclarations)
     {
+        const MethodLocalSymbol* implicitLocal = declaration != nullptr
+            ? localSymbol(declaration->syntax) : nullptr;
+        const ObjectConstructionBinding* implicitBinding = declaration != nullptr && declaration->syntax != nullptr
+            ? constructionBinding(declaration->syntax) : nullptr;
+        const bool requiresFrameObject = implicitLocal != nullptr && implicitLocal->isScope &&
+            declaration->syntax != nullptr && declaration->syntax->first() == nullptr &&
+            implicitBinding != nullptr && !implicitBinding->targetIsStruct;
+        // EN: A coroutine keeps the frame object's bytes in its own frame (doc 18).
+        // ES: Una corrutina guarda los bytes del objeto de marco en su propio frame (doc 18).
+        (void)coroutine;
         if (declaration == nullptr || !declaration->localOrdinal.has_value() ||
             declaration->children.size() != 1 || declaration->children.front() == nullptr)
+        {
+            if (requiresFrameObject)
+            {
+                error = "local class construction could not be placed in the frame";
+                return false;
+            }
             continue;
+        }
         ProjectOopHirNode* construction = declaration->children.front().get();
         if (construction->kind != ProjectOopHirNodeKind::ObjectConstruction ||
             !construction->constructionOrdinal.has_value() ||
             !construction->targetTypeOrdinal.has_value())
+        {
+            if (requiresFrameObject)
+            {
+                error = "local class construction lacks a frame-eligible constructor";
+                return false;
+            }
             continue;
+        }
         const MethodLocalSymbol* local = localSymbol(declaration->syntax);
         const std::size_t targetTypeOrdinal = *construction->targetTypeOrdinal;
         const ClassObjectLayout* layout = objectLayoutModel_ != nullptr
             ? objectLayoutModel_->layoutForType(targetTypeOrdinal) : nullptr;
+        const auto assessments = constructionModel_ != nullptr
+            ? constructionModel_->classConstructorReceiverAssessments()
+            : std::span<const ClassConstructorReceiverAssessment>{};
+        const bool provenImplicitBase = requiresFrameObject &&
+            *construction->constructionOrdinal < assessments.size() &&
+            assessments[*construction->constructionOrdinal] == ClassConstructorReceiverAssessment::NoEscape;
         if (local == nullptr || !local->isScope || local->isStatic || local->isReference ||
-            layout == nullptr || layout->baseTypeOrdinal.has_value() || layout->size == 0 ||
+            layout == nullptr || (layout->baseTypeOrdinal.has_value() && !provenImplicitBase) || layout->size == 0 ||
             layout->size > kMaximumPromotedObjectBytes ||
             targetTypeOrdinal >= nameLookup_->namedTypes().size() ||
             nameLookup_->namedTypes()[targetTypeOrdinal].isPrecompiled)
+        {
+            if (requiresFrameObject)
+            {
+                error = "local class layout cannot currently be placed in the frame";
+                return false;
+            }
             continue;
+        }
         declaration->stackPromotedObject = true;
         declaration->storageOwnership = sema::OwnershipKind::None;
         construction->stackPromotedObject = true;
         construction->localOrdinal = declaration->localOrdinal;
         construction->storageOwnership = sema::OwnershipKind::None;
     }
+    return true;
 }
 
 bool ProjectOopHirModel::validateNoHeapRegularFunction(
@@ -1688,7 +1802,9 @@ bool ProjectOopHirModel::buildRegularFunction(
     std::vector<ProjectOopHirNode*> localDeclarations;
     collectLocalDeclarations(function.body.get(), localDeclarations);
     promoteEligibleStackClassLocals(function, localDeclarations);
-    promoteScopeClassLocals(localDeclarations);
+    if (!promoteScopeClassLocals(localDeclarations,
+            function.effects.contains(sema::Effect::Async) ||
+                function.effects.contains(sema::Effect::Generator), error)) return false;
     if (!validateNoHeapRegularFunction(function, member, error)) return false;
     return appendRegularCoroutineFunctions(std::move(function), error);
 }
@@ -2635,9 +2751,24 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             std::make_move_iterator(cleanupNodes.begin()),
             std::make_move_iterator(cleanupNodes.end()));
     }
+    std::vector<ProjectOopHirNode*> localDeclarations;
+    collectLocalDeclarations(function.body.get(), localDeclarations);
+    if (!promoteScopeClassLocals(localDeclarations,
+            function.effects.contains(sema::Effect::Async) ||
+                function.effects.contains(sema::Effect::Generator), error)) return false;
     std::unique_ptr<ProjectOopHirFunction> poll;
+    std::unique_ptr<ProjectOopHirFunction> moveNext;
     std::unique_ptr<ProjectOopHirFunction> drop;
-    if (function.effects.contains(sema::Effect::Async))
+    if (function.effects.contains(sema::Effect::Generator) &&
+        function.effects.contains(sema::Effect::Async))
+    {
+        auto split = splitAsyncGeneratorFunction(function, error);
+        if (split.size() != 3U) return false;
+        moveNext = std::move(split[0]);
+        poll = std::move(split[1]);
+        drop = std::move(split[2]);
+    }
+    else if (function.effects.contains(sema::Effect::Async))
     {
         poll = splitAsyncFunction(function, error);
         if (poll == nullptr) return false;
@@ -2647,6 +2778,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
     functionByNamespaceFunction_[functionOrdinal] = wrapperIndex;
     functions_.push_back(std::move(function));
     if (poll) functions_.push_back(std::move(*poll));
+    if (moveNext) functions_.push_back(std::move(*moveNext));
     if (drop) functions_.push_back(std::move(*drop));
     recordCoroutineBody(wrapperIndex);
     return true;
@@ -2715,18 +2847,20 @@ bool ProjectOopHirModel::buildLambdaFunction(
     const MethodLambdaBinding& lambda,
     std::string& error)
 {
-    const auto memberCount = memberModel_->members().size();
-    const bool namespaceOwner = lambda.ownerMemberOrdinal >= memberCount;
-    if (namespaceOwner && (!namespaceFunctionModel_ ||
-        lambda.ownerMemberOrdinal - memberCount >= namespaceFunctionModel_->functions().size()))
+    const std::size_t memberCount = memberModel_->members().size();
+    const bool globalOwner = lambda.ownerMemberOrdinal >= memberCount &&
+        namespaceFunctionModel_ != nullptr &&
+        lambda.ownerMemberOrdinal - memberCount < namespaceFunctionModel_->functions().size();
+    if (lambda.ownerMemberOrdinal >= memberCount && !globalOwner)
     {
         error = "Stage 43 lambda owner member ordinal is invalid";
         return false;
     }
     ProjectOopHirFunction function;
     function.memberOrdinal = lambda.ownerMemberOrdinal;
-    function.declaringTypeOrdinal = namespaceOwner ? nameLookup_->namedTypes().size() :
-        memberModel_->members()[lambda.ownerMemberOrdinal].declaringTypeOrdinal;
+    function.declaringTypeOrdinal = globalOwner
+        ? nameLookup_->namedTypes().size()
+        : memberModel_->members()[lambda.ownerMemberOrdinal].declaringTypeOrdinal;
     function.isLambda = true;
     function.lambdaOrdinal = lambda.lambdaOrdinal;
     function.hasClosureEnvironment = !lambda.captures.empty();
@@ -2777,6 +2911,9 @@ bool ProjectOopHirModel::buildLambdaFunction(
     currentLambda_ = nullptr;
     if (function.body == nullptr || !error.empty()) return false;
     ownDroppableTemporaries(function.body.get());
+    std::vector<ProjectOopHirNode*> localDeclarations;
+    collectLocalDeclarations(function.body.get(), localDeclarations);
+    if (!promoteScopeClassLocals(localDeclarations, false, error)) return false;
     if (lambda.lambdaOrdinal >= functionByLambda_.size())
         functionByLambda_.resize(lambda.lambdaOrdinal + 1U);
     if (!functionByLambda_[lambda.lambdaOrdinal].has_value())
@@ -2817,6 +2954,14 @@ bool ProjectOopHirModel::markLambdaClosureCells(std::string& error)
                  functionByMember_[lambda.ownerMemberOrdinal].has_value())
         {
             creator = &functions_[*functionByMember_[lambda.ownerMemberOrdinal]];
+        }
+        else if (lambda.ownerMemberOrdinal >= memberModel_->members().size())
+        {
+            const std::size_t functionOrdinal = lambda.ownerMemberOrdinal - memberModel_->members().size();
+            if (functionOrdinal < functionByNamespaceFunction_.size() &&
+                functionByNamespaceFunction_[functionOrdinal].has_value() &&
+                *functionByNamespaceFunction_[functionOrdinal] < functions_.size())
+                creator = &functions_[*functionByNamespaceFunction_[functionOrdinal]];
         }
         if (creator == nullptr)
         {
@@ -2987,6 +3132,10 @@ bool ProjectOopHirModel::buildImplicitConstructor(
         {
             appendInstanceFieldInitializers(initializerType, function.body->children, error);
             if (!error.empty()) return false;
+            auto completed = makeNode(ProjectOopHirNodeKind::Block, nullptr, "builtin:void");
+            completed->stringValue = "constructor.implicit.base.completed";
+            completed->targetTypeOrdinal = initializerType;
+            function.body->children.push_back(std::move(completed));
         }
     }
     appendInstanceFieldInitializers(typeOrdinal, function.body->children, error);

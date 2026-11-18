@@ -79,10 +79,10 @@ struct ProjectOopMirNode final
     // `lock_` field's byte offset. See ProjectOopLlvmLowerer.cpp's CoreMonitorWait case for where
     // both offsets get consumed (two GEPs off one already-lowered receiver pointer).
     std::uint64_t secondaryImmediate = 0;
-    // EN: Freeze 3.0 D-01. In a poll, an operand evaluated next to a suspending await inside the
+    // EN: Freeze D-01. In a poll, an operand evaluated next to a suspending await inside the
     //     same statement keeps its value in this frame slot. Resuming re-enters the statement from
     //     its start; the operand then reads the slot instead of running its side effects again.
-    // ES: Congelamiento 3.0 D-01. En un poll, un operando evaluado junto a un await que suspende
+    // ES: Congelamiento D-01. En un poll, un operando evaluado junto a un await que suspende
     //     dentro de la misma sentencia guarda su valor en este slot del frame. Al reanudar se
     //     vuelve a entrar a la sentencia desde su inicio; el operando lee el slot en vez de repetir
     //     sus efectos.
@@ -124,9 +124,9 @@ struct ProjectOopMirNode final
     // Mirrors ProjectOopHirNode::referenceMutable for cache/debug consumers. LLVM intentionally
     // uses the same address representation for readonly and mutable aliases.
     bool referenceMutable = false;
-    // NativeSharp 3.0.4 T01-F06. Mirrors the HIR module-storage lifetime contract.
+    // NativeSharp T01-F06. Mirrors the HIR module-storage lifetime contract.
     bool staticLocal = false;
-    // NativeSharp 3.0 T06-F06. Mirrors the HIR pin contract through MIR and cache identity.
+    // NativeSharp T06-F06. Mirrors the HIR pin contract through MIR and cache identity.
     bool pinnedStorage = false;
     // Item 313. Mirrors ProjectOopHirNode::referenceResult for physical call ABI selection.
     bool referenceResult = false;
@@ -136,7 +136,7 @@ struct ProjectOopMirNode final
     bool nullConditionalCall = false;
     // Mirrors the setter-assignment value contract without changing the setter's void ABI.
     bool returnsAssignedValue = false;
-    // NativeSharp 3.0 T08-F06. A semantic requirement, not an optimizer hint.
+    // NativeSharp T08-F06. A semantic requirement, not an optimizer hint.
     bool mustTailCall = false;
     // Item 377. Retained for CodeView/PDB ownership and borrow visualization.
     sema::OwnershipKind ownership = sema::OwnershipKind::None;

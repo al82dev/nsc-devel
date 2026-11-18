@@ -16,7 +16,7 @@
     "lib/NativeSharp.Core.IO",
     "lib/NativeSharp.LLVM.C"
   ],
-  "expected_identity": "nsc-next 2.0.0-bootstrap.sh14 (NativeSharp 2.0.0, promotion candidate)",
+  "expected_identity": "nsc-next 1.0.0-bootstrap.sh14 (NativeSharp 1.0.0, promotion candidate)",
   "identity_policy": {
     "objects": "byte-identical nsc3/nsc4 and across repetitions",
     "images": "byte-identical per linker nsc3/nsc4 and across repetitions",

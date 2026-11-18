@@ -1,4 +1,4 @@
-# NativeSharp 3.0 — Parámetros variádicos tipados / Typed parameter packs
+# NativeSharp — Parámetros variádicos tipados / Typed parameter packs
 
 ## Español
 

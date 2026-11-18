@@ -164,6 +164,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 ? optionalCarrier->valueTypeKey : left.typeKey;
             const ProjectImplicitConversion conversion = classifyImplicit(
                 right.typeKey, resultType, right.integerConstant);
+            if (right.readonlyBorrowedObject && conversion.userDefinedMemberOrdinal.has_value())
+            {
+                diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+                    diagnostics::DiagnosticSeverity::Error, expression->second()->range(),
+                    "readonly borrowed object cannot invoke an unchecked implicit conversion");
+                break;
+            }
             if (!conversion.exists())
             {
                 diagnostics.report(
@@ -228,10 +235,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 result.pointerAddressSpace = left.pointerAddressSpace;
                 result.onePastEndPointer = left.onePastEndPointer || right.onePastEndPointer;
             }
-            // EN: Freeze 3.0 (plan item 135): the result may be either operand, so it keeps a borrow of either.
-            // ES: Congelamiento 3.0 (elemento 135 del plan): el resultado puede ser cualquier operando, asi que
+            // EN: Freeze (plan item 135): the result may be either operand, so it keeps a borrow of either.
+            // ES: Congelamiento (elemento 135 del plan): el resultado puede ser cualquier operando, asi que
             //     conserva el prestamo de cualquiera.
             result.borrowsOwnedTemporary = left.borrowsOwnedTemporary || right.borrowsOwnedTemporary;
+            result.readonlyBorrowedObject = left.readonlyBorrowedObject || right.readonlyBorrowedObject;
+            if (result.readonlyBorrowedObject)
+            {
+                result.readonlyReceiver = true;
+                result.ownership = sema::OwnershipKind::Borrowed;
+            }
             break;
         }
         default:
@@ -264,13 +277,52 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             {
                 const ast::AstNode* element = expression->children()[index];
                 const ExpressionResult value = analyzeExpression(
-                    element, methodMemberOrdinal, scopeOrdinal, diagnostics);
+                    element, methodMemberOrdinal, scopeOrdinal, diagnostics,
+                    false, false, allowMove && element->kind() == ast::AstNodeKind::MoveExpression);
                 valid = valid && value.valid;
                 if (value.pointerPointeeVolatile)
                 {
                     diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
                         diagnostics::DiagnosticSeverity::Error, element->range(),
                         "tuple element cannot yet preserve pointer pointee volatile qualification");
+                    valid = false;
+                }
+                if (value.valid && value.addressable && memberModel_ != nullptr &&
+                    memberModel_->typeIsMoveOnly(value.typeKey) &&
+                    element->kind() != ast::AstNodeKind::MoveExpression)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error,
+                        element->range(),
+                        "move-only value cannot be copied into a tuple element");
+                    valid = false;
+                }
+                if (value.valid && value.readonlyBorrowedObject)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        element->range(),
+                        "readonly borrowed value cannot be stored in a tuple without lifetime tracking");
+                    valid = false;
+                }
+                // EN: LKF-388: a tuple element holds a class reference and never destroys it, so a new
+                //     object or a transferred owner stored there leaked: `(new P(), 1)` ran no destructor.
+                // ES: LKF-388: un elemento de tupla guarda una referencia de clase y nunca la destruye, así
+                //     que un objeto nuevo o un dueño transferido guardado ahí se perdía: `(new P(), 1)` no
+                //     corría ningún destructor.
+                if (value.valid && typeKeyIsOwnable(value.typeKey) &&
+                    (memberModel_ == nullptr || !memberModel_->typeIsMoveOnly(value.typeKey)) &&
+                    (value.ownershipFreshOwner ||
+                     (value.ownership == sema::OwnershipKind::Owned && value.ownershipTransfer)))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::LostOwnership,
+                        diagnostics::DiagnosticSeverity::Error,
+                        element->range(),
+                        "an owner cannot be stored in a tuple element: a tuple does not destroy the objects its "
+                        "elements refer to; keep the owner in a raii local or in a struct with an owned field");
                     valid = false;
                 }
                 elementTypeKeys.push_back(value.valid ? value.typeKey : std::string("<error>"));
@@ -502,6 +554,13 @@ void ProjectMethodBodyModel::analyzeConditionalBranches(
     // tapaba el bug del analisis.
     const ExpressionResult condition = analyzeExpression(
         expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+    const auto maskCondition = language::parsePortableSimdType(condition.typeKey);
+    if (condition.valid && maskCondition.has_value() && maskCondition->mask)
+    {
+        whenTrue = analyzeExpression(expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        whenFalse = analyzeExpression(expression->third(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        return;
+    }
     if (condition.valid && condition.typeKey != "builtin:bool" &&
         condition.typeKey != "builtin:never")
     {
@@ -747,6 +806,34 @@ void ProjectMethodBodyModel::resolveConditionalSpecialType(
         // llevan ownership. No hay nada que fusionar.
         return;
     }
+    // EN: Two class branches where one converts implicitly to the other join at that other class:
+    //     `c ? (B)new D1() : new D2()` was rejected although D2 is a B (LKF-312). Class references
+    //     share one representation, so no branch conversion is needed. The join is not searched
+    //     further: `c ? new D1() : new D2()` still needs one branch written as the base.
+    // ES: Dos ramas de clase donde una convierte implícitamente a la otra se unen en esa otra:
+    //     `c ? (B)new D1() : new D2()` se rechazaba aunque D2 es un B (LKF-312). Las referencias de
+    //     clase comparten representación, así que ninguna rama necesita conversión. No se busca un
+    //     ancestro común: `c ? new D1() : new D2()` sigue necesitando una rama escrita como la base.
+    const auto classOrdinal = [&](const std::string& typeKey)
+    {
+        const std::optional<std::size_t> ordinal = referenceTypeOrdinalForTypeKey(typeKey);
+        return ordinal.has_value() && inheritanceModel_ != nullptr && inheritanceModel_->isClass(*ordinal)
+            ? ordinal : std::nullopt;
+    };
+    if (classOrdinal(whenTrue.typeKey).has_value() && classOrdinal(whenFalse.typeKey).has_value())
+    {
+        const ProjectImplicitConversion falseToTrue = classifyImplicit(whenFalse.typeKey, whenTrue.typeKey);
+        const ProjectImplicitConversion trueToFalse = classifyImplicit(whenTrue.typeKey, whenFalse.typeKey);
+        const bool toTrue = falseToTrue.exists() && !falseToTrue.userDefinedMemberOrdinal.has_value();
+        const bool toFalse = trueToFalse.exists() && !trueToFalse.userDefinedMemberOrdinal.has_value();
+        if (toTrue != toFalse)
+        {
+            result.typeKey = toTrue ? whenTrue.typeKey : whenFalse.typeKey;
+            result.valid = true;
+            mergeConditionalOwnership(result, whenTrue, whenFalse);
+            return;
+        }
+    }
     diagnostics.report(
         diagnostics::DiagnosticId::InvalidOperand,
         diagnostics::DiagnosticSeverity::Error,
@@ -794,14 +881,52 @@ ProjectMethodBodyModel::analyzeExpressionKindConditionalExpression(
                 branch->cppFlexibleArrayMember = false;
                 branch->cppVolatilePointeeContract = branch->pointerPointeeVolatile;
             }
+    const MethodExpressionTypeBinding* conditionBinding =
+        expressionTypeBinding(expression->first(), methodMemberOrdinal);
+    const auto maskCondition = conditionBinding != nullptr
+        ? language::parsePortableSimdType(conditionBinding->typeKey) : std::nullopt;
+    if (maskCondition.has_value() && maskCondition->mask)
+    {
+        const auto branchType = language::parsePortableSimdType(whenTrue.typeKey);
+        if (!branchType.has_value() || whenTrue.typeKey != whenFalse.typeKey ||
+            branchType->laneTypeKey != maskCondition->laneTypeKey ||
+            branchType->laneCount != maskCondition->laneCount)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "SIMD mask selection requires matching lane types and counts");
+            return result;
+        }
+        result.typeKey = whenTrue.typeKey;
+        result.valid = true;
+        return result;
+    }
     if (!resolveConditionalDivergence(result, whenTrue, whenFalse) &&
         !resolveConditionalMatchingType(result, expression, whenTrue, whenFalse, diagnostics))
         resolveConditionalSpecialType(result, expression, whenTrue, whenFalse, diagnostics);
-    // EN: Freeze 3.0 (plan item 135): the result is one branch or the other, so it keeps a borrow of either.
-    // ES: Congelamiento 3.0 (elemento 135 del plan): el resultado es una rama o la otra, asi que conserva el
+    if (result.valid && memberModel_ != nullptr && memberModel_->typeIsMoveOnly(result.typeKey) &&
+        (whenTrue.addressable || whenFalse.addressable))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "move-only value cannot be copied by a conditional expression");
+        result.valid = false;
+        return result;
+    }
+    // EN: Freeze (plan item 135): the result is one branch or the other, so it keeps a borrow of either.
+    // ES: Congelamiento (elemento 135 del plan): el resultado es una rama o la otra, asi que conserva el
     //     prestamo de cualquiera.
     result.borrowsOwnedTemporary =
         result.valid && (whenTrue.borrowsOwnedTemporary || whenFalse.borrowsOwnedTemporary);
+    result.readonlyBorrowedObject = result.valid &&
+        (whenTrue.readonlyBorrowedObject || whenFalse.readonlyBorrowedObject);
+    if (result.readonlyBorrowedObject)
+    {
+        result.readonlyReceiver = true;
+        result.ownership = sema::OwnershipKind::Borrowed;
+    }
     return result;
 }
 }

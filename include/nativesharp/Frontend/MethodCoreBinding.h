@@ -100,6 +100,11 @@ struct MethodCoreBinding final
     std::array<std::size_t, 3> builderMemberOrdinals{};
     // Present for a C++ array view whose physical layout differs from its logical type.
     std::optional<std::uint64_t> cppPhysicalLayoutQueryValue{};
+    // EN: LKF-314: an InterpolationHandler carries the AppendFormatted overload chosen for each
+    //     hole, in source order; builderMemberOrdinals[1] stays the first declared overload.
+    // ES: LKF-314: un InterpolationHandler lleva la sobrecarga de AppendFormatted elegida para cada
+    //     hueco, en orden de fuente; builderMemberOrdinals[1] sigue siendo la primera declarada.
+    std::vector<std::size_t> interpolationHoleMemberOrdinals{};
 
 };
 }

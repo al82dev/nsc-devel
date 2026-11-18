@@ -31,7 +31,7 @@ int main(int argc, char** argv)
         std::vector<CppCRecordSnapshot> records;
         std::vector<CppCEnumSnapshot> enums;
         metadata_detail::CDependencyCatalog dependencies;
-        if (!metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog, metadata.formatMinor,
+        if (!metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog,
                 records, enums, dependencies, error)) return 224;
         bool changed = false;
         if (std::string_view(argv[3]) == "syntax")
@@ -61,7 +61,7 @@ int main(int argc, char** argv)
         std::vector<CppCRecordSnapshot> records;
         std::vector<CppCEnumSnapshot> enums;
         metadata_detail::CDependencyCatalog dependencies;
-        if (!metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog, metadata.formatMinor,
+        if (!metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog,
                 records, enums, dependencies, error))
         { std::cerr << error << '\n'; return 221; }
         bool recordFound = false;
@@ -87,7 +87,7 @@ int main(int argc, char** argv)
         std::vector<CppCRecordSnapshot> records;
         std::vector<CppCEnumSnapshot> enums;
         metadata_detail::CDependencyCatalog dependencies;
-        if (!metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog, metadata.formatMinor,
+        if (!metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog,
                 records, enums, dependencies, error))
         { std::cerr << error << '\n'; return 47; }
         for (const auto& alias : dependencies.aliases)

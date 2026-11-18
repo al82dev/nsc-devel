@@ -3,10 +3,139 @@
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
+#include "nativesharp/Language/CoroutineSemantics.h"
 
 namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
+
+namespace
+{
+// Narrow experimental subset: plain local-owner destruction and simple
+// finally statements. Unknown node kinds keep the existing unwind path.
+bool supportsAsyncCallCleanup(const frontend::ProjectOopMirNode* cleanup)
+{
+    using K = frontend::ProjectOopMirNodeKind;
+    if (cleanup == nullptr) return false;
+    if (cleanup->kind == K::LocalDeclaration && cleanup->cleanupRegionOrdinal.has_value()) return true;
+    if (cleanup->kind != K::FinallyRegion || cleanup->children.empty() || cleanup->children.size() > 2 ||
+        !cleanup->children.front() ||
+        (cleanup->children.size() == 2 && (!cleanup->children[1] ||
+          cleanup->children[1]->kind != K::CleanupContinuation)))
+        return false;
+    std::vector<const frontend::ProjectOopMirNode*> work{cleanup->children.front().get()};
+    while (!work.empty())
+    {
+        const auto* node = work.back(); work.pop_back();
+        if (!node) return false;
+        switch (node->kind)
+        {
+        case K::LocalDeclaration:
+            if (node->typeKey != "builtin:int" || node->cleanupRegionOrdinal.has_value() ||
+                node->objectLifetimeOwnership != sema::OwnershipKind::None ||
+                node->storageOwnership != sema::OwnershipKind::None) return false;
+            break;
+        case K::LocalValue:
+            if (node->typeKey != "builtin:int") return false;
+            break;
+        case K::AwaitFuture:
+            if (!language::futureInnerTypeKey(node->elementTypeKey).has_value() ||
+                language::futureErrorTypeKey(node->elementTypeKey).has_value()) return false;
+            break;
+        case K::AsyncYieldValue:
+            if (node->children.size() != 1 || !node->children.front() ||
+                node->children.front()->kind != K::IntegerConstant ||
+                node->children.front()->typeKey != "builtin:int") return false;
+            break;
+        case K::Block: case K::ExpressionStatement: case K::Store:
+        case K::StaticFieldAddress: case K::StaticFieldLoad: case K::IntegerConstant:
+        case K::Binary: case K::DirectStaticCall: case K::CleanupContinuation:
+            break;
+        default: return false;
+        }
+        for (const auto& child : node->children) work.push_back(child.get());
+    }
+    return true;
+}
+
+bool supportsMovedValueFinally(const frontend::ProjectOopMirNode* cleanup,
+                               const frontend::ProjectMemberModel* members,
+                               const OopLlvmCoroutineState& state)
+{
+    using K = frontend::ProjectOopMirNodeKind;
+    if (cleanup == nullptr || members == nullptr || cleanup->kind != K::FinallyRegion ||
+        cleanup->children.empty() || cleanup->children.size() > 2U || cleanup->children[0] == nullptr ||
+        (cleanup->children.size() == 2U && (cleanup->children[1] == nullptr ||
+         cleanup->children[1]->kind != K::CleanupContinuation))) return false;
+    std::unordered_map<std::size_t, std::string> locals;
+    using Entry = std::pair<const frontend::ProjectOopMirNode*, const frontend::ProjectOopMirNode*>;
+    std::vector<Entry> nodes{{cleanup->children[0].get(), cleanup}};
+    for (std::size_t i = 0; i < nodes.size(); ++i)
+    {
+        const auto* node = nodes[i].first;
+        if (node == nullptr) return false;
+        if (node->kind == K::LocalDeclaration)
+        {
+            if (!node->localOrdinal.has_value() || !node->cleanupRegionOrdinal.has_value() ||
+                !members->typeRequiresValueDrop(node->typeKey) || node->children.size() != 1U ||
+                node->children[0] == nullptr || node->children[0]->kind != K::ValueConstruct ||
+                node->children[0]->memberOrdinal.has_value() || !node->children[0]->children.empty() ||
+                !locals.emplace(*node->localOrdinal, node->typeKey).second) return false;
+        }
+        for (const auto& child : node->children) nodes.emplace_back(child.get(), node);
+    }
+    bool moved = false;
+    for (const auto& [node, parent] : nodes)
+    {
+        switch (node->kind)
+        {
+        case K::AsyncYieldValue:
+            if (node->children.size() != 1U || node->children[0] == nullptr ||
+                node->children[0]->kind != K::MoveValue || !state.yieldDiscardPlans.contains(node)) return false;
+            moved = true;
+            break;
+        case K::MoveValue:
+            if (parent == nullptr || parent->kind != K::AsyncYieldValue || !node->children.empty() ||
+                !node->localOrdinal.has_value() || !locals.contains(*node->localOrdinal) ||
+                locals.at(*node->localOrdinal) != node->typeKey) return false;
+            break;
+        case K::LocalAddress:
+            if (parent == nullptr || parent->kind != K::FieldAddress || !node->children.empty() ||
+                !node->localOrdinal.has_value() || !locals.contains(*node->localOrdinal)) return false;
+            break;
+        case K::AllocateAndConstruct:
+            if (parent == nullptr || parent->kind != K::Store || parent->children.size() != 2U ||
+                parent->children[1].get() != node || !node->children.empty() || !node->memberOrdinal.has_value() ||
+                node->objectLifetimeOwnership != sema::OwnershipKind::Owned ||
+                node->storageOwnership != sema::OwnershipKind::Owned) return false;
+            break;
+        case K::ValueConstruct:
+            if (parent == nullptr || parent->kind != K::LocalDeclaration || node->typeKey != parent->typeKey)
+                return false;
+            break;
+        case K::FieldAddress:
+            if (parent == nullptr || parent->kind != K::Store || parent->children.size() != 2U ||
+                parent->children[0].get() != node || node->children.size() != 1U ||
+                node->children[0] == nullptr || node->children[0]->kind != K::LocalAddress ||
+                !node->memberOrdinal.has_value() || *node->memberOrdinal >= members->members().size() ||
+                members->members()[*node->memberOrdinal].declaredOwnership != sema::OwnershipKind::Owned)
+                return false;
+            break;
+        case K::Store:
+            if (node->children.size() != 2U || node->children[0] == nullptr || node->children[1] == nullptr ||
+                (node->children[0]->kind != K::StaticFieldAddress &&
+                 (node->children[0]->kind != K::FieldAddress ||
+                  node->children[1]->kind != K::AllocateAndConstruct))) return false;
+            break;
+        case K::LocalDeclaration: case K::Block: case K::ExpressionStatement:
+        case K::StaticFieldAddress: case K::StaticFieldLoad: case K::IntegerConstant:
+        case K::Binary: break;
+        default: return false;
+        }
+    }
+    return moved;
+}
+}
 
 void OopLlvmImplementation::emitCleanupGuardBranch(
         LLVMValueRef ownerStorage,
@@ -75,6 +204,11 @@ LLVMValueRef OopLlvmImplementation::buildInvokeInCurrentFunclet(
         LLVMBasicBlockRef unwindBlock,
         const char* name)
 {
+        // NSC-NEW-013: every invoke needs the function's personality; see emitExceptionalCleanupChain.
+        // NSC-NEW-013: todo invoke necesita la personalidad de la función; ver
+        // emitExceptionalCleanupChain.
+        if (currentFunction_ != nullptr && sehPersonalityFunction_ != nullptr)
+            LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
         LLVMValueRef pad = activeFuncletPad();
         if (pad == nullptr)
         {
@@ -99,6 +233,16 @@ LLVMBasicBlockRef OopLlvmImplementation::emitExceptionalCleanupChain(
         std::string& error)
 {
         if (cleanupPath.empty()) return finalUnwindTarget;
+        // EN: NSC-NEW-013: a cleanup chain can be the first exceptional construct of a function (the
+        //     previous element of an array of shared owners is released on overwrite). Its
+        //     cleanuppads were built in a function without a personality, which the LLVM verifier
+        //     rejects. The chain sets the SEH personality itself.
+        // ES: NSC-NEW-013: una cadena de limpieza puede ser la primera construcción excepcional de una
+        //     función (el elemento anterior de un arreglo de dueños compartidos se libera al
+        //     sobrescribirlo). Sus cleanuppads se construían en una función sin personalidad, que el
+        //     verificador LLVM rechaza. La cadena fija ella misma la personalidad SEH.
+        if (currentFunction_ != nullptr && sehPersonalityFunction_ != nullptr)
+            LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
         LLVMBasicBlockRef sourceBlock = LLVMGetInsertBlock(builder_);
         if (sourceBlock == nullptr)
         {
@@ -174,7 +318,29 @@ LLVMBasicBlockRef OopLlvmImplementation::emitExceptionalCleanupChain(
             funcletStack_.push_back(FuncletContext{
                 cleanupPad, FuncletKind::Cleanup, regionIndex, nullptr, next});
 
-            if (!emitCleanupAction(ordinal, error))
+            const auto actionNode = cleanupRegions_.find(ordinal);
+            const bool synchronousYieldCleanup = coroutine_.asyncGenerator &&
+                actionNode != cleanupRegions_.end() &&
+                supportsMovedValueFinally(actionNode->second, memberModel_, coroutine_);
+            const bool savedCancellationCleanup = coroutine_.emittingCancellationCleanup;
+            const bool savedSynchronousCleanup = coroutine_.synchronousFuncletCleanup;
+            if (synchronousYieldCleanup)
+            {
+                coroutine_.emittingCancellationCleanup = true;
+                coroutine_.synchronousFuncletCleanup = true;
+            }
+            // NSC-NEW-005: the same condition as catchFinally below. / NSC-NEW-005: la misma condición
+            // que catchFinally más abajo.
+            const bool foreignFinallyOnly = !coroutine_.active && parentPad == nullptr &&
+                actionNode != cleanupRegions_.end() && actionNode->second != nullptr &&
+                actionNode->second->kind == frontend::ProjectOopMirNodeKind::FinallyRegion;
+            const bool savedForeignFallback = foreignFinallyFallback_;
+            if (foreignFinallyOnly) foreignFinallyFallback_ = true;
+            const bool cleaned = emitCleanupAction(ordinal, error);
+            foreignFinallyFallback_ = savedForeignFallback;
+            coroutine_.emittingCancellationCleanup = savedCancellationCleanup;
+            coroutine_.synchronousFuncletCleanup = savedSynchronousCleanup;
+            if (!cleaned)
             {
                 activeCleanupRegions_ = savedActive;
                 funcletStack_ = savedFunclets;
@@ -184,6 +350,134 @@ LLVMBasicBlockRef OopLlvmImplementation::emitExceptionalCleanupChain(
             if (!terminated())
             {
                 LLVMBuildCleanupRet(builder_, cleanupPad, next);
+            }
+
+            // A NativeSharp exception can be caught outside the native cleanup funclet,
+            // giving a synchronous finally explicit ownership until it completes or replaces it.
+            // Foreign exceptions retain the original native cleanup as the fallback.
+            const auto action = cleanupRegions_.find(ordinal);
+            const bool catchFinally = !coroutine_.active && parentPad == nullptr &&
+                action != cleanupRegions_.end() && action->second != nullptr &&
+                action->second->kind == frontend::ProjectOopMirNodeKind::FinallyRegion;
+            if (catchFinally)
+            {
+                funcletStack_.clear();
+                activeCleanupRegions_.clear();
+                for (std::size_t index = 0; index < regionIndex; ++index)
+                    activeCleanupRegions_.push_back(savedActive[index]);
+                LLVMBasicBlockRef dispatch = appendBlock("eh.finally.catch");
+                LLVMBasicBlockRef handler = appendBlock("eh.finally.catch.pad");
+                LLVMBasicBlockRef body = appendBlock("eh.finally.catch.body");
+                enterBlock(dispatch);
+                LLVMValueRef catches = LLVMBuildCatchSwitch(builder_, nullptr, block, 1, "eh.finally.switch");
+                LLVMAddHandler(catches, handler);
+                enterBlock(handler);
+                LLVMValueRef filter[] = {ehFilterFunction_};
+                LLVMValueRef pad = LLVMBuildCatchPad(builder_, catches, filter, 1, "eh.finally.pad");
+                LLVMBuildCatchRet(builder_, pad, body);
+                enterBlock(body);
+                LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                LLVMValueRef owner = entryBlockAlloca(ptr, 8U, "eh.finally.owner");
+                LLVMValueRef caught = buildNoUnwindCall(
+                    exceptionCurrentFunctionType_, exceptionCurrentFunction_, nullptr, 0,
+                    "eh.finally.exception");
+                LLVMBuildStore(builder_, caught, owner);
+                LLVMBasicBlockRef replacementDispatch = appendBlock("eh.finally.replacement.dispatch");
+                exceptionHandlerStack_.push_back(ExceptionHandlerContext{
+                    0, replacementDispatch, activeCleanupRegions_.size(), funcletStack_.size()});
+                activeCatchExceptions_.push_back(ActiveCatchBody{
+                    caught, loopStack_.size(), owner, exceptionHandlerStack_.size(),
+                    activeCleanupRegions_.size()});
+                const bool completed = emitCleanupAction(ordinal, error);
+                activeCatchExceptions_.pop_back();
+                exceptionHandlerStack_.pop_back();
+                if (!completed)
+                {
+                    activeCleanupRegions_ = savedActive;
+                    funcletStack_ = savedFunclets;
+                    enterBlock(sourceBlock);
+                    return nullptr;
+                }
+                if (!terminated())
+                {
+                    LLVMValueRef pending = LLVMBuildLoad2(builder_, ptr, owner, "eh.finally.pending");
+                    LLVMBuildStore(builder_, LLVMConstNull(ptr), owner);
+                    LLVMValueRef arguments[] = {pending};
+                    if (next == nullptr)
+                        buildNoUnwindCall(nativeThrowFunctionType_, nativeThrowFunction_, arguments, 1, "");
+                    else
+                    {
+                        LLVMBasicBlockRef unreachable = appendBlock("eh.finally.throw.unreachable");
+                        buildInvokeInCurrentFunclet(nativeThrowFunctionType_, nativeThrowFunction_,
+                            arguments, 1, unreachable, next, "");
+                        enterBlock(unreachable);
+                    }
+                    emitThrowReturnedTrap();
+                }
+                enterBlock(replacementDispatch);
+                LLVMBasicBlockRef foreignCleanup = appendBlock("eh.finally.foreign.release");
+                LLVMValueRef replacementSwitch = LLVMBuildCatchSwitch(
+                    builder_, nullptr, foreignCleanup, 1, "eh.finally.replacement.switch");
+                LLVMBasicBlockRef replacementPadBlock = appendBlock("eh.finally.replacement.pad");
+                LLVMBasicBlockRef replacementBody = appendBlock("eh.finally.replacement.body");
+                LLVMAddHandler(replacementSwitch, replacementPadBlock);
+                enterBlock(replacementPadBlock);
+                LLVMValueRef replacementFilter[] = {ehFilterFunction_};
+                LLVMValueRef replacementPad = LLVMBuildCatchPad(
+                    builder_, replacementSwitch, replacementFilter, 1, "eh.finally.replacement.catch");
+                LLVMBuildCatchRet(builder_, replacementPad, replacementBody);
+                enterBlock(replacementBody);
+                LLVMValueRef replacement = buildNoUnwindCall(
+                    exceptionCurrentFunctionType_, exceptionCurrentFunction_, nullptr, 0,
+                    "eh.finally.replacement.exception");
+                if (!emitCaughtExceptionRelease(owner, error))
+                {
+                    activeCleanupRegions_ = savedActive;
+                    funcletStack_ = savedFunclets;
+                    enterBlock(sourceBlock);
+                    return nullptr;
+                }
+                if (!terminated())
+                {
+                    LLVMValueRef arguments[] = {replacement};
+                    if (next == nullptr)
+                        buildNoUnwindCall(nativeThrowFunctionType_, nativeThrowFunction_, arguments, 1, "");
+                    else
+                    {
+                        LLVMBasicBlockRef unreachable = appendBlock("eh.finally.replacement.unreachable");
+                        buildInvokeInCurrentFunclet(nativeThrowFunctionType_, nativeThrowFunction_,
+                            arguments, 1, unreachable, next, "");
+                        enterBlock(unreachable);
+                    }
+                    emitThrowReturnedTrap();
+                }
+                // A foreign replacement is not accepted by the NativeSharp filter. Release
+                // the original exception while preserving the foreign unwind destination.
+                enterBlock(foreignCleanup);
+                LLVMValueRef foreignPad = LLVMBuildCleanupPad(
+                    builder_, nullptr, nullptr, 0, "eh.finally.foreign.pad");
+                if (foreignPad == nullptr)
+                {
+                    activeCleanupRegions_ = savedActive;
+                    funcletStack_ = savedFunclets;
+                    enterBlock(sourceBlock);
+                    error = "Stage 45.10 failed to create foreign finally cleanup";
+                    return nullptr;
+                }
+                funcletStack_.push_back(FuncletContext{
+                    foreignPad, FuncletKind::Cleanup, activeCleanupRegions_.size(), nullptr, next});
+                buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
+                const bool foreignReleased = emitCaughtExceptionRelease(owner, error);
+                funcletStack_.pop_back();
+                if (!foreignReleased)
+                {
+                    activeCleanupRegions_ = savedActive;
+                    funcletStack_ = savedFunclets;
+                    enterBlock(sourceBlock);
+                    return nullptr;
+                }
+                if (!terminated()) LLVMBuildCleanupRet(builder_, foreignPad, next);
+                block = dispatch;
             }
 
             cleanupChainCache_[ordinal] = CachedCleanup{parentPad, next, block};
@@ -236,10 +530,17 @@ bool OopLlvmImplementation::resolveExceptionalCleanupPath(
         return true;
     }
 
-LLVMBasicBlockRef OopLlvmImplementation::buildCurrentUnwindDestination(std::string& error)
+LLVMBasicBlockRef OopLlvmImplementation::buildCurrentUnwindDestination(
+        std::string& error, const frontend::ProjectOopMirNode* callSite)
 {
         std::size_t retainedDepth = 0;
         LLVMBasicBlockRef finalTarget = nullptr;
+
+        // A snapshot is present only for an explicitly identified async call.
+        // A present but empty path is distinct from an unannotated call.
+        std::optional<std::vector<std::size_t>> asyncCallCleanup;
+        if (coroutine_.active && callSite != nullptr)
+            asyncCallCleanup.emplace(activeCleanupRegions_.rbegin(), activeCleanupRegions_.rend());
 
         const bool hasLocalHandler = !exceptionHandlerStack_.empty() &&
             exceptionHandlerStack_.back().funcletDepthAtEntry == funcletStack_.size();
@@ -261,6 +562,219 @@ LLVMBasicBlockRef OopLlvmImplementation::buildCurrentUnwindDestination(std::stri
         {
             finalTarget = staticInitializationFailureUnwindBlock_;
         }
+        if (asyncCallCleanup.has_value() && retainedDepth > 0)
+            asyncCallCleanup->resize(activeCleanupRegions_.size() - retainedDepth);
+
+        // Experimental catch-before-cleanup route. A foreign or incompatible
+        // exception enters the unchanged native cleanup chain instead.
+        constexpr std::size_t maxExperimentalCleanupRegions = 8;
+        bool supportedPath = asyncCallCleanup.has_value() && !asyncCallCleanup->empty() &&
+            asyncCallCleanup->size() <= maxExperimentalCleanupRegions &&
+            (hasLocalHandler || finalTarget == nullptr) && funcletStack_.empty() &&
+            (hasLocalHandler || exceptionHandlerStack_.empty()) && activeCatchExceptions_.empty() && ownedCaptureCells_.empty() &&
+            coroutine_.future != nullptr && currentMirFunction_ != nullptr &&
+            !currentMirFunction_->parameterTypeKeys.empty();
+        LLVMValueRef suspendedOwnerSlot = nullptr;
+        bool hasMovedFinally = false;
+        if (supportedPath)
+            for (const auto ordinal : *asyncCallCleanup)
+            {
+                const auto found = cleanupRegions_.find(ordinal);
+                if (found == cleanupRegions_.end() ||
+                    (!supportsAsyncCallCleanup(found->second) &&
+                     !supportsMovedValueFinally(found->second, memberModel_, coroutine_)))
+                { supportedPath = false; break; }
+                const auto* cleanup = found->second;
+                hasMovedFinally = hasMovedFinally || supportsMovedValueFinally(cleanup, memberModel_, coroutine_);
+                if (coroutine_.subtreeIds.contains(cleanup))
+                {
+                    const auto slot = coroutine_.finallyOwnerSlots.find(cleanup);
+                    if (suspendedOwnerSlot != nullptr || slot == coroutine_.finallyOwnerSlots.end())
+                    { supportedPath = false; break; }
+                    suspendedOwnerSlot = slot->second;
+                }
+                if (cleanup->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration)
+                {
+                    const bool value = cleanup->localOrdinal.has_value() && memberModel_ != nullptr &&
+                        memberModel_->typeRequiresValueDrop(cleanup->typeKey) &&
+                        localStorage_.contains(*cleanup->localOrdinal);
+                    const bool object = cleanup->localOrdinal.has_value() && memberModel_ != nullptr &&
+                        isClassReferenceType(nameLookup_, cleanup->typeKey) &&
+                        requiresOwnedDestruction(cleanup->typeKey) &&
+                        !isDelegateReferenceType(nameLookup_, cleanup->typeKey) &&
+                        !frontend::ProjectTypeConversion::isNativeArray(cleanup->typeKey) &&
+                        cleanup->typeKey != "builtin:string" &&
+                        !memberModel_->typeRequiresValueDrop(cleanup->typeKey);
+                    if (!value && !object) { supportedPath = false; break; }
+                }
+            }
+        if (hasLocalHandler && !hasMovedFinally) supportedPath = false;
+        if (supportedPath)
+        {
+            std::string key = currentMirFunction_->parameterTypeKeys.front();
+            if (key.ends_with('*')) key.pop_back();
+            const auto errorKey = language::futureErrorTypeKey(key);
+            const std::uint64_t offset = errorKey ? futureFieldOffset(key, 4) : 0;
+            LLVMValueRef matchingFilter = nullptr;
+            if (errorKey && memberModel_ != nullptr && isClassReferenceType(nameLookup_, std::string(*errorKey)))
+            {
+                const auto type = memberModel_->typeOrdinalForTypeKey(*errorKey);
+                if (type.has_value())
+                {
+                    const auto filter = typedCatchFilters_.find(*type);
+                    if (filter != typedCatchFilters_.end()) matchingFilter = filter->second;
+                }
+            }
+            if (matchingFilter != nullptr && offset != 0 && ehFilterFunction_ != nullptr &&
+                sehPersonalityFunction_ != nullptr)
+            {
+                LLVMBasicBlockRef source = LLVMGetInsertBlock(builder_);
+                if (source == nullptr) { error = "async cleanup bridge has no insertion block"; return nullptr; }
+                const auto savedActive = activeCleanupRegions_;
+                const auto savedFunclets = funcletStack_;
+                LLVMBasicBlockRef fallback = emitExceptionalCleanupChain(*asyncCallCleanup, finalTarget, error);
+                if (!error.empty()) return nullptr;
+                LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+                LLVMBasicBlockRef dispatch = appendBlock("coro.cleanup.bridge.dispatch");
+                LLVMBasicBlockRef padBlock = appendBlock("coro.cleanup.bridge.pad");
+                LLVMBasicBlockRef body = appendBlock("coro.cleanup.bridge.body");
+                enterBlock(dispatch);
+                LLVMValueRef catches = LLVMBuildCatchSwitch(builder_, nullptr, fallback, 1, "coro.cleanup.bridge.switch");
+                LLVMAddHandler(catches, padBlock);
+                enterBlock(padBlock);
+                LLVMValueRef filters[] = {matchingFilter};
+                LLVMValueRef pad = LLVMBuildCatchPad(builder_, catches, filters, 1, "coro.cleanup.bridge.catch");
+                LLVMBuildCatchRet(builder_, pad, body);
+                enterBlock(body);
+                LLVMValueRef ownerSlot = suspendedOwnerSlot != nullptr ? suspendedOwnerSlot :
+                    byteOffset(coroutine_.future, offset, "coro.cleanup.bridge.owner");
+                LLVMValueRef caught = buildNoUnwindCall(exceptionCurrentFunctionType_, exceptionCurrentFunction_,
+                    nullptr, 0, "coro.cleanup.bridge.exception");
+                LLVMBuildStore(builder_, caught, ownerSlot);
+                buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
+                for (std::size_t index = 0; index < asyncCallCleanup->size(); ++index)
+                {
+                    std::vector<std::size_t> remaining(asyncCallCleanup->begin() + index + 1, asyncCallCleanup->end());
+                    LLVMBasicBlockRef outer = emitExceptionalCleanupChain(remaining, finalTarget, error);
+                    if (!error.empty() || !emitAsyncCleanupReplacementCandidate(
+                            (*asyncCallCleanup)[index], ownerSlot, matchingFilter, outer, error))
+                    {
+                        activeCleanupRegions_ = savedActive; funcletStack_ = savedFunclets;
+                        enterBlock(source); return nullptr;
+                    }
+                    const auto region = activeCleanupIndex((*asyncCallCleanup)[index], activeCleanupRegions_);
+                    if (!region.has_value())
+                    {
+                        activeCleanupRegions_ = savedActive; funcletStack_ = savedFunclets;
+                        enterBlock(source); error = "async cleanup bridge lost its active region"; return nullptr;
+                    }
+                    activeCleanupRegions_.resize(*region);
+                    if (terminated()) break;
+                }
+                if (!terminated())
+                {
+                    if (hasLocalHandler)
+                    {
+                        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                        LLVMValueRef pending = LLVMBuildLoad2(builder_, ptr, ownerSlot, "coro.cleanup.bridge.pending.local");
+                        LLVMBuildStore(builder_, LLVMConstNull(ptr), ownerSlot);
+                        LLVMValueRef arguments[] = {pending};
+                        LLVMBasicBlockRef impossible = appendBlock("coro.cleanup.bridge.throw.returned");
+                        if (buildInvokeInCurrentFunclet(nativeThrowFunctionType_, nativeThrowFunction_, arguments, 1,
+                                                        impossible, finalTarget, "") == nullptr)
+                        {
+                            error = "async cleanup could not restore local exception";
+                            return nullptr;
+                        }
+                        enterBlock(impossible);
+                        emitThrowReturnedTrap();
+                    }
+                    else
+                    {
+                        if (suspendedOwnerSlot != nullptr)
+                        {
+                            LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                            LLVMValueRef pending = LLVMBuildLoad2(builder_, ptr, ownerSlot, "coro.cleanup.bridge.pending");
+                            LLVMBuildStore(builder_, pending,
+                                byteOffset(coroutine_.future, offset, "coro.cleanup.bridge.error"));
+                            LLVMBuildStore(builder_, LLVMConstNull(ptr), ownerSlot);
+                        }
+                        if (coroutine_.asyncGenerator && !markCoroutineFinished(error))
+                        {
+                            activeCleanupRegions_ = savedActive; funcletStack_ = savedFunclets;
+                            enterBlock(source); return nullptr;
+                        }
+                        LLVMBuildStore(builder_, LLVMConstInt(LLVMInt32TypeInContext(context_),
+                            static_cast<unsigned long long>(-2), 1), coroutine_.future);
+                        LLVMBuildRetVoid(builder_);
+                    }
+                }
+                activeCleanupRegions_ = savedActive; funcletStack_ = savedFunclets;
+                enterBlock(source);
+                return dispatch;
+            }
+        }
+
+        // ISOLATED EXPERIMENT: only a poll with no active handler, cleanup,
+        // caught owner or capture cells. Broader EH remains the existing path.
+        if (!hasLocalHandler && finalTarget == nullptr && coroutine_.active &&
+            coroutine_.future != nullptr && currentMirFunction_ != nullptr &&
+            !currentMirFunction_->parameterTypeKeys.empty() && activeCleanupRegions_.empty() &&
+            exceptionHandlerStack_.empty() && funcletStack_.empty() && activeCatchExceptions_.empty() &&
+            ownedCaptureCells_.empty())
+        {
+            std::string key = currentMirFunction_->parameterTypeKeys.front();
+            if (key.ends_with('*')) key.pop_back();
+            const auto errorKey = language::futureErrorTypeKey(key);
+            const std::uint64_t errorOffset = errorKey ? futureFieldOffset(key, 4) : 0;
+            LLVMValueRef matchingFilter = nullptr;
+            if (errorKey && memberModel_ != nullptr &&
+                isClassReferenceType(nameLookup_, std::string(*errorKey)))
+            {
+                const auto typeOrdinal = memberModel_->typeOrdinalForTypeKey(*errorKey);
+                if (typeOrdinal.has_value())
+                {
+                    const auto filter = typedCatchFilters_.find(*typeOrdinal);
+                    if (filter != typedCatchFilters_.end()) matchingFilter = filter->second;
+                }
+            }
+            // A missing typed filter leaves the existing unwind path untouched.
+            if (matchingFilter != nullptr && errorOffset != 0)
+            {
+                LLVMBasicBlockRef source = LLVMGetInsertBlock(builder_);
+                if (source == nullptr || ehFilterFunction_ == nullptr || sehPersonalityFunction_ == nullptr)
+                {
+                    error = "experimental coroutine exception bridge is missing EH state";
+                    return nullptr;
+                }
+                LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+                LLVMBasicBlockRef dispatch = appendBlock("coro.call.exception.dispatch");
+                LLVMBasicBlockRef padBlock = appendBlock("coro.call.exception.pad");
+                LLVMBasicBlockRef handler = appendBlock("coro.call.exception.handler");
+                enterBlock(dispatch);
+                LLVMValueRef catches = LLVMBuildCatchSwitch(builder_, nullptr, nullptr, 1, "coro.call.switch");
+                LLVMAddHandler(catches, padBlock);
+                enterBlock(padBlock);
+                LLVMValueRef filters[] = {matchingFilter};
+                LLVMValueRef pad = LLVMBuildCatchPad(builder_, catches, filters, 1, "coro.call.pad");
+                LLVMBuildCatchRet(builder_, pad, handler);
+                enterBlock(handler);
+                LLVMValueRef caught = buildNoUnwindCall(exceptionCurrentFunctionType_, exceptionCurrentFunction_,
+                    nullptr, 0, "coro.call.exception");
+                LLVMBuildStore(builder_, caught, byteOffset(coroutine_.future, errorOffset, "coro.call.error.addr"));
+                buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
+                LLVMBuildStore(builder_, LLVMConstInt(LLVMInt32TypeInContext(context_),
+                    static_cast<unsigned long long>(-2), 1), coroutine_.future);
+                if (coroutine_.asyncGenerator && !markCoroutineFinished(error))
+                {
+                    enterBlock(source);
+                    return nullptr;
+                }
+                LLVMBuildRetVoid(builder_);
+                enterBlock(source);
+                finalTarget = dispatch;
+            }
+        }
 
         // A captured local/parameter has one reference owned by the creating activation. If an
         // invoke leaves that activation, normal return lowering never runs, so put that reference
@@ -273,7 +787,9 @@ LLVMBasicBlockRef OopLlvmImplementation::buildCurrentUnwindDestination(std::stri
         }
 
         std::vector<std::size_t> path;
-        for (std::size_t index = activeCleanupRegions_.size(); index > retainedDepth; --index)
+        if (asyncCallCleanup.has_value() && retainedDepth == 0)
+            path = *asyncCallCleanup;
+        else for (std::size_t index = activeCleanupRegions_.size(); index > retainedDepth; --index)
         {
             path.push_back(activeCleanupRegions_[index - 1]);
         }
@@ -288,9 +804,72 @@ LLVMValueRef OopLlvmImplementation::buildPotentiallyThrowingCall(
         LLVMValueRef* arguments,
         unsigned argumentCount,
         const char* name,
-        std::string& error)
+        std::string& error, const frontend::ProjectOopMirNode* callSite)
 {
-        LLVMBasicBlockRef unwindBlock = buildCurrentUnwindDestination(error);
+        if (coroutine_.asyncGenerator && coroutine_.synchronousFuncletCleanup &&
+            !funcletStack_.empty() && funcletStack_.back().kind == FuncletKind::Cleanup)
+        {
+            LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+            LLVMTypeRef parameterTypes[] = {ptr};
+            LLVMTypeRef expectedType = LLVMFunctionType(LLVMVoidTypeInContext(context_), parameterTypes, 1, 0);
+            if (argumentCount != 1U || functionType != expectedType || LLVMTypeOf(arguments[0]) != ptr ||
+                sehPersonalityFunction_ == nullptr || trapFunction_ == nullptr || trapFunctionType_ == nullptr)
+                return failValue(error, "async unwind cleanup call cannot be guarded safely");
+            std::size_t length = 0;
+            const char* originalName = LLVMGetValueName2(function, &length);
+            if (originalName == nullptr || length == 0U ||
+                !std::string_view(originalName, length).starts_with("__nsc_ctor_") ||
+                LLVMGetNamedFunction(module_, std::string(originalName, length).c_str()) != function)
+                return failValue(error, "async unwind cleanup requires a direct constructor call");
+            const std::string guardName = std::string(originalName, length) + ".async.unwind.guard";
+            LLVMValueRef guard = LLVMGetNamedFunction(module_, guardName.c_str());
+            if (guard == nullptr)
+            {
+                LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                LLVMBuilderRef helper = LLVMCreateBuilderInContext(context_);
+                LLVMValueRef filter = LLVMGetNamedFunction(module_, "__nsc_cleanup_accept_any");
+                if (filter == nullptr)
+                {
+                    LLVMTypeRef parameters[] = {ptr, ptr};
+                    LLVMTypeRef type = LLVMFunctionType(LLVMInt32TypeInContext(context_), parameters, 2, 0);
+                    filter = LLVMAddFunction(module_, "__nsc_cleanup_accept_any", type);
+                    LLVMSetLinkage(filter, LLVMInternalLinkage);
+                    LLVMPositionBuilderAtEnd(helper, LLVMAppendBasicBlockInContext(context_, filter, "entry"));
+                    LLVMBuildRet(helper, LLVMConstInt(LLVMInt32TypeInContext(context_), 1, 0));
+                }
+                guard = LLVMAddFunction(module_, guardName.c_str(), functionType);
+                LLVMSetLinkage(guard, LLVMInternalLinkage);
+                LLVMSetPersonalityFn(guard, sehPersonalityFunction_);
+                auto entry = LLVMAppendBasicBlockInContext(context_, guard, "entry");
+                auto done = LLVMAppendBasicBlockInContext(context_, guard, "done");
+                auto dispatch = LLVMAppendBasicBlockInContext(context_, guard, "dispatch");
+                auto handler = LLVMAppendBasicBlockInContext(context_, guard, "handler");
+                LLVMPositionBuilderAtEnd(helper, entry);
+                LLVMValueRef args[] = {LLVMGetParam(guard, 0)};
+                LLVMBuildInvoke2(helper, functionType, function, args, 1, done, dispatch, "");
+                LLVMPositionBuilderAtEnd(helper, done);
+                LLVMBuildRetVoid(helper);
+                LLVMPositionBuilderAtEnd(helper, dispatch);
+                LLVMValueRef catches = LLVMBuildCatchSwitch(helper, nullptr, nullptr, 1, "async.guard.switch");
+                LLVMAddHandler(catches, handler);
+                LLVMPositionBuilderAtEnd(helper, handler);
+                LLVMValueRef filters[] = {filter};
+                LLVMValueRef pad = LLVMBuildCatchPad(helper, catches, filters, 1, "async.guard.pad");
+                LLVMValueRef trapArgs[] = {LLVMConstInt(LLVMInt32TypeInContext(context_), 20, 0)};
+                LLVMValueRef bundleArgs[] = {pad};
+                LLVMOperandBundleRef bundle = LLVMCreateOperandBundle("funclet", 7, bundleArgs, 1);
+                LLVMOperandBundleRef bundles[] = {bundle};
+                LLVMBuildCallWithOperandBundles(helper, trapFunctionType_, trapFunction_, trapArgs, 1, bundles, 1, "");
+                LLVMDisposeOperandBundle(bundle);
+                LLVMBuildUnreachable(helper);
+                LLVMDisposeBuilder(helper);
+            }
+            return buildNoUnwindCall(functionType, guard, arguments, argumentCount, name);
+        }
+        // NSC-NEW-005: see foreignFinallyFallback_. / NSC-NEW-005: ver foreignFinallyFallback_.
+        if (foreignFinallyFallback_)
+            return buildNoUnwindCall(functionType, function, arguments, argumentCount, name);
+        LLVMBasicBlockRef unwindBlock = buildCurrentUnwindDestination(error, callSite);
         if (!error.empty()) return nullptr;
         if (unwindBlock == nullptr)
         {
@@ -500,16 +1079,16 @@ bool OopLlvmImplementation::emitUsingDispose(const frontend::ProjectOopMirNode* 
                 return false;
             }
         }
-        // EN: Freeze 3.0 C-01: an owning using local (initialized by `new`) is destroyed right
+        // EN: Freeze C-01: an owning using local (initialized by `new`) is destroyed right
         //     after Dispose. The slot is cleared before the release entry runs, the same guard
         //     emitRaiiDestroy uses, so a cleanup entered twice disposes and destroys once.
-        // ES: Congelamiento 3.0 C-01: un local de using dueno (inicializado con `new`) se destruye
+        // ES: Congelamiento C-01: un local de using dueno (inicializado con `new`) se destruye
         //     justo despues de Dispose. El slot se limpia antes de la entrada de liberacion, la
         //     misma guarda de emitRaiiDestroy, asi que un cleanup que entra dos veces lo hace una.
         if (node->automaticDestruction && !terminated())
         {
             if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
-                return fail(error, "freeze 3.0 owning using cleanup has no descriptor ABI");
+                return fail(error, "freeze owning using cleanup has no descriptor ABI");
             LLVMBasicBlockRef releaseBlock = appendBlock("using.release");
             emitCleanupGuardBranch(
                 localFound->second, resource, releaseBlock, doneBlock, "using.owner");
@@ -542,7 +1121,7 @@ bool OopLlvmImplementation::emitNativeArrayDestroy(
             frontend::ProjectTypeConversion::nativeArrayElementType(arrayTypeKey);
         if (!elementType.has_value())
         {
-            return fail(error, "NativeSharp 3.0 array destruction lost its element type");
+            return fail(error, "NativeSharp array destruction lost its element type");
         }
 
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
@@ -573,11 +1152,11 @@ bool OopLlvmImplementation::emitNativeArrayDestroy(
         return true;
     }
 
-// EN: Freeze 3.0 C-12: an owning array of structs with a destructor or owned fields destroyed only
+// EN: Freeze C-12: an owning array of structs with a destructor or owned fields destroyed only
 //     its buffer, so every element's resources leaked. The elements are dropped in place, last
 //     to first, before the buffer is released; a moved-out element was left zeroed by its move.
-//     Freeze 3.0 DEC-11: only live elements are dropped (see the live bits after the data).
-// ES: Congelamiento 3.0 C-12: un arreglo dueno de structs con destructor o campos owned solo
+//     Freeze DEC-11: only live elements are dropped (see the live bits after the data).
+// ES: Congelamiento C-12: un arreglo dueno de structs con destructor o campos owned solo
 //     liberaba su buffer, asi que los recursos de cada elemento se fugaban. Los elementos se
 //     destruyen en su lugar, del ultimo al primero, antes de liberar el buffer; un elemento movido
 //     quedo en cero por su move.
@@ -591,12 +1170,69 @@ bool OopLlvmImplementation::emitNativeArrayValueElementDrop(
         const auto [elementSize, elementAlignment] = captureValueLayout(elementType, error);
         if (!error.empty()) return false;
         if (elementSize == 0 || elementAlignment == 0)
-            return fail(error, "Freeze 3.0 C-12 array element has no value layout");
+            return fail(error, "Freeze C-12 array element has no value layout");
         const std::size_t rank = frontend::ProjectTypeConversion::nativeArrayRank(arrayTypeKey);
         const std::uint64_t header = rank > 1 ? 8U * (1U + 2U * rank) : 8U;
         const std::uint64_t dataOffset = (header + elementAlignment - 1U) / elementAlignment * elementAlignment;
         LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
         LLVMValueRef length = LLVMBuildLoad2(builder_, i64, array, (prefix + ".values.length").c_str());
+        const auto dropEntry = valueDropEntries_.find(std::string(elementType));
+        const bool guarded = funcletStack_.empty() && dropEntry != valueDropEntries_.end();
+        LLVMBasicBlockRef outerUnwind = nullptr;
+        LLVMBasicBlockRef exceptionalCleanup = nullptr;
+        LLVMValueRef guardedDrop = nullptr;
+        if (guarded)
+        {
+            outerUnwind = buildCurrentUnwindDestination(error);
+            if (!error.empty()) return false;
+            LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+            exceptionalCleanup = appendBlock(prefix + ".values.exceptional");
+            std::size_t nameLength = 0;
+            const char* currentName = LLVMGetValueName2(currentFunction_, &nameLength);
+            const std::string guardName = std::string(currentName, nameLength) + ".array.guard." +
+                std::to_string(blockCounter_++);
+            guardedDrop = LLVMAddFunction(module_, guardName.c_str(), dropEntry->second.functionType);
+            LLVMSetLinkage(guardedDrop, LLVMInternalLinkage);
+            LLVMSetPersonalityFn(guardedDrop, sehPersonalityFunction_);
+            LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+            LLVMValueRef filter = LLVMGetNamedFunction(module_, "__nsc_cleanup_accept_any");
+            LLVMBuilderRef helper = LLVMCreateBuilderInContext(context_);
+            if (filter == nullptr)
+            {
+                LLVMTypeRef filterParameters[] = {ptr, ptr};
+                LLVMTypeRef filterType = LLVMFunctionType(LLVMInt32TypeInContext(context_), filterParameters, 2, 0);
+                filter = LLVMAddFunction(module_, "__nsc_cleanup_accept_any", filterType);
+                LLVMSetLinkage(filter, LLVMInternalLinkage);
+                LLVMPositionBuilderAtEnd(helper, LLVMAppendBasicBlockInContext(context_, filter, "entry"));
+                LLVMBuildRet(helper, LLVMConstInt(LLVMInt32TypeInContext(context_), 1, 0));
+            }
+            LLVMBasicBlockRef guardEntry = LLVMAppendBasicBlockInContext(context_, guardedDrop, "entry");
+            LLVMBasicBlockRef guardDone = LLVMAppendBasicBlockInContext(context_, guardedDrop, "done");
+            LLVMBasicBlockRef guardDispatch = LLVMAppendBasicBlockInContext(context_, guardedDrop, "dispatch");
+            LLVMBasicBlockRef guardHandler = LLVMAppendBasicBlockInContext(context_, guardedDrop, "handler");
+            LLVMPositionBuilderAtEnd(helper, guardEntry);
+            LLVMValueRef guardArguments[] = {LLVMGetParam(guardedDrop, 0)};
+            LLVMBuildInvoke2(helper, dropEntry->second.functionType, dropEntry->second.function,
+                             guardArguments, 1, guardDone, guardDispatch, "");
+            LLVMPositionBuilderAtEnd(helper, guardDone);
+            LLVMBuildRetVoid(helper);
+            LLVMPositionBuilderAtEnd(helper, guardDispatch);
+            LLVMValueRef catches = LLVMBuildCatchSwitch(helper, nullptr, nullptr, 1, "array.guard.switch");
+            LLVMAddHandler(catches, guardHandler);
+            LLVMPositionBuilderAtEnd(helper, guardHandler);
+            LLVMValueRef filterArguments[] = {filter};
+            LLVMValueRef catchPad = LLVMBuildCatchPad(helper, catches, filterArguments, 1, "array.guard.pad");
+            LLVMValueRef reason = LLVMConstInt(LLVMInt32TypeInContext(context_), 20, 0);
+            LLVMValueRef trapArguments[] = {reason};
+            LLVMValueRef bundleArguments[] = {catchPad};
+            LLVMOperandBundleRef bundle = LLVMCreateOperandBundle("funclet", 7, bundleArguments, 1);
+            LLVMOperandBundleRef bundles[] = {bundle};
+            LLVMBuildCallWithOperandBundles(helper, trapFunctionType_, trapFunction_, trapArguments, 1,
+                                            bundles, 1, "");
+            LLVMDisposeOperandBundle(bundle);
+            LLVMBuildUnreachable(helper);
+            LLVMDisposeBuilder(helper);
+        }
         LLVMBasicBlockRef entryBlock = LLVMGetInsertBlock(builder_);
         LLVMBasicBlockRef conditionBlock = appendBlock(prefix + ".values.cond");
         LLVMBasicBlockRef bodyBlock = appendBlock(prefix + ".values.body");
@@ -620,9 +1256,9 @@ bool OopLlvmImplementation::emitNativeArrayValueElementDrop(
         LLVMValueRef indices[] = {offset};
         LLVMValueRef address = LLVMBuildGEP2(
             builder_, LLVMInt8TypeInContext(context_), array, indices, 1, (prefix + ".values.addr").c_str());
-        // EN: Freeze 3.0 DEC-11: only a live element is dropped; a never-written, moved-out or
+        // EN: Freeze DEC-11: only a live element is dropped; a never-written, moved-out or
         //     deleted one is skipped.
-        // ES: Congelamiento 3.0 DEC-11: solo se destruye un elemento vivo; uno nunca escrito, movido o
+        // ES: Congelamiento DEC-11: solo se destruye un elemento vivo; uno nunca escrito, movido o
         //     borrado se salta.
         const OopLlvmArrayElementLiveness liveness =
             arrayElementLiveness(array, index, dataOffset, elementSize);
@@ -630,23 +1266,74 @@ bool OopLlvmImplementation::emitNativeArrayValueElementDrop(
         LLVMBasicBlockRef nextBlock = appendBlock(prefix + ".values.next");
         LLVMBuildCondBr(builder_, arrayElementIsAlive(liveness), dropBlock, nextBlock);
         enterBlock(dropBlock);
-        if (!emitValueDropAddress(address, elementType, prefix + ".value", error)) return false;
+        setArrayElementAlive(liveness, false);
+        if (guarded)
+            exceptionHandlerStack_.push_back(ExceptionHandlerContext{
+                0, exceptionalCleanup, activeCleanupRegions_.size(), funcletStack_.size()});
+        const bool dropOk = emitValueDropAddress(address, elementType, prefix + ".value", error);
+        if (guarded) exceptionHandlerStack_.pop_back();
+        if (!dropOk) return false;
         if (!terminated()) LLVMBuildBr(builder_, nextBlock);
         enterBlock(nextBlock);
         LLVMBasicBlockRef latch = LLVMGetInsertBlock(builder_);
         LLVMBuildBr(builder_, conditionBlock);
         LLVMAddIncoming(remaining, &index, &latch, 1);
+        if (guarded)
+        {
+            enterBlock(exceptionalCleanup);
+            LLVMValueRef pad = LLVMBuildCleanupPad(builder_, nullptr, nullptr, 0, "array.values.cleanup.pad");
+            funcletStack_.push_back(FuncletContext{pad, FuncletKind::Cleanup, 0, nullptr, outerUnwind});
+            LLVMBasicBlockRef cleanupEntry = LLVMGetInsertBlock(builder_);
+            LLVMBasicBlockRef cleanupCondition = appendBlock(prefix + ".values.cleanup.cond");
+            LLVMBasicBlockRef cleanupBody = appendBlock(prefix + ".values.cleanup.body");
+            LLVMBasicBlockRef cleanupDrop = appendBlock(prefix + ".values.cleanup.drop");
+            LLVMBasicBlockRef cleanupNext = appendBlock(prefix + ".values.cleanup.next");
+            LLVMBasicBlockRef cleanupDone = appendBlock(prefix + ".values.cleanup.done");
+            LLVMBuildBr(builder_, cleanupCondition);
+            enterBlock(cleanupCondition);
+            LLVMValueRef cleanupRemaining = LLVMBuildPhi(builder_, i64, "array.values.cleanup.remaining");
+            LLVMAddIncoming(cleanupRemaining, &index, &cleanupEntry, 1);
+            LLVMValueRef cleanupMore = LLVMBuildICmp(builder_, LLVMIntNE, cleanupRemaining,
+                LLVMConstInt(i64, 0, 0), "array.values.cleanup.more");
+            LLVMBuildCondBr(builder_, cleanupMore, cleanupBody, cleanupDone);
+            enterBlock(cleanupBody);
+            LLVMValueRef cleanupIndex = LLVMBuildSub(builder_, cleanupRemaining,
+                LLVMConstInt(i64, 1, 0), "array.values.cleanup.index");
+            LLVMValueRef cleanupOffset = LLVMBuildAdd(builder_, LLVMBuildMul(builder_, cleanupIndex,
+                LLVMConstInt(i64, elementSize, 0), "array.values.cleanup.scaled"),
+                LLVMConstInt(i64, dataOffset, 0), "array.values.cleanup.offset");
+            LLVMValueRef cleanupIndices[] = {cleanupOffset};
+            LLVMValueRef cleanupAddress = LLVMBuildGEP2(builder_, LLVMInt8TypeInContext(context_),
+                array, cleanupIndices, 1, "array.values.cleanup.address");
+            const OopLlvmArrayElementLiveness cleanupLiveness =
+                arrayElementLiveness(array, cleanupIndex, dataOffset, elementSize);
+            LLVMBuildCondBr(builder_, arrayElementIsAlive(cleanupLiveness), cleanupDrop, cleanupNext);
+            enterBlock(cleanupDrop);
+            setArrayElementAlive(cleanupLiveness, false);
+            LLVMValueRef arguments[] = {cleanupAddress};
+            buildNoUnwindCall(dropEntry->second.functionType, guardedDrop, arguments, 1, "");
+            LLVMBuildBr(builder_, cleanupNext);
+            enterBlock(cleanupNext);
+            LLVMBasicBlockRef cleanupLatch = LLVMGetInsertBlock(builder_);
+            LLVMBuildBr(builder_, cleanupCondition);
+            LLVMAddIncoming(cleanupRemaining, &cleanupIndex, &cleanupLatch, 1);
+            enterBlock(cleanupDone);
+            LLVMValueRef releaseArguments[] = {array};
+            buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, releaseArguments, 1, "");
+            funcletStack_.pop_back();
+            LLVMBuildCleanupRet(builder_, pad, outerUnwind);
+        }
         enterBlock(doneBlock);
         return true;
     }
 
-// EN: Freeze 3.0 C-12: `delete items[i]` of a struct element that needs a drop destroys the element
+// EN: Freeze C-12: `delete items[i]` of a struct element that needs a drop destroys the element
 //     in place and zeroes its slot, so the slot holds the default value afterwards.
-// ES: Congelamiento 3.0 C-12: `delete items[i]` de un elemento struct que requiere drop destruye el
+// ES: Congelamiento C-12: `delete items[i]` de un elemento struct que requiere drop destruye el
 //     elemento en su lugar y pone su slot en cero, asi el slot queda con el valor por defecto.
-// EN: Freeze 3.0 DEC-11: with `liveness`, only a live element is dropped, zeroed and marked dead;
+// EN: Freeze DEC-11: with `liveness`, only a live element is dropped, zeroed and marked dead;
 //     deleting a dead one does nothing.
-// ES: Congelamiento 3.0 DEC-11: con `liveness`, solo un elemento vivo se destruye, se pone en cero
+// ES: Congelamiento DEC-11: con `liveness`, solo un elemento vivo se destruye, se pone en cero
 //     y queda muerto; borrar uno muerto no hace nada.
 bool OopLlvmImplementation::emitValueElementDelete(
         LLVMValueRef address,
@@ -657,7 +1344,7 @@ bool OopLlvmImplementation::emitValueElementDelete(
         const auto [elementSize, elementAlignment] = captureValueLayout(elementType, error);
         if (!error.empty()) return false;
         if (elementSize == 0 || elementAlignment == 0 || memsetFunction_ == nullptr)
-            return fail(error, "Freeze 3.0 C-12 deleted element has no value layout");
+            return fail(error, "Freeze C-12 deleted element has no value layout");
         LLVMBasicBlockRef doneBlock = nullptr;
         if (liveness.has_value())
         {
@@ -694,6 +1381,77 @@ bool OopLlvmImplementation::emitNativeArrayElementDestruction(
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
         LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
         LLVMValueRef length = LLVMBuildLoad2(builder_, i64, array, (prefix + ".length").c_str());
+        const bool guarded = funcletStack_.empty() && isClassReferenceType(nameLookup_, elementType);
+        LLVMBasicBlockRef outerUnwind = nullptr;
+        LLVMBasicBlockRef exceptionalCleanup = nullptr;
+        LLVMValueRef guardedDrop = nullptr;
+        LLVMTypeRef guardParameters[] = {ptr};
+        LLVMTypeRef guardType = LLVMFunctionType(LLVMVoidTypeInContext(context_), guardParameters, 1, 0);
+        if (guarded)
+        {
+            outerUnwind = buildCurrentUnwindDestination(error);
+            if (!error.empty()) return false;
+            LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+            exceptionalCleanup = appendBlock(prefix + ".elements.exceptional");
+            LLVMValueRef outerFunction = currentFunction_;
+            LLVMBasicBlockRef outerBlock = LLVMGetInsertBlock(builder_);
+            const std::size_t outerCounter = blockCounter_;
+            const auto outerFunclets = funcletStack_;
+            const auto outerHandlers = exceptionHandlerStack_;
+            const auto outerCleanups = activeCleanupRegions_;
+            std::size_t nameLength = 0;
+            const char* name = LLVMGetValueName2(outerFunction, &nameLength);
+            const std::string guardName = std::string(name, nameLength) + ".array.ref.guard." +
+                std::to_string(blockCounter_++);
+            guardedDrop = LLVMAddFunction(module_, guardName.c_str(), guardType);
+            LLVMSetLinkage(guardedDrop, LLVMInternalLinkage);
+            LLVMSetPersonalityFn(guardedDrop, sehPersonalityFunction_);
+            LLVMValueRef filter = LLVMGetNamedFunction(module_, "__nsc_cleanup_accept_any");
+            if (filter == nullptr)
+            {
+                LLVMTypeRef filterParameters[] = {ptr, ptr};
+                LLVMTypeRef filterType = LLVMFunctionType(LLVMInt32TypeInContext(context_), filterParameters, 2, 0);
+                filter = LLVMAddFunction(module_, "__nsc_cleanup_accept_any", filterType);
+                LLVMSetLinkage(filter, LLVMInternalLinkage);
+                LLVMBuilderRef filterBuilder = LLVMCreateBuilderInContext(context_);
+                LLVMPositionBuilderAtEnd(filterBuilder, LLVMAppendBasicBlockInContext(context_, filter, "entry"));
+                LLVMBuildRet(filterBuilder, LLVMConstInt(LLVMInt32TypeInContext(context_), 1, 0));
+                LLVMDisposeBuilder(filterBuilder);
+            }
+            currentFunction_ = guardedDrop;
+            blockCounter_ = 0;
+            funcletStack_.clear();
+            exceptionHandlerStack_.clear();
+            activeCleanupRegions_.clear();
+            LLVMBasicBlockRef guardEntry = appendBlock("array.ref.guard.entry");
+            LLVMBasicBlockRef guardDispatch = appendBlock("array.ref.guard.dispatch");
+            enterBlock(guardEntry);
+            exceptionHandlerStack_.push_back(ExceptionHandlerContext{0, guardDispatch, 0, 0});
+            const bool guardOk = emitOwnedPointerDestroy(LLVMGetParam(guardedDrop, 0), elementType,
+                                                         "array.ref.guard", error);
+            exceptionHandlerStack_.pop_back();
+            if (guardOk && !terminated()) LLVMBuildRetVoid(builder_);
+            enterBlock(guardDispatch);
+            LLVMValueRef catches = LLVMBuildCatchSwitch(builder_, nullptr, nullptr, 1, "array.ref.guard.switch");
+            LLVMBasicBlockRef guardHandler = appendBlock("array.ref.guard.handler");
+            LLVMAddHandler(catches, guardHandler);
+            enterBlock(guardHandler);
+            LLVMValueRef filterArguments[] = {filter};
+            LLVMValueRef catchPad = LLVMBuildCatchPad(builder_, catches, filterArguments, 1, "array.ref.guard.pad");
+            funcletStack_.push_back(FuncletContext{catchPad, FuncletKind::Catch, 0, nullptr, nullptr});
+            LLVMValueRef reason = LLVMConstInt(LLVMInt32TypeInContext(context_), 20, 0);
+            LLVMValueRef trapArguments[] = {reason};
+            buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
+            funcletStack_.pop_back();
+            LLVMBuildUnreachable(builder_);
+            currentFunction_ = outerFunction;
+            blockCounter_ = outerCounter;
+            funcletStack_ = outerFunclets;
+            exceptionHandlerStack_ = outerHandlers;
+            activeCleanupRegions_ = outerCleanups;
+            enterBlock(outerBlock);
+            if (!guardOk) return false;
+        }
         LLVMBasicBlockRef conditionBlock = appendBlock(prefix + ".elements.cond");
         LLVMBasicBlockRef bodyBlock = appendBlock(prefix + ".elements.body");
         LLVMBasicBlockRef releaseBlock = appendBlock(prefix + ".release");
@@ -723,7 +1481,12 @@ bool OopLlvmImplementation::emitNativeArrayElementDestruction(
             builder_, ptr, slot, (prefix + ".element").c_str());
         // Clear before any user destructor can transfer control through EH.
         LLVMBuildStore(builder_, LLVMConstNull(ptr), slot);
-        if (!emitOwnedPointerDestroy(child, elementType, prefix + ".element.destroy", error)) return false;
+        if (guarded)
+            exceptionHandlerStack_.push_back(ExceptionHandlerContext{
+                0, exceptionalCleanup, activeCleanupRegions_.size(), funcletStack_.size()});
+        const bool dropOk = emitOwnedPointerDestroy(child, elementType, prefix + ".element.destroy", error);
+        if (guarded) exceptionHandlerStack_.pop_back();
+        if (!dropOk) return false;
         LLVMBasicBlockRef incrementBlock = LLVMGetInsertBlock(builder_);
         if (!terminated())
         {
@@ -733,6 +1496,43 @@ bool OopLlvmImplementation::emitNativeArrayElementDestruction(
             LLVMAddIncoming(index, &next, &incrementBlock, 1);
         }
 
+        if (guarded)
+        {
+            enterBlock(exceptionalCleanup);
+            LLVMValueRef pad = LLVMBuildCleanupPad(builder_, nullptr, nullptr, 0, "array.refs.cleanup.pad");
+            funcletStack_.push_back(FuncletContext{pad, FuncletKind::Cleanup, 0, nullptr, outerUnwind});
+            LLVMValueRef first = LLVMBuildAdd(builder_, index, LLVMConstInt(i64, 1, 0), "array.refs.cleanup.first");
+            LLVMBasicBlockRef cleanupEntry = LLVMGetInsertBlock(builder_);
+            LLVMBasicBlockRef cleanupCondition = appendBlock(prefix + ".refs.cleanup.cond");
+            LLVMBasicBlockRef cleanupBody = appendBlock(prefix + ".refs.cleanup.body");
+            LLVMBasicBlockRef cleanupDone = appendBlock(prefix + ".refs.cleanup.done");
+            LLVMBuildBr(builder_, cleanupCondition);
+            enterBlock(cleanupCondition);
+            LLVMValueRef cleanupIndex = LLVMBuildPhi(builder_, i64, "array.refs.cleanup.index");
+            LLVMAddIncoming(cleanupIndex, &first, &cleanupEntry, 1);
+            LLVMValueRef more = LLVMBuildICmp(builder_, LLVMIntULT, cleanupIndex, length, "array.refs.cleanup.more");
+            LLVMBuildCondBr(builder_, more, cleanupBody, cleanupDone);
+            enterBlock(cleanupBody);
+            LLVMValueRef cleanupOffset = LLVMBuildAdd(builder_, LLVMBuildMul(builder_, cleanupIndex,
+                LLVMConstInt(i64, 8, 0), "array.refs.cleanup.scaled"),
+                LLVMConstInt(i64, elementDataOffset, 0), "array.refs.cleanup.offset");
+            LLVMValueRef cleanupIndices[] = {cleanupOffset};
+            LLVMValueRef cleanupSlot = LLVMBuildGEP2(builder_, LLVMInt8TypeInContext(context_), array,
+                cleanupIndices, 1, "array.refs.cleanup.slot");
+            LLVMValueRef cleanupValue = LLVMBuildLoad2(builder_, ptr, cleanupSlot, "array.refs.cleanup.value");
+            LLVMBuildStore(builder_, LLVMConstNull(ptr), cleanupSlot);
+            LLVMValueRef arguments[] = {cleanupValue};
+            buildNoUnwindCall(guardType, guardedDrop, arguments, 1, "");
+            LLVMValueRef next = LLVMBuildAdd(builder_, cleanupIndex, LLVMConstInt(i64, 1, 0), "array.refs.cleanup.next");
+            LLVMBasicBlockRef cleanupLatch = LLVMGetInsertBlock(builder_);
+            LLVMBuildBr(builder_, cleanupCondition);
+            LLVMAddIncoming(cleanupIndex, &next, &cleanupLatch, 1);
+            enterBlock(cleanupDone);
+            LLVMValueRef releaseArguments[] = {array};
+            buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, releaseArguments, 1, "");
+            funcletStack_.pop_back();
+            LLVMBuildCleanupRet(builder_, pad, outerUnwind);
+        }
         enterBlock(releaseBlock);
         return true;
     }
@@ -767,7 +1567,7 @@ bool OopLlvmImplementation::emitOwnedPointerDestroy(
         else if (isClassReferenceType(nameLookup_, typeKey))
         {
             if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
-                return fail(error, "NativeSharp 3.0 array element cleanup has no class destruction ABI");
+                return fail(error, "NativeSharp array element cleanup has no class destruction ABI");
             LLVMValueRef descriptor = LLVMBuildLoad2(
                 builder_, ptr, value, (prefix + ".descriptor").c_str());
             LLVMValueRef entryAddress = LLVMBuildStructGEP2(
@@ -830,7 +1630,7 @@ bool OopLlvmImplementation::collectVariantDropCases(
             if (!marker.starts_with(payloadPrefix)) continue;
             const auto index = caseIndices.find(std::string(marker.substr(payloadPrefix.size())));
             if (index == caseIndices.end())
-                return fail(error, "NativeSharp 3.0 variant drop cannot map payload to case tag");
+                return fail(error, "NativeSharp variant drop cannot map payload to case tag");
             const bool owned = symbol.declaredOwnership == sema::OwnershipKind::Owned &&
                 (requiresOwnedDestruction(field.typeKey) ||
                  frontend::ProjectTypeConversion::isNativeArray(field.typeKey));
@@ -898,7 +1698,7 @@ bool OopLlvmImplementation::emitVariantDropAddress(
         std::string& error)
 {
         if (layout.typeOrdinal >= nameLookup_.namedTypes().size() || memberModel_ == nullptr)
-            return fail(error, "NativeSharp 3.0 variant drop has no nominal type model");
+            return fail(error, "NativeSharp variant drop has no nominal type model");
         const frontend::ObjectFieldLayout* tagField = nullptr;
         const frontend::ObjectFieldLayout* payloadField = nullptr;
         for (const frontend::ObjectFieldLayout& field : layout.fields)
@@ -909,12 +1709,12 @@ bool OopLlvmImplementation::emitVariantDropAddress(
             else if (symbol.name == "__nsc_variant_payload") payloadField = &field;
         }
         if (tagField == nullptr)
-            return fail(error, "NativeSharp 3.0 variant drop lost its active-case tag");
+            return fail(error, "NativeSharp variant drop lost its active-case tag");
         if (payloadField == nullptr) return true;
         const frontend::ProjectOopMirStructLayout* payloadLayout =
             findStructLayout(mirModel_, payloadField->typeKey);
         if (payloadLayout == nullptr || !payloadLayout->isUnion)
-            return fail(error, "NativeSharp 3.0 variant drop lost its payload union layout");
+            return fail(error, "NativeSharp variant drop lost its payload union layout");
         std::unordered_map<std::string, std::uint64_t> caseIndices;
         collectVariantCaseIndices(layout, caseIndices);
         std::vector<DropCase> dropCases;
@@ -945,10 +1745,23 @@ bool OopLlvmImplementation::emitFixedArrayDropAddress(
             const std::optional<std::uint64_t> count =
                 frontend::ProjectMemberModel::fixedArrayCount(typeKey);
             if (!count.has_value())
-                return fail(error, "NativeSharp 3.0 value drop lost fixed-array extent");
+                return fail(error, "NativeSharp value drop lost fixed-array extent");
             const auto [elementSize, ignoredAlignment] = captureValueLayout(*element, error);
             (void)ignoredAlignment;
             if (!error.empty() || elementSize == 0) return false;
+            if (funcletStack_.empty() && activeCleanupRegions_.empty())
+            {
+                frontend::ProjectOopMirDispatchTable plan;
+                for (std::uint64_t index = *count; index-- > 0;)
+                {
+                    frontend::ProjectOopMirDispatchTable::DestructionStep step;
+                    step.isValueFieldDrop = true;
+                    step.valueFieldTypeKey = *element;
+                    step.ownedField.offset = index * elementSize;
+                    plan.destructionSteps.push_back(std::move(step));
+                }
+                return emitObjectDestructionSteps(plan, address, error);
+            }
             for (std::uint64_t index = *count; index-- > 0;)
             {
                 LLVMValueRef elementAddress = byteOffset(
@@ -969,6 +1782,51 @@ bool OopLlvmImplementation::emitStructValueDropMembers(
         std::string_view stem,
         std::string& error)
 {
+        // Standalone value-drop entries can use the same exceptional suffix chain as
+        // class destruction. Inline cleanup in an existing funclet keeps its caller's
+        // established control flow instead of nesting an SEH cleanup pad.
+        if (funcletStack_.empty() && activeCleanupRegions_.empty() && exceptionHandlerStack_.empty())
+        {
+            frontend::ProjectOopMirDispatchTable plan;
+            for (const std::size_t memberOrdinal : memberModel_->membersOfType(layout.typeOrdinal))
+            {
+                if (memberOrdinal >= memberModel_->members().size() ||
+                    memberModel_->members()[memberOrdinal].kind != frontend::ClassMemberKind::Destructor) continue;
+                const frontend::ProjectOopMirFunction* destructor = mirModel_.functionForMember(memberOrdinal);
+                if (destructor == nullptr)
+                    return fail(error, "NativeSharp value destructor has no MIR function");
+                frontend::ProjectOopMirDispatchTable::DestructionStep step;
+                step.destructorCalleeName = destructor->mangledName;
+                plan.destructionSteps.push_back(std::move(step));
+                break;
+            }
+            for (auto iterator = layout.fields.rbegin(); iterator != layout.fields.rend(); ++iterator)
+            {
+                const frontend::ObjectFieldLayout& field = *iterator;
+                if (field.memberOrdinal >= memberModel_->members().size()) continue;
+                const frontend::ClassMemberSymbol& symbol = memberModel_->members()[field.memberOrdinal];
+                if (symbol.kind != frontend::ClassMemberKind::Field || symbol.isStatic) continue;
+                const bool owned = symbol.declaredOwnership == sema::OwnershipKind::Owned &&
+                    (requiresOwnedDestruction(field.typeKey) ||
+                     frontend::ProjectTypeConversion::isNativeArray(field.typeKey));
+                const bool value = !owned && memberModel_->typeRequiresValueDrop(field.typeKey);
+                if (!owned && !value) continue;
+                frontend::ProjectOopMirDispatchTable::DestructionStep step;
+                step.ownedField.memberOrdinal = field.memberOrdinal;
+                step.ownedField.offset = field.offset;
+                step.isFieldRelease = owned;
+                step.isValueFieldDrop = value;
+                if (value) step.valueFieldTypeKey = field.typeKey;
+                else
+                {
+                    step.ownedField.isNativeString = field.typeKey == "builtin:string";
+                    step.ownedField.isNativeArray = frontend::ProjectTypeConversion::isNativeArray(field.typeKey);
+                    step.ownedField.arrayTypeKey = field.typeKey;
+                }
+                plan.destructionSteps.push_back(std::move(step));
+            }
+            return emitObjectDestructionSteps(plan, address, error);
+        }
         for (const std::size_t memberOrdinal : memberModel_->membersOfType(layout.typeOrdinal))
         {
             if (memberOrdinal >= memberModel_->members().size()) continue;
@@ -976,10 +1834,10 @@ bool OopLlvmImplementation::emitStructValueDropMembers(
             if (member.kind != frontend::ClassMemberKind::Destructor) continue;
             const frontend::ProjectOopMirFunction* destructor = mirModel_.functionForMember(memberOrdinal);
             if (destructor == nullptr)
-                return fail(error, "NativeSharp 3.0 value destructor has no MIR function");
+                return fail(error, "NativeSharp value destructor has no MIR function");
             const auto target = functions_.find(destructor->mangledName);
             if (target == functions_.end())
-                return fail(error, "NativeSharp 3.0 value destructor was not declared: " +
+                return fail(error, "NativeSharp value destructor was not declared: " +
                     destructor->mangledName);
             LLVMValueRef arguments[] = {address};
             buildNoUnwindCall(
@@ -1073,7 +1931,7 @@ bool OopLlvmImplementation::emitValueDropAddress(
         bool allowNamedThunk )
 {
         if (address == nullptr || memberModel_ == nullptr)
-            return fail(error, "NativeSharp 3.0 value drop has no address/member model");
+            return fail(error, "NativeSharp value drop has no address/member model");
         bool fixedArrayHandled = false;
         if (!emitFixedArrayDropAddress(
                 address, typeKey, stem, fixedArrayHandled, error)) return false;
@@ -1118,15 +1976,86 @@ bool OopLlvmImplementation::emitValueDropAddress(
         }
         const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, typeKey);
         if (layout == nullptr) return true;
+        if (const auto elements = frontend::ProjectTypeConversion::tupleElementTypeKeys(typeKey))
+        {
+            if (elements->size() != layout->fields.size())
+                return fail(error, "NativeSharp tuple drop has an inconsistent layout");
+            for (std::size_t index = elements->size(); index-- > 0;)
+            {
+                const std::string& elementType = (*elements)[index];
+                if (!memberModel_->typeRequiresValueDrop(elementType)) continue;
+                LLVMValueRef elementAddress = byteOffset(
+                    address, layout->fields[index].offset,
+                    (std::string(stem) + ".tuple.element.addr").c_str());
+                if (!emitValueDropAddress(
+                        elementAddress, elementType,
+                        std::string(stem) + ".tuple.element", error)) return false;
+            }
+            return true;
+        }
         if (allowNamedThunk && !layout->dropGlueEntryName.empty())
         {
             const auto entry = valueDropEntries_.find(layout->typeKey);
             if (entry == valueDropEntries_.end())
-                return fail(error, "NativeSharp 3.0 value drop glue was not declared: " +
+                return fail(error, "NativeSharp value drop glue was not declared: " +
                     layout->dropGlueEntryName);
             LLVMValueRef arguments[] = {address};
-            buildNoUnwindCall(
-                entry->second.functionType, entry->second.function, arguments, 1, "");
+            if (!funcletStack_.empty() && funcletStack_.back().kind == FuncletKind::Cleanup)
+            {
+                const std::string guardName = layout->dropGlueEntryName + ".unwind.guard";
+                LLVMValueRef guard = LLVMGetNamedFunction(module_, guardName.c_str());
+                if (guard == nullptr)
+                {
+                    LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                    LLVMValueRef filter = LLVMGetNamedFunction(module_, "__nsc_cleanup_accept_any");
+                    LLVMBuilderRef helper = LLVMCreateBuilderInContext(context_);
+                    if (filter == nullptr)
+                    {
+                        LLVMTypeRef filterParameters[] = {ptr, ptr};
+                        LLVMTypeRef filterType = LLVMFunctionType(
+                            LLVMInt32TypeInContext(context_), filterParameters, 2, 0);
+                        filter = LLVMAddFunction(module_, "__nsc_cleanup_accept_any", filterType);
+                        LLVMSetLinkage(filter, LLVMInternalLinkage);
+                        LLVMPositionBuilderAtEnd(helper,
+                            LLVMAppendBasicBlockInContext(context_, filter, "entry"));
+                        LLVMBuildRet(helper, LLVMConstInt(LLVMInt32TypeInContext(context_), 1, 0));
+                    }
+                    guard = LLVMAddFunction(module_, guardName.c_str(), entry->second.functionType);
+                    LLVMSetLinkage(guard, LLVMInternalLinkage);
+                    LLVMSetPersonalityFn(guard, sehPersonalityFunction_);
+                    LLVMBasicBlockRef guardEntry = LLVMAppendBasicBlockInContext(context_, guard, "entry");
+                    LLVMBasicBlockRef guardDone = LLVMAppendBasicBlockInContext(context_, guard, "done");
+                    LLVMBasicBlockRef guardDispatch = LLVMAppendBasicBlockInContext(context_, guard, "dispatch");
+                    LLVMBasicBlockRef guardHandler = LLVMAppendBasicBlockInContext(context_, guard, "handler");
+                    LLVMPositionBuilderAtEnd(helper, guardEntry);
+                    LLVMValueRef guardArguments[] = {LLVMGetParam(guard, 0)};
+                    LLVMBuildInvoke2(helper, entry->second.functionType, entry->second.function,
+                        guardArguments, 1, guardDone, guardDispatch, "");
+                    LLVMPositionBuilderAtEnd(helper, guardDone);
+                    LLVMBuildRetVoid(helper);
+                    LLVMPositionBuilderAtEnd(helper, guardDispatch);
+                    LLVMValueRef catches = LLVMBuildCatchSwitch(helper, nullptr, nullptr, 1, "drop.guard.switch");
+                    LLVMAddHandler(catches, guardHandler);
+                    LLVMPositionBuilderAtEnd(helper, guardHandler);
+                    LLVMValueRef filterArguments[] = {filter};
+                    LLVMValueRef pad = LLVMBuildCatchPad(helper, catches, filterArguments, 1, "drop.guard.pad");
+                    LLVMValueRef reason = LLVMConstInt(LLVMInt32TypeInContext(context_), 20, 0);
+                    LLVMValueRef trapArguments[] = {reason};
+                    LLVMValueRef bundleArguments[] = {pad};
+                    LLVMOperandBundleRef bundle = LLVMCreateOperandBundle("funclet", 7, bundleArguments, 1);
+                    LLVMOperandBundleRef bundles[] = {bundle};
+                    LLVMBuildCallWithOperandBundles(helper, trapFunctionType_, trapFunction_,
+                        trapArguments, 1, bundles, 1, "");
+                    LLVMDisposeOperandBundle(bundle);
+                    LLVMBuildUnreachable(helper);
+                    LLVMDisposeBuilder(helper);
+                }
+                buildNoUnwindCall(entry->second.functionType, guard, arguments, 1, "");
+                return true;
+            }
+            if (buildPotentiallyThrowingCall(
+                    entry->second.functionType, entry->second.function, arguments, 1, "", error) == nullptr &&
+                !error.empty()) return false;
             return true;
         }
         if (!layout->isUnion)
@@ -1144,7 +2073,7 @@ bool OopLlvmImplementation::emitValueDropAddress(
             if (variant) return emitVariantDropAddress(address, *layout, stem, error);
         }
         if (layout->isUnion)
-            return fail(error, "NativeSharp 3.0 value drop requires an active-member discriminator for union '" +
+            return fail(error, "NativeSharp value drop requires an active-member discriminator for union '" +
                 std::string(typeKey) + "'");
         return emitStructValueDropMembers(address, *layout, stem, error);
     }
@@ -1157,7 +2086,7 @@ bool OopLlvmImplementation::emitValueDrop(
         std::string& error)
 {
         if (node == nullptr || storage == nullptr)
-            return fail(error, "NativeSharp 3.0 value cleanup is missing storage");
+            return fail(error, "NativeSharp value cleanup is missing storage");
         if (flag == nullptr)
             return emitValueDropAddress(storage, node->typeKey, stem, error);
 
@@ -1175,11 +2104,11 @@ bool OopLlvmImplementation::emitValueDrop(
         return true;
     }
 
-// EN: Freeze 3.0 (plan item 135). Allocas are not zero-initialized and a branch region stays active after the
+// EN: Freeze (plan item 135). Allocas are not zero-initialized and a branch region stays active after the
 //     join, so a full expression whose borrow crosses a `?:` or `??` (booleanValue) clears every pointer owner
 //     slot it holds before evaluating anything. emitRaiiDestroy already skips a null owner. A value-drop struct
 //     has its own drop flag, and a lambda body belongs to another function, so neither is touched.
-// ES: Congelamiento 3.0 (elemento 135 del plan). Los allocas no se inicializan en cero y una region de rama sigue
+// ES: Congelamiento (elemento 135 del plan). Los allocas no se inicializan en cero y una region de rama sigue
 //     activa despues de la union, asi que una expresion completa cuyo prestamo cruza un `?:` o `??`
 //     (booleanValue) pone en null cada slot de dueno puntero que contiene antes de evaluar nada. emitRaiiDestroy
 //     ya omite un dueno null. Un struct con drop tiene su propia bandera, y el cuerpo de una lambda pertenece a
@@ -1328,9 +2257,9 @@ bool OopLlvmImplementation::emitRaiiSpecialDestroy(
         return true;
     }
 
-// EN: Freeze 3.0 C-14: the frame slot of a parameter a $poll/$moveNext captured, or null. The poll's
+// EN: Freeze C-14: the frame slot of a parameter a $poll/$moveNext captured, or null. The poll's
 //     own parameter 0 is `self`; the original parameters live in the frame the constructor filled.
-// ES: Congelamiento 3.0 C-14: el slot del frame de un parametro capturado por un $poll/$moveNext, o
+// ES: Congelamiento C-14: el slot del frame de un parametro capturado por un $poll/$moveNext, o
 //     null. El parametro 0 del poll es `self`; los parametros originales viven en el frame que llenó
 //     el constructor.
 LLVMValueRef OopLlvmImplementation::capturedParameterSlot(
@@ -1372,9 +2301,9 @@ bool OopLlvmImplementation::emitOwnedParameterDestroy(const frontend::ProjectOop
         {
             return fail(error, "Stage 50.8 owned-parameter cleanup is missing parameter/region identity");
         }
-        // EN: Freeze 3.0 C-14: in a poll the owned parameter lives in the frame; reading parameter
+        // EN: Freeze C-14: in a poll the owned parameter lives in the frame; reading parameter
         //     0 here destroyed the future itself as if it were the parameter (a crash).
-        // ES: Congelamiento 3.0 C-14: en un poll el parametro owned vive en el frame; leer el
+        // ES: Congelamiento C-14: en un poll el parametro owned vive en el frame; leer el
         //     parametro 0 aqui destruia el future mismo como si fuera el parametro (un crash).
         if (LLVMValueRef captured = capturedParameterSlot(*node->parameterOrdinal, node->typeKey))
             return destroyCapturedOwnedParameter(captured, node->typeKey, error);
@@ -1478,6 +2407,84 @@ bool OopLlvmImplementation::emitCleanupAction(std::size_t ordinal, std::string& 
             return fail(error, "Stage 45.10 cannot resolve MIR cleanup action");
         }
         const frontend::ProjectOopMirNode* cleanup = found->second;
+        if (cleanup->stringValue == "constructor.owned.field.cleanup" ||
+            cleanup->stringValue == "constructor.shared.field.cleanup")
+        {
+            if (thisValue_ == nullptr) return fail(error, "constructor field cleanup has no receiver");
+            const auto flag = localStorage_.find(ordinal);
+            if (flag == localStorage_.end()) return fail(error, "constructor field cleanup has no live flag");
+            LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
+            LLVMValueRef alive = LLVMBuildLoad2(builder_, flagType, flag->second, "constructor.field.live");
+            LLVMBasicBlockRef destroy = appendBlock("constructor.field.destroy");
+            LLVMBasicBlockRef done = appendBlock("constructor.field.done");
+            LLVMBuildCondBr(builder_, alive, destroy, done);
+            enterBlock(destroy);
+            LLVMBuildStore(builder_, LLVMConstInt(flagType, 0, 0), flag->second);
+            LLVMValueRef address = byteOffset(thisValue_, cleanup->immediate, "constructor.field.cleanup.addr");
+            if (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(cleanup->typeKey))
+            {
+                if (!emitValueDropAddress(address, cleanup->typeKey, "constructor.field.cleanup", error)) return false;
+            }
+            else
+            {
+                LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                LLVMValueRef value = LLVMBuildLoad2(builder_, ptr, address, "constructor.field.cleanup.value");
+                LLVMBuildStore(builder_, LLVMConstNull(ptr), address);
+                if (!emitOwnedPointerDestroy(value, cleanup->typeKey, "constructor.field.cleanup", error)) return false;
+            }
+            if (!terminated()) LLVMBuildBr(builder_, done);
+            enterBlock(done);
+            return true;
+        }
+        if (cleanup->stringValue == "constructor.delegated.base.cleanup")
+        {
+            if (!cleanup->targetTypeOrdinal.has_value() || thisValue_ == nullptr)
+                return fail(error, "delegated constructor base cleanup has no receiver");
+            const auto flag = localStorage_.find(ordinal);
+            const auto entry = objectDestructionFunctions_.find(*cleanup->targetTypeOrdinal);
+            const auto accessor = descriptorAccessorFunctions_.find(*cleanup->targetTypeOrdinal);
+            if (flag == localStorage_.end() ||
+                (entry == objectDestructionFunctions_.end() &&
+                 (accessor == descriptorAccessorFunctions_.end() || descriptorType_ == nullptr ||
+                  destructionEntryFunctionType_ == nullptr)))
+                return fail(error, "delegated constructor base cleanup is incomplete");
+            LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
+            LLVMValueRef alive = LLVMBuildLoad2(builder_, flagType, flag->second, "constructor.base.live");
+            LLVMBasicBlockRef destroy = appendBlock("constructor.base.destroy");
+            LLVMBasicBlockRef done = appendBlock("constructor.base.done");
+            LLVMBuildCondBr(builder_, alive, destroy, done);
+            enterBlock(destroy);
+            LLVMBuildStore(builder_, LLVMConstInt(flagType, 0, 0), flag->second);
+            LLVMValueRef arguments[] = {thisValue_};
+            if (entry != objectDestructionFunctions_.end())
+                buildNoUnwindCall(entry->second.functionType, entry->second.function, arguments, 1, "");
+            else
+            {
+                LLVMValueRef descriptor = buildNoUnwindCall(
+                    accessor->second.functionType, accessor->second.function, nullptr, 0,
+                    "constructor.base.descriptor");
+                LLVMValueRef address = LLVMBuildStructGEP2(
+                    builder_, descriptorType_, descriptor, 7, "constructor.base.object.entry.addr");
+                LLVMValueRef objectEntry = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0), address,
+                    "constructor.base.object.entry");
+                buildNoUnwindCall(destructionEntryFunctionType_, objectEntry, arguments, 1, "");
+            }
+            if (!terminated()) LLVMBuildBr(builder_, done);
+            enterBlock(done);
+            return true;
+        }
+        if (cleanup->stringValue == "constructor.completed.base.cleanup")
+        {
+            if (!cleanup->targetTypeOrdinal.has_value() || thisValue_ == nullptr)
+                return fail(error, "constructor base cleanup has no completed receiver");
+            const auto entry = objectDestructionFunctions_.find(*cleanup->targetTypeOrdinal);
+            if (entry == objectDestructionFunctions_.end())
+                return fail(error, "constructor base cleanup has no object destruction entry");
+            LLVMValueRef arguments[] = {thisValue_};
+            buildNoUnwindCall(entry->second.functionType, entry->second.function, arguments, 1, "");
+            return true;
+        }
         if (cleanup->kind == frontend::ProjectOopMirNodeKind::UsingRegion)
         {
             return emitUsingDispose(cleanup, error);
@@ -1499,7 +2506,38 @@ bool OopLlvmImplementation::emitCleanupAction(std::size_t ordinal, std::string& 
             {
                 return fail(error, "Stage 45.10 finally cleanup has no body");
             }
-            return lowerStatement(cleanup->children.front().get(), error);
+            const auto* body = cleanup->children.front().get();
+            const auto suspensions = coroutine_.subtreeIds.find(body);
+            if (!coroutine_.active || !funcletStack_.empty() || suspensions == coroutine_.subtreeIds.end())
+                return lowerStatement(body, error);
+            std::unordered_map<std::int64_t, std::int64_t> ids;
+            for (const std::int64_t id : suspensions->second)
+                ids.emplace(id, coroutine_.nextSuspensionId++);
+            coroutine_.cleanupSuspensionIds.push_back(std::move(ids));
+            ++coroutine_.finallyDepth;
+            const bool result = lowerStatement(body, error);
+            --coroutine_.finallyDepth;
+            coroutine_.cleanupSuspensionIds.pop_back();
+            if (result && !terminated() && coroutine_.asyncGenerator &&
+                !coroutine_.emittingCancellationCleanup)
+            {
+                LLVMTypeRef intType = LLVMInt32TypeInContext(context_);
+                LLVMValueRef state = LLVMBuildLoad2(builder_, intType, coroutine_.self, "coro.finally.state");
+                LLVMValueRef cancelling = LLVMBuildICmp(builder_, LLVMIntSLT, state,
+                    LLVMConstInt(intType, static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase), 1),
+                    "coro.finally.cancelling");
+                LLVMBasicBlockRef cancel = appendBlock("coro.finally.cancel");
+                LLVMBasicBlockRef normal = appendBlock("coro.finally.normal");
+                LLVMBuildCondBr(builder_, cancelling, cancel, normal);
+                frontend::ProjectOopMirNode pending;
+                pending.cleanupRegionOrdinals = activeCleanupRegions_;
+                enterBlock(cancel);
+                if (coroutine_.cancellationExceptionOwner != nullptr &&
+                    !emitCaughtExceptionRelease(coroutine_.cancellationExceptionOwner, error)) return false;
+                if (!emitCoroutineYieldCancel(&pending, LLVMGetInsertBlock(builder_), error)) return false;
+                enterBlock(normal);
+            }
+            return result;
         }
         return fail(error, "Stage 50.8 cleanup ordinal does not refer to using/finally/RAII/owned-parameter MIR");
     }
@@ -1532,9 +2570,9 @@ bool OopLlvmImplementation::emitCatchBodyExceptionClear(
         LLVMBuildBr(builder_, leaveBlock);
         enterBlock(leaveBlock);
         buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
-        // EN: Freeze 3.0 C-01: every catch body this exit leaves releases its exception. The
+        // EN: Freeze C-01: every catch body this exit leaves releases its exception. The
         //     copy keeps the frames stable while the release calls are lowered.
-        // ES: Congelamiento 3.0 C-01: cada cuerpo de catch que esta salida abandona libera su
+        // ES: Congelamiento C-01: cada cuerpo de catch que esta salida abandona libera su
         //     excepcion. La copia mantiene estables los marcos mientras se bajan las liberaciones.
         const std::vector<ActiveCatchBody> frames = activeCatchExceptions_;
         for (auto frame = frames.rbegin(); frame != frames.rend(); ++frame)
@@ -1547,10 +2585,223 @@ bool OopLlvmImplementation::emitCatchBodyExceptionClear(
         return true;
     }
 
+// Emit the ownership handover after a typed replacement has been caught.
+// Unwired candidate for a non-suspending cleanup without direct exits.
+bool OopLlvmImplementation::emitAsyncCleanupReplacementCandidate(
+        std::size_t ordinal, LLVMValueRef ownerSlot, LLVMValueRef matchingFilter,
+        LLVMBasicBlockRef outerUnwind, std::string& error)
+{
+        if (ownerSlot == nullptr || matchingFilter == nullptr || !funcletStack_.empty())
+            return fail(error, "async cleanup replacement requires an owner and a typed filter");
+        const auto regionIndex = activeCleanupIndex(ordinal, activeCleanupRegions_);
+        if (!regionIndex.has_value()) return fail(error, "async cleanup replacement region is inactive");
+        const auto savedActive = activeCleanupRegions_;
+        activeCleanupRegions_.resize(*regionIndex);
+        LLVMBasicBlockRef dispatch = appendBlock("coro.cleanup.replacement.dispatch");
+        LLVMBasicBlockRef padBlock = appendBlock("coro.cleanup.replacement.pad");
+        LLVMBasicBlockRef replacementBody = appendBlock("coro.cleanup.replacement.body");
+        LLVMBasicBlockRef foreign = appendBlock("coro.cleanup.replacement.foreign");
+        LLVMBasicBlockRef done = appendBlock("coro.cleanup.replacement.done");
+        exceptionHandlerStack_.push_back(ExceptionHandlerContext{
+            0, dispatch, activeCleanupRegions_.size(), funcletStack_.size()});
+        LLVMValueRef savedCancellationOwner = coroutine_.cancellationExceptionOwner;
+        const auto cleanup = cleanupRegions_.find(ordinal);
+        if (coroutine_.asyncGenerator && cleanup != cleanupRegions_.end())
+        {
+            const auto slot = coroutine_.finallyOwnerSlots.find(cleanup->second);
+            if (slot != coroutine_.finallyOwnerSlots.end() && slot->second == ownerSlot)
+                coroutine_.cancellationExceptionOwner = ownerSlot;
+        }
+        const bool cleaned = emitCleanupAction(ordinal, error);
+        coroutine_.cancellationExceptionOwner = savedCancellationOwner;
+        exceptionHandlerStack_.pop_back();
+        if (!cleaned) { activeCleanupRegions_ = savedActive; return false; }
+        if (!terminated()) LLVMBuildBr(builder_, done);
+        enterBlock(dispatch);
+        LLVMValueRef catches = LLVMBuildCatchSwitch(builder_, nullptr, foreign, 1,
+            "coro.cleanup.replacement.switch");
+        LLVMAddHandler(catches, padBlock);
+        enterBlock(padBlock);
+        LLVMValueRef filters[] = {matchingFilter};
+        LLVMValueRef pad = LLVMBuildCatchPad(builder_, catches, filters, 1, "coro.cleanup.replacement.catch");
+        LLVMBuildCatchRet(builder_, pad, replacementBody);
+        enterBlock(replacementBody);
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef replacement = buildNoUnwindCall(exceptionCurrentFunctionType_, exceptionCurrentFunction_,
+            nullptr, 0, "coro.cleanup.replacement.exception");
+        LLVMValueRef replacementSlot = entryBlockAlloca(ptr, 8U, "coro.cleanup.replacement.owner");
+        LLVMBuildStore(builder_, replacement, replacementSlot);
+        buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
+        if (!emitPendingExceptionReplacement(ownerSlot, replacementSlot, outerUnwind, error))
+        { activeCleanupRegions_ = savedActive; return false; }
+        if (!terminated()) LLVMBuildBr(builder_, done);
+        enterBlock(foreign);
+        LLVMValueRef foreignPad = LLVMBuildCleanupPad(builder_, nullptr, nullptr, 0,
+            "coro.cleanup.replacement.foreign.pad");
+        if (foreignPad == nullptr)
+        { activeCleanupRegions_ = savedActive; return fail(error, "async cleanup foreign pad is missing"); }
+        funcletStack_.push_back(FuncletContext{
+            foreignPad, FuncletKind::Cleanup, activeCleanupRegions_.size(), nullptr, outerUnwind});
+        buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
+        const bool released = emitCaughtExceptionReleaseDuringForeignUnwind(ownerSlot, error);
+        funcletStack_.pop_back();
+        if (!released) { activeCleanupRegions_ = savedActive; return false; }
+        if (!terminated()) LLVMBuildCleanupRet(builder_, foreignPad, outerUnwind);
+        enterBlock(done);
+        activeCleanupRegions_ = savedActive;
+        return true;
+}
+
+// Unwired WIP; caller guarantees disjoint slots and an owned replacement.
+// A further exception during old-owner release traps.
+bool OopLlvmImplementation::emitPendingExceptionReplacement(
+        LLVMValueRef ownerSlot, LLVMValueRef replacementSlot,
+        LLVMBasicBlockRef outerUnwind, std::string& error)
+{
+        if (ownerSlot == nullptr || replacementSlot == nullptr || ownerSlot == replacementSlot ||
+            !funcletStack_.empty() || ehFilterFunction_ == nullptr || sehPersonalityFunction_ == nullptr ||
+            trapFunction_ == nullptr || trapFunctionType_ == nullptr)
+            return fail(error, "async exception replacement has no owner or replacement");
+        LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef old = LLVMBuildLoad2(builder_, ptr, ownerSlot, "coro.pending.owner");
+        LLVMValueRef replacement = LLVMBuildLoad2(builder_, ptr, replacementSlot, "coro.replacement.owner");
+        LLVMValueRef same = LLVMBuildICmp(builder_, LLVMIntEQ, old, replacement, "coro.replacement.same");
+        (void)outerUnwind;
+        LLVMBasicBlockRef handover = appendBlock("coro.replacement.handover");
+        LLVMBasicBlockRef release = appendBlock("coro.replacement.release");
+        LLVMBasicBlockRef failure = appendBlock("coro.replacement.release.dispatch");
+        LLVMBasicBlockRef trap = appendBlock("coro.replacement.release.trap");
+        LLVMBuildCondBr(builder_, same, handover, release);
+        enterBlock(release);
+        exceptionHandlerStack_.push_back(ExceptionHandlerContext{
+            0, failure, activeCleanupRegions_.size(), funcletStack_.size()});
+        const bool released = emitCaughtExceptionRelease(ownerSlot, error);
+        exceptionHandlerStack_.pop_back();
+        if (!released) return false;
+        if (!terminated()) LLVMBuildBr(builder_, handover);
+        LLVMValueRef filter = LLVMGetNamedFunction(module_, "__nsc_cleanup_accept_any");
+        if (filter == nullptr)
+        {
+            LLVMTypeRef parameters[] = {ptr, ptr};
+            LLVMTypeRef filterType = LLVMFunctionType(LLVMInt32TypeInContext(context_), parameters, 2, 0);
+            filter = LLVMAddFunction(module_, "__nsc_cleanup_accept_any", filterType);
+            LLVMSetLinkage(filter, LLVMInternalLinkage);
+            LLVMBuilderRef filterBuilder = LLVMCreateBuilderInContext(context_);
+            LLVMPositionBuilderAtEnd(filterBuilder, LLVMAppendBasicBlockInContext(context_, filter, "entry"));
+            LLVMBuildRet(filterBuilder, LLVMConstInt(LLVMInt32TypeInContext(context_), 1, 0));
+            LLVMDisposeBuilder(filterBuilder);
+        }
+        enterBlock(failure);
+        LLVMValueRef catches = LLVMBuildCatchSwitch(builder_, nullptr, nullptr, 1, "coro.replacement.switch");
+        LLVMAddHandler(catches, trap);
+        enterBlock(trap);
+        LLVMValueRef filters[] = {filter};
+        LLVMValueRef pad = LLVMBuildCatchPad(builder_, catches, filters, 1, "coro.replacement.pad");
+        funcletStack_.push_back(FuncletContext{pad, FuncletKind::Catch, 0, nullptr, nullptr});
+        LLVMValueRef reason = LLVMConstInt(LLVMInt32TypeInContext(context_), 20, 0);
+        LLVMValueRef arguments[] = {reason};
+        buildNoUnwindCall(trapFunctionType_, trapFunction_, arguments, 1, "");
+        funcletStack_.pop_back();
+        LLVMBuildUnreachable(builder_);
+        enterBlock(handover);
+        LLVMValueRef value = LLVMBuildLoad2(builder_, ptr, replacementSlot, "coro.replacement.value");
+        LLVMBuildStore(builder_, LLVMConstNull(ptr), replacementSlot);
+        LLVMBuildStore(builder_, value, ownerSlot);
+        return true;
+}
+
+bool OopLlvmImplementation::emitCaughtExceptionReleaseDuringForeignUnwind(
+        LLVMValueRef ownerSlot, std::string& error)
+{
+        if (ownerSlot == nullptr || currentFunction_ == nullptr || trapFunction_ == nullptr ||
+            trapFunctionType_ == nullptr || sehPersonalityFunction_ == nullptr)
+            return fail(error, "foreign unwind exception owner guard has incomplete state");
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMTypeRef parameters[] = {ptr};
+        LLVMTypeRef guardType = LLVMFunctionType(LLVMVoidTypeInContext(context_), parameters, 1, 0);
+        LLVMValueRef filter = LLVMGetNamedFunction(module_, "__nsc_cleanup_accept_any");
+        if (filter == nullptr)
+        {
+            LLVMTypeRef filterParameters[] = {ptr, ptr};
+            LLVMTypeRef filterType = LLVMFunctionType(LLVMInt32TypeInContext(context_), filterParameters, 2, 0);
+            filter = LLVMAddFunction(module_, "__nsc_cleanup_accept_any", filterType);
+            LLVMSetLinkage(filter, LLVMInternalLinkage);
+            LLVMBuilderRef filterBuilder = LLVMCreateBuilderInContext(context_);
+            LLVMPositionBuilderAtEnd(filterBuilder, LLVMAppendBasicBlockInContext(context_, filter, "entry"));
+            LLVMBuildRet(filterBuilder, LLVMConstInt(LLVMInt32TypeInContext(context_), 1, 0));
+            LLVMDisposeBuilder(filterBuilder);
+        }
+        LLVMValueRef outerFunction = currentFunction_;
+        LLVMBasicBlockRef outerBlock = LLVMGetInsertBlock(builder_);
+        if (outerBlock == nullptr) return fail(error, "foreign unwind exception owner guard has no block");
+        const std::size_t outerCounter = blockCounter_;
+        const auto outerFunclets = funcletStack_;
+        const auto outerHandlers = exceptionHandlerStack_;
+        const auto outerCleanups = activeCleanupRegions_;
+        const auto outerCatches = activeCatchExceptions_;
+        LLVMMetadataRef outerDebugLocation = LLVMGetCurrentDebugLocation2(builder_);
+        LLVMMetadataRef outerDebugSubprogram = currentDebugSubprogram_;
+        LLVMMetadataRef outerDebugScope = currentDebugScope_;
+        const auto outerDebugFileKey = currentDebugFileKey_;
+        std::size_t nameLength = 0;
+        const char* name = LLVMGetValueName2(outerFunction, &nameLength);
+        const std::string guardName = std::string(name, nameLength) +
+            ".foreign.exception.owner.guard." + std::to_string(blockCounter_++);
+        LLVMValueRef guard = LLVMAddFunction(module_, guardName.c_str(), guardType);
+        LLVMSetLinkage(guard, LLVMInternalLinkage);
+        LLVMSetPersonalityFn(guard, sehPersonalityFunction_);
+        currentFunction_ = guard;
+        LLVMSetCurrentDebugLocation2(builder_, nullptr);
+        currentDebugSubprogram_ = nullptr;
+        currentDebugScope_ = nullptr;
+        currentDebugFileKey_ = 0;
+        blockCounter_ = 0;
+        funcletStack_.clear();
+        exceptionHandlerStack_.clear();
+        activeCleanupRegions_.clear();
+        activeCatchExceptions_.clear();
+        LLVMBasicBlockRef entry = appendBlock("foreign.owner.guard.entry");
+        LLVMBasicBlockRef dispatch = appendBlock("foreign.owner.guard.dispatch");
+        enterBlock(entry);
+        exceptionHandlerStack_.push_back(ExceptionHandlerContext{0, dispatch, 0, 0});
+        const bool ok = emitCaughtExceptionRelease(LLVMGetParam(guard, 0), error);
+        exceptionHandlerStack_.pop_back();
+        if (ok && !terminated()) LLVMBuildRetVoid(builder_);
+        enterBlock(dispatch);
+        LLVMValueRef catches = LLVMBuildCatchSwitch(builder_, nullptr, nullptr, 1, "foreign.owner.guard.switch");
+        LLVMBasicBlockRef handler = appendBlock("foreign.owner.guard.handler");
+        LLVMAddHandler(catches, handler);
+        enterBlock(handler);
+        LLVMValueRef filters[] = {filter};
+        LLVMValueRef catchPad = LLVMBuildCatchPad(builder_, catches, filters, 1, "foreign.owner.guard.pad");
+        funcletStack_.push_back(FuncletContext{catchPad, FuncletKind::Catch, 0, nullptr, nullptr});
+        LLVMValueRef reason = LLVMConstInt(LLVMInt32TypeInContext(context_), 20, 0);
+        LLVMValueRef trapArguments[] = {reason};
+        buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
+        funcletStack_.pop_back();
+        LLVMBuildUnreachable(builder_);
+        currentFunction_ = outerFunction;
+        blockCounter_ = outerCounter + 1U;
+        funcletStack_ = outerFunclets;
+        exceptionHandlerStack_ = outerHandlers;
+        activeCleanupRegions_ = outerCleanups;
+        activeCatchExceptions_ = outerCatches;
+        currentDebugSubprogram_ = outerDebugSubprogram;
+        currentDebugScope_ = outerDebugScope;
+        currentDebugFileKey_ = outerDebugFileKey;
+        LLVMSetCurrentDebugLocation2(builder_, outerDebugLocation);
+        enterBlock(outerBlock);
+        if (!ok) return false;
+        LLVMValueRef arguments[] = {ownerSlot};
+        buildNoUnwindCall(guardType, guard, arguments, 1, "");
+        return true;
+}
+
 bool OopLlvmImplementation::emitCaughtExceptionRelease(LLVMValueRef ownerSlot, std::string& error)
 {
         if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
-            return fail(error, "freeze 3.0 catch ownership has no descriptor ABI");
+            return fail(error, "freeze catch ownership has no descriptor ABI");
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
         LLVMValueRef owned = LLVMBuildLoad2(builder_, ptr, ownerSlot, "eh.catch.owned");
         LLVMBasicBlockRef releaseBlock = appendBlock("eh.catch.release");

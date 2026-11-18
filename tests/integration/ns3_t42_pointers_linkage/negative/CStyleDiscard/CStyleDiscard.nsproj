@@ -1,1 +1,1 @@
-<Project><PropertyGroup><Name>CStyleDiscard</Name><Language>3</Language></PropertyGroup><ItemGroup><Compile Include="Main.ns" /></ItemGroup></Project>
+<Project><PropertyGroup><Name>CStyleDiscard</Name></PropertyGroup><ItemGroup><Compile Include="Main.ns" /></ItemGroup></Project>

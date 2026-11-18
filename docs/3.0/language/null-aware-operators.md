@@ -1,8 +1,8 @@
-# NativeSharp 3.0 — Operadores nulos / Null-aware operators
+# NativeSharp — Operadores nulos / Null-aware operators
 
 ## Español
 
-NativeSharp 3.0 tiene tres operaciones con evaluación corta y sin boxing implícito. Su matriz es
+NativeSharp tiene tres operaciones con evaluación corta y sin boxing implícito. Su matriz es
 deliberadamente más estrecha que la de un runtime administrado:
 
 | Operación | Carrier admitido | Resultado | Rama diferida |
@@ -33,7 +33,7 @@ evalúa anticipadamente la rama diferida y no se introduce allocation ni boxing.
 
 ## English
 
-NativeSharp 3.0 provides three short-circuiting operations with no implicit boxing. Their matrix
+NativeSharp provides three short-circuiting operations with no implicit boxing. Their matrix
 is intentionally narrower than a managed runtime's:
 
 | Operation | Accepted carrier | Result | Deferred branch |

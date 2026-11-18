@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>FixedMatrixConstForward</Name><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><Compile Include="Program.ns" /><Compile Include="FixedMatrix.ns" /><Compile Include="FixedMatrixOps.ns" /></ItemGroup>
+</Project>

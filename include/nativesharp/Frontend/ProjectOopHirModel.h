@@ -135,15 +135,17 @@ public:
         driver::CompilationWorkerPool* workerPool);
 
     std::span<const ProjectOopHirFunction> functions() const noexcept;
+    const MethodExpressionTypeBinding* yieldOperandBinding(
+        const ast::AstNode* syntax, std::size_t callableOrdinal) const noexcept;
     std::span<const ProjectOopHirFieldInitializer> fieldInitializers() const noexcept;
     const ProjectOopHirFunction* functionForMember(std::size_t memberOrdinal) const noexcept;
     const ProjectOopHirFunction* functionForNamespaceFunction(
         std::size_t functionOrdinal) const noexcept;
     bool isBuilt() const noexcept;
 
-    static std::string mangleCallable(
+    std::string mangleCallable(
         const NamedTypeDeclaration& type,
-        const ClassMemberSymbol& member);
+        const ClassMemberSymbol& member) const;
 
 private:
     friend struct ProjectOopHirModelTestAccess;
@@ -256,8 +258,9 @@ private:
     void promoteEligibleStackClassLocals(
         ProjectOopHirFunction& function,
         const std::vector<ProjectOopHirNode*>& localDeclarations);
-    void promoteScopeClassLocals(
-        const std::vector<ProjectOopHirNode*>& localDeclarations);
+    bool promoteScopeClassLocals(
+        const std::vector<ProjectOopHirNode*>& localDeclarations,
+        bool coroutine, std::string& error);
     bool validateNoHeapRegularFunction(
         const ProjectOopHirFunction& function,
         const ClassMemberSymbol& member,
@@ -379,6 +382,10 @@ private:
     std::unique_ptr<ProjectOopHirNode> finishStaticAssertStatement(
         const ast::AstNode* statement,
         std::unique_ptr<ProjectOopHirNode> condition,
+        std::string& error);
+    bool resolveStaticAssertOperands(
+        std::unique_ptr<ProjectOopHirNode>& slot,
+        std::size_t depth,
         std::string& error);
     std::unique_ptr<ProjectOopHirNode> lowerIfStatement(
         const ast::AstNode* statement,
@@ -820,7 +827,7 @@ private:
         internal::VariableDeclarationFrameState& variable,
         const ast::AstNode* syntax,
         std::string& error);
-    static bool nextVariableDeclarationChild(
+    bool nextVariableDeclarationChild(
         const internal::IterativeExpressionFrame& frame,
         const ast::AstNode*& syntax,
         bool& addressContext);
@@ -836,7 +843,7 @@ private:
     void acceptVariableExtent(
         internal::IterativeExpressionFrame& frame,
         std::unique_ptr<ProjectOopHirNode> child);
-    static std::unique_ptr<ProjectOopHirNode> finishVariableDeclarationFrame(
+    std::unique_ptr<ProjectOopHirNode> finishVariableDeclarationFrame(
         internal::IterativeExpressionFrame& frame);
     bool initializeDeconstructionDeclarationFrame(
         internal::IterativeExpressionFrame& frame,
@@ -3773,6 +3780,12 @@ private:
         const MethodDelegateBinding& binding,
         std::unique_ptr<ProjectOopHirNode> node);
 
+    // LKF-378: an indirect invocation inside a noheap callable needs a noheap function type.
+    // LKF-378: una invocación indirecta dentro de un invocable noheap exige un tipo función noheap.
+    bool validateNoHeapIndirectInvocation(
+        std::size_t callerMemberOrdinal,
+        std::string_view delegateTypeKey,
+        std::string& error) const;
     bool validateNoHeapDirectCall(
         std::size_t callerMemberOrdinal,
         const MethodCallBinding& binding,
@@ -4102,10 +4115,10 @@ private:
         ProjectOopHirFunction& function,
         const std::string& futureKey,
         const ast::AstNode* syntax);
-    // EN: Freeze 3.0 C-02: `static async int Main()` is an entry point. The executable enters
+    // EN: Freeze C-02: `static async int Main()` is an entry point. The executable enters
     //     through a synthesized `Main$entry` that awaits Main's future and drives it to
     //     completion: the one place where a synchronous await loops over a suspending producer.
-    // ES: Congelamiento 3.0 C-02: `static async int Main()` es un punto de entrada. El ejecutable
+    // ES: Congelamiento C-02: `static async int Main()` es un punto de entrada. El ejecutable
     //     entra por un `Main$entry` sintetizado que espera el future de Main y lo lleva hasta el
     //     final: el unico lugar donde un await sincrono itera sobre un productor que se suspende.
     bool isAsyncEntryMain(const ProjectOopHirFunction& function) const;
@@ -4216,9 +4229,9 @@ private:
         std::unique_ptr<ProjectOopHirNode> value,
         const ast::AstNode* argumentSyntax,
         bool& hasOwnedTemporary);
-    // EN: Freeze 3.0 (plan item 118): the hidden owner of an argument handed to an `owned` parameter
+    // EN: Freeze (plan item 118): the hidden owner of an argument handed to an `owned` parameter
     //     (HirConversion.cpp).
-    // ES: Congelamiento 3.0 (elemento 118 del plan): el dueño oculto de un argumento entregado a un
+    // ES: Congelamiento (elemento 118 del plan): el dueño oculto de un argumento entregado a un
     //     parámetro `owned` (HirConversion.cpp).
     std::unique_ptr<ProjectOopHirNode> wrapOwnedArgumentTransfer(
         std::unique_ptr<ProjectOopHirNode> value,
@@ -4233,20 +4246,20 @@ private:
         std::unique_ptr<ProjectOopHirNode> value,
         const ast::AstNode* syntax,
         bool hasOwnedTemporary);
-    // EN: Freeze 3.0 C-11: owned and non-trivial temporaries (HirExceptionAndCleanup.cpp).
-    // ES: Congelamiento 3.0 C-11: temporales owned y no triviales (HirExceptionAndCleanup.cpp).
+    // EN: Freeze C-11: owned and non-trivial temporaries (HirExceptionAndCleanup.cpp).
+    // ES: Congelamiento C-11: temporales owned y no triviales (HirExceptionAndCleanup.cpp).
     void ownDroppableTemporaries(ProjectOopHirNode* root);
     bool ownReceiverTemporary(std::unique_ptr<ProjectOopHirNode>& consumer);
     bool isFreshDroppableTemporary(const ProjectOopHirNode* node) const;
     std::unique_ptr<ProjectOopHirNode> ownTemporary(std::unique_ptr<ProjectOopHirNode> value);
-    // EN: Freeze 3.0 (plan item 131a): receivers whose temporary must live until the end of the full
+    // EN: Freeze (plan item 131a): receivers whose temporary must live until the end of the full
     //     expression (a borrowed field read, a call that returns a new owner, a field store target).
-    // ES: Congelamiento 3.0 (elemento 131a del plan): receptores cuyo temporal debe vivir hasta el final de la
+    // ES: Congelamiento (elemento 131a del plan): receptores cuyo temporal debe vivir hasta el final de la
     //     expresion completa (una lectura de campo prestada, una llamada que devuelve un owner nuevo, el destino
     //     de una escritura de campo).
-    // EN: Freeze 3.0 (plan item 135): the provenance of a borrow taken from the temporary follows field
+    // EN: Freeze (plan item 135): the provenance of a borrow taken from the temporary follows field
     //     reads, non-owned call and getter results, `?:` and `??`; `(new T()).Field` is a temporary too.
-    // ES: Congelamiento 3.0 (elemento 135 del plan): la procedencia de un prestamo tomado del temporal sigue
+    // ES: Congelamiento (elemento 135 del plan): la procedencia de un prestamo tomado del temporal sigue
     //     lecturas de campo, resultados no owned de llamadas y getters, `?:` y `??`; `(new T()).Campo` tambien
     //     es un temporal.
     using HirParentMap = std::unordered_map<const ProjectOopHirNode*, ProjectOopHirNode*>;
@@ -4267,9 +4280,9 @@ private:
         ProjectOopHirNode*& enclosing) const;
     void closeAtFullExpression(
         ProjectOopHirNode* root, ProjectOopHirNode* enclosing, bool crossesBranch, HirParentMap& parents);
-    // EN: Freeze 3.0 (plan item 135a): a call that lends an owned temporary argument and returns a reference may
+    // EN: Freeze (plan item 135a): a call that lends an owned temporary argument and returns a reference may
     //     return that temporary; its cleanup moves out to the full expression.
-    // ES: Congelamiento 3.0 (elemento 135a del plan): una llamada que presta un temporal owned argumento y
+    // ES: Congelamiento (elemento 135a del plan): una llamada que presta un temporal owned argumento y
     //     devuelve una referencia puede devolver ese temporal; su limpieza sale a la expresion completa.
     void extendLentArgumentCleanups(ProjectOopHirNode* root);
     bool resultMayAliasLentArgument(const ProjectOopHirNode& fullExpression) const;
@@ -4412,10 +4425,10 @@ private:
     std::vector<std::optional<std::size_t>> functionByMember_;
     std::vector<std::optional<std::size_t>> functionByNamespaceFunction_;
     std::vector<std::optional<std::size_t>> functionByLambda_;
-    // EN: Freeze 3.0 C-05 (found while porting the file-mode cases): a coroutine's body moves into
+    // EN: Freeze C-05 (found while porting the file-mode cases): a coroutine's body moves into
     //     its poll or MoveNext, so the locals a lambda captures there belong to that function and
     //     not to the constructor left at the member's index. Wrapper index -> body index.
-    // ES: Congelamiento 3.0 C-05 (hallazgo al portar los casos de modo archivo): el cuerpo de una
+    // ES: Congelamiento C-05 (hallazgo al portar los casos de modo archivo): el cuerpo de una
     //     corrutina se muda a su poll o MoveNext, asi que los locales que ahi captura una lambda
     //     son de esa funcion y no del constructor que queda en el indice del miembro.
     //     Indice del envoltorio -> indice del cuerpo.

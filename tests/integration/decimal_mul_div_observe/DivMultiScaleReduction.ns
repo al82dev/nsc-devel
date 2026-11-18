@@ -1,0 +1,12 @@
+noinline decimal Divide(decimal a, decimal b) { return checked(a / b); }
+
+int Main()
+{
+    unsafe("inspect multiple exact decimal quotient reductions")
+    {
+        i128 maximumBits = ((i128)1 << 96) - (i128)1;
+        decimal maximum = *((decimal*)&maximumBits);
+        decimal result = Divide(maximum, 1.000m);
+        return *((i128*)&result) == maximumBits ? 0 : 1;
+    }
+}

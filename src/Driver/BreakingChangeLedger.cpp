@@ -10,18 +10,28 @@ namespace
 {
 constexpr const char* kLedger =
     "NSBREAKING 1\n"
-    "source_release=2.0.0\n"
-    "target_release=3.0.0\n"
+    "source_release=none\n"
+    "target_release=1.0.0\n"
     "entry_count=1\n"
     "change.001.id=NS3-BREAK-001\n"
-    "change.001.2x_contract=compiler:2.0.0;nsmeta:1.21;runtime-abi:1.0;runtime-symbol-set:2\n"
+    "change.001.previous_contract=unreleased;runtime-abi:1.0;runtime-symbol-set:2\n"
     "change.001.consumer=precompiled-libraries-runtime-and-tooling\n"
-    "change.001.compatible_alternatives_rejected=silent-abi-upgrade;accept-N-minus-2-producers\n"
-    "change.001.new_semantics=compiler:3.0.0;nsmeta:1.33;runtime-abi:1.1;runtime-symbol-set:3\n"
+    "change.001.compatible_alternatives_rejected=silent-abi-upgrade;accept-incompatible-runtime-abi\n"
+    "change.001.new_semantics=compiler:1.0.0;runtime-abi:1.1;runtime-symbol-set:3\n"
     "change.001.impact=source:no;binary:yes;metadata:yes;tools:yes\n"
-    "change.001.diagnostics_migration=unsupported-producer-or-runtime-abi;rebuild-with-3.0\n"
-    "change.001.minimum_component_version=compiler:3.0.0;runtime-abi:1.1;nsmeta:1.33\n"
+    "change.001.diagnostics_migration=incompatible-runtime-or-native-abi;rebuild-with-current-compiler\n"
+    "change.001.minimum_component_version=runtime-abi:1.1\n"
     "change.001.compatibility_tests=nsc.stage48_2.library-metadata;nsc.item393.compatibility-matrix\n";
+std::string withoutMetadataLabels(std::string text)
+{
+    std::size_t position = 0;
+    while ((position = text.find(";nsmeta:", position)) != std::string::npos)
+    {
+        const auto end = text.find_first_of(";\n", position + 1);
+        text.erase(position, end == std::string::npos ? std::string::npos : end - position);
+    }
+    return text;
+}
 }
 
 std::string currentBreakingChangeLedger()
@@ -72,9 +82,9 @@ bool verifyBreakingChangeLedger(const std::filesystem::path& source, std::string
         error = "cannot read breaking-change ledger '" + source.string() + "'";
         return false;
     }
-    if (actual != currentBreakingChangeLedger())
+    if (withoutMetadataLabels(actual) != withoutMetadataLabels(currentBreakingChangeLedger()))
     {
-        error = "breaking-change ledger does not match the NativeSharp 2.0 to 3.0 inventory";
+        error = "breaking-change ledger does not match the NativeSharp inventory";
         return false;
     }
     return true;

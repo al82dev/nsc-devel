@@ -1,0 +1,19 @@
+class Record { public int Count; public long Balance; }
+static class Inspector
+{
+    public static int Format(int value) { return value; }
+    public static int Format(long value) { return (int)value; }
+    public static int Fold<T>(T value)
+    {
+        int sum = 0;
+        static foreach (field in Fields(T)) { sum = sum + Format(field.Get(value)); }
+        return sum;
+    }
+}
+int Main()
+{
+    owned Record value = new Record();
+    value.Count = 3;
+    value.Balance = 30L;
+    return Inspector.Fold<Record>(value) == 33 ? 0 : 1;
+}

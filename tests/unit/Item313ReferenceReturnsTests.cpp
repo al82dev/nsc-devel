@@ -302,7 +302,7 @@ namespace CrossRef
     output.clear();
     error.clear();
     tests.expect(runDriver(producerArguments, output, error) == ExitCode::Success,
-        "public ref-return producer emits a static library and NSMETA 1.15 (" + error + ")");
+        "public ref-return producer emits a static library and NSMETA (" + error + ")");
 
     nativesharp::interop::LibraryMetadataCodec codec;
     nativesharp::interop::LibraryMetadata metadata;
@@ -319,30 +319,8 @@ namespace CrossRef
                 metadataReferenceReturn = true;
         }
     }
-    tests.expect(metadataRead &&
-                     metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
-                     metadataReferenceReturn,
+    tests.expect(metadataRead && metadataReferenceReturn,
         "current NSMETA preserves the public ref-return bit (" + metadataError + ")");
-    if (metadataRead)
-    {
-        metadata.formatMinor = 14U;
-        nativesharp::tests::projectHistoricalFixtureMetadata(metadata, 14U);
-        const auto downlevelPath = producer / "RefProducer-1.14.nsmeta";
-        tests.expect(codec.writeModel(metadata, downlevelPath, metadataError),
-            "the historical NSMETA 1.14 form can still be emitted (" + metadataError + ")");
-        nativesharp::interop::LibraryMetadata downlevel;
-        const bool downlevelRead = codec.read(downlevelPath, downlevel, metadataError);
-        bool retainedReferenceReturn = false;
-        if (downlevelRead)
-        {
-            for (const auto& member : downlevel.members)
-                retainedReferenceReturn = retainedReferenceReturn ||
-                    (member.flags & nativesharp::interop::kMetadataMemberReferenceReturn) != 0U;
-        }
-        tests.expect(downlevelRead && !retainedReferenceReturn,
-            "NSMETA 1.14 output strips the 1.15 ref-return bit rather than lying about ABI");
-    }
-
     const auto consumer = root / "consumer";
     writeFile(consumer / "RefConsumer.nsproj",
         "<Project><PropertyGroup><Name>RefConsumer</Name></PropertyGroup>"

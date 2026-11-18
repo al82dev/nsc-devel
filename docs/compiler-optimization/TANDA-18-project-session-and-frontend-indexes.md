@@ -1,6 +1,8 @@
 # Tanda 18: sesión de proyecto e índices del frontend
 
-## Correspondencia con el plan NativeSharp 3.0
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+## Correspondencia con el plan NativeSharp
 
 Este commit cierra la **tanda operativa 02** del documento maestro: P03/P04 sobre startup, carga de
 proyecto y rescaneos del frontend. El objetivo no es declarar terminada toda optimización posible

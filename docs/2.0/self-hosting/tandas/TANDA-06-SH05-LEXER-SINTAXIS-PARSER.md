@@ -1,4 +1,6 @@
-# NativeSharp 2.0 self-hosting — tanda 06: lexer, sintaxis y parser
+# NativeSharp self-hosting — tanda 06: lexer, sintaxis y parser
+
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
 
 ## 1. Identidad
 
@@ -18,7 +20,7 @@
 
 ### Objetivo
 
-Hacer que el ejecutable NativeSharp creado en SH04 lea NativeSharp 2.0 sin usar el frontend C++ y
+Hacer que el ejecutable NativeSharp creado en SH04 lea NativeSharp sin usar el frontend C++ y
 publique las dos primeras representaciones canónicas del bootstrap: tokens y árbol sintáctico. El
 criterio no es «acepta un ejemplo», sino igualdad observable contra `nsc0`, compilación del mismo
 frontend en O0/O2 y terminación acotada ante entradas rotas.

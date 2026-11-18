@@ -4,6 +4,7 @@
 
 #include "nativesharp/Language/OwnershipSemantics.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -17,5 +18,9 @@ struct PrecompiledMemberIdentity final
     std::string signatureKey;
     std::string mangledName;
     std::vector<language::EscapeClass> parameterEscapeSummary;
+    bool operatorInOperandsNoEscape = false;
+    bool receiverNoReferenceFieldEffects = false;
+    bool verifiedNoEscapeOut = false;
+    std::vector<std::vector<std::uint32_t>> pointerOutputObjectOrigins{};
 };
 }

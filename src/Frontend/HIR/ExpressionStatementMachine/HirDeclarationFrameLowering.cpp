@@ -93,6 +93,13 @@ bool ProjectOopHirModel::initializeVariableDeclarationFrame(
         variable.local - methodBodyModel_->locals().data());
     if (!initializeVariableCleanup(variable, frame.syntax, error)) return false;
     if (!initializeVariableMode(variable, frame.syntax, error)) return false;
+    const ObjectConstructionBinding* implicitBinding = constructionBinding(frame.syntax);
+    if (local.isScope && frame.syntax->first() == nullptr && implicitBinding != nullptr &&
+        !implicitBinding->targetIsStruct)
+    {
+        if (!initializeOrdinaryConstructionFrame(frame, error)) return false;
+        variable.mode = VariableDeclarationFrameMode::ImplicitConstruction;
+    }
     frame.variableDeclaration.emplace(std::move(variable));
     return true;
 }
@@ -139,7 +146,7 @@ bool ProjectOopHirModel::initializeVariableMode(
     if (local.variableLengthArrayCountSyntax == nullptr ||
         local.variableLengthArrayElementTypeKey.empty())
     {
-        error = "NativeSharp 2.0 VLA local lost its element type or runtime extent";
+        error = "NativeSharp VLA local lost its element type or runtime extent";
         return false;
     }
     variable.node->variableLengthArray = true;
@@ -169,6 +176,11 @@ bool ProjectOopHirModel::nextVariableDeclarationChild(
     bool& addressContext)
 {
     const VariableDeclarationFrameState& variable = *frame.variableDeclaration;
+    if (variable.mode == VariableDeclarationFrameMode::ImplicitConstruction)
+    {
+        addressContext = false;
+        return nextOrdinaryConstructionChild(*frame.ordinaryConstruction, syntax);
+    }
     if (variable.mode == VariableDeclarationFrameMode::Initializer)
     {
         syntax = frame.syntax->first();
@@ -200,6 +212,9 @@ void ProjectOopHirModel::completeVariableAllocation(
         frame.syntax,
         variable.local->typeKey);
     allocation->elementTypeKey = variable.local->variableLengthArrayElementTypeKey;
+    // LKF-332: VLA storage lives for its scope; LLVM restores the stack per loop iteration.
+    // LKF-332: el almacenamiento VLA vive en su scope; LLVM restaura la pila en cada iteración.
+    allocation->booleanValue = true;
     for (auto& count : variable.allocationCounts)
         allocation->children.push_back(std::move(count));
     variable.node->children.push_back(std::move(allocation));
@@ -214,6 +229,8 @@ bool ProjectOopHirModel::acceptVariableDeclarationChild(
     [[maybe_unused]] std::string& error)
 {
     VariableDeclarationFrameState& variable = *frame.variableDeclaration;
+    if (variable.mode == VariableDeclarationFrameMode::ImplicitConstruction)
+        return acceptOrdinaryConstructionChild(*frame.ordinaryConstruction, std::move(child), error);
     if (variable.mode == VariableDeclarationFrameMode::Initializer)
         return acceptVariableInitializer(frame, std::move(child));
     if (variable.mode == VariableDeclarationFrameMode::VlaSingle)
@@ -305,6 +322,11 @@ std::unique_ptr<ProjectOopHirNode>
 ProjectOopHirModel::finishVariableDeclarationFrame([[maybe_unused]] IterativeExpressionFrame& frame)
 {
     VariableDeclarationFrameState& variable = *frame.variableDeclaration;
+    if (variable.mode == VariableDeclarationFrameMode::ImplicitConstruction)
+    {
+        variable.node->children.push_back(finishOrdinaryConstructionFrame(frame));
+        variable.mode = VariableDeclarationFrameMode::Ready;
+    }
     if (variable.mode == VariableDeclarationFrameMode::NoChild)
         variable.mode = VariableDeclarationFrameMode::Ready;
     return variable.vlaBlock != nullptr

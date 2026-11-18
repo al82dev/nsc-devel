@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>AliasExternal</Name></PropertyGroup><ItemGroup><Compile Include="Producer.ns"/></ItemGroup></Project>

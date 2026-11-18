@@ -28,7 +28,7 @@ namespace NativeSharp.LLVM.C
             raii string third = String.Concat(second, minorText);
             raii string fourth = String.Concat(third, ".");
             raii string fifth = String.Concat(fourth, patchText);
-            return String.Concat(fifth, "; NativeSharp 2.0 self-hosting requires LLVM 23.x");
+            return String.Concat(fifth, "; NativeSharp 1.0 self-hosting requires LLVM 23.x");
         }
     }
 }

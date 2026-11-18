@@ -4,7 +4,7 @@
 
 ### Formas admitidas
 
-NativeSharp 3.0 permite usar el mismo lenguaje de patterns de `match` en condiciones y en una
+NativeSharp permite usar el mismo lenguaje de patterns de `match` en condiciones y en una
 inicialización que debe continuar con éxito:
 
 ```nativesharp
@@ -55,7 +55,7 @@ formas estructurales de control disponibles antes de ese ítem.
 
 ### Accepted forms
 
-NativeSharp 3.0 accepts the `match` pattern language in `if let`, `while let`, and `let ... else`.
+NativeSharp accepts the `match` pattern language in `if let`, `while let`, and `let ... else`.
 The right-hand expression is evaluated exactly once and variant payloads are extracted only after
 their tag test succeeds.
 

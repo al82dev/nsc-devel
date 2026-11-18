@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>NegativeOuterTinyAdd</Name><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><Compile Include="NegativeOuterTinyAdd.ns"/></ItemGroup></Project>

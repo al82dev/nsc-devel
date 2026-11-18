@@ -1,0 +1,9 @@
+<Project>
+<PropertyGroup>
+<Name>DivWideNonzeroDivisor</Name>
+<OutputType>Exe</OutputType>
+</PropertyGroup>
+<ItemGroup>
+<Compile Include="DivWideNonzeroDivisor.ns"/>
+</ItemGroup>
+</Project>

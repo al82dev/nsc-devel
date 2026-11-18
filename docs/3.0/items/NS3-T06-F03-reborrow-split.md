@@ -1,8 +1,10 @@
 # NS3-T06-F03 — Reborrow and split borrows
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Resultado
 
-NativeSharp 3.0 trata cada local `ref T` como un préstamo mutable exclusivo de un lugar de
+NativeSharp trata cada local `ref T` como un préstamo mutable exclusivo de un lugar de
 storage. El frontend conserva una ruta canónica, permite reborrow léxico, suspende el alias padre
 mientras vive el hijo y demuestra disjunción para campos y elementos de arrays con índices
 constantes. Cuando el layout, el índice o el protocolo no prueban disjunción, rechaza de forma
@@ -10,8 +12,7 @@ conservadora.
 
 ## Cambios
 
-- La edición del proyecto llega al modelo de cuerpos; la nueva exclusividad solo aplica a
-  `Language=3`. Edición 2 conserva su comportamiento histórico de referencias.
+- El modelo de cuerpos aplica las reglas de exclusividad del lenguaje sin seleccionar una edición.
 - Cada local ref conserva `borrow-place` y, si procede, `reborrow-source-local`.
 - El place graph usa roots `L<n>`/`P<n>`, fields `F:<name>`, índices `I:<valor>` y wildcard
   `I:*`; también representa slices constantes half-open `S:<inicio>:<fin>`.
@@ -28,9 +29,9 @@ conservadora.
 
 ## Archivos nuevos
 
-- `tests/unit/NativeSharp3T06ReborrowSplitTests.cpp`: fixture dirigida O0/NSLink con ejecución,
+- `tests/unit/NativeSharpT06ReborrowSplitTests.cpp`: fixture dirigida O0/NSLink con ejecución,
   fields hermanos, arrays, calls, loop, reborrow, suspensión, aliasing, fallback dinámico,
-  indexer conservador, whole move y compatibilidad de edición 2.
+  indexer conservador y whole move.
 - `docs/3.0/language/reborrow-split-borrows.md`: contrato normativo bilingüe.
 - Este archivo: evidencia, decisiones y mapa del commit.
 
@@ -43,7 +44,7 @@ conservadora.
 - `src/Parser/Parser.cpp`.
 - `CMakeLists.txt`.
 - `docs/3.0/TANDA-06-OWNERSHIP-PRESTAMOS-Y-DESTRUCCION.md`.
-- `mkdown/NativeSharp-Language-3.0-Roadmap.md`.
+- `mkdown/NativeSharp-Language-Roadmap.md`.
 
 ## Mejora observable
 

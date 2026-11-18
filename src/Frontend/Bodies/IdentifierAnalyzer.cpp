@@ -137,8 +137,8 @@ bool ProjectMethodBodyModel::validateLocalIdentifierRead(
                 "'; reinitialize every moved field before using the complete value");
         return false;
     }
-    // EN: Freeze 3.0 DEC-10: a catch variable moved out with move(e) is moved-from too.
-    // ES: Congelamiento 3.0 DEC-10: una variable de catch sacada con move(e) tambien queda movida.
+    // EN: Freeze DEC-10: a catch variable moved out with move(e) is moved-from too.
+    // ES: Congelamiento DEC-10: una variable de catch sacada con move(e) tambien queda movida.
     const bool tracksMoves = local.isRaii || local.isMoveOnly || local.isCatchVariable;
     const std::string movedKind = local.isRaii ? "RAII local '"
         : (local.isCatchVariable ? "caught exception '" : "move-only local '");
@@ -278,7 +278,8 @@ void ProjectMethodBodyModel::completeLocalIdentifier(
     // T19-002: `&p` of a pointer to atomic storage would need a nested qualifier, like volatile. / `&p` de un
     //     puntero a almacenamiento atomico necesitaria un calificador anidado, como volatile.
     result.addressable = !local.pointerPointeeVolatile && !local.cppPointerPointeeAtomic;
-    result.readonlyReceiver = local.isConst;
+    result.readonlyReceiver = local.isConst || local.readonlyBorrowedObject;
+    result.readonlyBorrowedObject = local.readonlyBorrowedObject;
     result.pointerPointeeReadonly = local.pointerPointeeReadonly;
     result.pointerPointeeVolatile = local.pointerPointeeVolatile;
     result.cppPointerPointeeAtomic = local.cppPointerPointeeAtomic;
@@ -320,6 +321,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeParamete
     const MethodParameterSymbol& parameter = method->parameters[scopeName.semanticOrdinal];
     if (!validateParameterIdentifierRead(expression, scopeName, parameter, diagnostics)) return result;
     initializeParameterIdentifierResult(result, scopeName, parameter);
+    if (method->isUserOperator && parameter.passKind == ParameterPassKind::In &&
+        memberModel_ != nullptr && memberModel_->typeTransitivelyOwnsStorage(result.typeKey))
+    {
+        result.readonlyBorrowedObject = true;
+        result.ownershipSourceParameterOrdinal = scopeName.semanticOrdinal;
+    }
     if (parameter.ownership == sema::OwnershipKind::Borrowed &&
         !applyBorrowedParameterReassignment(
             result, expression, scopeName, methodMemberOrdinal, diagnostics))
@@ -743,8 +750,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeProperty
         true,
         !staticProperty && contextHasReadonlyReceiver(methodMemberOrdinal));
     // NS304-T08-F02: a ref-returning getter is assignable even without a setter.
-    // EN: Freeze 3.0 P3: a `ref readonly` getter is not.
-    // ES: Congelamiento 3.0 P3: un getter `ref readonly` no.
+    // EN: Freeze P3: a `ref readonly` getter is not.
+    // ES: Congelamiento P3: un getter `ref readonly` no.
     const bool refGetter = std::any_of(
         propertyGetters.begin(), propertyGetters.end(), [&](std::size_t ordinal)
         {
@@ -1350,6 +1357,24 @@ if (!operand.valid)
     return std::nullopt;
 }
 
+// Passing a delegate by mutable reference can replace its captured owner.
+if (expression->tokenKind() == TokenKind::Amp &&
+    (expression->auxiliaryText() == "pass:ref" || expression->auxiliaryText() == "pass:out") &&
+    expression->first() != nullptr &&
+    expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+{
+    const auto local = lookupScopeName(scopeOrdinal, expression->first()->text());
+    if (local.has_value() && local->kind == ScopeNameKind::Local && local->semanticOrdinal < locals_.size() &&
+        isDelegateTypeKey(locals_[local->semanticOrdinal].typeKey) &&
+        hasActiveBorrowOfOwnerLocal(local->semanticOrdinal, scopeOrdinal))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "cannot pass delegate for replacement while a borrowed local is alive");
+        return std::nullopt;
+    }
+}
+
 // EL MENOS UNARIO SOBRE UN LITERAL SE TIPA JUNTO CON EL, y es la unica forma de escribir el
 // minimo de un ancho: `int.MinValue` vale 2147483648 en magnitud, uno mas que el maximo de
 // `int`, asi que tipar el literal por su cuenta lo hace `long` y arrastra a toda la expresion.
@@ -1390,6 +1415,274 @@ ProjectMethodBodyModel::analyzeOverloadedUnary(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     const TokenKind operation = expression->tokenKind();
+    if (operation == TokenKind::PlusPlus || operation == TokenKind::MinusMinus)
+    {
+        const std::string name = stage38OperatorMethodName(operation, 1);
+        const std::string trait = stage38OperatorTraitKey(operation, 1);
+        std::vector<std::size_t> candidates =
+            stage38OperatorCandidates(trait, name, operand.typeKey, std::nullopt);
+        if (candidates.empty()) return std::nullopt;
+        if (!operand.assignable)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "increment/decrement requires a modifiable operand");
+            return ExpressionResult{};
+        }
+        if (memberModel_ != nullptr && operand.assignmentMemberOrdinal.has_value() &&
+            *operand.assignmentMemberOrdinal < memberModel_->members().size())
+        {
+            const ClassMemberSymbol& field = memberModel_->members()[*operand.assignmentMemberOrdinal];
+            bool activeArgumentField = false;
+            const ast::AstNode* target = expression->first();
+            if (target != nullptr && target->kind() == ast::AstNodeKind::MemberExpression &&
+                target->first() != nullptr &&
+                target->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const auto root = lookupScopeName(scopeOrdinal, target->first()->text());
+                if (root.has_value() && root->kind == ScopeNameKind::Local)
+                {
+                    const auto key = std::pair<std::size_t, std::size_t>{
+                        root->semanticOrdinal, *operand.assignmentMemberOrdinal};
+                    activeArgumentField = std::ranges::find(activeArgumentOwnedFields_, key) !=
+                        activeArgumentOwnedFields_.end();
+                }
+            }
+            if (field.kind == ClassMemberKind::Field && !field.isStatic &&
+                field.declaredOwnership == sema::OwnershipKind::Owned &&
+                isReferenceTypeKey(operand.typeKey) &&
+                (activeArgumentField ||
+                    hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal)))
+            {
+                diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error, expression->first()->range(),
+                    "cannot overwrite owner field while a borrowed view is alive");
+                return ExpressionResult{};
+            }
+        }
+        if (isReferenceTypeKey(operand.typeKey) && expression->first() != nullptr &&
+            expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const auto target = lookupScopeName(scopeOrdinal, expression->first()->text());
+            if (target.has_value() && target->kind == ScopeNameKind::Local &&
+                target->semanticOrdinal < locals_.size() && locals_[target->semanticOrdinal].isRaii &&
+                rejectUnavailableAssignmentOwner(expression, target->semanticOrdinal, scopeOrdinal, diagnostics))
+                return ExpressionResult{};
+        }
+        const std::vector<ExpressionResult> arguments = {operand};
+        ExpressionResult selected = resolveSyntheticCall(
+            expression, methodMemberOrdinal, scopeOrdinal, name, std::move(candidates),
+            arguments, nullptr, {}, std::nullopt, false, false, diagnostics, true);
+        if (!selected.valid) return ExpressionResult{};
+        if (!classifyImplicit(selected.typeKey, operand.typeKey, selected.integerConstant).exists())
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "increment/decrement operator result must be assignable to its operand");
+            return ExpressionResult{};
+        }
+        const MethodCallBinding* binding = callBinding(expression, methodMemberOrdinal);
+        const ClassMemberSymbol* implementation = binding != nullptr &&
+            binding->selectedMemberOrdinal.has_value()
+            ? methodSymbol(*binding->selectedMemberOrdinal) : nullptr;
+        const auto localTarget = expression->first() != nullptr &&
+            expression->first()->kind() == ast::AstNodeKind::IdentifierExpression
+            ? lookupScopeName(scopeOrdinal, expression->first()->text()) : std::nullopt;
+        if (implementation != nullptr && binding->selectedMemberOrdinal.has_value() &&
+            memberModel_ != nullptr && *binding->selectedMemberOrdinal < memberModel_->members().size() &&
+            implementation->isUserOperator &&
+            implementation->parameters.size() == 1 &&
+            implementation->parameters[0].passKind == ParameterPassKind::Value &&
+            implementation->parameters[0].ownership != sema::OwnershipKind::Owned &&
+            implementation->parameters[0].typeKey == operand.typeKey &&
+            implementation->declaredOwnership == sema::OwnershipKind::Owned &&
+            selected.typeKey == operand.typeKey && isReferenceTypeKey(operand.typeKey) &&
+            operand.addressable && localTarget.has_value() && localTarget->kind == ScopeNameKind::Local &&
+            localTarget->semanticOrdinal < locals_.size() && locals_[localTarget->semanticOrdinal].isRaii &&
+            operand.ownershipSourceLocalOrdinal == localTarget->semanticOrdinal)
+        {
+            selected.assignable = false;
+            selected.addressable = false;
+            if (expression->kind() != ast::AstNodeKind::PostfixExpression)
+            {
+                selected.ownership = sema::OwnershipKind::Borrowed;
+                selected.ownershipTransfer = false;
+                selected.ownershipFreshOwner = false;
+                selected.objectLifetimeOwnership = sema::OwnershipKind::Borrowed;
+                selected.storageOwnership = sema::OwnershipKind::Borrowed;
+                selected.ownershipSourceLocalOrdinal = localTarget->semanticOrdinal;
+            }
+            else
+                selected.ownedPostfixTemporary = true;
+            return selected;
+        }
+        // A computed receiver can use a local owner only when its source body proves identity.
+        const ast::AstNode* fieldReceiver = expression->first() != nullptr &&
+            expression->first()->kind() == ast::AstNodeKind::MemberExpression
+            ? expression->first()->first() : nullptr;
+        const ast::AstNode* fieldRoot = fieldReceiver;
+        if (fieldReceiver != nullptr && fieldReceiver->kind() == ast::AstNodeKind::CallExpression &&
+            fieldReceiver->children().size() == 1 && memberModel_ != nullptr)
+        {
+            const MethodCallBinding* receiverCall = callBinding(fieldReceiver, methodMemberOrdinal);
+            const ClassMemberSymbol* receiverMethod = receiverCall != nullptr && receiverCall->staticCall &&
+                receiverCall->resolution == MethodCallResolutionKind::Resolved &&
+                receiverCall->selectedMemberOrdinal.has_value()
+                ? methodSymbol(*receiverCall->selectedMemberOrdinal) : nullptr;
+            const ast::AstNode* body = receiverMethod != nullptr && receiverMethod->syntax != nullptr
+                ? receiverMethod->syntax->first() : nullptr;
+            bool proven = receiverMethod != nullptr && !receiverMethod->isPrecompiled &&
+                !receiverMethod->isVirtual && !receiverMethod->isExternC &&
+                !receiverMethod->isCompilerGenerated && receiverMethod->precompiledMangledName.empty() &&
+                receiverMethod->declaredOwnership == sema::OwnershipKind::Borrowed &&
+                receiverMethod->parameters.size() == 1 &&
+                receiverMethod->parameters[0].ownership == sema::OwnershipKind::Borrowed &&
+                receiverMethod->parameters[0].passKind == ParameterPassKind::Value && body != nullptr &&
+                body->kind() == ast::AstNodeKind::BlockStatement && !body->children().empty();
+            const ast::AstNode* returned = proven ? body->children().back() : nullptr;
+            proven = proven && returned != nullptr && returned->kind() == ast::AstNodeKind::ReturnStatement &&
+                returned->first() != nullptr && returned->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+                returned->first()->text() == receiverMethod->parameters[0].name;
+            const auto isStaticNumeric = [&](const ast::AstNode* node) {
+                if (node == nullptr || node->kind() != ast::AstNodeKind::IdentifierExpression ||
+                    node->text() == receiverMethod->parameters[0].name) return false;
+                for (const std::size_t member : memberModel_->membersOfType(receiverMethod->declaringTypeOrdinal))
+                {
+                    const ClassMemberSymbol& field = memberModel_->members()[member];
+                    if (field.name == node->text() && field.kind == ClassMemberKind::Field && field.isStatic &&
+                        ProjectTypeConversion::isNumeric(field.declaredTypeKey)) return true;
+                }
+                return false;
+            };
+            if (proven)
+                for (std::size_t index = 0; index + 1 < body->children().size(); ++index)
+                {
+                    const ast::AstNode* statement = body->children()[index];
+                    const ast::AstNode* assignment = statement != nullptr &&
+                        statement->kind() == ast::AstNodeKind::ExpressionStatement ? statement->first() : nullptr;
+                    const ast::AstNode* value = assignment != nullptr ? assignment->second() : nullptr;
+                    if (assignment == nullptr || assignment->kind() != ast::AstNodeKind::AssignmentExpression ||
+                        assignment->tokenKind() != TokenKind::Equal || !isStaticNumeric(assignment->first()) ||
+                        value == nullptr || value->kind() != ast::AstNodeKind::BinaryExpression ||
+                        value->tokenKind() != TokenKind::Plus || !isStaticNumeric(value->first()) ||
+                        value->second() == nullptr ||
+                        value->second()->kind() != ast::AstNodeKind::IntegerLiteralExpression)
+                    {
+                        proven = false;
+                        break;
+                    }
+                }
+            const ast::AstNode* argument = fieldReceiver->children().front();
+            const auto argumentName = argument != nullptr && argument->kind() == ast::AstNodeKind::IdentifierExpression
+                ? lookupScopeName(scopeOrdinal, argument->text()) : std::nullopt;
+            if (proven && argumentName.has_value() && argumentName->kind == ScopeNameKind::Local &&
+                argumentName->semanticOrdinal < locals_.size() && locals_[argumentName->semanticOrdinal].isRaii &&
+                scopeContains(locals_[argumentName->semanticOrdinal].scopeOrdinal, scopeOrdinal))
+                fieldRoot = argument;
+        }
+        if (implementation != nullptr && memberModel_ != nullptr &&
+            implementation->isUserOperator && implementation->parameters.size() == 1 &&
+            implementation->parameters[0].passKind == ParameterPassKind::Value &&
+            implementation->parameters[0].ownership != sema::OwnershipKind::Owned &&
+            implementation->parameters[0].typeKey == operand.typeKey &&
+            implementation->declaredOwnership == sema::OwnershipKind::Owned &&
+            selected.typeKey == operand.typeKey && isReferenceTypeKey(operand.typeKey) &&
+            operand.addressable && operand.assignmentMemberOrdinal.has_value() &&
+            *operand.assignmentMemberOrdinal < memberModel_->members().size() &&
+            expression->first() != nullptr &&
+            expression->first()->kind() == ast::AstNodeKind::MemberExpression &&
+            fieldRoot != nullptr && fieldRoot->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const ClassMemberSymbol& field = memberModel_->members()[*operand.assignmentMemberOrdinal];
+            const auto root = lookupScopeName(scopeOrdinal, fieldRoot->text());
+            std::optional<std::size_t> owner;
+            std::optional<std::size_t> parameterOwner;
+            const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+            if (root.has_value() && root->kind == ScopeNameKind::Parameter && caller != nullptr &&
+                root->semanticOrdinal < caller->parameters.size() &&
+                caller->parameters[root->semanticOrdinal].ownership == sema::OwnershipKind::Borrowed)
+                parameterOwner = root->semanticOrdinal;
+            if (root.has_value() && root->kind == ScopeNameKind::Local && root->semanticOrdinal < locals_.size())
+            {
+                const MethodLocalSymbol& local = locals_[root->semanticOrdinal];
+                if (local.isRaii)
+                    owner = root->semanticOrdinal;
+                else if (local.localBorrowBindingOrdinal.has_value() &&
+                         *local.localBorrowBindingOrdinal < localBorrowBindings_.size())
+                {
+                    const MethodLocalBorrowBinding& borrow = localBorrowBindings_[*local.localBorrowBindingOrdinal];
+                    const auto localCandidate = borrow.sourceOwnerLocalOrdinal.has_value()
+                        ? borrow.sourceOwnerLocalOrdinal
+                        : (borrow.possibleSourceOwnerLocalOrdinals.empty() ? std::nullopt
+                            : std::optional<std::size_t>(borrow.possibleSourceOwnerLocalOrdinals.front()));
+                    const auto parameterCandidate = borrow.sourceOwnerParameterOrdinal.has_value()
+                        ? borrow.sourceOwnerParameterOrdinal
+                        : (borrow.possibleSourceOwnerParameterOrdinals.empty() ? std::nullopt
+                            : std::optional<std::size_t>(borrow.possibleSourceOwnerParameterOrdinals.front()));
+                    const bool validLocals = (!localCandidate.has_value() ||
+                        (*localCandidate < locals_.size() && locals_[*localCandidate].isRaii)) &&
+                        std::ranges::all_of(borrow.possibleSourceOwnerLocalOrdinals,
+                            [&](std::size_t candidate)
+                            { return candidate < locals_.size() && locals_[candidate].isRaii; });
+                    const bool validParameters = !parameterCandidate.has_value() || (caller != nullptr &&
+                        *parameterCandidate < caller->parameters.size() &&
+                        caller->parameters[*parameterCandidate].ownership == sema::OwnershipKind::Borrowed &&
+                        std::ranges::all_of(borrow.possibleSourceOwnerParameterOrdinals,
+                            [&](std::size_t candidate)
+                            { return candidate < caller->parameters.size() &&
+                                caller->parameters[candidate].ownership == sema::OwnershipKind::Borrowed; }));
+                    if (validLocals && validParameters)
+                    {
+                        owner = localCandidate;
+                        parameterOwner = parameterCandidate;
+                    }
+                }
+            }
+            if (field.kind == ClassMemberKind::Field && !field.isStatic &&
+                field.declaredOwnership == sema::OwnershipKind::Owned &&
+                (parameterOwner.has_value() ||
+                 (owner.has_value() && *owner < locals_.size() && locals_[*owner].isRaii)))
+            {
+                selected.assignable = false;
+                selected.addressable = false;
+                if (expression->kind() == ast::AstNodeKind::PostfixExpression)
+                    selected.ownedPostfixTemporary = true;
+                else
+                {
+                    selected.ownership = sema::OwnershipKind::Borrowed;
+                    selected.ownershipTransfer = false;
+                    selected.ownershipFreshOwner = false;
+                    selected.objectLifetimeOwnership = sema::OwnershipKind::Borrowed;
+                    selected.storageOwnership = sema::OwnershipKind::Borrowed;
+                    selected.ownershipSourceLocalOrdinal = owner;
+                    selected.ownershipSourceParameterOrdinal = parameterOwner;
+                    selected.ownsStorageDestination = true;
+                }
+                return selected;
+            }
+        }
+        if (implementation != nullptr && binding->selectedMemberOrdinal.has_value() &&
+            memberModel_ != nullptr && *binding->selectedMemberOrdinal < memberModel_->members().size() &&
+            implementation->isUserOperator && implementation->parameters.size() == 1 &&
+            ((implementation->parameters[0].passKind == ParameterPassKind::Value &&
+              implementation->parameters[0].typeKey == operand.typeKey) ||
+             ((implementation->parameters[0].passKind == ParameterPassKind::In ||
+               implementation->parameters[0].passKind == ParameterPassKind::Ref) &&
+              implementation->parameters[0].pointeeTypeKey == operand.typeKey)) &&
+            selected.typeKey == operand.typeKey && operand.addressable &&
+            typeKeyIsStruct(operand.typeKey) &&
+            !memberModel_->typeIsMoveOnly(operand.typeKey))
+        {
+            selected.assignable = false;
+            selected.addressable = false;
+            return selected;
+        }
+        // Do not lower this as an ordinary call: updating the destination must evaluate it once.
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "user-defined increment/decrement update is not implemented");
+        return ExpressionResult{};
+    }
 if (operation != TokenKind::Amp && operation != TokenKind::Star &&
     operation != TokenKind::PlusPlus && operation != TokenKind::MinusMinus)
 {
@@ -1481,6 +1774,19 @@ if (operation == TokenKind::Amp)
         !expression->auxiliaryText().starts_with("pass:");
     if (!operand.addressable && !atomicAddress && !volatileAddress)
     {
+        // EN: An indexed read gets its own explanation: the generic text named bit fields for a
+        //     string character or a by-value indexer result.
+        // ES: Una lectura indexada tiene su propia explicacion: el texto generico nombraba campos de
+        //     bits para un caracter de cadena o el resultado de un indexador por valor.
+        const ast::AstNode* target = expression->first();
+        std::string message = "bit fields have no address; operand of & must name addressable storage, "
+            "not a bit field or temporary value";
+        if (target != nullptr && target->kind() == ast::AstNodeKind::IndexExpression)
+            message = operand.typeKey == "builtin:char"
+                ? "an indexed character is a value, not addressable storage; "
+                  "String.CharacterPointer(text, index) returns the address of a string character"
+                : "an indexer that returns by value yields a temporary, which has no address; "
+                  "an indexer whose getter returns ref can be addressed";
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidAddressOf,
             diagnostics::DiagnosticSeverity::Error,
@@ -1497,8 +1803,7 @@ if (operation == TokenKind::Amp)
                 ? "cannot take the address of a pointer to volatile storage until nested qualified pointers are supported"
                 : operand.readonlyReceiver
                 ? "cannot take the address of readonly storage until qualified pointers are supported"
-                : "bit fields have no address; operand of & must name addressable storage, "
-                  "not a bit field or temporary value");
+                : message);
         return result;
     }
     // EN: T08-D17: the address of a pointer is a pointer to pointer, whose qualifier belongs to the base type

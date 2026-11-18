@@ -1,0 +1,30 @@
+bool Lt(decimal a, decimal b) { return a < b; }
+bool Le(decimal a, decimal b) { return a <= b; }
+bool Gt(decimal a, decimal b) { return a > b; }
+bool Ge(decimal a, decimal b) { return a >= b; }
+bool Eq(decimal a, decimal b) { return a == b; }
+int Main()
+{
+    unsafe("check decimal carrier limits") {
+        i128 sign = (i128)1 << 127;
+        i128 coefficient = ((i128)1 << 96) - (i128)1;
+        i128 positiveBits = coefficient;
+        i128 negativeBits = sign | coefficient;
+        i128 negativeZeroBits = sign;
+        i128 positiveZeroBits = (i128)0;
+        i128 tinyBits = ((i128)63 << 96) | (i128)1;
+        decimal positive = *((decimal*)&positiveBits);
+        decimal negative = *((decimal*)&negativeBits);
+        decimal negativeZero = *((decimal*)&negativeZeroBits);
+        decimal positiveZero = *((decimal*)&positiveZeroBits);
+        decimal tiny = *((decimal*)&tinyBits);
+        if (*((i128*)&negativeZero) != sign) return 1;
+        if (!Gt(positive, negative) || !Lt(negative, positive)) return 2;
+        if (!Gt(positive, tiny) || !Gt(tiny, positiveZero)) return 3;
+        if (!Le(negativeZero, positiveZero) || !Ge(negativeZero, positiveZero)) return 4;
+        if (Lt(negativeZero, positiveZero) || Gt(negativeZero, positiveZero)) return 5;
+        if (!Eq(negativeZero, positiveZero)) return 6;
+        if (!Le(positive, positive) || !Ge(positive, positive)) return 7;
+    }
+    return 0;
+}

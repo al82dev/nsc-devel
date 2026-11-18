@@ -351,7 +351,7 @@ void SemanticAnalyzer::analyzeFunction(ast::AstNode* node, bool externC)
         report(
             node->range(),
             diagnostics::DiagnosticId::InvalidType,
-            "extern C functions cannot have a body in NativeSharp 2.0");
+            "extern C functions cannot have a body in NativeSharp");
         return;
     }
 
@@ -438,7 +438,7 @@ void SemanticAnalyzer::analyzeFunctionBody(
             report(
                 node->range(),
                 diagnostics::DiagnosticId::InvalidMainSignature,
-                "NativeSharp 2.0 Main must have signature int Main() and NativeSharp linkage");
+                "NativeSharp Main must have signature int Main() and NativeSharp linkage");
         }
     }
 

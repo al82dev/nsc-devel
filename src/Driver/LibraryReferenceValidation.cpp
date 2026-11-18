@@ -317,6 +317,58 @@ bool validateLibraryReferenceSymbols(const compilation::LibraryReference &refere
             return false;
         }
     }
+    // Provisional static-archive support for NativeSharp template helpers.
+    if (reference.runtimePath.empty() && !metadata.genericTemplates.empty())
+    {
+        constexpr std::uint8_t kMethod = 2U;
+        constexpr std::uint8_t kField = 0U;
+        constexpr std::uint8_t kPublic = 3U;
+        constexpr std::uint32_t kStatic = 1U << 0U;
+        constexpr std::uint32_t kExternC = 1U << 8U;
+        constexpr std::uint32_t kImportedC = 1U << 20U;
+        std::unordered_set<std::string> templateOwners;
+        std::unordered_set<std::string> receiverCandidates;
+        for (const auto& generic : metadata.genericTemplates)
+        {
+            std::string owner = metadata.moduleName + "::";
+            if (!generic.namespaceName.empty()) owner += generic.namespaceName + ".";
+            owner += generic.ownerName;
+            templateOwners.insert(std::move(owner));
+            receiverCandidates.insert(generic.candidateReceiverTypeKeys.begin(),
+                                      generic.candidateReceiverTypeKeys.end());
+        }
+        std::unordered_set<std::string> templateFieldTypes;
+        for (const auto& field : metadata.members)
+            if (field.kind == kField && (field.flags & kStatic) != 0U &&
+                field.declaringTypeKey.starts_with("type:") &&
+                templateOwners.contains(field.declaringTypeKey.substr(5)))
+                templateFieldTypes.insert(field.declaredTypeKey);
+        for (const auto &member : metadata.members)
+        {
+            if (!member.declaringTypeKey.starts_with("type:")) continue;
+            std::string ownerIdentity = member.declaringTypeKey.substr(5);
+            const bool method = member.kind == kMethod &&
+                (member.accessibility == kPublic || templateOwners.contains(ownerIdentity));
+            const bool staticField = member.kind == kField && (member.flags & kStatic) != 0U;
+            if ((!method && !staticField) || member.mangledName.empty() ||
+                (member.flags & (kExternC | kImportedC)) != 0U || !archiveSymbols.contains(member.mangledName))
+                continue;
+            std::string writtenOwner = ownerIdentity;
+            std::ranges::replace(writtenOwner, '+', '.');
+            const bool usedByTemplate = templateOwners.contains(ownerIdentity) ||
+                (method && receiverCandidates.contains(member.declaringTypeKey)) ||
+                (method && (std::ranges::any_of(metadata.genericTemplates, [&](const auto &generic) {
+                    return generic.sourceText.find(writtenOwner) != std::string::npos;
+                }) || templateFieldTypes.contains(member.declaringTypeKey)));
+            if (!usedByTemplate) continue;
+            const auto [owner, inserted] = publishedNativeMethods.emplace(member.mangledName, metadata.moduleName);
+            if (!inserted && owner->second != metadata.moduleName)
+            {
+                error = "NativeSharp symbol '" + member.mangledName + "' is published by more than one module";
+                return false;
+            }
+        }
+    }
     return true;
 }
 
@@ -378,7 +430,7 @@ bool validateLibraryReference(const compilation::LibraryReference &reference,
                               interop::LibraryMetadataCodec &metadataCodec,
                               std::unordered_set<std::string> &linkedLibraries,
                               std::vector<std::filesystem::path> &linkedCppLibraries,
-                              std::unordered_set<std::string> &validatedReferences,
+                              std::unordered_map<std::string, std::string> &validatedReferences,
                               std::unordered_map<std::string, std::filesystem::path> &runtimeNames,
                               std::unordered_map<std::string, std::filesystem::path> &runtimeByModule,
                               std::unordered_map<std::string, std::filesystem::path> &moduleOwners,
@@ -388,8 +440,21 @@ bool validateLibraryReference(const compilation::LibraryReference &reference,
                               ExternalImportListBuilder *inheritedImports, std::string &error)
 {
     const std::string libraryKey = foldedPathKey(reference.libraryPath);
-    if (validatedReferences.contains(libraryKey))
-        return true;
+    // EN: LKF-251: a repeated library is skipped only when it repeats with the same metadata and runtime;
+    //     the same archive paired with another .nsmeta or DLL would otherwise escape their validation.
+    // ES: LKF-251: una biblioteca repetida se omite solo si se repite con la misma metadata y el mismo
+    //     runtime; el mismo archivo con otro .nsmeta u otra DLL escaparía de su validación.
+    const std::string companionKey = foldedPathKey(reference.metadataPath) + '\n' +
+                                     (reference.runtimePath.empty() ? std::string()
+                                                                    : foldedPathKey(reference.runtimePath));
+    if (const auto validated = validatedReferences.find(libraryKey); validated != validatedReferences.end())
+    {
+        if (validated->second == companionKey)
+            return true;
+        error = "precompiled library '" + reference.libraryPath.string() +
+                "' is referenced with different metadata or runtime files";
+        return false;
+    }
     linker::CoffArchiveVerifier archiveVerifier;
     std::shared_ptr<const interop::LibraryMetadata> metadata;
     if (!loadLibraryReferenceMetadata(
@@ -427,7 +492,7 @@ bool validateLibraryReference(const compilation::LibraryReference &reference,
     for (const auto &dependency : cppDependencies)
         cppRuntimeReferences.emplace_back(dependency.libraryPath, dependency.runtimePath);
     if (!validateCppImportRuntimes(cppRuntimeReferences, error)) return false;
-    validatedReferences.insert(libraryKey);
+    validatedReferences.emplace(libraryKey, companionKey);
     if (!linkedLibraries.contains(libraryKey))
     {
         linkedLibraries.insert(libraryKey);
@@ -467,7 +532,7 @@ bool validateProjectLibraryReferences(
         linkedLibraries.insert(foldedPathKey(library));
     for (const compilation::Project &project : compilation.projectGraph()->projects())
         moduleOwners.emplace(project.moduleName(), project.projectFile());
-    std::unordered_set<std::string> validatedReferences;
+    std::unordered_map<std::string, std::string> validatedReferences;
     std::vector<std::filesystem::path> linkedCppLibraries;
     interop::LibraryMetadataCodec metadataCodec;
     // One builder for the whole inherited list, so its indexes span every reference.

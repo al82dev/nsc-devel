@@ -1,10 +1,12 @@
-# NativeSharp 2.0 — Items finales / Final items
+# NativeSharp — Items finales / Final items
+
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
 
 **Estado:** plan de trabajo, todavía no implementado
 
 **Base:** NativeSharp 1.0.1-dev
 
-**Objetivo:** cerrar la evolución técnica necesaria antes de promover NativeSharp 2.0
+**Objetivo:** cerrar la evolución técnica necesaria antes de promover NativeSharp
 
 **Progreso:** Tanda 1 cerrada y congelada en `nativesharp-2.0-tanda-01`; tanda 2 en ejecución
 
@@ -225,11 +227,11 @@
 159. **404 — Congelamiento 2.0 RC / 2.0 RC freeze — COMPLETADO / COMPLETE**
 160. **405 — Certificación N-1/N final / Final N-1 and N certification — COMPLETADO / COMPLETE**
 161. **406 — Baseline completo final / Final complete baseline — COMPLETADO / COMPLETE**
-162. **407 — Promoción oficial a NativeSharp 2.0 / Official NativeSharp 2.0 promotion — COMPLETADO / COMPLETE**
+162. **407 — Promoción oficial a NativeSharp / Official NativeSharp promotion — COMPLETADO / COMPLETE**
 
 ## Fuera de alcance deliberado
 
-NativeSharp 2.0 no pretende incorporar por compatibilidad superficial todas las características de
+NativeSharp no pretende incorporar por compatibilidad superficial todas las características de
 C#. Quedan fuera de este plan `params`, argumentos nombrados, métodos de extensión, interpolación,
 `??`, `??=`, `?.`, LINQ, reflexión administrada, garbage collector, `async/await` administrado y un
 sistema de tipos COM. Las capacidades incluidas se justifican por programación nativa, control de

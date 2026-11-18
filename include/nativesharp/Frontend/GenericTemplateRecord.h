@@ -7,8 +7,10 @@
 #include "nativesharp/AST/AstNode.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace nativesharp::frontend
@@ -24,6 +26,17 @@ struct GenericTemplateForeignReferenceCandidate final
     std::string lexicalNamespace;
     std::vector<std::string> importedNamespaces;
     std::unordered_map<std::string, std::string> aliases;
+};
+
+struct GenericTemplateSourceImport final
+{
+    // Empty namespace means the compilation unit's outermost scope.
+    std::string namespaceName;
+    // Empty alias denotes a namespace import; otherwise this includes any generic parameters.
+    std::string alias;
+    std::string target;
+    std::uint8_t importKind = 0; // 0 = using; 1..5 = explicit import kinds.
+    bool reexport = false;
 };
 
 struct GenericTemplateRecord final
@@ -50,7 +63,7 @@ struct GenericTemplateRecord final
     // valida es ProjectGenericConstraintModel, con las tres ya construidas.
     std::vector<ast::GenericConstraintClause> constraints;
     std::string canonicalKey;
-    // NativeSharp 3.0 T04-F06. Methods enter one controlled-specialization family only when
+    // NativeSharp T04-F06. Methods enter one controlled-specialization family only when
     // their generic arity, receiver form and alpha-normalized value-parameter pattern agree.
     // Constraints are deliberately excluded: they define the partial order inside the family.
     std::string specializationFamilyKey;
@@ -65,6 +78,17 @@ struct GenericTemplateRecord final
     // source-level using directives that are intentionally not transported with a template body.
     std::vector<GenericTemplateExternalTypeReference> externalTypeReferences;
     std::vector<GenericTemplateForeignReferenceCandidate> foreignReferenceCandidates;
+    // Possible nominal type receivers in expression position. These are publication
+    // candidates only: value lookup may shadow them, so their source is never rewritten.
+    std::vector<std::string> candidateReceiverTypeKeys;
+
+    // Declaration-site imports are retained for metadata reconstruction.
+    // Aliases are stored as ordered pairs to keep publication deterministic.
+    std::vector<std::string> declarationImports;
+    std::vector<std::pair<std::string, std::string>> declarationAliases;
+    // Exact authored directives, grouped by lexical namespace in traversal order.
+    // Unlike declarationImports, this does not contain synthesized lookup candidates.
+    std::vector<GenericTemplateSourceImport> sourceImports;
 
     // T05-F02. Source-level impl blocks merged into this template. They are retained separately
     // so NSMETA can publish the original class declaration followed by its coherence extensions;

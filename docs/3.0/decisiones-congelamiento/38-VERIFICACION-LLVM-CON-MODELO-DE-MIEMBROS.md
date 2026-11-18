@@ -1,5 +1,7 @@
 # Congelamiento 3.0, elemento 114 — volcado y verificación LLVM de structs con destructor
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 Fecha: 2026-10-26. Revisión de partida: `ac5403f0e`.
 
 ## Nota de trabajo
@@ -17,7 +19,7 @@ Archivos exactos que se modificarán:
 
 ## Problema
 
-`nsc --verify-llvm F078Gen.ns` terminaba con `nsc: error: NativeSharp 3.0 value drop has no address/member
+`nsc --verify-llvm F078Gen.ns` terminaba con `nsc: error: NativeSharp value drop has no address/member
 model`. Como ejecutable, el mismo programa corre.
 
 La causa no es el generador. Sondas `A:\temp\nsc-dec\d21`:

@@ -181,8 +181,13 @@ namespace Collections.Core
                 ? std::string{}
                 : std::string(" first=") + metadata.externalTypeKeys.front()));
 
+    // a79b0d26f resolves a generic type name in the declaration scope, so the consumer imports the
+    // namespace of the RingBuffer<int> it declares. / a79b0d26f resuelve el nombre de un tipo genérico
+    // en el ámbito de la declaración, así que el consumidor importa el namespace del RingBuffer<int>
+    // que declara.
     writeFile(consumer / "Consumer.ns", R"NS(
 using Collections.Core;
+using Foreign.Memory;
 
 public class ConsumerMarker
 {

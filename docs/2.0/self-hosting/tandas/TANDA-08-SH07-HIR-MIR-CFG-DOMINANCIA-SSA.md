@@ -1,4 +1,6 @@
-# NativeSharp 2.0 self-hosting — tanda 08: HIR, MIR, CFG, dominancia y SSA
+# NativeSharp self-hosting — tanda 08: HIR, MIR, CFG, dominancia y SSA
+
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
 
 ## 1. Identidad
 

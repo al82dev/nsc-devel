@@ -3,14 +3,13 @@
   "version": 1,
   "gate": "SH49",
   "project": "selfhost/tests/toolchain-2.0/AdvancedToolchain.nsproj",
-  "metadata_versions": [1, 2],
   "required_manifest": {
-    "sdk": "NativeSharp/2.0",
+    "sdk": "NativeSharp/1.0",
     "comptime": "sandboxed",
     "sanitizer": "native",
     "packages": 1,
     "precompiled-bindings": 1,
-    "metadata-compatibility": "N-1,N"
+    "metadata-compatibility": "content"
   },
   "ctests": [
     "nsc.item334.declarative-sdk-format",

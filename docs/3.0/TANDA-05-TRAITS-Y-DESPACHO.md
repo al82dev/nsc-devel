@@ -1,3 +1,7 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Tanda 05 — Traits, interfaces estáticas y despacho / Traits and dispatch
 
 > **Estado 2026-10-03:** `TERMINADA`. `NS3-T05-F01`–`NS3-T05-F07` están terminados:
@@ -8,35 +12,35 @@
 
 ## Resultado / Outcome
 
-ES: `trait` declara contratos nominales sin storage en edition 3. Admite métodos requeridos/default
+ES: `trait` declara contratos nominales sin storage. Admite métodos requeridos/default
 y requisitos `static` de propiedad u operador. Constraints concretos se monomorfizan y `dyn Trait`
-conserva el despacho por tabla de interfaces. NSMETA 1.28 conserva identidad y orden de slots.
+conserva el despacho por tabla de interfaces. NSMeta conserva identidad y orden de slots.
 
-EN: `trait` declares nominal storage-free contracts in edition 3. It supports required/default
+EN: `trait` declares nominal storage-free contracts. It supports required/default
 methods plus static property/operator requirements. Concrete constraints are monomorphized while
 `dyn Trait` preserves interface-table dispatch. Associated types/constants normalize statically.
-NSMETA 1.32 also preserves declaration-scoped opaque results, explicit one-word trait objects, and
+NSMeta also preserves declaration-scoped opaque results, explicit one-word trait objects, and
 importable extension-method identity.
 
 ## Archivos y cambios / Files and changes
 
-- `Parser`/`TypeSyntax` aceptan y conservan `trait`/`dyn` sólo en edition 3.
+- `Parser`/`TypeSyntax` aceptan y conservan `trait`/`dyn` sin selector de edición.
 - `ProjectNameLookup` rechaza destinos `dyn` que no sean interface/trait.
 - `ProjectGenericModel` conserva `dyn` al expandir aliases y monomorfizar.
 - `c62_ns3_traits_dispatch` prueba static/dynamic dispatch hasta PE O0.
 - `ProjectInterfaceModel` resuelve defaults, conflictos y requisitos estáticos sin añadir layout.
-- `LibraryMetadata` 1.28 publica el marcador trait y el orden normativo de métodos.
+- `LibraryMetadata` publica el marcador trait y el orden normativo de métodos.
 - `NativeSharp3T05TraitDeclarationTests` cubre 14 casos, incluido productor/consumidor separado.
 - `NativeSharp3T05ImplCoherenceTests` cubre ownership, duplicados, privacidad, condicionales y
   round-trip genérico productor/consumidor.
 - `NativeSharp3T05AssociatedItemTests` cubre 16 casos de proyección, defaults, igualdad, ciclos,
-  constantes, genéricos y productor/consumidor NSMETA 1.29.
+  constantes, genéricos y productor/consumidor NSMeta.
 - `NativeSharp3T05OpaqueResultTests` cubre 14 casos de identidad, representación única, herencia,
-  asociados, inferencia genérica, módulos separados y NSMETA 1.30.
+  asociados, inferencia genérica, módulos separados y NSMeta.
 - `NativeSharp3T05TraitObjectTests` cubre 12 casos de object-safety, ownership, no-boxing,
-  upcast, null, DLL y NSMETA 1.31.
+  upcast, null, DLL y NSMeta.
 - `NativeSharp3T05ExtensionMethodTests` cubre 12 casos de prioridad, imports, generic receivers,
-  no-ADL, ambigüedad, ref identity y cruce `.lib/.nsmeta` 1.32.
+  no-ADL, ambigüedad, ref identity y cruce `.lib/.nsmeta`.
 - `NativeSharp3T05OperatorTraitTests` cubre 20 checks de tabla lang-item, witnesses, promoción,
   consteval, referencias, ambigüedad, short-circuit, inline O0 y cruce `.lib/.nsmeta`; c70 ejecuta
   exit 42 con NSLink.

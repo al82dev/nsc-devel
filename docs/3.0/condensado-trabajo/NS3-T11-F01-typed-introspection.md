@@ -1,5 +1,7 @@
 # NS3-T11-F01 — Introspección estática tipada / Typed static introspection
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## ES
 
 `ProjectMetaprogrammingModel` se construye desde los modelos productivos de nombres, miembros y
@@ -27,5 +29,5 @@ never fabricates members.
 
 ## Evidencia / Evidence
 
-`nsc_ns3_t11_f01_typed_introspection_tests` builds a real edition-3 project through object layout
+`nsc_ns3_t11_f01_typed_introspection_tests` builds a real NativeSharp project through object layout
 and verifies privacy, stable member order, layout data, and the absence of runtime metadata.

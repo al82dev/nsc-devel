@@ -1,3 +1,7 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Tanda 06 — Ownership, préstamos y destrucción / Ownership, borrows, and destruction
 
 > **Estado 2026-10-03:** F01–F08 cerrados de forma dirigida; la certificación global queda para el cierre de NSC.
@@ -24,14 +28,14 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 
 | ID | Estado productivo | Deuda que impide cerrar el ID completo |
 |---|---|---|
-| T06-F01 | **CERRADO**: tipos valor de edición 3 move-only por defecto, `copy` explícito, consumo con `move(...)`, joins CFG, arrays/genéricos y NSMETA 1.33 | Los moves parciales de fields/variants pertenecen expresamente a F02 |
+| T06-F01 | **CERRADO**: tipos valor move-only por defecto, `copy` explícito, consumo con `move(...)`, joins CFG, arrays/genéricos y NSMeta | Los moves parciales de fields/variants pertenecen expresamente a F02 |
 | T06-F02 | **CERRADO**: estado moved/maybe-moved por ruta nominal, hermanos vivos, reinicialización, joins/back-edges, value-drop recursivo y destructor personalizado con guard optimizable | Payload activo de variants queda ligado al cierre de T03/F08; no debilita el contrato F02 |
 | T06-F03 | **CERRADO**: place graph, reborrow mutable, suspensión del alias padre, split fields/índices constantes, slices half-open representables y fallback fail-closed | Lifetimes nombrados y procedencia cross-module pertenecen a F04/F07 |
-| T06-F04 | **CERRADO**: lifetimes nombrados/inferidos, elisión determinista, `this`/`static`, outlives transitivo, equivalencia alfa de traits, cierre de escapes y NSMETA 1.34 cross-module | Los tipos función HRTB generales y captures prestados parametrizados pertenecen a T08; F04 cubre binder universal por método sin dejar escape inseguro |
-| T06-F05 | **CERRADO**: `defer` edición 3 con capturas explícitas `ref`/`move`, registro léxico, orden LIFO y lowering al grafo único `finally`/RAII para salida normal y exits estructurados | El spelling y perfiles de panic pertenecen a T07; F05 ya comparte el cleanup de unwind y documenta que abort inmediato no ejecuta acciones posteriores |
+| T06-F04 | **CERRADO**: lifetimes nombrados/inferidos, elisión determinista, `this`/`static`, outlives transitivo, equivalencia alfa de traits, cierre de escapes y NSMeta cross-module | Los tipos función HRTB generales y captures prestados parametrizados pertenecen a T08; F04 cubre binder universal por método sin dejar escape inseguro |
+| T06-F05 | **CERRADO**: `defer` con capturas explícitas `ref`/`move`, registro léxico, orden LIFO y lowering al grafo único `finally`/RAII para salida normal y exits estructurados | El spelling y perfiles de panic pertenecen a T07; F05 ya comparte el cleanup de unwind y documenta que abort inmediato no ejecuta acciones posteriores |
 | T06-F06 | **CERRADO**: `pin raii` y `pin ref`, places estáticos, placement autorreferencial, cleanup object-only, frontera conservadora de containers y bit pinned transportado por HIR/MIR para T09/T10 | Los state machines de `yield`/`async` pertenecen a T09/T10; F06 ya entrega la obligación que deben consumir, sin simular esas features |
-| T06-F07 | **CERRADO**: summaries por parámetro, fixed-point interprocedural, returns/globals/closures, NSMETA 1.35, fingerprint e hidratación fail-closed | Los tipos callable explícitos de T08 podrán reemplazar el fallback conservador de callbacks/genéricos |
-| T06-F08 | **CERRADO**: thunk `void(ptr)` por valor no trivial, arrays inversos, payload activo de variants, especializaciones genéricas, productor/consumidor, DLL exports, MIR 1.22 y NSMETA 1.36 | Vida del módulo y unload con objetos vivos pertenecen a T13-F08 |
+| T06-F07 | **CERRADO**: summaries por parámetro, fixed-point interprocedural, returns/globals/closures, NSMeta, fingerprint e hidratación fail-closed | Los tipos callable explícitos de T08 podrán reemplazar el fallback conservador de callbacks/genéricos |
+| T06-F08 | **CERRADO**: thunk `void(ptr)` por valor no trivial, arrays inversos, payload activo de variants, especializaciones genéricas, productor/consumidor, DLL exports, MIR 1.22 y NSMeta | Vida del módulo y unload con objetos vivos pertenecen a T13-F08 |
 
 ## Invariantes de la vertical
 
@@ -49,7 +53,7 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 
 - `nsc.ns3.t06.move-only-defaults`: 16/16 checks; ejecución O0/NSLink, locales, parámetros,
   returns, branches, loops, fields, fixed arrays, constraints, constructores, funciones libres,
-  compatibilidad edición 2 y productor/consumidor NSMETA 1.33.
+  productor/consumidor NSMeta. La campaña también probó una regla de edición ya retirada.
 - `nsc.ns3.t06.partial-moves`: 7/7 checks; field movido con hermano vivo y reinicialización,
   double move, join, back-edge, restricción de destructor y destrucción exacta por scope, parámetro,
   early return y unwind nativo en O0/NSLink.
@@ -64,14 +68,14 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 - `nsc.ns3.t06.pinning`: 8/8 checks; `pin raii`, `pin ref`, placement autorreferencial,
   destructor object-only, MIR/caché y rechazos de relocation/escape/container dinámico en O0
   mediante NSLink.
-- `nsc.ns3.t06.escape-summaries`: 8/8 checks; inferencia local/transitiva/closure, NSMETA 1.35,
-  invalidación por fingerprint, lectura 1.34, metadata corrupta, diagnóstico causal y compatibilidad
-  de edición 2. Ejecutada de forma aislada; no se corrió suite ni baseline.
+- `nsc.ns3.t06.escape-summaries`: 8/8 checks; inferencia local/transitiva/closure, NSMeta,
+  invalidación por fingerprint, lectura, metadata corrupta y diagnóstico causal. La regla histórica
+  de edición fue retirada. Ejecutada de forma aislada; no se corrió suite ni baseline.
 - `nsc.ns3.t06.drop-glue`: prueba dirigida única; variant genérico dentro de array fijo,
-  destrucción exacta del payload activo, contrato NSMETA 1.36, corrupción fail-closed, lectura 1.35
+  destrucción exacta del payload activo, contrato NSMeta, corrupción fail-closed, lectura
   y productor/consumidor separado. Ejecutada de forma aislada; no se corrió suite ni baseline.
-- Matriz dirigida F02: 7/7 tests verdes incluyendo inicializadores, records, F01, ABI struct de
-  edición 2, ownership Stage 50.11 y C6 struct members.
+- Matriz dirigida F02: 7/7 tests verdes incluyendo inicializadores, records, F01, ABI struct,
+  ownership Stage 50.11 y C6 struct members.
 - Regresiones dirigidas: T04 constraints y T05 opaque/trait objects/extensions/operator traits,
   más contratos de migración/compatibilidad/versionado, todas verdes.
 

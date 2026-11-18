@@ -19,7 +19,7 @@ consumidores terminaban buscando correctamente el artefacto ausente mediante `NS
   retorno es un parámetro genérico que se declara después del nombre del método. La misma
   desambiguación conserva `x * x;` como expresión cuando `x` no es un tipo conocido, y el
   rechazo de `extern X` mantiene el diagnóstico contractual `expected 'C'`.
-- `tests/unit/NativeSharp3T49LanguageSurfaceTests.cpp`: cubre la expresión multiplicativa que
+- `tests/unit/NativeSharpT49LanguageSurfaceTests.cpp`: cubre la expresión multiplicativa que
   originó la regresión.
 - `tests/unit/Stage50_1OwnershipSyntaxTests.cpp`: cubre `owned T Transfer<T>(owned T value)`.
 

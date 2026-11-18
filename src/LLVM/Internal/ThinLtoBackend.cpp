@@ -1,4 +1,5 @@
 #include "ThinLtoBackend.h"
+#include "WinEhCatchSwitchPhiLegalization.h"
 
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
@@ -47,6 +48,39 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+
+#include <fstream>
+#if defined(_WIN32)
+#include <process.h>
+#endif
+
+namespace
+{
+// EN: LKF-437: a backend cache entry is a raw COFF object for x64. An entry that is empty, truncated or
+//     not an AMD64 (or bigobj) COFF object is a miss, not a hit copied into the link.
+// ES: LKF-437: una entrada del caché de backends es un objeto COFF crudo de x64. Una entrada vacía,
+//     truncada o que no es un objeto COFF AMD64 (o bigobj) es un fallo, no un acierto copiado al enlace.
+bool usableCachedThinLtoObject(const std::filesystem::path& entry)
+{
+    std::ifstream stream(entry, std::ios::binary);
+    unsigned char header[20] = {};
+    if (!stream.read(reinterpret_cast<char*>(header), sizeof(header))) return false;
+    const bool amd64 = header[0] == 0x64U && header[1] == 0x86U;
+    const bool bigObject = header[0] == 0x00U && header[1] == 0x00U && header[2] == 0xFFU && header[3] == 0xFFU;
+    return amd64 || bigObject;
+}
+
+// LKF-437: the temporary of a published entry carries the process id, like the artifact transaction.
+// LKF-437: el temporal de una entrada publicada lleva el id del proceso, como la transacción de artefactos.
+std::string thinLtoCacheProcessTag()
+{
+#if defined(_WIN32)
+    return std::to_string(static_cast<unsigned long>(_getpid()));
+#else
+    return "0";
+#endif
+}
+}
 
 namespace nativesharp::llvm_backend
 {
@@ -744,6 +778,19 @@ bool ThinLtoBackend::run(
             return true;
         };
     }
+    // EN: Each backend generates its unit's code here, so the WinEHPrepare workaround that
+    //     LlvmTargetMachine::emit applies on the other paths runs here as the last step before code
+    //     generation (see WinEhCatchSwitchPhiLegalization.h). LLVM hands the hook its own, non-const
+    //     module as a const reference; the rewrite only adds a slot, loads and stores.
+    // ES: Cada backend genera aqui el codigo de su unidad, asi que el rodeo de WinEHPrepare que
+    //     LlvmTargetMachine::emit aplica en las otras rutas corre aqui como ultimo paso antes de generar
+    //     codigo (ver WinEhCatchSwitchPhiLegalization.h). LLVM pasa al gancho su propio modulo, no
+    //     constante, como referencia constante; la reescritura solo agrega una ranura, cargas y guardados.
+    config.PreCodeGenModuleHook = [](unsigned, const llvm::Module& module)
+    {
+        legalizeWinEhCatchSwitchPhiUses(llvm::wrap(const_cast<llvm::Module*>(&module)));
+        return true;
+    };
     llvm::lto::ThinBackend backend = llvm::lto::createInProcessThinBackend(
         llvm::heavyweight_hardware_concurrency(static_cast<unsigned>(threads == 0 ? 1 : threads)));
     llvm::lto::LTO lto(std::move(config), std::move(backend));
@@ -822,7 +869,7 @@ bool ThinLtoBackend::run(
                     return llvm::createStringError("ThinLTO produced an unexpected task " + std::to_string(task));
                 const std::filesystem::path entry = cacheDirectory / ("llvmcache-" + key.str());
                 std::error_code copyError;
-                if (std::filesystem::is_regular_file(entry, copyError) &&
+                if (std::filesystem::is_regular_file(entry, copyError) && usableCachedThinLtoObject(entry) &&
                     std::filesystem::copy_file(
                         entry, objectFiles[ordinal], std::filesystem::copy_options::overwrite_existing, copyError))
                     return llvm::AddStreamFn();
@@ -847,7 +894,7 @@ bool ThinLtoBackend::run(
         {
             const std::filesystem::path entry = cacheDirectory / ("llvmcache-" + key);
             std::filesystem::path temporary = entry;
-            temporary += ".partial-" + std::to_string(ordinal);
+            temporary += ".partial-" + thinLtoCacheProcessTag() + "-" + std::to_string(ordinal);
             std::error_code storeError;
             if (std::filesystem::copy_file(
                     objectFiles[ordinal], temporary, std::filesystem::copy_options::overwrite_existing, storeError))

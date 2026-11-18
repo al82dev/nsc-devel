@@ -1,8 +1,10 @@
 # Tanda correctiva G00 — `NS_LIB_ROOT` y precedencia fuente en toda la API
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 **Fecha:** 1 de octubre de 2026  
 **Rama:** `development`  
-**Alcance:** carga de proyectos del compilador NativeSharp 3.0; sin baseline ni cambios de librerías
+**Alcance:** carga de proyectos del compilador NativeSharp; sin baseline ni cambios de librerías
 
 ## Motivo
 

@@ -6,10 +6,9 @@
   "project": "selfhost/tests/projects/Sh09App/Sh09App.nsproj",
   "expected_project": "NativeSharpSelfHostSh09App",
   "expected_output": "Exe",
-  "expected_sdk": "NativeSharp/2.0",
+  "expected_sdk": "NativeSharp/1.0",
   "expected_sources": 1,
   "expected_references": 1,
-  "metadata_versions": [1, 2],
   "expected_exit_code": 42,
   "work_items": [
     "NS2-SH-113", "NS2-SH-114", "NS2-SH-115", "NS2-SH-116",

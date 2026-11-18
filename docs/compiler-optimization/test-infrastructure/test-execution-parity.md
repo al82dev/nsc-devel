@@ -1,5 +1,9 @@
 # Auditoría uno-a-uno de ejecución de pruebas históricas
 
+> Esta auditoría conserva los nombres e identificadores de su corte histórico. Algunas fuentes
+> fueron renombradas después para retirar la etiqueta numérica; consulte el registro de pruebas
+> actual para conocer sus rutas y selectores vigentes.
+
 ## Resultado
 
 - Inventario histórico: **684**.

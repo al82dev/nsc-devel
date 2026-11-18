@@ -1,0 +1,34 @@
+namespace DeterministicFutureCancellation
+{
+    /// <summary>
+    /// RAII resource lease held inside a coroutine frame across suspension points.
+    /// </summary>
+    public class ScopedChannelLease
+    {
+        private int leaseDigit_;
+
+        /// <summary>
+        /// Acquires a channel lease identified by <paramref name="leaseDigit"/>.
+        /// </summary>
+        public ScopedChannelLease(int leaseDigit)
+        {
+            leaseDigit_ = leaseDigit;
+        }
+
+        /// <summary>
+        /// Returns the lease identifier.
+        /// </summary>
+        public int LeaseDigit()
+        {
+            return leaseDigit_;
+        }
+
+        /// <summary>
+        /// Records deterministic LIFO destruction when the coroutine frame is dropped or cancelled.
+        /// </summary>
+        ~ScopedChannelLease()
+        {
+            CleanupTraceLog.RecordStep(leaseDigit_);
+        }
+    }
+}

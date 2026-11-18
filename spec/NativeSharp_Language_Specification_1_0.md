@@ -1,13 +1,15 @@
-# NativeSharp Language Specification 1.0
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
-**Estado:** contrato normativo candidato para 1.0  
-**Lenguaje implementado al redactarlo:** NativeSharp 0.1  
-**Compilador de desarrollo:** `nsc 0.9.0`, Stage 67
+# NativeSharp Language Specification
+
+**Estado:** contrato normativo candidato para el producto 1.0<br>
+**Lenguaje:** único y acumulativo, sin selección por versión<br>
+**Compilador de desarrollo:** `nsc 1.0.0`, Stage 70
 **Target contractual:** `x86_64-pc-windows-msvc`
 
 ## 1. Cómo leer esta especificación
 
-Este archivo define el significado estable que NativeSharp pretende publicar como 1.0. El libro
+Este archivo define el significado estable que NativeSharp pretende publicar con el producto 1.0. El libro
 explica cómo programar; los documentos históricos explican por qué se eligió cada diseño; este
 archivo decide qué debe aceptar, rechazar y producir una implementación conforme.
 
@@ -16,8 +18,9 @@ regla. Una prueba demuestra una implementación concreta, pero tampoco sustituye
 `NativeSharp_1_0_conformance.map` conecta cada cláusula con sus lugares de implementación y con la
 evidencia ejecutable que evita que la prosa y el compilador evolucionen por separado.
 
-La versión visible del lenguaje continúa siendo 0.1 mientras se prepara 1.0. Llamar a este archivo
-“Specification 1.0” identifica el contrato candidato; no promueve por sí solo la versión pública.
+NativeSharp tiene un único lenguaje acumulativo; no se selecciona una versión del lenguaje en los
+proyectos. La versión del producto es 1.0 y su identidad concreta de compilación se consulta por
+separado.
 
 ## 2. Conformidad y programa válido
 
@@ -440,10 +443,10 @@ enums, punteros, callbacks y ownership de handles deben conservar su contrato en
 
 ### NS-ABI-002 — Versionado binario
 
-Una biblioteca publica identidad de módulo, target, versión NSMETA, Native ABI, Runtime ABI, huella
-y superficie de símbolos. Un consumidor debe validar esos valores antes de materializar tipos o
-enlazar. Formatos históricos sólo se aceptan conforme a una regla explícita de minor compatible;
-un major futuro o un contrato físico distinto se rechaza con causa precisa.
+Una biblioteca publica identidad de módulo, target, contratos Native ABI y Runtime ABI, huella
+y superficie de símbolos. Un consumidor debe validar el contenido y los contratos físicos
+aplicables antes de materializar tipos o enlazar. NSMETA no selecciona ni rechaza contenido por
+una versión; un contrato físico incompatible se rechaza con causa precisa.
 
 ## 11. Tipos, genéricos y control estructurado
 

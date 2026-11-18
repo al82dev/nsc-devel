@@ -1,0 +1,12 @@
+noinline decimal Divide(decimal a, decimal b) { return checked(a / b); }
+
+int Main()
+{
+    unsafe("test negative decimal quotient overflow")
+    {
+        i128 minimumBits = (((i128)1 << 96) - (i128)1) | ((i128)1 << 127);
+        decimal minimum = *((decimal*)&minimumBits);
+        decimal value = Divide(minimum, 0.1m);
+        return value == 0m ? 1 : 2;
+    }
+}

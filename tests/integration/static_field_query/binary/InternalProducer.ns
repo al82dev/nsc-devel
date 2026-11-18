@@ -1,0 +1,8 @@
+namespace FieldProducer
+{
+    public struct InternalRecord
+    {
+        internal int Hidden;
+        public int Visible;
+    }
+}

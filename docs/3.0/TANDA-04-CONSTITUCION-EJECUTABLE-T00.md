@@ -1,4 +1,8 @@
-# NativeSharp 3.0 — Tanda 04: Constitución ejecutable T00
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
+# NativeSharp — Tanda 04: Constitución ejecutable T00
 
 Fecha de cierre: 29 de septiembre de 2026
 
@@ -48,35 +52,18 @@ La transición se hace mediante `CompilationStageTracker`. Un salto, una repetic
 `NS3010`. La emisión directa de `.obj`, `.exe`, `.lib` y `.dll` pasa por la misma frontera final; ninguna de esas
 rutas puede declarar codegen sin que las seis etapas previas hayan sido registradas.
 
-### 2.2 Edición como identidad semántica
+### 2.2 Identidad semántica
 
-La edición es semántica, no decorativa:
-
-- `Project` y `ProjectSyntaxUnit` ya la conservaban; ahora el `ProjectOopMirModel` también la conserva.
-- `ProjectOopMirCacheIdentity` incorporó el fingerprint de edición y elevó su esquema interno a v2.
-- cambiar `<Language>2</Language>` por `<Language>3</Language>` invalida el objeto incremental aunque la fuente sea
-  byte a byte idéntica.
-- NSMETA publica la edición a partir del formato 1.23.
-- un módulo precompilado conserva la edición leída de NSMETA al convertirse en `PrecompiledSyntaxModule` y en nodo
-  sintético de `ProjectGraph`.
-- un consumidor de otra edición es rechazado antes de materializar su API pública mediante `NS3001`.
-- los snapshots del LSP publican la edición analizada y su caché de último modelo válido se separa por ruta y
-  fingerprint de edición.
-
-La edición no altera automáticamente el ABI nativo. Por eso se excluye deliberadamente de la proyección usada para
-calcular el `abiFingerprint`: dos ediciones pueden describir exactamente el mismo layout/ABI y compartir ese
-fingerprint, aunque no puedan mezclarse dentro de un mismo grafo de compilación.
+NativeSharp tiene un único lenguaje acumulativo. El cargador admite la propiedad histórica
+`Language` como entrada de compatibilidad, pero su contenido no selecciona sintaxis ni semántica.
+Las identidades incrementales deben reflejar las fuentes y los contratos efectivos, sin una
+edición de lenguaje. Los snapshots del LSP tampoco deben presentar una edición como identidad.
 
 ### 2.3 Compatibilidad de NSMETA
 
-El formato actual pasa de 1.22 a 1.23 y añade un byte de edición después del target triple.
-
-- 1.23 acepta únicamente los valores 2 y 3.
-- los formatos 1.0–1.22 se interpretan como edición 2.
-- intentar escribir una edición 3 en un minor histórico se rechaza; no se crea un archivo que mienta sobre su
-  contrato.
-- el merger exige que fragmentos de una misma biblioteca tengan la misma edición.
-- el read-back del productor verifica el nuevo campo como parte del modelo completo.
+NSMeta no tiene versión ni transporta una edición de lenguaje. Sus consumidores validan la
+estructura, el contenido y los contratos de destino y ABI. No deben rechazar una biblioteca por
+una etiqueta histórica.
 
 ### 2.4 Categorías de valor en HIR
 
@@ -112,7 +99,7 @@ no reutiliza un modelo producido bajo reglas diferentes.
 
 ### 2.7 Harness que ejecuta NSC real
 
-`tools/ns3_conformance.py` conserva su autocheck y añade:
+`tools/ns_conformance.py` conserva su autocheck y añade:
 
 - placeholder `{compiler}` suministrado mediante `--compiler`;
 - validación de que el ejecutable existe;
@@ -122,8 +109,8 @@ no reutiliza un modelo producido bajo reglas diferentes.
 
 Se añadieron dos contratos normativos:
 
-- `t00.edition3.project-identity`: verifica que un `.nsproj` edición 3 publica `language: 3`.
-- `t00.edition3.production-pipeline`: lleva una fuente edición 3 hasta MIR mediante el NSC construido.
+- `t00.language.project-identity`: verifica la identidad de un proyecto sin selección de lenguaje.
+- `t00.language.production-pipeline`: lleva una fuente hasta MIR mediante el NSC construido.
 
 CMake registra `nsc.ns3.t00.conformance-compiler` con `$<TARGET_FILE:nsc>`. El harness ya no puede declararse verde
 solamente porque Python sea capaz de ejecutar Python.
@@ -191,17 +178,17 @@ solamente porque Python sea capaz de ejecutar Python.
   - exige edición uniforme entre fragmentos.
 - `src/LanguageService/LanguageService.cpp`
   - publica edición e impide fallback semántico cross-edition.
-- `tools/ns3_conformance.py`
+- `tools/ns_conformance.py`
   - ejecuta un compilador explícito y soporta contains checks.
 
 ### Pruebas existentes reforzadas
 
-- `tests/unit/NativeSharp3T00ConstitutionTests.cpp`
-  - prueba etapas productivas, NSMETA 1.23 y metadata precompilada cross-edition.
+- `tests/unit/NativeSharpT00ConstitutionTests.cpp`
+  - prueba etapas productivas y metadata precompilada sin selección de edición.
 - `tests/unit/LanguageServiceIdentityTests.cpp`
-  - prueba de la interfaz histórica de análisis y sus ediciones publicadas, no de otra ABI del lenguaje.
+  - prueba la identidad del servicio de lenguaje.
 - `tests/unit/LanguageServiceSnapshotTests.cpp`
-  - prueba snapshot edición 3 y aislamiento del fallback al cambiar a edición 2.
+  - prueba snapshots y aislamiento del último modelo válido.
 - `tests/unit/Item321NoHeapContextTests.cpp`
   - exige `NS3030` en allocations prohibidas.
 - `tests/unit/Item322NoHeapPropagationTests.cpp`
@@ -209,14 +196,14 @@ solamente porque Python sea capaz de ejecutar Python.
 
 ## 4. Archivos nuevos y razón
 
-- `tests/conformance/t00/Edition3.nsproj`
-  - proyecto mínimo y explícito de edición 3 para el harness productivo.
+- `tests/conformance/t00/Language.nsproj`
+  - proyecto mínimo para el harness productivo.
 - `tests/conformance/t00/Main.ns`
   - unidad fuente mínima sin dependencias externas.
-- `tests/conformance/t00/edition3-project.json`
-  - contrato auditable de identidad de proyecto/edición.
-- `tests/conformance/t00/edition3-mir.json`
-  - contrato auditable de tránsito edición 3 hasta MIR.
+- `tests/conformance/t00/language-project.json`
+  - contrato auditable de identidad de proyecto.
+- `tests/conformance/t00/language-mir.json`
+  - contrato auditable de tránsito hasta MIR.
 - `docs/3.0/TANDA-04-CONSTITUCION-EJECUTABLE-T00.md`
   - expediente completo de este commit, sus razones y evidencia.
 
@@ -224,21 +211,20 @@ No se creó ningún directorio Codex ni worktree.
 
 ## 5. Mejora obtenida
 
-Antes de esta tanda, un cambio de edición podía perderse al importar NSMETA, compartir una entrada de cache o permitir
-que el LSP reciclara semántica anterior. El stage tracker, `EffectContext` y categorías extendidas tenían pruebas
-propias, pero no eran autoridades del pipeline.
+La implementación histórica asociaba la semántica a una etiqueta de edición. Esa decisión quedó
+retirada: el lenguaje es acumulativo y la compatibilidad de NSMeta se determina por contenido.
+El stage tracker, `EffectContext` y las categorías extendidas conservan sus contratos propios.
 
 Después de esta tanda:
 
-- edición 2/3 es una identidad verificable de extremo a extremo;
-- la cache incremental no confunde MIR de ediciones distintas;
-- las bibliotecas declaran su edición y los consumidores incompatibles fallan temprano;
-- el LSP no presenta semántica obsoleta de otra edición;
+- la caché incremental se basa en las entradas y contratos efectivos;
+- las bibliotecas se validan por contenido y contratos de destino y ABI;
+- el LSP no debe presentar un modelo obsoleto;
 - todas las salidas de máquina registran el mismo orden normativo de etapas;
 - moved-from y noheap tienen códigos estables en sus fronteras reales;
 - el harness ejecuta el compilador que se pretende certificar.
 
-Esto no hace que el resto de NativeSharp 3.0 esté terminado. Sí convierte T00 en una base ejecutable sobre la que se
+Esto no hace que el resto de NativeSharp esté terminado. Sí convierte T00 en una base ejecutable sobre la que se
 pueden implementar las siguientes vertical slices sin duplicar versión, efectos, categorías, cache o conformidad.
 
 ## 6. Construcción y pruebas dirigidas
@@ -264,7 +250,7 @@ pueden implementar las siguientes vertical slices sin duplicar versión, efectos
 
 ### Harness y CLI
 
-- `tools/ns3_conformance.py --self-test`: 5/5.
+- `tools/ns_conformance.py --self-test`: 5/5.
 - manifest `t00.edition3.project-identity`: passed.
 - manifest `t00.edition3.production-pipeline`: passed.
 - smoke CLI `--emit-project-oop-obj -O0`: passed; produjo COFF AMD64 válido.

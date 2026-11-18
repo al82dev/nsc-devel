@@ -1,3 +1,4 @@
+#include "nativesharp/Target/TargetDataLayout.h"
 #include "../HirLoweringSupport.h"
 #include "HirExpressionStatementMachineTypes.h"
 #include "CppVolatileAliasAlignment.h"
@@ -198,7 +199,10 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledDestructionFrame(
                 "builtin:void");
             deallocation->elementTypeKey = frame.operandType->typeKey;
             deallocation->booleanValue = frame.operandAddressContext;
-            if (frame.syntax->flag())
+            // EN: A generic scalar delete whose T became a dynamic array releases it as `delete[]`.
+            // ES: Un delete escalar generico cuyo T resulto arreglo dinamico lo libera como `delete[]`.
+            if (frame.syntax->flag() ||
+                (methodBodyModel_ != nullptr && methodBodyModel_->scalarDeleteReleasesArray(frame.syntax)))
             {
                 deallocation->dynamicDestruction = false;
                 deallocation->storageOwnership = frame.operandType->storageOwnership;
@@ -206,8 +210,8 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledDestructionFrame(
                 // EN: Slots holding literals do not belong to the array: only the block is released.
                 if (frame.operandType->borrowedElementSlots)
                     deallocation->storageOwnership = sema::OwnershipKind::None;
-                // EN: Freeze 3.0 (item 130, F2): a plain local array does not own its references.
-                // ES: Congelamiento 3.0 (elemento 130, F2): un local arreglo plano no posee sus referencias.
+                // EN: Freeze (item 130, F2): a plain local array does not own its references.
+                // ES: Congelamiento (elemento 130, F2): un local arreglo plano no posee sus referencias.
                 if (methodBodyModel_ != nullptr && methodBodyModel_->arrayDeleteKeepsElements(frame.syntax))
                     deallocation->storageOwnership = sema::OwnershipKind::None;
             }
@@ -290,9 +294,15 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledStackAllocationFrame(
                 frames.clear();
                 break;
             }
-            const std::optional<std::pair<std::uint64_t, std::uint64_t>> elementLayout =
+            std::optional<std::pair<std::uint64_t, std::uint64_t>> elementLayout =
                 objectLayoutModel_->valueLayoutForTypeKey(
                     *nameLookup_, frame.core->elementTypeKey);
+            if (!elementLayout.has_value() && frame.core->elementTypeKey == "builtin:decimal")
+            {
+                const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(
+                    target::BuiltinLayoutKind::Decimal);
+                elementLayout = {{decimal.size, decimal.alignment}};
+            }
             if (!elementLayout.has_value())
             {
                 error = "stackalloc cannot size '" + frame.core->elementTypeKey +
@@ -423,6 +433,26 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
                 ProjectOopHirNodeKind::CompoundStore,
                 frame.syntax,
                 targetType->typeKey);
+            const MethodCallBinding* overload = callBinding(frame.syntax);
+            if (overload != nullptr && overload->resolution == MethodCallResolutionKind::Resolved &&
+                overload->selectedMemberOrdinal.has_value())
+            {
+                step->memberOrdinal = *overload->selectedMemberOrdinal;
+                step->operation = frame.syntax->tokenKind();
+                step->booleanValue = frame.syntax->kind() == ast::AstNodeKind::PostfixExpression;
+                if (frameType != nullptr && frameType->ownsStorageDestination)
+                    step->ownership = sema::OwnershipKind::Owned;
+                if (frame.syntax->first() != nullptr &&
+                    frame.syntax->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+                    isReferenceType(targetType->typeKey) &&
+                    targetType->ownership == sema::OwnershipKind::Owned)
+                    step->localOrdinal = targetType->ownershipSourceLocalOrdinal;
+                step->children.push_back(std::move(lowered));
+                step->children.push_back(makeNode(
+                    ProjectOopHirNodeKind::DefaultValue, frame.syntax, targetType->typeKey));
+                lowered = std::move(step);
+                return;
+            }
             step->operation = frame.syntax->tokenKind() == lexer::TokenKind::PlusPlus
                 ? lexer::TokenKind::Plus
                 : lexer::TokenKind::Minus;

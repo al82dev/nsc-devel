@@ -1,0 +1,11 @@
+interface Marker { }
+class Inspector : Marker
+{
+    public static int Fold<T>(T value)
+    {
+        int sum = 0;
+        static foreach (field in Fields(T)) { sum = sum + field.Get(value); }
+        return sum;
+    }
+}
+int Main() { owned MetadataFields.Record value = new MetadataFields.Record(); value.First = 7; value.Last = 3; return Inspector.Fold<MetadataFields.Record>(value) == 10 ? 0 : 1; }

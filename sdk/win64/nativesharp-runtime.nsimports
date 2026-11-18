@@ -24,7 +24,9 @@ library "KERNEL32.dll"
     GetFileAttributesA
     GetFileAttributesW
     DeleteFileA
+    DeleteFileW
     CreateDirectoryA
+    CreateDirectoryW
     CreateFileA
     CreateFileW
     GetFileSizeEx
@@ -32,6 +34,7 @@ library "KERNEL32.dll"
     CloseHandle
     SetFilePointer
     RemoveDirectoryA
+    RemoveDirectoryW
     GetFullPathNameW
     GetCurrentDirectoryA
     CreateProcessA
@@ -71,7 +74,9 @@ library "KERNEL32.dll"
     RtlCaptureStackBackTrace
     Sleep
     CopyFileA
+    CopyFileW
     MoveFileA
+    MoveFileW
 }
 
 library "KERNELBASE.dll"

@@ -14,6 +14,103 @@ namespace
 {
 using DecimalCoefficient = unsigned __int128;
 
+// Intermediate decimal arithmetic needs more than the 96-bit stored coefficient:
+// scale alignment and division can require up to 283 bits.
+struct DecimalWide
+{
+    std::array<std::uint64_t, 5> limbs{};
+};
+
+DecimalWide decimalWide(DecimalCoefficient coefficient) noexcept
+{
+    DecimalWide result;
+    result.limbs[0] = static_cast<std::uint64_t>(coefficient);
+    result.limbs[1] = static_cast<std::uint64_t>(coefficient >> 64U);
+    return result;
+}
+
+int compareDecimalWide(const DecimalWide& left, const DecimalWide& right) noexcept
+{
+    for (std::size_t index = left.limbs.size(); index-- > 0;)
+    {
+        if (left.limbs[index] < right.limbs[index]) return -1;
+        if (left.limbs[index] > right.limbs[index]) return 1;
+    }
+    return 0;
+}
+
+DecimalWide addDecimalWide(const DecimalWide& left, const DecimalWide& right) noexcept
+{
+    DecimalWide result;
+    DecimalCoefficient carry = 0;
+    for (std::size_t index = 0; index < result.limbs.size(); ++index)
+    {
+        const DecimalCoefficient sum = DecimalCoefficient{left.limbs[index]} + right.limbs[index] + carry;
+        result.limbs[index] = static_cast<std::uint64_t>(sum);
+        carry = sum >> 64U;
+    }
+    return result;
+}
+
+DecimalWide subtractDecimalWide(const DecimalWide& left, const DecimalWide& right) noexcept
+{
+    DecimalWide result;
+    std::uint64_t borrow = 0;
+    for (std::size_t index = 0; index < result.limbs.size(); ++index)
+    {
+        const std::uint64_t partial = left.limbs[index] - right.limbs[index];
+        const bool firstBorrow = left.limbs[index] < right.limbs[index];
+        result.limbs[index] = partial - borrow;
+        borrow = firstBorrow || partial < borrow ? 1U : 0U;
+    }
+    return result;
+}
+
+DecimalWide multiplyDecimalWide(const DecimalWide& left, const DecimalWide& right) noexcept
+{
+    DecimalWide result;
+    for (std::size_t i = 0; i < result.limbs.size(); ++i)
+    {
+        DecimalCoefficient carry = 0;
+        for (std::size_t j = 0; j + i < result.limbs.size(); ++j)
+        {
+            const DecimalCoefficient product = DecimalCoefficient{left.limbs[i]} * right.limbs[j] +
+                result.limbs[i + j] + carry;
+            result.limbs[i + j] = static_cast<std::uint64_t>(product);
+            carry = product >> 64U;
+        }
+    }
+    return result;
+}
+
+DecimalWide scaleDecimalWide(DecimalWide value, unsigned exponent) noexcept
+{
+    const DecimalWide ten = decimalWide(10U);
+    for (unsigned index = 0; index < exponent; ++index)
+        value = multiplyDecimalWide(value, ten);
+    return value;
+}
+
+void divideDecimalWide(const DecimalWide& numerator, const DecimalWide& divisor,
+                       DecimalWide& quotient, DecimalWide& remainder) noexcept
+{
+    for (std::size_t bit = numerator.limbs.size() * 64U; bit-- > 0;)
+    {
+        std::uint64_t carry = (numerator.limbs[bit / 64U] >> (bit % 64U)) & 1U;
+        for (std::size_t index = 0; index < remainder.limbs.size(); ++index)
+        {
+            const std::uint64_t next = remainder.limbs[index] >> 63U;
+            remainder.limbs[index] = (remainder.limbs[index] << 1U) | carry;
+            carry = next;
+        }
+        if (compareDecimalWide(remainder, divisor) >= 0)
+        {
+            remainder = subtractDecimalWide(remainder, divisor);
+            quotient.limbs[bit / 64U] |= std::uint64_t{1} << (bit % 64U);
+        }
+    }
+}
+
 DecimalCoefficient decimalCoefficient(Decimal128Bits value) noexcept
 {
     const DecimalCoefficient upper = decimalCoefficientHigh(value);
@@ -207,9 +304,11 @@ bool scanDecimalExponent(
         error = "decimal exponent requires digits";
         return false;
     }
+    bool sawExponentDigit = false;
     for (; cursor < spelling.size(); ++cursor)
     {
         const char value = spelling[cursor];
+        if (value == 'm' || value == 'M') break;
         if (value == '_') continue;
         if (value < '0' || value > '9')
         {
@@ -221,7 +320,13 @@ bool scanDecimalExponent(
             error = "decimal exponent is out of range";
             return false;
         }
+        sawExponentDigit = true;
         exponent = exponent * 10 + (value - '0');
+    }
+    if (!sawExponentDigit)
+    {
+        error = "decimal exponent requires digits";
+        return false;
     }
     if (exponentNegative) exponent = -exponent;
     return true;
@@ -300,7 +405,16 @@ std::optional<DecimalLiteralValue> parseDecimalLiteral(
 
     const auto parsedCoefficient = parseDecimalCoefficient(digits, error);
     if (!parsedCoefficient.has_value()) return std::nullopt;
-    if (*parsedCoefficient == 0) return DecimalLiteralValue{0, 0, 0, false};
+    if (*parsedCoefficient == 0)
+    {
+        // NSC-NEW-003: a zero keeps its written scale, as DecimalLiteralValue promises for every
+        // literal: `0.0m` is coefficient 0 / scale 1. Returning scale 0 here made `0.0m / -1m`
+        // and `max + 0.0m` start from `0m`, so the scale rules those programs measure never ran.
+        // A zero has no digits to lose, so a scale beyond 28 is clamped instead of rejected, and
+        // the zero stays positive as before.
+        const int zeroScale = std::clamp(fractionalDigits - exponent, 0, static_cast<int>(DecimalMaximumScale));
+        return DecimalLiteralValue{0, 0, static_cast<unsigned>(zeroScale), false};
+    }
     DecimalCoefficient coefficient = *parsedCoefficient;
     int scale = fractionalDigits - exponent;
     if (!applyDecimalLiteralScale(coefficient, scale, error)) return std::nullopt;
@@ -327,14 +441,13 @@ std::optional<Decimal128Bits> evaluateDecimalArithmetic(
     const bool leftNegative = decimalIsNegative(left);
     const bool rightNegative = decimalIsNegative(right);
 
-    const auto pow10 = [](unsigned exponent) noexcept
-    {
-        DecimalCoefficient result = 1;
-        for (unsigned index = 0; index < exponent; ++index) result *= 10U;
-        return result;
-    };
+    if (leftScale > DecimalMaximumScale || rightScale > DecimalMaximumScale)
+    { error = "decimal scale exceeds 28"; return std::nullopt; }
+    if ((operation == DecimalArithmeticOperation::Divide || operation == DecimalArithmeticOperation::Remainder) &&
+        rightCoefficient == 0)
+    { error = "decimal division by zero"; return std::nullopt; }
 
-    DecimalCoefficient resultCoefficient = 0;
+    DecimalWide resultCoefficient;
     unsigned resultScale = 0;
     bool resultNegative = false;
     if (operation == DecimalArithmeticOperation::Add ||
@@ -342,47 +455,66 @@ std::optional<Decimal128Bits> evaluateDecimalArithmetic(
         operation == DecimalArithmeticOperation::Remainder)
     {
         const unsigned maxScale = std::max(leftScale, rightScale);
-        const DecimalCoefficient leftAligned = leftCoefficient * pow10(maxScale - leftScale);
-        const DecimalCoefficient rightAligned = rightCoefficient * pow10(maxScale - rightScale);
-        if (operation == DecimalArithmeticOperation::Add)
-            resultCoefficient = leftAligned + rightAligned;
-        else if (operation == DecimalArithmeticOperation::Subtract)
-            resultCoefficient = leftAligned - rightAligned;
+        const DecimalWide leftAligned = scaleDecimalWide(decimalWide(leftCoefficient), maxScale - leftScale);
+        const DecimalWide rightAligned = scaleDecimalWide(decimalWide(rightCoefficient), maxScale - rightScale);
+        if (operation == DecimalArithmeticOperation::Remainder)
+        {
+            DecimalWide quotient;
+            divideDecimalWide(leftAligned, rightAligned, quotient, resultCoefficient);
+            resultNegative = leftNegative;
+        }
         else
-            // 64-bit lane: __umodti3 is not linked, matching the LLVM lowering.
-            resultCoefficient = static_cast<std::uint64_t>(leftAligned) %
-                static_cast<std::uint64_t>(rightAligned);
+        {
+            const bool effectiveRightNegative = rightNegative != (operation == DecimalArithmeticOperation::Subtract);
+            if (leftNegative == effectiveRightNegative)
+            {
+                resultCoefficient = addDecimalWide(leftAligned, rightAligned);
+                resultNegative = leftNegative;
+            }
+            else if (compareDecimalWide(leftAligned, rightAligned) >= 0)
+            {
+                resultCoefficient = subtractDecimalWide(leftAligned, rightAligned);
+                resultNegative = leftNegative;
+            }
+            else
+            {
+                resultCoefficient = subtractDecimalWide(rightAligned, leftAligned);
+                resultNegative = effectiveRightNegative;
+            }
+        }
         resultScale = maxScale;
-        resultNegative = leftNegative;
     }
     else if (operation == DecimalArithmeticOperation::Multiply)
     {
-        resultCoefficient = leftCoefficient * rightCoefficient;
+        resultCoefficient = multiplyDecimalWide(decimalWide(leftCoefficient), decimalWide(rightCoefficient));
         resultScale = leftScale + rightScale;
         resultNegative = leftNegative != rightNegative;
     }
     else
     {
-        const unsigned targetScale =
+        unsigned targetScale =
             std::max(leftScale, rightScale) + (leftScale > rightScale ? 1U : 0U);
+        if (targetScale > DecimalMaximumScale)
+            targetScale = DecimalMaximumScale;
         const unsigned exponent = targetScale + rightScale - leftScale;
-        const std::uint64_t leftCoeff64 = static_cast<std::uint64_t>(leftCoefficient);
-        const std::uint64_t rightCoeff64 = static_cast<std::uint64_t>(rightCoefficient);
-        std::uint64_t numerator = leftCoeff64;
-        for (unsigned index = 0; index < exponent; ++index) numerator *= 10U;
-        // 64-bit lane (__udivti3 not linked) + round half-up.
-        resultCoefficient = (numerator + rightCoeff64 / 2U) / rightCoeff64;
+        const DecimalWide numerator = scaleDecimalWide(decimalWide(leftCoefficient), exponent);
+        const DecimalWide divisor = decimalWide(rightCoefficient);
+        DecimalWide remainder;
+        divideDecimalWide(numerator, divisor, resultCoefficient, remainder);
+        if (compareDecimalWide(addDecimalWide(remainder, remainder), divisor) >= 0)
+            resultCoefficient = addDecimalWide(resultCoefficient, decimalWide(1U));
         resultScale = targetScale;
         resultNegative = leftNegative != rightNegative;
     }
 
     if (resultScale > DecimalMaximumScale)
     { error = "decimal scale exceeds 28"; return std::nullopt; }
-    if (resultCoefficient > ((DecimalCoefficient{1} << 96U) - 1U))
+    if (resultCoefficient.limbs[1] > 0xffffffffULL || resultCoefficient.limbs[2] != 0 ||
+        resultCoefficient.limbs[3] != 0 || resultCoefficient.limbs[4] != 0)
     { error = "decimal coefficient exceeds 96 bits"; return std::nullopt; }
     return makeDecimal128Bits(
-        static_cast<std::uint64_t>(resultCoefficient),
-        static_cast<std::uint32_t>(resultCoefficient >> 64U),
+        resultCoefficient.limbs[0],
+        static_cast<std::uint32_t>(resultCoefficient.limbs[1]),
         resultScale,
         resultNegative);
 }
@@ -636,7 +768,21 @@ bool evaluateRequestedIntegerOperation(
     {
         case IntegerArithmeticOperation::Add: wide = left + right; break;
         case IntegerArithmeticOperation::Subtract: wide = left - right; break;
-        case IntegerArithmeticOperation::Multiply: wide = left * right; break;
+        case IntegerArithmeticOperation::Multiply:
+            if (!request.type.isSigned)
+            {
+                const unsigned __int128 product =
+                    static_cast<unsigned __int128>(left) * static_cast<unsigned __int128>(right);
+                const unsigned __int128 signedWideMaximum = ~static_cast<unsigned __int128>(0) >> 1U;
+                if (product > signedWideMaximum)
+                {
+                    wide = static_cast<std::uint64_t>(product);
+                    forcedOverflow = true;
+                }
+                else wide = static_cast<__int128>(product);
+            }
+            else wide = left * right;
+            break;
         case IntegerArithmeticOperation::Divide:
             if (right == 0)
             {
@@ -927,16 +1073,23 @@ std::optional<ConstantPointer> ConstantMemory::offset(
         error = "constant pointer offset is outside its provenance allocation";
         return std::nullopt;
     }
-    const auto current = static_cast<std::ptrdiff_t>(pointer.offset);
-    if ((delta < 0 && current < -delta) ||
-        (delta > 0 && static_cast<std::size_t>(delta) > allocation->size - pointer.offset))
+    if (delta < 0)
+    {
+        const std::uintmax_t magnitude = std::uintmax_t{0} - static_cast<std::uintmax_t>(delta);
+        if (magnitude > pointer.offset)
+        {
+            error = "constant pointer arithmetic escaped its allocation";
+            return std::nullopt;
+        }
+        return ConstantPointer{pointer.allocation, pointer.offset - static_cast<std::size_t>(magnitude)};
+    }
+    const auto forward = static_cast<std::size_t>(delta);
+    if (forward > allocation->size - pointer.offset)
     {
         error = "constant pointer arithmetic escaped its allocation";
         return std::nullopt;
     }
-    return ConstantPointer{
-        pointer.allocation,
-        static_cast<std::size_t>(current + delta)};
+    return ConstantPointer{pointer.allocation, pointer.offset + forward};
 }
 
 bool ConstantMemory::validateDereference(

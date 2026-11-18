@@ -8,7 +8,7 @@
 #include "nativesharp/Language/ExpressionErgonomics.h"
 #include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Language/IterationSemantics.h"
-#include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Language/LanguageSurface.h"
 #include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/TraitSemantics.h"
 #include "nativesharp/Frontend/IntegerLiteralTyping.h"
@@ -301,7 +301,7 @@ void Parser::applyMemberFloatingPointMode(
 bool Parser::looksLikeVariableDeclaration() const noexcept
 {
     std::size_t cursor = index_;
-    // NativeSharp 2.0 item 312: `ref` is contextual and introduces a reference-local
+    // NativeSharp item 312: `ref` is contextual and introduces a reference-local
     // declaration only when a real type follows it. Skip it for the ordinary type/name lookahead.
     if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Identifier &&
         tokens_[cursor].lexeme() == "ref")

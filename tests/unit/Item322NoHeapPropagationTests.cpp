@@ -3,6 +3,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/MetadataHeaderControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -243,15 +244,13 @@ namespace CrossNoHeap
                 metadataNoHeap = true;
         }
     }
-    tests.expect(metadataRead &&
-                     metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor && metadataNoHeap,
-        "current NSMETA preserves the 1.16 public noheap bit (" + metadataError + ")");
+    tests.expect(metadataRead && metadataNoHeap,
+        "metadata preserves the public noheap bit (" + metadataError + ")");
     if (metadataRead)
     {
-        metadata.formatMinor = 15U;
-        const auto downlevelPath = producer / "NoHeapProducer-1.15.nsmeta";
+        const auto downlevelPath = producer / "NoHeapProducer-sample-15.nsmeta";
         tests.expect(codec.writeModel(metadata, downlevelPath, metadataError),
-            "the historical NSMETA 1.15 form can still be emitted");
+            "the historical NSMETA form can still be emitted");
         nativesharp::interop::LibraryMetadata downlevel;
         const bool downlevelRead = codec.read(downlevelPath, downlevel, metadataError);
         bool retainedNoHeap = false;
@@ -261,8 +260,12 @@ namespace CrossNoHeap
                 retainedNoHeap = retainedNoHeap ||
                     (member.flags & nativesharp::interop::kMetadataMemberNoHeap) != 0U;
         }
-        tests.expect(downlevelRead && !retainedNoHeap,
-            "NSMETA 1.15 output strips the 1.16 noheap bit");
+        // NSC-META-001: the reserved header bytes used to strip the noheap bit. It selects nothing now.
+        tests.expect(downlevelRead && retainedNoHeap,
+            "a reserved header bytes keeps the public noheap bit");
+        tests.expect(nativesharp::tests::metadataReservedBytesPreserveContent(
+                codec, metadata, downlevelPath, metadataError),
+            "the reserved header bytes alone changes no written byte (" + metadataError + ")");
     }
 
     const auto consumer = root / "consumer";

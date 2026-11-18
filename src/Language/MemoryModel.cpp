@@ -74,7 +74,7 @@ bool volatileAccessMayTear(
 std::string memoryModelManifest()
 {
     return
-        "NSMEMORY 3.0\n"
+        "NSMEMORY\n"
         "target=x86_64-pc-windows-msvc\n"
         "data-race=undefined-behavior\n"
         "atomic-load=relaxed|acquire|seq-cst\n"

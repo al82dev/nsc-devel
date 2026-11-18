@@ -1,14 +1,18 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
 # NS3-T13-F02 — Bitfields y enteros de ancho fijo / Bit-fields and fixed-width integers
 
 ## Español
 
-NativeSharp 3.0 normaliza `i8/u8`, `i16/u16`, `i32/u32`, `i64/u64`, `i128/u128` e
+NativeSharp normaliza `i8/u8`, `i16/u16`, `i32/u32`, `i64/u64`, `i128/u128` e
 `isize/usize`. Los aliases de hasta 64 bits conservan las identidades históricas
 `sbyte/byte/short/ushort/int/uint/long/ulong/nint/nuint`; `i128` y `u128` son carriers LLVM i128
 de 16 bytes, alineados a 16 bytes en Windows x64. Las promociones preservan ancho y signo; una
 conversión implícita sólo ensancha el rango.
 
-Los bitfields de edición 3 exigen layout explícito `repr(C)` o `repr(native)`. El primer campo
+Los bitfields de NativeSharp exigen layout explícito `repr(C)` o `repr(native)`. El primer campo
 ocupa los bits menos significativos de su unidad Win64 y los siguientes avanzan hacia los más
 significativos. El tipo base define signedness y extensión de signo. `volatile` carga y escribe la
 unidad completa sin atribuir atomicidad u orden entre hilos. Un ancho cero sólo es válido para un
@@ -20,13 +24,13 @@ actualizaciones volatile y diagnósticos de layout/ancho. No ejecuta baseline.
 
 ## English
 
-NativeSharp 3.0 normalizes `i8/u8`, `i16/u16`, `i32/u32`, `i64/u64`, `i128/u128`, and
+NativeSharp normalizes `i8/u8`, `i16/u16`, `i32/u32`, `i64/u64`, `i128/u128`, and
 `isize/usize`. Aliases up to 64 bits retain the historical
 `sbyte/byte/short/ushort/int/uint/long/ulong/nint/nuint` identities. `i128` and `u128` are real
 LLVM i128 carriers with 16-byte size and alignment on Windows x64. Promotions preserve width and
 signedness; an implicit conversion may only widen the represented range.
 
-Edition-3 bit-fields require explicit `repr(C)` or `repr(native)` layout. The first field occupies
+Bit-fields require explicit `repr(C)` or `repr(native)` layout. The first field occupies
 the least-significant bits of its Win64 allocation unit and following fields advance toward the
 most-significant bits. The base type defines signedness and sign extension. `volatile` reads and
 writes the complete unit without inventing atomicity or inter-thread ordering. Zero width is

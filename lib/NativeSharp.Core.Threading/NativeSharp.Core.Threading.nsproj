@@ -1,11 +1,6 @@
 <Project>
-  <PropertyGroup>
-    <Name>NativeSharpCoreThreading</Name>
-    <Language>3</Language>
-    <OutputType>Library</OutputType>
-  </PropertyGroup>
-  <ItemGroup><Compile Include="**/*.ns" /></ItemGroup>
+  <PropertyGroup><Name>NativeSharpCoreThreadingReference</Name><OutputType>Library</OutputType></PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../NativeSharp.Core/NativeSharp.Core.nsproj" />
+    <ProjectReference Include="../../../nativesharp-libraries/stdlib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.Sources.nsproj" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,2 @@
+struct Box<T> { public T Data; }
+class Program { public static int Main() { Box<External.Hidden<int>> value; return 0; } }

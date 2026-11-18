@@ -137,7 +137,13 @@ bool ProjectOopHirModel::nextBoundCallChild(
     // T19-007: a temporary operand is lowered as a value and materialized. / Se materializa como valor.
     addressContext = target != nullptr && target->isUserOperator &&
         boundCallArgumentNeedsAddress(call.target.memberOrdinal, call.nextArgument) &&
+        // T19-007: a temporary operand is lowered as a value and materialized; binding it to `ref` is rejected
+        //     earlier by the call analysis. / Un operando temporal se baja como valor y se materializa; enlazarlo a
+        //     `ref` lo rechaza antes el analisis de la llamada.
         isNaturallyAddressable(syntax);
+    if (addressContext && call.nextArgument < target->parameters.size() &&
+        target->parameters[call.nextArgument].passKind == ParameterPassKind::In &&
+        !isNaturallyAddressable(syntax)) addressContext = false;
     return true;
 }
 
@@ -170,8 +176,16 @@ void ProjectOopHirModel::acceptBoundCallChild(
     const ClassMemberSymbol* target = callableSymbol(call.target.memberOrdinal);
     const MethodParameterSymbol* parameter = target != nullptr && index < target->parameters.size()
         ? &target->parameters[index] : nullptr;
+    // EN: Integration with `development`: an `in` operand only for an imported C++ operator; a NativeSharp
+    //     operator's `in` temporary is already lent by `development`'s owned-temporary borrow. `T&&` and the implicit
+    //     object are C++ only.
+    // ES: Integracion con `development`: un operando `in` solo para un operador C++ importado; el temporal `in` de
+    //     un operador NativeSharp ya lo presta el prestamo de temporal de `development`. `T&&` y el objeto
+    //     implicito son solo de C++.
+    const bool cppOperator = target != nullptr &&
+        (target->isCppExternal || target->cppClangUsr.has_value() || target->isImportedC);
     const bool temporaryOperand = parameter != nullptr && target->isUserOperator &&
-        (parameter->passKind == ParameterPassKind::In || parameter->cppRvalueReference ||
+        ((parameter->passKind == ParameterPassKind::In && cppOperator) || parameter->cppRvalueReference ||
          parameter->cppImplicitObject) &&
         !isNaturallyAddressable(call.argumentSyntaxes[index]);
     const bool rvalueValue = parameter != nullptr && !target->isUserOperator && parameter->cppRvalueReference &&
@@ -835,6 +849,11 @@ bool ProjectOopHirModel::initializeEventInvokeFrame(
         error = "Stage 42 event binding has invalid backing member";
         return false;
     }
+    if (!validateNoHeapIndirectInvocation(frame.memberOrdinal, binding->delegateTypeKey, error))
+    {
+        lastErrorRange_ = frame.syntax->range();
+        return false;
+    }
     internal::EventInvokeFrameState call;
     call.binding = binding;
     call.node = makeNode(
@@ -962,6 +981,11 @@ bool ProjectOopHirModel::initializeDelegateInvokeFrame(
     if (binding == nullptr || binding->kind != MethodDelegateOperationKind::Invoke)
     {
         error = "Stage 34 delegate invocation lost its semantic binding";
+        return false;
+    }
+    if (!validateNoHeapIndirectInvocation(frame.memberOrdinal, binding->delegateTypeKey, error))
+    {
+        lastErrorRange_ = frame.syntax->range();
         return false;
     }
     internal::DelegateInvokeFrameState call;

@@ -1,10 +1,14 @@
-# NativeSharp 3.0 — Limitaciones resueltas
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
+# NativeSharp — Limitaciones resueltas
 
 **Fecha de corte:** 2026-10-05
 **Rama:** `development`  
 **Plataforma contractual:** Windows x64  
 **Propósito:** evitar que agentes, convertidores, ejemplos y bibliotecas conserven workarounds que
-ya no son necesarios al trabajar con el compilador NativeSharp 3.0.
+ya no son necesarios al trabajar con el compilador NativeSharp.
 
 **Última corrida externa informada:** **669/671** pruebas aprobadas. Las dos fallas, SH48 y SH50,
 tenían una sola causa en el backend self-hosted (`icmp i64, i32`). La corrección posterior pasó la
@@ -18,7 +22,7 @@ NSC que contenga el commit indicado o uno posterior. `TERMINADA` significa que e
 productiva y que pasaron sus pruebas dirigidas. No significa que Alberto haya ejecutado el baseline
 integral después de cada cambio.
 
-Al actualizar código convertido desde NativeSharp 2.0 o desde C/C++:
+Al actualizar código convertido desde NativeSharp o desde C/C++:
 
 1. buscar el identificador o el síntoma en esta tabla;
 2. retirar el workaround descrito en **Acción para agentes**;

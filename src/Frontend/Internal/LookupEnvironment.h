@@ -24,5 +24,7 @@ struct ProjectNameLookup::LookupEnvironment final
     // interior. Es lo que convierte `Item` en `ns.Outer.Item` sin que nadie lo escriba, y lo que
     // permite decidir si un anidado `private` se ve desde aqui.
     std::vector<std::size_t> enclosingTypeOrdinals;
+    // Parameters visible only while binding an open generic constraint.
+    std::vector<std::string> openConstraintParameters;
 };
 }

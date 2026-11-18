@@ -168,10 +168,10 @@ namespace NativeSharp.Compiler.Projects
             return Path.Combine(directory, cleaned);
         }
 
-        private static void CollectSorted(string directory, string extension, bool recursive,
+        private static int CollectSorted(string directory, string extension, bool recursive,
             string owner, string ownerDirectory, SourceGraph graph)
         {
-            if (!Directory.Exists(directory)) { return; }
+            if (!Directory.Exists(directory)) { return 0; }
             int fileCount = Directory.GetFileCount(directory);
             string[] files = new string[fileCount];
             Directory.GetFiles(directory, files);
@@ -204,8 +204,9 @@ namespace NativeSharp.Compiler.Projects
             }
             delete[] files;
 
-            if (!recursive) { return; }
+            if (!recursive) { return emitted; }
 
+            int matches = emitted;
             int directoryCount = Directory.GetDirectoryCount(directory);
             string[] directories = new string[directoryCount];
             Directory.GetDirectories(directory, directories);
@@ -228,12 +229,13 @@ namespace NativeSharp.Compiler.Projects
                 }
                 if (best < 0) { break; }
                 raii string child = Path.Combine(directory, directories[best]);
-                CollectSorted(child, extension, true, owner, ownerDirectory, graph);
+                matches = matches + CollectSorted(child, extension, true, owner, ownerDirectory, graph);
                 raii string nextPrevious = String.Copy(directories[best]);
                 previousDirectory = move(nextPrevious);
                 walked = walked + 1;
             }
             delete[] directories;
+            return matches;
         }
 
         public static void Expand(string projectDirectory, string include, string owner,
@@ -275,9 +277,8 @@ namespace NativeSharp.Compiler.Projects
 
             raii string root = PatternRoot(projectDirectory, include);
             bool recursive = String.Contains(include, "**");
-            int before = graph.UnitCount();
-            CollectSorted(root, extension, recursive, owner, ownerDirectory, graph);
-            if (graph.UnitCount() == before)
+            int matches = CollectSorted(root, extension, recursive, owner, ownerDirectory, graph);
+            if (matches == 0)
             {
                 raii string message = String.Concat("include matches no file: ", include);
                 graph.Fail(message);

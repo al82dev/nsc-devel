@@ -1,4 +1,6 @@
-# Tanda correctiva G00: paridad frontend SH42 de NativeSharp 3.0
+# Tanda correctiva G00: paridad frontend SH42 de NativeSharp
+
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
 
 ## Problema observado
 

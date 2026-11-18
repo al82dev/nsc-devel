@@ -1,0 +1,10 @@
+namespace GenericInheritance
+{
+    public class Base<T>
+    {
+        public T BaseValue;
+        public void SetBase(T value) { BaseValue = value; }
+        public T ReadBase() { return BaseValue; }
+    }
+    public class Box<T> : Base<T> { public T Value; }
+}

@@ -1,0 +1,25 @@
+using NativeSharp.Core;
+public class DirectPayload {
+ public static int Drops;
+ public DirectPayload() { }
+ ~DirectPayload() { Drops = Drops + 1; }
+}
+public class DirectRoot {
+ public static int Drops;
+ public static int Mode;
+ public Rc<DirectPayload> rc;
+ public WeakRc<DirectPayload> weakRc;
+ public Arc<DirectPayload> arc;
+ public WeakArc<DirectPayload> weakArc;
+ public DirectRoot() throws Exception {
+  rc = SharedPointers.MakeRc<DirectPayload>();
+  if (Mode == 1) throw new Exception();
+  weakRc = rc.Downgrade();
+  if (Mode == 2) throw new Exception();
+  arc = SharedPointers.MakeArc<DirectPayload>();
+  if (Mode == 3) throw new Exception();
+  weakArc = arc.Downgrade();
+  if (Mode == 4) throw new Exception();
+ }
+ ~DirectRoot() { Drops = Drops + 1; }
+}

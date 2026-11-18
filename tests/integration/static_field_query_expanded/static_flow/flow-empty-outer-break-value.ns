@@ -1,0 +1,1 @@
+struct Empty { } int Main() { int value=loop outside { static foreach (field in Fields(Empty)) { break outside: 0; } break outside: 1; }; return value; }

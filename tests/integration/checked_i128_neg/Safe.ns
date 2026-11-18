@@ -1,0 +1,13 @@
+i128 Negate(i128 value) { return checked(-value); }
+i128 NegateOrdinary(i128 value) { return -value; }
+int Main()
+{
+    i128 half = (i128)1 << 126;
+    i128 maximum = (half - (i128)1) * (i128)2 + (i128)1;
+    i128 minimum = -maximum - (i128)1;
+    if (Negate(maximum) != -maximum) return 1;
+    if (Negate(-maximum) != maximum) return 2;
+    if (Negate((i128)0) != (i128)0) return 3;
+    if (NegateOrdinary(minimum) != minimum) return 4;
+    return 0;
+}

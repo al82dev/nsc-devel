@@ -121,7 +121,7 @@ bool LibraryMetadataCodec::writeModelImpl(
     error.clear();
     LibraryMetadata metadata;
     if (!prepareWritableMetadata(model, metadata, error)) return false;
-    if (!applyWritableMetadataDowngrade(metadata, error)) return false;
+    if (!validateWritableSourceImports(metadata, error)) return false;
     return writeMetadataFile(metadata, destination, writtenModel, writtenBytes, error);
 }
 
@@ -166,8 +166,6 @@ bool LibraryMetadataCodec::readBytes(
     }
 
     ByteReader reader(bytes);
-    std::uint16_t major = 0;
-    std::uint16_t minor = 0;
     std::uint32_t targetId = 0;
     std::uint32_t pointerSize = 0;
     std::uint32_t pointerAlignment = 0;
@@ -176,8 +174,6 @@ bool LibraryMetadataCodec::readBytes(
     std::array<std::uint8_t, 32> payloadHash{};
     if (!readMetadataHeader(
             reader,
-            major,
-            minor,
             targetId,
             pointerSize,
             pointerAlignment,
@@ -198,9 +194,10 @@ bool LibraryMetadataCodec::readBytes(
         return false;
     }
 
+    // Interpret the content with the general layout; header labels do not select a format.
     LibraryMetadata decoded;
     initializeDecodedMetadata(
-        decoded, major, minor, targetId, pointerSize, pointerAlignment, abiFingerprint);
+        decoded, targetId, pointerSize, pointerAlignment, abiFingerprint);
     if (authenticate)
     {
         if (!authenticateDecodedMetadata(payload, decoded, error)) return false;
@@ -246,9 +243,8 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
     }
     if (!verifyNamespaceAndExportCatalogues(metadata, error)) return false;
     if (!verifyBinaryClosureMetadata(metadata, error)) return false;
-    if (!verifyVersionedMemberContracts(metadata, error)) return false;
-    if (!verifyLifetimeMetadataContracts(metadata, error)) return false;
-    return true;
+    if (!verifyMemberContracts(metadata, error)) return false;
+    return verifyLifetimeMetadataContracts(metadata, error);
 }
 
 std::string LibraryMetadataCodec::fingerprintHex(const std::array<std::uint8_t, 32>& fingerprint)

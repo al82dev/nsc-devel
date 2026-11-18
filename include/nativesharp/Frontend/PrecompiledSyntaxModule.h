@@ -4,6 +4,9 @@
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
+#include "nativesharp/Frontend/PrecompiledFieldCertificate.h"
+#include "nativesharp/Frontend/PrecompiledTemplateFieldCertificate.h"
+#include "nativesharp/Frontend/ClassReceiverContractManifest.h"
 
 #include <filesystem>
 #include <cstdint>
@@ -45,6 +48,15 @@ struct PrecompiledSyntaxModule final
     bool surfacePruned = false;
     // Verified C type catalogue carried with this metadata surface; not yet installed.
     std::vector<std::uint8_t> cppCTypeCatalog;
-    std::uint16_t cppCTypeCatalogFormatMinor = interop::kMetadataFormatMinor;
+    std::vector<std::string> trivialCleanupRootTypeKeys;
+    std::vector<std::string> nonEscapingLifecycleTypeKeys;
+    std::vector<std::string> identitySafeLifecycleTypeKeys;
+    std::vector<PrecompiledFieldCertificate> fieldCertificates;
+    std::vector<PrecompiledTemplateFieldCertificate> templateFieldCertificates;
+    // Observed transport only, never a semantic proof: no lock is retained and
+    // these records are deliberately excluded from snapshots and consumption.
+    std::vector<ReceiverContractRecord> observedReceiverContracts{};
+    // Only records matched while the compilation retains the product reader lock.
+    std::vector<ReceiverContractRecord> guardedReceiverContracts{};
 };
 }

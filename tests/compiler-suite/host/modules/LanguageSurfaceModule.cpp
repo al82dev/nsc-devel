@@ -6,16 +6,18 @@
 #include "nativesharp/Interop/LibraryApiDiff.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Language/ErrorSemantics.h"
-#include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Language/LanguageSurface.h"
 #include "nativesharp/LLVM/DebugMetadataVersion.h"
 
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstddef>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -48,60 +50,77 @@ namespace
 using namespace nativesharp::language;
 using namespace frontend_contract_support;
 
+std::filesystem::path externalCoreDirectory(const std::filesystem::path& repository)
+{
+#ifdef _WIN32
+    char* value = nullptr;
+    const auto status = _dupenv_s(&value, nullptr, "NSC_LIBRARIES_SOURCE_ROOT");
+    const std::unique_ptr<char, decltype(&std::free)> storage(value, &std::free);
+    const char* configured = status == 0 ? storage.get() : nullptr;
+#else
+    const char* configured = std::getenv("NSC_LIBRARIES_SOURCE_ROOT");
+#endif
+    std::filesystem::path root = repository.lexically_normal();
+    if (root.filename().empty()) root = root.parent_path();
+    const std::filesystem::path libraries = configured && *configured
+        ? std::filesystem::path(configured) : root.parent_path() / "nativesharp-libraries";
+    return libraries / "stdlib/NativeSharp.Core";
+}
+
 struct ExpectedSurfaceEntry final
 {
-    Language3Feature feature;
+    LanguageFeature feature;
     std::string_view name;
-    Language3Disposition disposition;
+    LanguageDisposition disposition;
     std::string_view rationale;
 };
 
-// EN: Freeze 3.0 C-06 and DEC-07/DEC-08: the frozen surface publishes async-await, async-streams,
+// EN: Freeze C-06 and DEC-07/DEC-08: the frozen surface publishes async-await, async-streams,
 //     yield-generators, default-interface-implementations and list-patterns as implemented, and the
 //     move-only rule names the structs with a destructor (C-11) and the futures (C-14). This table is
-//     the independent oracle of src/Language/Language3Surface.cpp.
-// ES: Congelamiento 3.0 C-06 y DEC-07/DEC-08: la superficie congelada publica async-await,
+//     the independent oracle of src/Language/LanguageSurface.cpp.
+// ES: Congelamiento C-06 y DEC-07/DEC-08: la superficie congelada publica async-await,
 //     async-streams, yield-generators, default-interface-implementations y list-patterns como
 //     implementados, y la regla move-only nombra los structs con destructor (C-11) y los futures
-//     (C-14). Esta tabla es el oraculo independiente de src/Language/Language3Surface.cpp.
+//     (C-14). Esta tabla es el oraculo independiente de src/Language/LanguageSurface.cpp.
 constexpr std::array<ExpectedSurfaceEntry, 16> kExpectedSurface = {{
-    {Language3Feature::RecordStructs, "record-structs", Language3Disposition::Implemented,
+    {LanguageFeature::RecordStructs, "record-structs", LanguageDisposition::Implemented,
         "productive parser, layout, metadata and code-generation vertical"},
-    {Language3Feature::PrimaryConstructors, "primary-constructors", Language3Disposition::Implemented,
+    {LanguageFeature::PrimaryConstructors, "primary-constructors", LanguageDisposition::Implemented,
         "lowered to ordinary fields and constructors before name binding"},
-    {Language3Feature::RawStringLiterals, "raw-string-literals", Language3Disposition::Implemented,
+    {LanguageFeature::RawStringLiterals, "raw-string-literals", LanguageDisposition::Implemented,
         "delimiter-aware UTF-8 literal with exact multiline contents"},
-    {Language3Feature::AsyncAwait, "async-await", Language3Disposition::Implemented,
+    {LanguageFeature::AsyncAwait, "async-await", LanguageDisposition::Implemented,
         "async callables lower to a future constructor and a poll state machine; await suspends, resumes "
         "and propagates errors"},
-    {Language3Feature::AsyncStreams, "async-streams", Language3Disposition::Implemented,
+    {LanguageFeature::AsyncStreams, "async-streams", LanguageDisposition::Implemented,
         "AsyncIterator<T, E> with MoveNextAsync, cooperative cancellation and deterministic cleanup of "
         "active finally regions"},
-    {Language3Feature::YieldGenerators, "yield-generators", Language3Disposition::Implemented,
+    {LanguageFeature::YieldGenerators, "yield-generators", LanguageDisposition::Implemented,
         "Iterator<T> generator frames with MoveNext, yield break and early-stop destruction of live locals"},
-    {Language3Feature::DefaultInterfaceImplementations, "default-interface-implementations",
-        Language3Disposition::Implemented,
+    {LanguageFeature::DefaultInterfaceImplementations, "default-interface-implementations",
+        LanguageDisposition::Implemented,
         "interface and trait method bodies dispatched through the interface map, most-derived default wins"},
-    {Language3Feature::ListPatterns, "list-patterns", Language3Disposition::Implemented,
+    {LanguageFeature::ListPatterns, "list-patterns", LanguageDisposition::Implemented,
         "list patterns in match and is with length-domain exhaustiveness and redundancy analysis; not in "
         "case labels"},
-    {Language3Feature::StaticConstructors, "static-constructors", Language3Disposition::Implemented,
+    {LanguageFeature::StaticConstructors, "static-constructors", LanguageDisposition::Implemented,
         "thread-safe once initialization with reentrancy and terminal failure"},
-    {Language3Feature::Decimal, "decimal", Language3Disposition::Implemented,
+    {LanguageFeature::Decimal, "decimal", LanguageDisposition::Implemented,
         "frozen 128-bit value ABI (coefficient 96 + scale + sign) with arithmetic, overflow, conversion, formatting and FFI contracts"},
-    {Language3Feature::ExtensionMethods, "extension-methods", Language3Disposition::Implemented,
+    {LanguageFeature::ExtensionMethods, "extension-methods", LanguageDisposition::Implemented,
         "static namespace extensions with deterministic import lookup and no receiver-type mutation"},
-    {Language3Feature::TraitOperators, "trait-operators", Language3Disposition::Implemented,
+    {LanguageFeature::TraitOperators, "trait-operators", LanguageDisposition::Implemented,
         "stable lang-item witnesses with builtin precedence and intrinsic short-circuit control flow"},
-    {Language3Feature::MoveOnlyDefaults, "move-only-defaults", Language3Disposition::Implemented,
+    {LanguageFeature::MoveOnlyDefaults, "move-only-defaults", LanguageDisposition::Implemented,
         "structs without a destructor whose fields are all copyable copy implicitly; structs with a "
         "destructor or owned fields, variants and opaque types without the copy modifier, and futures "
         "are move-only; named consuming reads require move(value) and await consumes its future"},
-    {Language3Feature::LongDouble, "long-double", Language3Disposition::RejectedFor3,
-        "Windows x64 MSVC ABI aliases long double to double; use double in NativeSharp 3.0"},
-    {Language3Feature::ConditionDeclarations, "condition-declarations", Language3Disposition::Implemented,
+    {LanguageFeature::LongDouble, "long-double", LanguageDisposition::Rejected,
+        "Windows x64 MSVC ABI aliases long double to double; use double in NativeSharp"},
+    {LanguageFeature::ConditionDeclarations, "condition-declarations", LanguageDisposition::Implemented,
         "edge-scoped if, while and switch locals with definite assignment and cleanup"},
-    {Language3Feature::StaticLocals, "static-locals", Language3Disposition::Implemented,
+    {LanguageFeature::StaticLocals, "static-locals", LanguageDisposition::Implemented,
         "module storage with thread-safe once initialization and unload destruction"},
 }};
 
@@ -187,7 +206,7 @@ public:
         write(projectFile,
             "<Project><PropertyGroup><Name>" + std::string(name) +
             "</Name><OutputType>" + std::string(outputType) +
-            "</OutputType><Language>3</Language></PropertyGroup><ItemGroup><Compile Include=\"" +
+            "</OutputType></PropertyGroup><ItemGroup><Compile Include=\"" +
             sourceFile.filename().string() + "\"/>" + std::string(additionalItems) +
             "</ItemGroup></Project>");
         return projectFile;
@@ -339,7 +358,7 @@ void addCase(TestRegistry& registry, std::string id, TestFunction function)
 std::string expectedManifest()
 {
     return
-        "NSLANGSURFACE 3.0\n"
+        "NSLANGSURFACE\n"
         "target=x86_64-pc-windows-msvc\n"
         "policy=implemented-planned-or-explicitly-deferred-no-placeholder-syntax\n"
         "record-structs=implemented:productive parser, layout, metadata and code-generation vertical\n"
@@ -366,8 +385,8 @@ std::string expectedManifest()
         "implicitly; structs with a destructor or owned fields, variants and opaque types without the copy "
         "modifier, and futures are move-only; named consuming reads require move(value) and await consumes "
         "its future\n"
-        "long-double=rejected-3.0:Windows x64 MSVC ABI aliases long double to double; use double in "
-        "NativeSharp 3.0\n"
+        "long-double=rejected:Windows x64 MSVC ABI aliases long double to double; use double in "
+        "NativeSharp\n"
         "condition-declarations=implemented:edge-scoped if, while and switch locals with definite assignment "
         "and cleanup\n"
         "static-locals=implemented:module storage with thread-safe once initialization and unload destruction\n";
@@ -376,14 +395,14 @@ std::string expectedManifest()
 std::string expectedDiagnostic(const ExpectedSurfaceEntry& entry)
 {
     std::string result(entry.name);
-    if (entry.disposition == Language3Disposition::Implemented)
-        result += " is implemented in NativeSharp 3.0: ";
-    else if (entry.disposition == Language3Disposition::PlannedFor304)
-        result += " is planned for NativeSharp 3.0.4 but is not implemented because ";
-    else if (entry.disposition == Language3Disposition::DeferredTo4)
-        result += " is not part of the frozen NativeSharp 3.0 surface; deferred to 4.0 because ";
+    if (entry.disposition == LanguageDisposition::Implemented)
+        result += " is implemented in NativeSharp: ";
+    else if (entry.disposition == LanguageDisposition::Planned)
+        result += " is planned but is not implemented because ";
+    else if (entry.disposition == LanguageDisposition::Deferred)
+        result += " is deferred because ";
     else
-        result += " is not supported by NativeSharp 3.0 because ";
+        result += " is not supported by NativeSharp because ";
     result += entry.rationale;
     return result;
 }
@@ -391,7 +410,7 @@ std::string expectedDiagnostic(const ExpectedSurfaceEntry& entry)
 void registerSurfaceCatalogCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-155", [](TestContext& context) {
-        const auto surface = language3Surface();
+        const auto surface = languageSurface();
         context.expect(surface.size() == kExpectedSurface.size(),
             "TL-LANG-155 the frozen surface must contain exactly sixteen entries");
         if (surface.size() != kExpectedSurface.size()) return;
@@ -409,10 +428,10 @@ void registerSurfaceCatalogCase(TestRegistry& registry)
 void registerSurfaceLookupCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-156", [](TestContext& context) {
-        const auto surface = language3Surface();
+        const auto surface = languageSurface();
         for (std::size_t index = 0; index < kExpectedSurface.size(); ++index)
         {
-            const auto& entry = language3SurfaceEntry(kExpectedSurface[index].feature);
+            const auto& entry = languageSurfaceEntry(kExpectedSurface[index].feature);
             context.expect(&entry == &surface[index] && entry.feature == kExpectedSurface[index].feature,
                 "TL-LANG-156 every valid enum must return a reference to its corresponding table entry");
         }
@@ -422,13 +441,13 @@ void registerSurfaceLookupCase(TestRegistry& registry)
 void registerSurfaceExternalEnumCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-157", [](TestContext& context) {
-        const auto surface = language3Surface();
+        const auto surface = languageSurface();
         constexpr std::array externalValues = {
             -1, 16, 17, (std::numeric_limits<int>::max)()};
         for (const int value : externalValues)
         {
-            const auto& entry = language3SurfaceEntry(static_cast<Language3Feature>(value));
-            context.expect(&entry == &surface.front() && entry.feature == Language3Feature::RecordStructs,
+            const auto& entry = languageSurfaceEntry(static_cast<LanguageFeature>(value));
+            context.expect(&entry == &surface.front() && entry.feature == LanguageFeature::RecordStructs,
                 "TL-LANG-157 every external enum value must use the characterized first-entry fallback");
         }
     });
@@ -438,7 +457,7 @@ void registerSurfaceManifestCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-158", [](TestContext& context) {
         const std::string expected = expectedManifest();
-        const std::string actual = language3SurfaceManifest();
+        const std::string actual = languageSurfaceManifest();
         context.expect(actual == expected,
             "TL-LANG-158 the complete manifest bytes, ordering, labels, and trailing newline must be exact");
         context.expect(actual.size() == expected.size() && !actual.empty() && actual.back() == '\n',
@@ -451,8 +470,8 @@ void registerImplementedDiagnosticCase(TestRegistry& registry)
     addCase(registry, "TL-LANG-159", [](TestContext& context) {
         for (const ExpectedSurfaceEntry& entry : kExpectedSurface)
         {
-            if (entry.disposition != Language3Disposition::Implemented) continue;
-            context.expect(language3SurfaceDiagnostic(entry.feature) == expectedDiagnostic(entry),
+            if (entry.disposition != LanguageDisposition::Implemented) continue;
+            context.expect(languageSurfaceDiagnostic(entry.feature) == expectedDiagnostic(entry),
                 "TL-LANG-159 every implemented feature must return its exact historical diagnostic");
         }
     });
@@ -466,25 +485,25 @@ void registerUnavailableDiagnosticCase(TestRegistry& registry)
         std::size_t rejected = 0;
         for (const ExpectedSurfaceEntry& entry : kExpectedSurface)
         {
-            if (entry.disposition == Language3Disposition::Implemented) continue;
-            planned += static_cast<std::size_t>(entry.disposition == Language3Disposition::PlannedFor304);
-            deferred += static_cast<std::size_t>(entry.disposition == Language3Disposition::DeferredTo4);
-            rejected += static_cast<std::size_t>(entry.disposition == Language3Disposition::RejectedFor3);
-            context.expect(language3SurfaceDiagnostic(entry.feature) == expectedDiagnostic(entry),
+            if (entry.disposition == LanguageDisposition::Implemented) continue;
+            planned += static_cast<std::size_t>(entry.disposition == LanguageDisposition::Planned);
+            deferred += static_cast<std::size_t>(entry.disposition == LanguageDisposition::Deferred);
+            rejected += static_cast<std::size_t>(entry.disposition == LanguageDisposition::Rejected);
+            context.expect(languageSurfaceDiagnostic(entry.feature) == expectedDiagnostic(entry),
                 "TL-LANG-160 every planned, deferred, or rejected feature must return its exact status diagnostic");
         }
         context.expect(planned == 0 && deferred == 0 && rejected == 1,
-            "TL-LANG-160 the catalog must expose no 3.0.4 plans, no 4.0 deferrals and one rejected feature");
+            "TL-LANG-160 the catalog must expose no planned or deferred features and one rejected feature");
     });
 }
 
 void registerSurfaceDeterminismCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-161", [](TestContext& context) {
-        const auto firstSurface = language3Surface();
-        const auto secondSurface = language3Surface();
-        const std::string firstManifest = language3SurfaceManifest();
-        const std::string secondManifest = language3SurfaceManifest();
+        const auto firstSurface = languageSurface();
+        const auto secondSurface = languageSurface();
+        const std::string firstManifest = languageSurfaceManifest();
+        const std::string secondManifest = languageSurfaceManifest();
         context.expect(firstSurface.data() == secondSurface.data() &&
                 firstSurface.size() == secondSurface.size() && firstManifest == secondManifest,
             "TL-LANG-161 repeated surface and manifest calls must be stable and deterministic");
@@ -492,14 +511,14 @@ void registerSurfaceDeterminismCase(TestRegistry& registry)
         for (std::size_t index = 0; index < kExpectedSurface.size(); ++index)
         {
             const auto& expected = kExpectedSurface[index];
-            const std::string firstDiagnostic = language3SurfaceDiagnostic(expected.feature);
-            const std::string secondDiagnostic = language3SurfaceDiagnostic(expected.feature);
+            const std::string firstDiagnostic = languageSurfaceDiagnostic(expected.feature);
+            const std::string secondDiagnostic = languageSurfaceDiagnostic(expected.feature);
             context.expect(firstDiagnostic == secondDiagnostic &&
                     firstSurface[index].name == expected.name &&
                     firstSurface[index].rationale == expected.rationale,
                 "TL-LANG-161 repeated diagnostics must not mutate the static catalog");
         }
-        context.expect(language3SurfaceManifest() == firstManifest,
+        context.expect(languageSurfaceManifest() == firstManifest,
             "TL-LANG-161 diagnostics must not mutate subsequent manifest bytes");
     });
 }
@@ -969,8 +988,6 @@ void verifyT01MetadataAndDebug(
     error.clear();
     const bool emitted = codec.write(compilation, metadataFile, written, error);
     context.expect(emitted && error.empty() &&
-            written.formatMajor == 1 &&
-            written.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
             written.languageFeatureFlags == nativesharp::interop::kMetadataLanguageFeatureMask,
         "TL-LANG-301 the current NSMETA format must publish all three closed T01 capabilities: " + error);
 
@@ -1512,9 +1529,8 @@ namespace DefaultsApi
                     });
                 });
             context.expect(metadataRead &&
-                    metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
                     physicalWitnesses,
-                "TL-LANG-306 current NSMETA must version all three non-abstract physical "
+                "TL-LANG-306 metadata must preserve all three non-abstract physical "
                 "witnesses: " + metadataError);
 
             std::error_code removalError;
@@ -1858,7 +1874,7 @@ bool stageT03ListPatternCore(TestContext& context, TemporaryT01Products& product
     std::string_view caseId)
 {
     const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
-    const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+    const std::filesystem::path coreDir = externalCoreDirectory(repository);
     for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
              "NumericParsing.ns", "String.ns", "Span.ns", "StringView.ns"})
     {
@@ -2902,7 +2918,7 @@ void registerClosureErrorThrowCase(TestRegistry& registry)
         [](TestContext& context) {
             TemporaryT01Products products;
             const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
-            const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+            const std::filesystem::path coreDir = externalCoreDirectory(repository);
             std::error_code copyError;
             for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
                      "NumericParsing.ns", "String.ns", "Exception.ns"})
@@ -3837,7 +3853,7 @@ void registerConstructorThrowsCase(TestRegistry& registry)
         [](TestContext& context) {
             TemporaryT01Products products;
             const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
-            const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+            const std::filesystem::path coreDir = externalCoreDirectory(repository);
             for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
                      "NumericParsing.ns", "String.ns", "Exception.ns"})
             {
@@ -6275,7 +6291,7 @@ public class Resource { ~Resource() { Log.DropCount += 1; } }
             // F: exception inside the try after a resume -- finally once, drop once.
             {
                 const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
-                const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+                const std::filesystem::path coreDir = externalCoreDirectory(repository);
                 std::error_code copyError;
                 for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
                          "NumericParsing.ns", "String.ns", "Exception.ns"})
@@ -6301,7 +6317,7 @@ class Program
     {
         AsyncIterator<int, Exception> it = Gen(-5);
         bool h1 = await it.MoveNextAsync();
-        // Freeze 3.0 C-17: the error reaches the await of MoveNextAsync; before, it was lost.
+        // Freeze C-17: the error reaches the await of MoveNextAsync; before, it was lost.
         bool caught = false;
         try { bool h2 = await it.MoveNextAsync(); } catch (Exception e) { caught = true; }
         return (h1 && caught && Log.FinallyCount == 1 && Log.DropCount == 1) ? 0 : 1;
@@ -7059,7 +7075,7 @@ void registerAsyncThrowsCase(TestRegistry& registry)
         [](TestContext& context) {
             TemporaryT01Products products;
             const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
-            const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+            const std::filesystem::path coreDir = externalCoreDirectory(repository);
             std::error_code copyError;
             for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
                      "NumericParsing.ns", "String.ns", "Exception.ns"})
@@ -7102,13 +7118,13 @@ class Program
         }});
 }
 
-// EN: Freeze 3.0 DEC-15: C-17 makes a synchronous `await` outside `try` propagate the future's error
+// EN: Freeze DEC-15: C-17 makes a synchronous `await` outside `try` propagate the future's error
 //     as an exception. The case proves that propagation with a stable result: Forward awaits outside
 //     any try, Main catches and returns 9. Exit 9 is reachable only through the catch, so neither the
 //     value after the await (142) nor a default (100) can pass. An error escaping Main ends the process
 //     with the native code 0xE04E5301, and Windows Error Reporting delayed that path intermittently at
 //     -O2, so the case does not depend on it.
-// ES: Congelamiento 3.0 DEC-15: C-17 hace que un `await` sincrono fuera de `try` propague el error del
+// ES: Congelamiento DEC-15: C-17 hace que un `await` sincrono fuera de `try` propague el error del
 //     future como excepcion. El caso prueba esa propagacion con un resultado estable: Forward espera
 //     fuera de todo try, Main atrapa y devuelve 9. El 9 solo se alcanza por el catch, asi que ni el
 //     valor despues del await (142) ni un valor por defecto (100) pueden pasar. Un error que sale de
@@ -7121,7 +7137,7 @@ void registerAsyncThrowErrorCase(TestRegistry& registry)
         [](TestContext& context) {
             TemporaryT01Products products;
             const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
-            const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+            const std::filesystem::path coreDir = externalCoreDirectory(repository);
             std::error_code copyError;
             for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
                      "NumericParsing.ns", "String.ns", "Exception.ns"})
@@ -7185,7 +7201,7 @@ void registerAsyncRethrowCase(TestRegistry& registry)
         [](TestContext& context) {
             TemporaryT01Products products;
             const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
-            const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+            const std::filesystem::path coreDir = externalCoreDirectory(repository);
             std::error_code copyError;
             for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
                      "NumericParsing.ns", "String.ns", "Exception.ns"})
@@ -9225,8 +9241,12 @@ void registerInterpolationHandlerCase(TestRegistry& registry)
             const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
             const std::string coreProject =
                 (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
-            const std::filesystem::path project = products.writeProject(
-                "T10InterpolationHandler", "Exe", R"ns(
+            // TL-LANG-474: since LKF-314 (026356ee0) the handler protocol is checked and the value of the
+            // interpolation is the result of Finish, so Finish must return the handler type. The original
+            // handler, whose Finish returns int, is kept as the rejected control; the accepted handler
+            // records that Finish ran.
+            const std::filesystem::path rejectedProject = products.writeProject(
+                "T10InterpolationHandlerIntFinish", "Exe", R"ns(
 using NativeSharp.Core;
 struct Builder
 {
@@ -9241,6 +9261,35 @@ class Program
     {
         Builder b = $"1 {2} 3";
         return b.Finish();
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const external_program_support::Result rejected = emitT01Product(L"--emit-project-oop-exe",
+                rejectedProject, products.directory() / "T10InterpolationHandlerIntFinish.exe",
+                products.directory());
+            context.expect(rejected.started && rejected.exitCode != 0 &&
+                    (rejected.error + rejected.output).find(
+                        "an interpolation handler Finish must take no parameters and return the handler type") !=
+                        std::string::npos,
+                "TL-LANG-474 a Finish that does not return the handler type must be rejected: " +
+                    rejected.error + rejected.output);
+            const std::filesystem::path project = products.writeProject(
+                "T10InterpolationHandler", "Exe", R"ns(
+using NativeSharp.Core;
+struct Builder
+{
+    public int Sum;
+    public bool Finished;
+    public void AppendLiteral(string s) { }
+    public void AppendFormatted(int value) { Sum = Sum + value; }
+    public Builder Finish() { Finished = true; return this; }
+}
+class Program
+{
+    public static int Main()
+    {
+        Builder b = $"1 {2} 3";
+        return b.Finished ? b.Sum : 0;
     }
 }
 )ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
@@ -10170,10 +10219,10 @@ class Program
         }});
 }
 
-// EN: Freeze 3.0 DEC-02: a `new` stored in a local without `owned` or `raii` is a compile error
+// EN: Freeze DEC-02: a `new` stored in a local without `owned` or `raii` is a compile error
 //     (LostOwnership, C-01). The case keeps testing target-typed construction, so the local takes the
 //     object through an explicit `raii` owner and the type still comes only from the target.
-// ES: Congelamiento 3.0 DEC-02: un `new` guardado en un local sin `owned` ni `raii` es error de
+// ES: Congelamiento DEC-02: un `new` guardado en un local sin `owned` ni `raii` es error de
 //     compilacion (LostOwnership, C-01). El caso sigue probando la construccion target-typed, asi que
 //     el local recibe el objeto con un dueno `raii` explicito y el tipo sigue saliendo solo del destino.
 void registerTargetTypedNewCase(TestRegistry& registry)

@@ -160,8 +160,8 @@ bool ProjectMethodBodyModel::analyzeNullConditionalUserIndex(
     const std::vector<std::size_t> setters = stage38AccessorCandidates(
         *receiverType, "set_Item", false, false, false,
         accessingTypeOrdinal, *receiverType);
-    // EN: Freeze 3.0 P3: a `ref readonly` getter is not assignable.
-    // ES: Congelamiento 3.0 P3: un getter `ref readonly` no es asignable.
+    // EN: Freeze P3: a `ref readonly` getter is not assignable.
+    // ES: Congelamiento P3: un getter `ref readonly` no es asignable.
     const bool referenceGetter = result.addressable && !result.readonlyReceiver;
     result.assignable = result.valid && !base.readonlyReceiver &&
         (referenceGetter || !setters.empty());
@@ -242,16 +242,28 @@ bool ProjectMethodBodyModel::bindCollectionBuilder(
 {
     const std::optional<std::size_t> createBuilder =
         collectionBuilderMember(typeOrdinal, "CreateBuilder", true);
-    const std::optional<std::size_t> add =
+    const std::optional<std::size_t> firstAdd =
         collectionBuilderMember(typeOrdinal, "Add", false);
     const std::optional<std::size_t> toCollection =
         collectionBuilderMember(typeOrdinal, "ToCollection", false);
-    if (!createBuilder.has_value() || !add.has_value() || !toCollection.has_value())
+    if (!createBuilder.has_value() || !firstAdd.has_value() || !toCollection.has_value())
         return false;
     // NS304-T09-F05: validate the builder shape and each element against the
     // Add parameter, so the HIR lowers the elements with their real types.
-    const ClassMemberSymbol& addMember = memberModel_->members()[*add];
-    bool elementsValid = addMember.parameters.size() == 1U;
+    // EN: The binding keeps one Add for every element. The first declared Add used to win, so with
+    //     Add(float) declared before Add(int), `[2, 3]` called Add(float) (LKF-298). Every one-parameter
+    //     Add that accepts all the elements is a candidate; the one with the most exact element types
+    //     wins, and a tie between different parameter types is ambiguous.
+    // ES: El binding guarda un Add para todos los elementos. Ganaba el primer Add declarado, así que
+    //     con Add(float) antes de Add(int) `[2, 3]` llamaba a Add(float) (LKF-298). Es candidato todo
+    //     Add de un parámetro que acepte todos los elementos; gana el de más tipos exactos y un empate
+    //     entre tipos de parámetro distintos es ambiguo.
+    std::vector<std::size_t> addCandidates;
+    for (const std::size_t ordinal : memberModel_->findMembers(typeOrdinal, "Add"))
+        if (ordinal < memberModel_->members().size() && !memberModel_->members()[ordinal].isStatic &&
+            memberModel_->members()[ordinal].parameters.size() == 1U)
+            addCandidates.push_back(ordinal);
+    bool elementsValid = !addCandidates.empty();
     if (!elementsValid)
     {
         diagnostics.report(
@@ -260,27 +272,85 @@ bool ProjectMethodBodyModel::bindCollectionBuilder(
             expression->range(),
             "a collection builder Add must take exactly one parameter");
     }
+    std::optional<std::size_t> add = elementsValid ? std::optional<std::size_t>(addCandidates.front()) : firstAdd;
     if (elementsValid)
     {
+        std::vector<std::pair<const ast::AstNode*, ExpressionResult>> elements;
         for (const ast::AstNode* child : expression->children())
         {
             if (child == nullptr) continue;
             ExpressionResult elementValue = analyzeExpression(
                 child, methodMemberOrdinal, scopeOrdinal, diagnostics,
                 false, false, true);
-            if (!elementValue.valid ||
-                !classifyImplicit(
-                    elementValue.typeKey, addMember.parameters[0].typeKey,
-                    elementValue.integerConstant).exists())
+            if (elementValue.valid && elementValue.readonlyBorrowedObject)
             {
+                diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error, child->range(),
+                    "readonly borrowed object cannot be passed to an unchecked collection builder");
+                elementsValid = false;
+                continue;
+            }
+            elements.emplace_back(child, std::move(elementValue));
+        }
+        std::optional<std::size_t> best;
+        std::size_t bestExact = 0;
+        bool ambiguous = false;
+        for (const std::size_t candidate : addCandidates)
+        {
+            const std::string& parameterType = memberModel_->members()[candidate].parameters[0].typeKey;
+            bool accepts = true;
+            std::size_t exact = 0;
+            for (const auto& [child, value] : elements)
+            {
+                if (!value.valid ||
+                    !classifyImplicit(value.typeKey, parameterType, value.integerConstant).exists())
+                {
+                    accepts = false;
+                    break;
+                }
+                if (value.typeKey == parameterType) ++exact;
+            }
+            if (!accepts) continue;
+            if (!best.has_value() || exact > bestExact)
+            {
+                best = candidate;
+                bestExact = exact;
+                ambiguous = false;
+            }
+            else if (exact == bestExact &&
+                memberModel_->members()[*best].parameters[0].typeKey != parameterType)
+            {
+                ambiguous = true;
+            }
+        }
+        if (best.has_value() && ambiguous && !elements.empty())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "collection expression elements match more than one builder Add equally; convert the "
+                "elements to the parameter type of the intended Add");
+            elementsValid = false;
+        }
+        else if (best.has_value())
+        {
+            add = best;
+        }
+        else
+        {
+            const std::string& parameterType = memberModel_->members()[addCandidates.front()].parameters[0].typeKey;
+            for (const auto& [child, value] : elements)
+            {
+                if (value.valid && classifyImplicit(value.typeKey, parameterType, value.integerConstant).exists())
+                    continue;
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidConversion,
                     diagnostics::DiagnosticSeverity::Error,
                     child->range(),
-                    "collection expression element is not implicitly convertible to '" +
-                        addMember.parameters[0].typeKey + "'");
-                elementsValid = false;
+                    "collection expression element is not implicitly convertible to '" + parameterType + "'");
             }
+            elementsValid = false;
         }
     }
     result.typeKey = explicitTarget;
@@ -373,6 +443,16 @@ bool ProjectMethodBodyModel::validateCollectionSpreadSegments(
     bool elementsValid = true;
     for (std::size_t index = 0; index < spreads.size(); ++index)
     {
+        if (values[index].valid && values[index].readonlyBorrowedObject &&
+            (!spreads[index] ||
+             (!ProjectTypeConversion::isNumeric(elementTypes[index]) && elementTypes[index] != "builtin:bool")))
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, syntaxes[index]->range(),
+                "readonly borrowed value cannot be stored in a collection without lifetime tracking");
+            elementsValid = false;
+            continue;
+        }
         if (spreads[index])
         {
             if (elementTypes[index] == element) continue;
@@ -539,6 +619,14 @@ void ProjectMethodBodyModel::analyzeCollectionElements(
     for (std::size_t index = 0; index < elementValues.size(); ++index)
     {
         const ExpressionResult& value = elementValues[index];
+        if (value.readonlyBorrowedObject)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, elementSyntaxes[index]->range(),
+                "readonly borrowed value cannot be stored in a collection without lifetime tracking");
+            elementsValid = false;
+            continue;
+        }
         if (!classifyImplicit(value.typeKey, *element, value.integerConstant).exists())
         {
             diagnostics.report(

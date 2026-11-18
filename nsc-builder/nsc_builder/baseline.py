@@ -77,12 +77,13 @@ def create_baseline_plan(
         SOURCE_ROOT,
     )
     bootstrap_output = staging / "lib" / "NativeSharpCore.lib"
+    libraries_root = Path(os.environ.get("NSC_LIBRARIES_SOURCE_ROOT", SOURCE_ROOT.parent / "nativesharp-libraries"))
     bootstrap = (
         "Construir bibliotecas bootstrap",
         [
             str(staging / "bin" / "nsc.exe"),
             "--emit-project-oop-lib",
-            str(SOURCE_ROOT / "lib" / "NativeSharp.Core" / "NativeSharp.Core.nsproj"),
+            str(libraries_root / "stdlib" / "NativeSharp.Core" / "NativeSharp.Core.nsproj"),
             "-O0",
             "-j",
             str(config.jobs),

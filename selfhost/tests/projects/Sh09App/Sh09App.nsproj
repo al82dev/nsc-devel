@@ -2,7 +2,7 @@
   <PropertyGroup>
     <Name>NativeSharpSelfHostSh09App</Name>
     <OutputType>Exe</OutputType>
-    <Sdk>NativeSharp/2.0</Sdk>
+    <Sdk>NativeSharp/1.0</Sdk>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Main.ns" />

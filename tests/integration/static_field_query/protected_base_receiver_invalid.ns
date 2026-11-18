@@ -1,0 +1,11 @@
+class Base { protected int Hidden; public int Visible; }
+class Derived : Base
+{
+    public int Inspect(Base other)
+    {
+        int sum = 0;
+        static foreach (field in Fields(Derived)) { sum = sum + field.Get(other); }
+        return sum;
+    }
+}
+int Main() { return 0; }

@@ -48,19 +48,20 @@ void testBinaryOperator(TestContext& context)
         "TP-PAR-246 binary plus must map to op_Addition with two ordered parameters");
 }
 
-// Verifies increment/decrement naming remains canonical while the unsupported feature diagnoses. Complexity is O(n).
+// Verifies increment/decrement map to canonical names with one parameter and parse without a declaration
+// diagnostic. TP-PAR-247: d00b3a869 (NSC-NCSS-003) made user-defined ++ and -- declarable. Complexity is O(n).
 void testIncrementDecrement(TestContext& context)
 {
     ParserFixture increment("class C { public static C operator ++(C value) { return value; } }");
     ParserFixture decrement("class C { public static C operator --(C value) { return value; } }");
     AstNode* inc = firstMember(increment);
     AstNode* dec = firstMember(decrement);
-    context.expect(inc != nullptr && inc->text() == "op_Increment" && dec != nullptr &&
-            dec->text() == "op_Decrement",
-        "TP-PAR-247 increment and decrement must retain canonical names before rejection");
-    context.expect(diagnosticCount(increment.diagnostics(), DiagnosticId::ExpectedDeclaration) >= 1 &&
-            diagnosticCount(decrement.diagnostics(), DiagnosticId::ExpectedDeclaration) >= 1,
-        "TP-PAR-247 unsupported user increment/decrement must remain visibly diagnosed");
+    context.expect(inc != nullptr && inc->text() == "op_Increment" && inc->children().size() == 1 &&
+            dec != nullptr && dec->text() == "op_Decrement" && dec->children().size() == 1,
+        "TP-PAR-247 increment and decrement must map to canonical names with one parameter");
+    context.expect(diagnosticCount(increment.diagnostics(), DiagnosticId::ExpectedDeclaration) == 0 &&
+            diagnosticCount(decrement.diagnostics(), DiagnosticId::ExpectedDeclaration) == 0,
+        "TP-PAR-247 user increment/decrement declarations must parse without a declaration diagnostic");
 }
 
 // Verifies arity validation rejects an otherwise supported operator token. Complexity is O(n).

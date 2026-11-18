@@ -26,6 +26,7 @@ public:
         const std::function<bool()>& cancellationRequested);
 
     std::optional<std::int64_t> evaluate(std::string& error);
+    std::size_t maximumObservedNesting() const noexcept { return maximumObservedNesting_; }
 
 private:
     bool tick(std::string& error);
@@ -56,6 +57,7 @@ private:
     std::size_t maximumNesting_ = 0;
     std::size_t& steps_;
     std::size_t nesting_ = 0;
+    std::size_t maximumObservedNesting_ = 0;
     const std::function<bool()>& cancellationRequested_;
 };
 }

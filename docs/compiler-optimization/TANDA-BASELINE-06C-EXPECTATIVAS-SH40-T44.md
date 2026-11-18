@@ -1,9 +1,11 @@
 # Tanda baseline 06C: expectativas SH40 y T44
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Objetivo
 
 Corregir tres expectativas obsoletas detectadas por el baseline después de
-actualizar el contrato del runtime y ampliar el frontend de NativeSharp 3.0.
+actualizar el contrato del runtime y ampliar el frontend de NativeSharp.
 
 ## Cambios
 

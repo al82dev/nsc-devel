@@ -195,7 +195,7 @@ struct CppSemanticGlobal
     bool dllImport = false;
     bool pointerPointeeVolatile = false;
     // Absent if the originating sessions do not provide a single known value.
-    std::optional<bool> microsoftVolatileSemantics;
+    std::optional<bool> microsoftVolatileSemantics{};
     std::optional<std::uint64_t> storageSizeBits;
     std::optional<std::uint64_t> declarationAlignmentBits;
     std::optional<std::string> clangUsr{};
@@ -238,7 +238,7 @@ struct CppSemanticGlobalEntry
     // Record storage is only projected under the C object model.
     bool cLanguage = false;
     // Effective option of the originating session; absent when unavailable.
-    std::optional<bool> microsoftVolatileSemantics;
+    std::optional<bool> microsoftVolatileSemantics{};
 };
 using CppSemanticGlobalInventoryResult =
     std::variant<std::vector<CppSemanticGlobalEntry>, CppSemanticInventoryFailure>;

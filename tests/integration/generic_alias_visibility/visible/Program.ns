@@ -1,0 +1,4 @@
+using Pick = External;
+namespace Local { public struct Value<T> { public T Data; } }
+struct Box<T> { public T Data; }
+class Program { public static int Main() { Box<Pick.Value<int>> foreign; Box<Local.Value<int>> local; return 0; } }

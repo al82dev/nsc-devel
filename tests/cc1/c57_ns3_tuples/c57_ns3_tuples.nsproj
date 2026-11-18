@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <Name>c57_ns3_tuples</Name>
-    <Language>3</Language>
+
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="**/*.ns" />

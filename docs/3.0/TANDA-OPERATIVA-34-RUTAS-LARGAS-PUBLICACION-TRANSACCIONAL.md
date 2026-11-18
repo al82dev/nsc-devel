@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Tanda operativa 34 — rutas largas y publicación transaccional Windows
 
 Fecha de cierre: 2026-09-30  
@@ -39,7 +41,7 @@ a LLVM/lld a procesar el nombre final de más de 260 caracteres.
 - `src/Driver/DiagnosticBundle.cpp`: publicación long-path-safe de diagnostic bundles.
 - `src/Interop/CHeaderGenerator.cpp`: publicación transaccional del header C.
 - `src/Interop/LibraryMetadata.cpp`: publicación transaccional de NSMETA.
-- `tests/unit/NativeSharp3T34LongPathPublicationTests.cpp`: vertical Windows de más de 260
+- `tests/unit/NativeSharpT34LongPathPublicationTests.cpp`: vertical Windows de más de 260
   caracteres y rollback provocado por un archivo bloqueado.
 
 ## Archivos nuevos y motivo

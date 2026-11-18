@@ -1,7 +1,7 @@
 #include "../ParseContinuationCoordinator.h"
 
 #include "nativesharp/Language/AbiSemantics.h"
-#include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Language/LanguageSurface.h"
 
 #include <algorithm>
 #include <cassert>
@@ -118,7 +118,9 @@ Parser::ParseContinuationCoordinator::classifyStatement() const
     if (ordinaryWhileStarts()) return StatementKind::While;
     if (parser_.at(TokenKind::KwDo)) return StatementKind::DoWhile;
     if (parser_.at(TokenKind::KwFor)) return StatementKind::For;
-    if (parser_.at(TokenKind::KwForeach)) return StatementKind::Foreach;
+    if (parser_.at(TokenKind::KwForeach) ||
+        (parser_.at(TokenKind::KwStatic) && parser_.peek().kind() == TokenKind::KwForeach))
+        return StatementKind::Foreach;
     if (parser_.at(TokenKind::KwSwitch)) return StatementKind::Switch;
     if (parser_.startsParenthesizedBlock("match")) return StatementKind::Match;
     if (parser_.at(TokenKind::KwTry)) return StatementKind::Try;
@@ -145,9 +147,9 @@ Parser::ParseContinuationCoordinator::classifyStatement() const
     if (parser_.at(TokenKind::KwStaticAssert)) return StatementKind::StaticAssert;
     if (parser_.at(TokenKind::KwVar) && parser_.peek().kind() == TokenKind::LeftParen)
         return StatementKind::Deconstruction;
-    // Freeze 3.0 C-02: `await` is tested first. `await F(ref x);` otherwise looked like a local
+    // Freeze C-02: `await` is tested first. `await F(ref x);` otherwise looked like a local
     // function whose return type is `await`, and failed with "expected parameter name".
-    // Congelamiento 3.0 C-02: `await` se prueba antes; `await F(ref x);` parecia una funcion local.
+    // Congelamiento C-02: `await` se prueba antes; `await F(ref x);` parecia una funcion local.
     if (parser_.atContextualKeyword("await") && parser_.peek().kind() != TokenKind::Equal)
         return StatementKind::AwaitExpression;
     if (parser_.looksLikeLocalFunction()) return StatementKind::LocalFunction;

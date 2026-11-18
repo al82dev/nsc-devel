@@ -10,12 +10,11 @@ namespace
 {
 constexpr const char* kAct =
     "NSPROMOTION 1\n"
-    "release=3.0.0\n"
+    "release=1.0.0\n"
     "channel=development\n"
-    "predecessor=2.0.0\n"
-    "candidate=3.0.0-rc.1\n"
-    "compiler_identity=3.0.0+build.<UTC>.<id>\n"
-    "language_identity=3.0.0\n"
+    "predecessor=none\n"
+    "candidate=1.0.0-rc.1\n"
+    "compiler_identity=1.0.0+build.<UTC>.<id>\n"
     "compiler_stage=70\n"
     "breaking_change_ledger=NSBREAKING 1\n"
     "migration_guide=NSMIGRATION-GUIDE 1\n"
@@ -74,7 +73,7 @@ bool verifyPromotionAct(const std::filesystem::path& source, std::string& error)
     }
     if (actual != currentPromotionAct())
     {
-        error = "promotion act does not match the pending NativeSharp 3.0 decision";
+        error = "promotion act does not match the pending NativeSharp decision";
         return false;
     }
     return true;

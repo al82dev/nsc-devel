@@ -170,6 +170,26 @@ bool ProjectMethodBodyModel::resolveWrittenMemberType(
     {
         typeOrdinal = resolveTypeIdentifier(methodMemberOrdinal, receiverSyntax->text());
         writtenTypeName = receiverSyntax->text();
+        const ClassMemberSymbol* context = methodSymbol(methodMemberOrdinal);
+        const auto types = nameLookup_->namedTypes();
+        if (typeOrdinal.has_value() && *typeOrdinal < types.size() && context != nullptr &&
+            context->declaringTypeOrdinal < types.size())
+        {
+            const NamedTypeDeclaration& candidate = types[*typeOrdinal];
+            const std::size_t projectOrdinal = types[context->declaringTypeOrdinal].projectOrdinal;
+            if (candidate.kind == NamedTypeDeclarationKind::Class &&
+                candidate.accessibility == NamedTypeAccessibility::Internal &&
+                !nameLookup_->typeIsVisibleFromProject(projectOrdinal, *typeOrdinal))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidMemberAccess,
+                    diagnostics::DiagnosticSeverity::Error,
+                    receiverSyntax->range(),
+                    "type '" + candidate.identity.fullyQualifiedName() +
+                        "' is not accessible from this project");
+                return false;
+            }
+        }
     }
     return true;
 }
@@ -613,6 +633,27 @@ bool ProjectMethodBodyModel::validateMemberReceiverType(
     return false;
 }
 
+bool ProjectMethodBodyModel::memberAccessibleFromCallable(
+    const ClassMemberSymbol& member, std::size_t methodMemberOrdinal,
+    std::optional<std::size_t> receiverTypeOrdinal) const
+{
+    const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+    if (caller == nullptr || nameLookup_ == nullptr || inheritanceModel_ == nullptr) return false;
+    if (caller->declaringTypeOrdinal < nameLookup_->namedTypes().size())
+        return ProjectMemberAccessibility::isAccessible(member, caller->declaringTypeOrdinal,
+            receiverTypeOrdinal, *nameLookup_, *inheritanceModel_);
+    // Namespace callables have no declaring type. Their project is carried by
+    // the namespace function itself; it must not confer private/protected access.
+    if (member.accessibility == ClassMemberAccessibility::Public) return true;
+    if (member.accessibility != ClassMemberAccessibility::Internal || namespaceFunctionModel_ == nullptr ||
+        methodMemberOrdinal < namespaceCallableBase_ ||
+        member.declaringTypeOrdinal >= nameLookup_->namedTypes().size()) return false;
+    const std::size_t functionOrdinal = methodMemberOrdinal - namespaceCallableBase_;
+    if (functionOrdinal >= namespaceFunctionModel_->functions().size()) return false;
+    return namespaceFunctionModel_->functions()[functionOrdinal].projectOrdinal ==
+        nameLookup_->namedTypes()[member.declaringTypeOrdinal].projectOrdinal;
+}
+
 void ProjectMethodBodyModel::collectAccessibleMemberCandidates(
     std::vector<std::size_t>& fields,
     std::vector<std::size_t>& events,
@@ -622,6 +663,7 @@ void ProjectMethodBodyModel::collectAccessibleMemberCandidates(
     bool typeReceiver,
     std::size_t receiverType,
     std::size_t accessingTypeOrdinal,
+    std::size_t methodMemberOrdinal,
     std::string_view memberName) const
 {
     for (const std::size_t candidate : memberCandidatesForType(receiverType, memberName))
@@ -635,9 +677,8 @@ void ProjectMethodBodyModel::collectAccessibleMemberCandidates(
             ? accessingTypeOrdinal : receiverType;
         const bool interfaceReceiver = interfaceModel_ != nullptr &&
             interfaceModel_->isInterface(receiverType);
-        if ((!interfaceReceiver && !ProjectMemberAccessibility::isAccessible(
-                member, accessingTypeOrdinal, protectedReceiverType,
-                *nameLookup_, *inheritanceModel_)) ||
+        if ((!interfaceReceiver && !memberAccessibleFromCallable(
+                member, methodMemberOrdinal, protectedReceiverType)) ||
             (interfaceReceiver && member.accessibility != ClassMemberAccessibility::Public))
         {
             inaccessibleFound = true;
@@ -647,6 +688,103 @@ void ProjectMethodBodyModel::collectAccessibleMemberCandidates(
         else if (member.kind == ClassMemberKind::Event) events.push_back(candidate);
         else if (member.kind == ClassMemberKind::Method) methods.push_back(candidate);
     }
+}
+
+// A generated field access is identified by its declaration, not by name
+// lookup on the receiver, which could select a hiding field in a derived type.
+bool ProjectMethodBodyModel::resolveStaticFieldSelection(
+    std::vector<std::size_t>& fields,
+    const ast::AstNode* expression,
+    bool typeReceiver,
+    std::size_t receiverType,
+    std::size_t methodMemberOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const StaticFieldAccessSelection* selection =
+        genericModel_->staticFieldAccessSelection(expression);
+    const std::optional<std::size_t> owner =
+        nameLookup_->typeOrdinalForIdentity(selection->declaringTypeIdentity);
+    if (!typeReceiver && owner.has_value() &&
+        (receiverType == *owner || inheritanceModel_->isDerivedFrom(receiverType, *owner)))
+    {
+        for (const std::size_t ordinal : memberModel_->membersOfType(*owner))
+        {
+            if (ordinal >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& field = memberModel_->members()[ordinal];
+            if (field.syntax != selection->fieldDeclaration || field.kind != ClassMemberKind::Field ||
+                field.isStatic || field.isCompilerGenerated || field.name != expression->text()) continue;
+            if (memberAccessibleFromCallable(field, methodMemberOrdinal, receiverType))
+            {
+                fields.push_back(ordinal);
+                return true;
+            }
+            break;
+        }
+    }
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidMemberAccess,
+        diagnostics::DiagnosticSeverity::Error,
+        expression->range(),
+        "static field selection does not match an accessible field on this receiver");
+    return false;
+}
+
+// Compares the whole provisional list with the semantic model. This check is
+// required even when a loop uses only field names or types and never Get().
+bool ProjectMethodBodyModel::validateStaticFieldIteration(
+    const ast::AstNode* statement,
+    std::size_t methodMemberOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const StaticFieldIterationSelection* selection = genericModel_ != nullptr
+        ? genericModel_->staticFieldIterationSelection(statement) : nullptr;
+    const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+    const std::optional<std::size_t> type = nameLookup_ != nullptr && statement != nullptr
+        ? nameLookup_->resolvedTypeOrdinal(statement->typeSyntax()) : std::nullopt;
+    if (selection != nullptr && caller != nullptr && type.has_value() && memberModel_ != nullptr &&
+        inheritanceModel_ != nullptr && *type < nameLookup_->namedTypes().size() &&
+        nameLookup_->namedTypes()[*type].identity.key() == selection->queriedTypeIdentity)
+    {
+        std::vector<std::size_t> hierarchy;
+        std::optional<std::size_t> current = *type;
+        while (current.has_value() && hierarchy.size() < nameLookup_->namedTypes().size())
+        {
+            hierarchy.push_back(*current);
+            current = inheritanceModel_->baseTypeOrdinal(*current);
+        }
+        if (!current.has_value())
+        {
+            std::size_t selected = 0;
+            bool matches = true;
+            for (auto part = hierarchy.rbegin(); part != hierarchy.rend() && matches; ++part)
+            {
+                for (const std::size_t ordinal : memberModel_->membersOfType(*part))
+                {
+                    if (ordinal >= memberModel_->members().size()) { matches = false; break; }
+                    const ClassMemberSymbol& member = memberModel_->members()[ordinal];
+                    if (member.kind != ClassMemberKind::Field || member.isStatic || member.isCompilerGenerated ||
+                        !memberAccessibleFromCallable(member, methodMemberOrdinal, std::nullopt))
+                        continue;
+                    if (selected >= selection->fields.size() ||
+                        selection->fields[selected].fieldDeclaration != member.syntax ||
+                        selection->fields[selected].declaringTypeIdentity !=
+                            nameLookup_->namedTypes()[*part].identity.key())
+                    {
+                        matches = false;
+                        break;
+                    }
+                    ++selected;
+                }
+            }
+            if (matches && selected == selection->fields.size()) return true;
+        }
+    }
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidMemberAccess,
+        diagnostics::DiagnosticSeverity::Error,
+        statement->range(),
+        "static field iteration selection does not match the accessible semantic fields");
+    return false;
 }
 
 bool ProjectMethodBodyModel::rejectIncompleteMemberReceiver(
@@ -846,6 +984,20 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
         !(field.isCppExternal && (field.isReadonly || receiver.readonlyReceiver) &&
           field.declaredPointerPointeeReadonly);
     result.readonlyReceiver = receiver.readonlyReceiver || field.isReadonly;
+    const NamedTypeDeclaration* fieldType = receiver.readonlyBorrowedObject
+        ? namedTypeForTypeKey(result.typeKey) : nullptr;
+    result.readonlyBorrowedObject = !field.isStatic && receiver.readonlyBorrowedObject &&
+        (isReferenceTypeKey(result.typeKey) || ProjectTypeConversion::isNativeArray(result.typeKey) ||
+         (fieldType != nullptr && fieldType->kind == NamedTypeDeclarationKind::Struct));
+    if (result.readonlyBorrowedObject)
+    {
+        result.ownership = sema::OwnershipKind::Borrowed;
+        result.objectLifetimeOwnership = sema::OwnershipKind::Borrowed;
+        result.storageOwnership = sema::OwnershipKind::Borrowed;
+        result.ownershipSourceLocalOrdinal = receiver.ownershipSourceLocalOrdinal;
+        result.ownershipSourceParameterOrdinal = receiver.ownershipSourceParameterOrdinal;
+        result.borrowedLocalOrdinal = receiver.borrowedLocalOrdinal;
+    }
     result.cppFlexibleArrayMember = field.isCppExternal &&
         ProjectMemberModel::flexibleArrayElementTypeKey(field.declaredTypeKey).has_value();
     result.cppFlexibleArrayDecaySafe = result.cppFlexibleArrayMember && !field.isBitField &&
@@ -945,6 +1097,13 @@ bool ProjectMethodBodyModel::analyzePropertyMember(
         accessingTypeOrdinal, protectedReceiverType);
     if (propertyGetters.empty()) return false;
     const ClassMemberSymbol& getter = memberModel_->members()[propertyGetters.front()];
+    if (!typeReceiver && receiver.readonlyBorrowedObject && !getter.declaringTypeIsStruct)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "readonly borrowed object cannot invoke an unchecked property getter");
+        return true;
+    }
     const std::optional<std::size_t> backing =
         allowConstructorPropertyWrite && propertySetters.empty() && !typeReceiver &&
             !getter.isStatic && caller.kind == ClassMemberKind::Constructor &&
@@ -986,8 +1145,8 @@ bool ProjectMethodBodyModel::analyzePropertyMember(
         receiver.baseReceiver, interfaceCall, diagnostics, true, receiver.readonlyReceiver);
     result.assignable = !receiver.readonlyReceiver && !propertySetters.empty();
     // NS304-T08-F02: a ref-returning getter is assignable even without a setter.
-    // EN: Freeze 3.0 P3: a `ref readonly` getter is not.
-    // ES: Congelamiento 3.0 P3: un getter `ref readonly` no.
+    // EN: Freeze P3: a `ref readonly` getter is not.
+    // ES: Congelamiento P3: un getter `ref readonly` no.
     const bool refGetter = std::any_of(
         propertyGetters.begin(), propertyGetters.end(), [&](std::size_t ordinal)
         {
@@ -1068,12 +1227,13 @@ bool ProjectMethodBodyModel::analyzeMethodGroupMember(
     result.baseReceiver = receiver.baseReceiver;
     result.readonlyReceiver = receiver.readonlyReceiver;
     result.ownership = receiver.ownership;
+    result.readonlyBorrowedObject = receiver.readonlyBorrowedObject;
     result.ownershipFreshOwner = receiver.ownershipFreshOwner;
     result.ownershipSourceLocalOrdinal = receiver.ownershipSourceLocalOrdinal;
     result.ownershipSourceParameterOrdinal = receiver.ownershipSourceParameterOrdinal;
     result.borrowedLocalOrdinal = receiver.borrowedLocalOrdinal;
-    // EN: Freeze 3.0 (plan item 135): the call result may borrow the receiver temporary.
-    // ES: Congelamiento 3.0 (elemento 135 del plan): el resultado de la llamada puede tomar prestado el temporal
+    // EN: Freeze (plan item 135): the call result may borrow the receiver temporary.
+    // ES: Congelamiento (elemento 135 del plan): el resultado de la llamada puede tomar prestado el temporal
     //     receptor.
     result.receiverBorrowsOwnedTemporary = !typeReceiver && carriesOwnedTemporary(receiver);
     const MethodNameBindingKind methodBindingKind = typeReceiver
@@ -1172,7 +1332,7 @@ void ProjectMethodBodyModel::finishMemberLookup(
     diagnostics::DiagnosticEngine& diagnostics,
     bool allowMethodGroup)
 {
-    // NativeSharp 3.0 T05-F06. Extension lookup is deliberately the last member lookup step:
+    // NativeSharp T05-F06. Extension lookup is deliberately the last member lookup step:
     // real fields/properties/methods and compiler-provided root members always win. The
     // namespace model has already limited the set to the lexical namespace or explicit using
     // imports, so the receiver's namespace never participates accidentally (no ADL).
@@ -1230,16 +1390,16 @@ void ProjectMethodBodyModel::classifyMemberReceiverKinds(
         nameLookup_->namedTypes()[receiverType].kind == NamedTypeDeclarationKind::Enum;
 }
 
-// EN: Freeze 3.0 (plan item 131a). A reference or string read from a field of the temporary an owned-returning
+// EN: Freeze (plan item 131a). A reference or string read from a field of the temporary an owned-returning
 //     call made (`Make().Name`), or from a field of such a read (`Make().Inner.Name`), points into an object that
 //     the full expression destroys. The flag lets the storing contexts reject it.
-// ES: Congelamiento 3.0 (elemento 131a del plan). Una referencia o string leido de un campo del temporal que creo
+// ES: Congelamiento (elemento 131a del plan). Una referencia o string leido de un campo del temporal que creo
 //     una llamada con retorno owned (`Make().Name`), o de un campo de esa lectura (`Make().Inner.Name`), apunta a
 //     un objeto que la expresion completa destruye. La bandera deja que los contextos que guardan lo rechacen.
 //
-// EN: Freeze 3.0 (plan item 135): it also marks a getter result, and the receiver may be a `new` object. A result
+// EN: Freeze (plan item 135): it also marks a getter result, and the receiver may be a `new` object. A result
 //     that is a new owner (an owned-returning getter) does not borrow; a copyable value never does.
-// ES: Congelamiento 3.0 (elemento 135 del plan): tambien marca el resultado de un getter, y el receptor puede ser
+// ES: Congelamiento (elemento 135 del plan): tambien marca el resultado de un getter, y el receptor puede ser
 //     un objeto `new`. Un resultado que es un owner nuevo (un getter con retorno owned) no toma prestado; un valor
 //     copiable nunca.
 void ProjectMethodBodyModel::markOwnedTemporaryFieldBorrow(
@@ -1253,9 +1413,9 @@ void ProjectMethodBodyModel::markOwnedTemporaryFieldBorrow(
     result.borrowsOwnedTemporary = carriesOwnedTemporary(receiver);
 }
 
-// EN: Freeze 3.0 (plan item 135): `receiver` is a temporary whose life the full expression decides (the result of
+// EN: Freeze (plan item 135): `receiver` is a temporary whose life the full expression decides (the result of
 //     an owned-returning call, or `new` of a class), or a borrow of one.
-// ES: Congelamiento 3.0 (elemento 135 del plan): `receiver` es un temporal cuya vida decide la expresion completa
+// ES: Congelamiento (elemento 135 del plan): `receiver` es un temporal cuya vida decide la expresion completa
 //     (el resultado de una llamada con retorno owned, o `new` de una clase), o un prestamo de uno.
 bool ProjectMethodBodyModel::carriesOwnedTemporary(const ExpressionResult& receiver) const
 {
@@ -1283,7 +1443,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
 {
     ExpressionResult result;
     const bool isProjectionReceiver = partialProjectionReceiverDepth_ != 0;
-    if (analyzeQualifiedNamespaceMember(
+    const bool staticFieldSelection = genericModel_ != nullptr &&
+        genericModel_->staticFieldAccessSelection(expression) != nullptr;
+    if (!staticFieldSelection && analyzeQualifiedNamespaceMember(
             result, expression, methodMemberOrdinal, scopeOrdinal,
             diagnostics, allowMethodGroup)) return result;
     if (expression == nullptr || expression->first() == nullptr || memberModel_ == nullptr ||
@@ -1296,10 +1458,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     if (!resolveMemberReceiver(
             receiver, typeReceiver, expression, accessingTypeOrdinal,
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return result;
-    if (analyzeBuiltinMember(
+    if (staticFieldSelection && (typeReceiver || !receiver.receiverTypeOrdinal.has_value()))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidMemberAccess,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "static field selection requires an instance of its declaring type");
+        return result;
+    }
+    if (!staticFieldSelection && analyzeBuiltinMember(
             result, receiver, typeReceiver, expression,
             methodMemberOrdinal, scopeOrdinal, allowMethodGroup)) return result;
-    if (analyzeNativeStringFacadeMember(
+    if (!staticFieldSelection && analyzeNativeStringFacadeMember(
             result, receiver, typeReceiver, expression,
             methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup)) return result;
     if (!validateMemberReceiverType(
@@ -1312,9 +1483,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     std::vector<std::size_t> events;
     std::vector<std::size_t> methods;
     bool inaccessibleFound = false;
-    collectAccessibleMemberCandidates(
-        fields, events, methods, inaccessibleFound, receiver, typeReceiver,
-        receiverType, accessingTypeOrdinal, expression->text());
+    if (staticFieldSelection)
+    {
+        if (!resolveStaticFieldSelection(
+                fields, expression, typeReceiver, receiverType, methodMemberOrdinal, diagnostics))
+            return result;
+    }
+    else
+    {
+        collectAccessibleMemberCandidates(
+            fields, events, methods, inaccessibleFound, receiver, typeReceiver,
+            receiverType, accessingTypeOrdinal, methodMemberOrdinal, expression->text());
+    }
     if (rejectIncompleteMemberReceiver(
             expression, fields, typeReceiver, scopeOrdinal, diagnostics)) return result;
     if (analyzeEventMember(

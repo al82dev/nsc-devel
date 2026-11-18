@@ -1,0 +1,19 @@
+int Main()
+{
+    decimal maximum = 18446744073709551615m;
+    decimal wide = checked(maximum * 1.0m);
+    double expected = (double)18446744073709551615ul;
+    if ((double)wide != expected) return 1;
+    if ((double)-wide != -expected) return 2;
+    float single = (float)wide;
+    if (single != (float)18446744073709551615ul) return 3;
+    if ((float)-wide != -single) return 4;
+    decimal scale20 = checked(1.0000000000m * 1.0000000000m);
+    if ((double)scale20 < 0.999999 || (double)scale20 > 1.000001) return 5;
+    if ((float)scale20 < 0.99999f || (float)scale20 > 1.00001f) return 6;
+    decimal scale28 = checked(1.90000000000000m * 1.00000000000000m);
+    if ((double)scale28 < 1.899999 || (double)scale28 > 1.900001) return 7;
+    if ((float)-scale28 > -1.89999f || (float)-scale28 < -1.90001f) return 8;
+    if ((double)0m != 0.0 || (double)-12.5m != -12.5) return 9;
+    return 0;
+}

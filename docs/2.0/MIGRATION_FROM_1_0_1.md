@@ -1,8 +1,12 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Migración de NativeSharp 1.0.1 a 2.0
 
 ## Resumen
 
-NativeSharp 2.0 conserva el formato NSMETA 1.20, el ABI nativo 1.0 y el ABI de runtime 1.0. Los
+NativeSharp conserva el formato NSMETA 1.20, el ABI nativo 1.0 y el ABI de runtime 1.0. Los
 proyectos fuente deben recompilarse con el compilador 2.0 y revisar el ledger instalado en
 `share/nativesharp/toolchain/NativeSharp2BreakingChanges.ledger`.
 
@@ -31,7 +35,7 @@ implícita del linker.
 
 # Migrating NativeSharp 1.0.1 to 2.0
 
-NativeSharp 2.0 preserves NSMETA 1.20, native ABI 1.0, and runtime ABI 1.0. Rebuild every source
+NativeSharp preserves NSMETA 1.20, native ABI 1.0, and runtime ABI 1.0. Rebuild every source
 project and precompiled library with the 2.0 compiler and review the installed breaking-change
 ledger. Native hosts of static libraries must explicitly link `NativeSharp.Runtime.Win32.lib`
 after the user library. An unresolved `__nativesharp_*` runtime symbol diagnoses the missing link

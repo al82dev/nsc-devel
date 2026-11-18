@@ -1,0 +1,14 @@
+using NativeSharp.Core;
+namespace NativeSharp.Core { public class Exception { public int Id; public Exception(int id) { Id = id; }
+ ~Exception() { Trace.ExceptionDrops = Trace.ExceptionDrops + 1; } } }
+class Trace { public static int Log; public static int ExceptionDrops; }
+class Gate1 { static Gate1() throws Exception { throw new Exception(1); } public static int Read() { return 1; } }
+class Gate2 { static Gate2() throws Exception { throw new Exception(2); } public static int Read() { return 1; } }
+class Resource { ~Resource() { Trace.Log = Trace.Log * 10 + 1; } }
+class Bomb { ~Bomb() { Trace.Log = Trace.Log * 10 + 2; int ignored = Gate2.Read(); } }
+class Payload { private owned Resource first; private owned Bomb second;
+ public Payload() { first = new Resource(); second = new Bomb(); }
+ ~Payload() { Trace.Log = Trace.Log * 10 + 3; int ignored = Gate1.Read(); } }
+class Program { public static int Main() { int caught = 0;
+ try { Payload value = new Payload(); } catch (Exception error) { caught = error.Id; }
+ return caught == 2 && Trace.Log == 321 ? 50 + Trace.ExceptionDrops : 20 + caught; } }

@@ -1,8 +1,8 @@
-# NativeSharp 3.0 — Rangos e índices / Range and index operators
+# NativeSharp — Rangos e índices / Range and index operators
 
 ## Español
 
-NativeSharp 3.0 usa rangos **half-open**: `inicio..fin` incluye `inicio` y excluye `fin`.
+NativeSharp usa rangos **half-open**: `inicio..fin` incluye `inicio` y excluye `fin`.
 `vista[1..4]` contiene tres elementos. Un extremo omitido significa el principio o el final:
 
 | Forma | Inicio resuelto | Fin resuelto |
@@ -49,7 +49,7 @@ dimensión.
 
 ## English
 
-NativeSharp 3.0 ranges are **half-open**: `start..end` includes `start` and excludes `end`.
+NativeSharp ranges are **half-open**: `start..end` includes `start` and excludes `end`.
 `view[1..4]` therefore contains three elements. An omitted endpoint means the beginning or end:
 
 | Form | Resolved start | Resolved end |

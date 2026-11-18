@@ -1,16 +1,17 @@
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
 # NS3-T06-F02 — Partial moves and drop flags
 
 ## Resultado
 
-NativeSharp 3.0 mantiene estado `moved`/`maybe-moved` por ruta de field, permite usar hermanos,
+NativeSharp mantiene estado `moved`/`maybe-moved` por ruta de field, permite usar hermanos,
 rehabilita una ruta al reasignarla y genera drop glue recursivo con guardas únicamente cuando son
-necesarias. Un destructor de struct edición 3 ya es ejecutable para tipos move-only y restringe el
+necesarias. Un destructor de struct ya es ejecutable para tipos move-only y restringe el
 move parcial del valor completo que observa.
 
 ## Cambios
 
-- Parser: conserva destructores en structs move-only de edición 3; mantiene el rechazo histórico
-  de edición 2 y rechaza `copy struct`/`union` con destructor.
+- Parser: conserva destructores en structs move-only de NativeSharp y rechaza `copy struct`/`union` con destructor.
 - Member model: consulta transitiva única para destructor personalizado y necesidad de value-drop
   a través de fields, tuples y fixed arrays.
 - Method bodies: rutas canónicas de locals/parámetros, joins de CFG, back-edges, double move,
@@ -27,7 +28,7 @@ move parcial del valor completo que observa.
 
 ## Archivos nuevos
 
-- `tests/unit/NativeSharp3T06PartialMoveTests.cpp`: fixture dirigida O0/NSLink con move parcial,
+- `tests/unit/NativeSharpT06PartialMoveTests.cpp`: fixture dirigida O0/NSLink con move parcial,
   field hermano, reinicialización, double move, joins, loops, destructor, parámetros, early return,
   unwind y conteo exacto de drops.
 - `docs/3.0/language/partial-moves-drop-flags.md`: contrato normativo bilingüe.
@@ -40,7 +41,7 @@ move parcial del valor completo que observa.
 - `src/Frontend/{ProjectMemberModel.cpp,ProjectMethodBodyModel.cpp,ProjectOopHirModel.cpp}`.
 - `src/LLVM/{ProjectOopCodePartition.cpp,ProjectOopLlvmLowerer.cpp}`.
 - `CMakeLists.txt` y las expectativas dirigidas de inicializadores, records y ownership que
-  conservan compatibilidad textual con edición 2.
+  cubren la compatibilidad textual de los casos existentes.
 - Cierre genérico: `ProjectMethodBodyModel` admite `move` explícito en parámetros y fields de una
   especialización genérica sin clasificar globalmente los tipos `where T : copy` como move-only;
   `c67_ns3_optional_coalescing` elimina el workaround Copy y el test dirigido añade el payload

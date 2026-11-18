@@ -1,0 +1,13 @@
+class Outer
+{
+    private struct Hidden { public int Value; }
+    private struct Record { public Hidden Item; public int Count; }
+    public static int Run()
+    {
+        Record value = default(Record);
+        value.Item.Value = 7;
+        value.Count = 3;
+        return value.Item.Value + value.Count;
+    }
+}
+int Main() { return Outer.Run() == 10 ? 0 : 1; }

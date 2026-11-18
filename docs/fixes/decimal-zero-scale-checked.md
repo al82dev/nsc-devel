@@ -1,0 +1,9 @@
+# Overflow checked decimal a escala cero
+
+`checked(MaxDecimal + 1m)` y `checked(-MaxDecimal - 1m)`, así como sus formas predeterminadas, continuaban sin trap en O0/O2. La documentación histórica de políticas señala que decimal es checked por defecto y que aplicar la política a suma/resta era trabajo pendiente. El baseline y sus condiciones están en `A:/nsc-fixes-agent1-temp/decimal-zero-scale-policy-baseline-20261112.log`.
+
+Para suma/resta decimal, cuando la escala máxima original es cero y la magnitud exacta supera 96 bits, las políticas `checked` y predeterminada invocan la guarda existente `DecimalOverflow` (145). La guarda no modifica la ruta `saturating` ni operaciones con escala positiva. A escala cero la magnitud fuera de 96 bits no puede ajustarse reduciendo escala.
+
+Tras build incremental, checked y predeterminado para suma y resta terminaron 145 en O0/O2; el valor representable y las regresiones de reducción, coeficientes anchos, signos, igualdad y orden pasaron. Log `A:/nsc-fixes-agent1-temp/decimal-zero-scale-checked-integrated-20261112.log`; compilador SHA-256 `f616cbfe97874e3cf4652193d75a0321f4eece2f33452aaaf19a17ff774fb7f1` y hashes de runtime/import libraries estables. El build contiene WIP, no certifica árbol limpio.
+
+La observación de `saturating` no cambió (`A:/nsc-fixes-agent1-temp/decimal-zero-scale-policy-after-20261112.log`), pero no se registra como contrato ni demuestra que sea correcto. El overflow de suma/resta con escala positiva y el redondeo permanecen pendientes. La cabecera privada modificada se comparte con la rama de interoperabilidad y requiere revisión al integrar. El runner CMake exacto integrado pasó diez casos O0/O2 con salida 0; artefactos en `A:/nsc-fixes-agent1-temp/decimal-zero-checked-cmake-20261112`, log vacío por diseño. No se ejecutó CTest.

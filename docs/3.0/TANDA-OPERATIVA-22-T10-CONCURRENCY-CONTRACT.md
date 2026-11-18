@@ -1,5 +1,7 @@
 # Tanda operativa 22 — T10/E026: contrato de concurrencia
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 Fecha: 2026-09-29
 
 Rama: `development`
@@ -65,7 +67,7 @@ completo, no sólo nombre/versión.
 - `src/Driver/Driver.cpp`: integra los tres comandos CLI y `--help`.
 - `CMakeLists.txt`: genera el contrato después de enlazar `nsc`, lo declara byproduct y lo incorpora
   al payload de instalación futuro.
-- `tests/unit/NativeSharp3T10CoroutineTests.cpp`: amplía T10 de 10 a 13 comprobaciones.
+- `tests/unit/NativeSharpT10CoroutineTests.cpp`: amplía T10 de 10 a 13 comprobaciones.
 - `docs/3.0/TANDA-10-COROUTINES-Y-CONCURRENCIA.md`: registra la integración y conserva la deuda.
 
 ## Archivos nuevos y por qué
@@ -91,7 +93,7 @@ remotas.
 
 ## Mejora concreta
 
-Un build NativeSharp 3.0 transporta una política de concurrencia verificable. Ningún componente
+Un build NativeSharp transporta una política de concurrencia verificable. Ningún componente
 puede introducir silenciosamente un scheduler global, heap oculto, thread abort, copy de borrows,
 `volatile` como fence o memory orders distintos sin cambiar un contrato versionado observable.
 

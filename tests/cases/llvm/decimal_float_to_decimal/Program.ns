@@ -1,0 +1,27 @@
+public class Program
+{
+    public static double Wide() { return 10000000000000.0; }
+    public static double VeryWide() { return 100000000000000000000000.0; }
+    public static double Small() { return 0.0000006; }
+    public static double Smaller() { return 0.0000004; }
+    public static double Half() { return 0.0000005; }
+    public static double NearLimit() { return 79228162514264328797450928128.0; }
+    public static int Main()
+    {
+        double wide = Wide();
+        if ((double)((decimal)wide) != wide) { return 1; }
+        if ((double)((decimal)(-wide)) != -wide) { return 2; }
+        double veryWide = VeryWide();
+        if ((double)((decimal)veryWide) != veryWide) { return 3; }
+        if ((double)((decimal)(-veryWide)) != -veryWide) { return 4; }
+        if ((decimal)Small() != 0.000001m) { return 5; }
+        if ((decimal)(-Small()) != -0.000001m) { return 6; }
+        if ((decimal)Smaller() != 0m) { return 7; }
+        if ((decimal)Half() != 0.000001m || (decimal)(-Half()) != -0.000001m) { return 8; }
+        double nearLimit = NearLimit();
+        if ((double)((decimal)nearLimit) != nearLimit) { return 9; }
+        float smallFloat = (float)1.25;
+        if ((decimal)smallFloat != 1.25m) { return 10; }
+        return 0;
+    }
+}

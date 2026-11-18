@@ -1,6 +1,6 @@
 # Complete function types / Tipos función completos
 
-Status: normative for NativeSharp language edition 3  
+Status: normative for NativeSharp
 Platform profile: Windows x64  
 Tracking item: `NS3-T08-F01`
 

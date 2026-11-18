@@ -1,3 +1,7 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Tanda 03 — Tipos suma y pattern matching
 
 > **Estado real 2026-09-29:** `IMPLEMENTING`, con una primera vertical productiva integrada por la
@@ -23,7 +27,7 @@ match (operation())
 
 Un caso puede no tener payload o tener exactamente un tipo de payload. Varios valores se expresan
 con un tuple estructural, por ejemplo `Pair((int, int))`. Los nombres `variant` y `match` son
-contextuales y requieren `<Language>3</Language>`.
+contextuales y no requieren seleccionar una versión del lenguaje.
 
 ## Lo que ya es productivo
 
@@ -75,6 +79,7 @@ en 18/29 y matriz combinatoria en 30. No se trasladan artificialmente a T15 ni s
 - consumidor LibraryReference de variant concreto: `.lib + NSMETA 1.27`, salida 42 y orden de
   `CaseTag()` preservado;
 - host header testigo: `uint8_t` tag, payload `union`, offsets 0/8 y asserts C;
-- probes negativos de edition 2, duplicado, wildcard ausente y extractor directo.
+- probes negativos de duplicado, wildcard ausente y extractor directo; la campaña también incluía
+  un rechazo por edición que fue retirado.
 
 Sin baseline, sin CTest general, sin O1/O2/O3 y sin instalación/deploy.

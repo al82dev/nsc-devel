@@ -2,11 +2,13 @@
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "../Internal/IndexShadowCheckSwitch.h"
 #include "../Internal/IndexShadowMismatch.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -689,9 +691,9 @@ void appendMoveNextFrameLocalNodes(
     }
 }
 
-// EN: Freeze 3.0 C-02 (D2): each await keeps its child future in a slot of its own at the start of
+// EN: Freeze C-02 (D2): each await keeps its child future in a slot of its own at the start of
 //     the frame (secondaryImmediate holds the offset), so two awaits never share storage.
-// ES: Congelamiento 3.0 C-02 (D2): cada await guarda su future hijo en un slot propio al inicio del
+// ES: Congelamiento C-02 (D2): cada await guarda su future hijo en un slot propio al inicio del
 //     frame (secondaryImmediate lleva el offset), asi dos awaits nunca comparten almacenamiento.
 void assignAwaitFrameSlotNodes(
     ProjectOopMirNode* root,
@@ -720,10 +722,10 @@ void assignAwaitFrameSlotNodes(
     }
 }
 
-// EN: Freeze 3.0 C-14: a frame slot's size and alignment. A future or iterator has no object
+// EN: Freeze C-14: a frame slot's size and alignment. A future or iterator has no object
 //     layout, only a MIR struct layout; without this fallback a future local or parameter was left
 //     out of the frame (lost across a suspension, read as garbage by the poll).
-// ES: Congelamiento 3.0 C-14: tamano y alineacion de un slot del frame. Un future o iterator no
+// ES: Congelamiento C-14: tamano y alineacion de un slot del frame. Un future o iterator no
 //     tiene layout de objeto, solo layout MIR; sin este respaldo un future local o parametro quedaba
 //     fuera del frame (perdido tras una suspension, leido como basura por el poll).
 std::optional<std::pair<std::uint64_t, std::uint64_t>> frameValueLayout(
@@ -741,10 +743,10 @@ std::optional<std::pair<std::uint64_t, std::uint64_t>> frameValueLayout(
     return std::nullopt;
 }
 
-// EN: Freeze 3.0 C-02 (D1/D4): every local of a coroutine lives in its heap frame, so a resumed
+// EN: Freeze C-02 (D1/D4): every local of a coroutine lives in its heap frame, so a resumed
 //     poll sees the values it left and an address taken before a suspension stays valid. Linear
 //     liveness missed locals reused by a later loop iteration; keeping them all is exact.
-// ES: Congelamiento 3.0 C-02 (D1/D4): todo local de una corrutina vive en su frame del heap, asi el
+// ES: Congelamiento C-02 (D1/D4): todo local de una corrutina vive en su frame del heap, asi el
 //     poll reanudado ve los valores que dejo y una direccion tomada antes de suspender sigue
 //     valida. La vivacidad lineal perdia locales que reusa la siguiente vuelta de un ciclo.
 void appendCoroutineFrameLocalNodes(
@@ -763,16 +765,18 @@ void appendCoroutineFrameLocalNodes(
         const ProjectOopMirNode* node = work.back();
         work.pop_back();
         if (node == nullptr) continue;
-        // EN: Freeze 3.0 D-01: the hidden owner of an owned temporary is a local too; a statement
+        // EN: Freeze D-01: the hidden owner of an owned temporary is a local too; a statement
         //     resumed after an await destroys the temporary its first pass made.
-        // ES: Congelamiento 3.0 D-01: el dueno oculto de un temporal owned tambien es un local; una
+        // ES: Congelamiento D-01: el dueno oculto de un temporal owned tambien es un local; una
         //     sentencia reanudada tras un await destruye el temporal que hizo su primera pasada.
         const bool declares = (node->kind == ProjectOopMirNodeKind::LocalDeclaration ||
                 node->kind == ProjectOopMirNodeKind::UsingRegion ||
+                node->kind == ProjectOopMirNodeKind::CatchRegion ||
                 node->kind == ProjectOopMirNodeKind::OwnedTemporaryBorrow) &&
             node->localOrdinal.has_value() && !node->staticLocal;
-        const std::string& typeKey = node->kind == ProjectOopMirNodeKind::UsingRegion
-            ? node->elementTypeKey : node->typeKey;
+        const std::string typeKey = node->kind == ProjectOopMirNodeKind::CatchRegion
+            ? "builtin:void*" : node->kind == ProjectOopMirNodeKind::UsingRegion
+                ? node->elementTypeKey : node->typeKey;
         if (declares && !typeKey.empty() && typeKey != "builtin:never" &&
             seen.insert(*node->localOrdinal).second)
         {
@@ -796,15 +800,29 @@ void appendCoroutineFrameLocalNodes(
                 function.asyncFrameLocals.emplace_back(*node->localOrdinal, frameSize, storageKey);
                 frameSize += layout->first;
             }
+            // EN: A frame object keeps its bytes in the coroutine frame, so its address survives every
+            //     suspension (doc 18). The slot above holds its address.
+            // ES: Un objeto de marco guarda sus bytes en el frame de la corrutina, asi su direccion sobrevive
+            //     a cada suspension (doc 18). El slot de arriba guarda su direccion.
+            if (node->kind == ProjectOopMirNodeKind::LocalDeclaration && node->stackPromotedObject &&
+                node->children.size() == 1 && node->children.front() != nullptr &&
+                node->children.front()->kind == ProjectOopMirNodeKind::AllocateAndConstruct &&
+                node->children.front()->stackPromotedObject && node->children.front()->immediate != 0 &&
+                node->children.front()->alignment != 0)
+            {
+                frameSize = alignFrameOffset(frameSize, node->children.front()->alignment);
+                function.asyncFrameObjects.emplace_back(*node->localOrdinal, frameSize, typeKey);
+                frameSize += node->children.front()->immediate;
+            }
         }
         for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
             work.push_back(child->get());
     }
 }
 
-// EN: Freeze 3.0 C-02 (D3): every parameter the body reads or addresses is captured into the
+// EN: Freeze C-02 (D3): every parameter the body reads or addresses is captured into the
 //     frame by the constructor; a use inside a loop is needed again after any suspension.
-// ES: Congelamiento 3.0 C-02 (D3): todo parametro que el cuerpo lee o direcciona lo captura el
+// ES: Congelamiento C-02 (D3): todo parametro que el cuerpo lee o direcciona lo captura el
 //     constructor en el frame; un uso dentro de un ciclo se necesita tras cualquier suspension.
 void appendUsedFrameParameterNodes(
     const ProjectOopMirNode* root,
@@ -816,15 +834,17 @@ void appendUsedFrameParameterNodes(
     std::uint64_t& frameSize)
 {
     OrdinalSet used;
+    bool usesThis = false;
     std::vector<const ProjectOopMirNode*> work{root};
     while (!work.empty())
     {
         const ProjectOopMirNode* node = work.back();
         work.pop_back();
         if (node == nullptr) continue;
-        // EN: Freeze 3.0 C-14: an owned parameter is captured even when unread, so its cleanup (or
+        if (node->kind == ProjectOopMirNodeKind::ThisValue) usesThis = true;
+        // EN: Freeze C-14: an owned parameter is captured even when unread, so its cleanup (or
         //     the future's drop) destroys the value its caller handed over.
-        // ES: Congelamiento 3.0 C-14: un parametro owned se captura aunque no se lea, para que su
+        // ES: Congelamiento C-14: un parametro owned se captura aunque no se lea, para que su
         //     cleanup (o el drop del future) destruya el valor que entrego quien llama.
         if ((node->kind == ProjectOopMirNodeKind::ParameterValue ||
              node->kind == ProjectOopMirNodeKind::ParameterAddress ||
@@ -845,12 +865,24 @@ void appendUsedFrameParameterNodes(
         function.asyncFrameParameters.emplace_back(parameter, frameSize, typeKey);
         frameSize += layout->first;
     }
+    // EN: NSC-NEW-029: a class receiver used by the body is captured as an object pointer. A
+    //     struct receiver is a borrowed address that a suspension could outlive, so it is not.
+    // ES: NSC-NEW-029: un receptor de clase que usa el cuerpo se captura como puntero de objeto. Un
+    //     receptor struct es una dirección prestada que una suspensión podría sobrevivir; no se
+    //     captura.
+    if (usesThis && function.declaringTypeOrdinal < nameLookup.namedTypes().size() &&
+        nameLookup.namedTypes()[function.declaringTypeOrdinal].kind == NamedTypeDeclarationKind::Class)
+    {
+        frameSize = alignFrameOffset(frameSize, 8U);
+        function.asyncFrameParameters.emplace_back(kAsyncFrameThisOrdinal, frameSize, "builtin:void*");
+        frameSize += 8U;
+    }
 }
 
-// EN: Freeze 3.0 D-01: where the climb from a suspending await toward its statement ends. A
+// EN: Freeze D-01: where the climb from a suspending await toward its statement ends. A
 //     control statement ends it before its other children are taken (its body is statements, and
 //     a resume never re-enters it from the top); a simple statement ends it after.
-// ES: Congelamiento 3.0 D-01: donde termina el ascenso desde un await que suspende hacia su
+// ES: Congelamiento D-01: donde termina el ascenso desde un await que suspende hacia su
 //     sentencia. Una sentencia de control lo termina antes de tomar sus otros hijos (su cuerpo son
 //     sentencias, y una reanudacion nunca vuelve a entrar desde arriba); una simple, despues.
 bool replayClimbStopsBefore(ProjectOopMirNodeKind kind) noexcept
@@ -946,10 +978,10 @@ bool replaySpillAddressKind(ProjectOopMirNodeKind kind) noexcept
         kind == ProjectOopMirNodeKind::RawElementAddress;
 }
 
-// EN: Freeze 3.0 DEC-11: an array element address is not kept whole; its operands (the array and
+// EN: Freeze DEC-11: an array element address is not kept whole; its operands (the array and
 //     the indices) are, and the address is recomputed. Its store, move or delete then always sees
 //     the live bit computed next to it.
-// ES: Congelamiento 3.0 DEC-11: la direccion de un elemento de arreglo no se guarda entera; se
+// ES: Congelamiento DEC-11: la direccion de un elemento de arreglo no se guarda entera; se
 //     guardan sus operandos (el arreglo y los indices) y la direccion se recalcula. Su store, move
 //     o delete siempre ve entonces el bit de vida calculado junto a ella.
 bool replaySpillDescends(ProjectOopMirNodeKind kind) noexcept
@@ -958,10 +990,10 @@ bool replaySpillDescends(ProjectOopMirNodeKind kind) noexcept
         kind == ProjectOopMirNodeKind::RangeArrayElementAddress;
 }
 
-// EN: Freeze 3.0 D-01: gives a frame slot to every child of `ancestor` other than `onPath` (an
+// EN: Freeze D-01: gives a frame slot to every child of `ancestor` other than `onPath` (an
 //     array element address passes the slot to its operands). A slot is at least 8 bytes and
 //     8-aligned; a node already slotted for another await keeps its slot. Iterative; O(subtree).
-// ES: Congelamiento 3.0 D-01: da un slot del frame a cada hijo de `ancestor` distinto de `onPath`
+// ES: Congelamiento D-01: da un slot del frame a cada hijo de `ancestor` distinto de `onPath`
 //     (la direccion de un elemento de arreglo pasa el slot a sus operandos). Un slot mide al menos
 //     8 bytes, alineado a 8; un nodo con slot por otro await lo conserva. Iterativo; O(subarbol).
 void assignReplaySpillSlotsTo(
@@ -1009,7 +1041,17 @@ void assignReplaySpillSlotsBeside(
 {
     std::vector<ProjectOopMirNode*> pending;
     for (const auto& child : ancestor->children)
-        if (child != nullptr && child.get() != onPath) pending.push_back(child.get());
+    {
+        if (child == nullptr || child.get() == onPath) continue;
+        if (ancestor->kind == ProjectOopMirNodeKind::AggregateInitialize &&
+            ProjectTypeConversion::tupleElementTypeKeys(ancestor->typeKey).has_value() &&
+            child->kind == ProjectOopMirNodeKind::AggregateElementStore)
+        {
+            for (const auto& operand : child->children)
+                if (operand != nullptr) pending.push_back(operand.get());
+        }
+        else pending.push_back(child.get());
+    }
     assignReplaySpillSlotsTo(std::move(pending), objectLayoutModel, nameLookup, indexes, layouts, frameSize);
 }
 
@@ -1035,12 +1077,12 @@ void climbReplaySpillSlots(
     }
 }
 
-// EN: Freeze 3.0 (plan item 117): a match or a loop expression is part of the statement around it, so the
+// EN: Freeze (plan item 117): a match or a loop expression is part of the statement around it, so the
 //     resume of an await inside it replays that statement (a loop then jumps back to the statement of its body
 //     that suspended). That replay must load what already ran: the governing value of a match, the guard of
 //     the selected arm and the operands evaluated before the match or the loop. The climb from the await stops
 //     at the arm, the match or the loop body; this walk goes on from each of them to the root.
-// ES: Congelamiento 3.0 (elemento 117 del plan): un match o una expresión loop es parte de la sentencia que lo
+// ES: Congelamiento (elemento 117 del plan): un match o una expresión loop es parte de la sentencia que lo
 //     rodea, así que la reanudación de un await dentro de él repite esa sentencia (un loop salta después a la
 //     sentencia de su cuerpo que se suspendió). Esa repetición debe cargar lo que ya corrió: el valor que
 //     gobierna un match, el guard del brazo elegido y los operandos evaluados antes del match o del loop. El
@@ -1075,7 +1117,7 @@ void assignMatchReplaySpillSlots(
     }
 }
 
-// EN: Freeze 3.0 D-01: a resumed poll re-enters the innermost statement around the await that
+// EN: Freeze D-01: a resumed poll re-enters the innermost statement around the await that
 //     suspended, so every operand that runs before the await in that statement used to run twice
 //     (a call made twice, an index taken twice, a temporary made twice). Each such operand gets a
 //     frame slot: the backend stores the value on the first pass and loads it on the replay. The
@@ -1083,7 +1125,7 @@ void assignMatchReplaySpillSlots(
 //     runs after the await is stored and never loaded, which costs a store and keeps the rule
 //     independent of each node's evaluation order. An address is a pointer slot; a value needs a
 //     known layout.
-// ES: Congelamiento 3.0 D-01: un poll reanudado vuelve a entrar a la sentencia mas interna que
+// ES: Congelamiento D-01: un poll reanudado vuelve a entrar a la sentencia mas interna que
 //     rodea al await que suspendio, asi todo operando que corre antes del await en esa sentencia
 //     corria dos veces (una llamada hecha dos veces, un indice tomado dos veces, un temporal hecho
 //     dos veces). Cada operando asi recibe un slot del frame: el backend guarda el valor en la
@@ -1110,9 +1152,9 @@ void assignReplaySpillSlotNodes(
         if (node == nullptr) continue;
         if (node->kind == ProjectOopMirNodeKind::AwaitFuture && node->integerValue == 1)
             awaits.push_back(node);
-        // EN: Freeze 3.0 (plan item 117): a yield is a statement, so D-01 has nothing to climb from it; inside a
+        // EN: Freeze (plan item 117): a yield is a statement, so D-01 has nothing to climb from it; inside a
         //     loop expression its resume replays the statement around the loop like an await's.
-        // ES: Congelamiento 3.0 (elemento 117 del plan): un yield es una sentencia, así que D-01 no asciende desde
+        // ES: Congelamiento (elemento 117 del plan): un yield es una sentencia, así que D-01 no asciende desde
         //     él; dentro de una expresión loop su reanudación repite la sentencia del loop como la de un await.
         if (node->kind == ProjectOopMirNodeKind::SuspendPoint || node->kind == ProjectOopMirNodeKind::YieldValue ||
             node->kind == ProjectOopMirNodeKind::AsyncYieldValue)
@@ -1133,10 +1175,46 @@ void assignReplaySpillSlotNodes(
         assignMatchReplaySpillSlots(yield, parents, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
 }
 
-// EN: Freeze 3.0 C-02: one drop-flag byte per frame local closes the frame, 8-aligned, so a
+void appendCoroutineCatchOwners(const ProjectOopMirNode* root, std::uint64_t& frameSize)
+{
+    std::size_t count = 0;
+    std::unordered_map<const ProjectOopMirNode*, const ProjectOopMirNode*> parents;
+    std::unordered_set<const ProjectOopMirNode*> suspendingFinallys;
+    std::vector<const ProjectOopMirNode*> work{root};
+    while (!work.empty())
+    {
+        const ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind == ProjectOopMirNodeKind::CatchRegion) ++count;
+        if (node->kind == ProjectOopMirNodeKind::SuspendPoint ||
+            node->kind == ProjectOopMirNodeKind::YieldValue ||
+            node->kind == ProjectOopMirNodeKind::AsyncYieldValue ||
+            (node->kind == ProjectOopMirNodeKind::AwaitFuture && node->integerValue == 1))
+        {
+            for (const ProjectOopMirNode* ancestor = node; ancestor != nullptr;)
+            {
+                if (ancestor->kind == ProjectOopMirNodeKind::FinallyRegion)
+                    suspendingFinallys.insert(ancestor);
+                const auto parent = parents.find(ancestor);
+                ancestor = parent == parents.end() ? nullptr : parent->second;
+            }
+        }
+        for (const auto& child : node->children)
+        {
+            if (child == nullptr) continue;
+            parents.emplace(child.get(), node);
+            work.push_back(child.get());
+        }
+    }
+    count += suspendingFinallys.size();
+    if (count != 0) frameSize = alignFrameOffset(frameSize, 8) + count * 8U;
+}
+
+// EN: Freeze C-02: one drop-flag byte per frame local closes the frame, 8-aligned, so a
 //     destructor guard survives a suspension too. The backend finds the area at
 //     asyncFrameSize - align8(locals); the constructor zeroes it.
-// ES: Congelamiento 3.0 C-02: un byte de bandera de destruccion por local del frame cierra el
+// ES: Congelamiento C-02: un byte de bandera de destruccion por local del frame cierra el
 //     frame, alineado a 8, para que la guarda del destructor tambien sobreviva una suspension. El
 //     backend halla el area en asyncFrameSize - align8(locales); el constructor la pone en cero.
 void appendCoroutineDropFlags(const ProjectOopMirFunction& function, std::uint64_t& frameSize) noexcept
@@ -1177,6 +1255,7 @@ bool buildPollFrame(
         function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, function, frameSize);
     appendUsedFrameParameterNodes(
         function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, function, frameSize);
+    appendCoroutineCatchOwners(function.body.get(), frameSize);
     appendCoroutineDropFlags(function, frameSize);
     function.asyncFrameSize = alignFrameOffset(frameSize, 8);
     return true;
@@ -1189,19 +1268,20 @@ void buildMoveNextFrame(
     const ProjectObjectLayoutModel& objectLayoutModel,
     const ProjectNameLookup& nameLookup)
 {
-    // EN: Freeze 3.0 C-02: like a poll, a MoveNext keeps every local and every used parameter in
+    // EN: Freeze C-02: like a poll, a MoveNext keeps every local and every used parameter in
     //     the frame; the linear liveness this replaced lost values across loop iterations.
-    // ES: Congelamiento 3.0 C-02: como un poll, un MoveNext guarda todo local y todo parametro
+    // ES: Congelamiento C-02: como un poll, un MoveNext guarda todo local y todo parametro
     //     usado en el frame; la vivacidad lineal que esto sustituye perdia valores entre vueltas.
     std::uint64_t frameSize = 0;
-    // EN: Freeze 3.0 (plan item 117): a yield inside a loop expression replays the statement around the loop.
-    // ES: Congelamiento 3.0 (elemento 117 del plan): un yield dentro de una expresión loop repite la sentencia del
+    // EN: Freeze (plan item 117): a yield inside a loop expression replays the statement around the loop.
+    // ES: Congelamiento (elemento 117 del plan): un yield dentro de una expresión loop repite la sentencia del
     //     loop.
     assignReplaySpillSlotNodes(function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, frameSize);
     appendCoroutineFrameLocalNodes(
         function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, function, frameSize);
     appendUsedFrameParameterNodes(
         function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, function, frameSize);
+    appendCoroutineCatchOwners(function.body.get(), frameSize);
     appendCoroutineDropFlags(function, frameSize);
     function.asyncFrameSize = alignFrameOffset(frameSize, 8);
 }
@@ -1232,6 +1312,7 @@ void inheritMoveNextDropFrames(std::vector<ProjectOopMirFunction>& functions)
         if (drop == firstByName.end()) continue;
         ProjectOopMirFunction& candidate = functions[drop->second];
         candidate.asyncFrameLocals = function.asyncFrameLocals;
+        candidate.asyncFrameObjects = function.asyncFrameObjects;
         candidate.asyncFrameSize = function.asyncFrameSize;
     }
 }
@@ -1241,9 +1322,9 @@ void insertGeneratorFrameInit(ProjectOopMirFunction& function)
     if (function.body == nullptr || function.body->children.empty() ||
         function.body->children[0]->kind != ProjectOopMirNodeKind::LocalDeclaration)
         return;
-    // EN: Freeze 3.0 C-17: an async generator inherits from both `$moveNext` and `$moveNext$poll`;
+    // EN: Freeze C-17: an async generator inherits from both `$moveNext` and `$moveNext$poll`;
     //     a second init allocated a second frame and lost the first.
-    // ES: Congelamiento 3.0 C-17: un generador async hereda de `$moveNext` y de `$moveNext$poll`;
+    // ES: Congelamiento C-17: un generador async hereda de `$moveNext` y de `$moveNext$poll`;
     //     una segunda inicializacion reservaba un segundo frame y perdia el primero.
     if (function.body->children.size() > 1U &&
         function.body->children[1]->kind == ProjectOopMirNodeKind::GeneratorFrameInit)
@@ -1294,6 +1375,7 @@ void inheritConstructorFrames(
         ProjectOopMirFunction& candidate = functions[constructor->second];
         candidate.asyncFrameLocals = function.asyncFrameLocals;
         candidate.asyncFrameParameters = function.asyncFrameParameters;
+        candidate.asyncFrameObjects = function.asyncFrameObjects;
         candidate.asyncFrameSize = function.asyncFrameSize;
         insertGeneratorFrameInit(candidate);
     }
@@ -1412,9 +1494,9 @@ ProjectOopMirFunction ProjectOopMirModel::lowerOneFunction(
     if (function.mangledName.ends_with("$poll") &&
         !buildPollFrame(function, indexes_, functionLayouts, objectLayoutModel, nameLookup, error))
         return function;
-    // EN: Freeze 3.0 C-14: only a synchronous generator's MoveNext is a coroutine; an async
+    // EN: Freeze C-14: only a synchronous generator's MoveNext is a coroutine; an async
     //     generator's $moveNext just builds the demand future, whose local must stay off the frame.
-    // ES: Congelamiento 3.0 C-14: solo el MoveNext de un generador sincrono es una corrutina; el
+    // ES: Congelamiento C-14: solo el MoveNext de un generador sincrono es una corrutina; el
     //     $moveNext de un generador async solo arma el future de demanda, cuyo local no va al frame.
     if (function.mangledName.ends_with("$moveNext") && function.returnTypeKey == "builtin:bool")
         buildMoveNextFrame(function, indexes_, functionLayouts, objectLayoutModel, nameLookup);
@@ -1448,6 +1530,169 @@ void ProjectOopMirModel::configureFunctionLowerer(
     lowerer.destructionModel_ = &destructionModel;
     lowerer.hirModel_ = &hirModel;
     lowerer.indexes_ = indexes_;
+}
+
+namespace
+{
+struct YieldFactWork final
+{
+    const ProjectOopMirNode* node;
+    std::optional<std::size_t> yieldPreorder;
+    std::optional<std::size_t> parentFact;
+    std::size_t childIndex;
+};
+
+// Only classify leaf results with a binding and no ownership transfer.
+// The classification says nothing about effects or cleanup while evaluating them.
+ProjectOopYieldResultKind classifyYieldResult(
+    const ProjectOopMirYieldFact& fact, const ProjectOopMirNode& node)
+{
+    if (!fact.hasBinding || fact.ownership != sema::OwnershipKind::None ||
+        fact.ownershipTransfer || fact.ownershipFreshOwner ||
+        fact.objectLifetimeOwnership != sema::OwnershipKind::None ||
+        fact.storageOwnership != sema::OwnershipKind::None)
+        return ProjectOopYieldResultKind::Unknown;
+    using Kind = ProjectOopMirNodeKind;
+    if ((fact.itemMode == ProjectOopYieldItemMode::Reference ||
+         fact.itemMode == ProjectOopYieldItemMode::MutableReference) &&
+        fact.nodeKind == Kind::LocalAddress)
+        return ProjectOopYieldResultKind::BorrowedReference;
+    if (fact.itemMode == ProjectOopYieldItemMode::Value &&
+        node.typeKey == fact.typeKey &&
+        (ProjectTypeConversion::isNumeric(fact.typeKey) || fact.typeKey == "builtin:bool") &&
+        (fact.nodeKind == Kind::IntegerConstant || fact.nodeKind == Kind::FloatingConstant ||
+         fact.nodeKind == Kind::BooleanConstant || fact.nodeKind == Kind::LocalValue ||
+         fact.nodeKind == Kind::ParameterValue))
+        return ProjectOopYieldResultKind::TrivialScalar;
+    return ProjectOopYieldResultKind::Unknown;
+}
+
+void appendYieldFact(ProjectOopMirFunction& function, const ProjectOopHirModel& hirModel,
+    const YieldFactWork& item, std::size_t nodePreorder, ProjectOopYieldItemMode itemMode)
+{
+    ProjectOopMirYieldFact fact;
+    fact.yieldPreorder = *item.yieldPreorder;
+    fact.nodePreorder = nodePreorder;
+    fact.parentFact = item.parentFact;
+    fact.childIndex = item.childIndex;
+    fact.nodeKind = item.node->kind;
+    fact.itemMode = itemMode;
+    const auto* binding = hirModel.yieldOperandBinding(item.node->syntax, function.memberOrdinal);
+    if (binding != nullptr)
+    {
+        fact.hasBinding = true;
+        fact.typeKey = binding->typeKey;
+        fact.valueCategory = binding->valueCategory;
+        fact.ownership = binding->ownership;
+        fact.ownershipTransfer = binding->ownershipTransfer;
+        fact.ownershipFreshOwner = binding->ownershipFreshOwner;
+        fact.objectLifetimeOwnership = binding->objectLifetimeOwnership;
+        fact.storageOwnership = binding->storageOwnership;
+    }
+    function.asyncYieldFacts.push_back(std::move(fact));
+}
+
+void classifyYieldFacts(ProjectOopMirFunction& function, const std::vector<const ProjectOopMirNode*>& nodes)
+{
+    using Kind = ProjectOopMirNodeKind;
+    using Result = ProjectOopYieldResultKind;
+    const auto count = function.asyncYieldFacts.size();
+    std::vector<std::array<std::optional<std::size_t>, 3>> children(count);
+    std::vector<Result> kinds(count, Result::Unknown);
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        const auto& fact = function.asyncYieldFacts[i];
+        if (fact.parentFact && *fact.parentFact < i && fact.childIndex < 3 &&
+            function.asyncYieldFacts[*fact.parentFact].yieldPreorder == fact.yieldPreorder)
+            children[*fact.parentFact][fact.childIndex] = i;
+    }
+    for (std::size_t i = count; i-- > 0;)
+    {
+        auto& fact = function.asyncYieldFacts[i];
+        const auto& node = *nodes[i];
+        kinds[i] = classifyYieldResult(fact, node);
+        if (fact.nodeKind == Kind::Conditional && node.children.size() == 3 &&
+            children[i][0] && children[i][1] && children[i][2] &&
+            fact.itemMode == ProjectOopYieldItemMode::Value && fact.hasBinding &&
+            fact.ownership == sema::OwnershipKind::None && !fact.ownershipTransfer &&
+            !fact.ownershipFreshOwner && fact.objectLifetimeOwnership == sema::OwnershipKind::None &&
+            fact.storageOwnership == sema::OwnershipKind::None && node.typeKey == fact.typeKey &&
+            (ProjectTypeConversion::isNumeric(fact.typeKey) || fact.typeKey == "builtin:bool"))
+        {
+            const auto c = *children[i][0], a = *children[i][1], b = *children[i][2];
+            const auto& condition = function.asyncYieldFacts[c];
+            if (condition.hasBinding && condition.typeKey == "builtin:bool" &&
+                nodes[c]->typeKey == "builtin:bool" && kinds[a] == Result::TrivialScalar &&
+                kinds[b] == Result::TrivialScalar && function.asyncYieldFacts[a].typeKey == fact.typeKey &&
+                function.asyncYieldFacts[b].typeKey == fact.typeKey)
+                kinds[i] = Result::TrivialScalar;
+        }
+        // Descendant classifications are internal only; they are not facts about a yielded result.
+        if (!fact.parentFact) fact.resultKind = kinds[i];
+    }
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        const auto& parent = function.asyncYieldFacts[i];
+        if (parent.nodeKind != Kind::Conditional || nodes[i]->children.size() != 3 ||
+            !children[i][0] || !children[i][1] || !children[i][2] ||
+            parent.itemMode != ProjectOopYieldItemMode::Value || !parent.hasBinding ||
+            nodes[i]->typeKey != parent.typeKey) continue;
+        const auto condition = *children[i][0];
+        if (!function.asyncYieldFacts[condition].hasBinding ||
+            function.asyncYieldFacts[condition].typeKey != "builtin:bool" ||
+            nodes[condition]->typeKey != "builtin:bool") continue;
+        for (std::size_t branch = 1; branch <= 2; ++branch)
+        {
+            const auto index = *children[i][branch];
+            auto& fact = function.asyncYieldFacts[index];
+            if (!fact.hasBinding || fact.typeKey != parent.typeKey || nodes[index]->typeKey != parent.typeKey)
+                continue;
+            if (fact.nodeKind == Kind::DirectStaticCall && fact.ownership == sema::OwnershipKind::Owned &&
+                fact.ownershipTransfer && fact.ownershipFreshOwner &&
+                fact.objectLifetimeOwnership == sema::OwnershipKind::Owned &&
+                fact.storageOwnership == sema::OwnershipKind::Owned)
+                fact.branchEvidence = ProjectOopYieldBranchEvidence::SemanticFreshOwnedTransfer;
+            else if (fact.nodeKind == Kind::StaticFieldLoad && fact.ownership == sema::OwnershipKind::None &&
+                !fact.ownershipTransfer && !fact.ownershipFreshOwner &&
+                fact.objectLifetimeOwnership == sema::OwnershipKind::None &&
+                fact.storageOwnership == sema::OwnershipKind::None)
+                fact.branchEvidence = ProjectOopYieldBranchEvidence::StaticFieldNonOwning;
+        }
+    }
+}
+
+void rebuildYieldFacts(ProjectOopMirFunction& function, const ProjectOopHirModel& hirModel,
+    const ProjectOopHirFunction& hirFunction)
+{
+    function.asyncYieldFacts.clear();
+    if (function.body == nullptr || !hirFunction.isAsyncPoll ||
+        !function.effects.contains(sema::Effect::Generator)) return;
+    std::vector<YieldFactWork> work{{function.body.get(), std::nullopt, std::nullopt, 0U}};
+    std::vector<const ProjectOopMirNode*> factNodes;
+    std::size_t preorder = 0;
+    while (!work.empty())
+    {
+        YieldFactWork item = std::move(work.back());
+        work.pop_back();
+        const std::size_t nodePreorder = preorder++;
+        std::optional<std::size_t> parentFact;
+        if (item.yieldPreorder.has_value())
+        {
+            parentFact = function.asyncYieldFacts.size();
+            appendYieldFact(function, hirModel, item, nodePreorder, hirFunction.asyncYieldItemMode);
+            factNodes.push_back(item.node);
+        }
+        for (std::size_t i = item.node->children.size(); i > 0; --i)
+        {
+            if (item.node->children[i - 1] == nullptr) continue;
+            const bool operand = item.node->kind == ProjectOopMirNodeKind::AsyncYieldValue && i == 1;
+            work.push_back({item.node->children[i - 1].get(),
+                operand ? std::optional<std::size_t>(nodePreorder) : item.yieldPreorder,
+                operand ? std::nullopt : parentFact, i - 1});
+        }
+    }
+    classifyYieldFacts(function, factNodes);
+}
 }
 
 bool ProjectOopMirModel::lowerFunctions(
@@ -1540,6 +1785,8 @@ bool ProjectOopMirModel::lowerFunctions(
     inheritConstructorFrames(functions_, "$moveNext", 9, false);
     inheritConstructorFrames(functions_, "$moveNext$poll", 14, false);
     inheritConstructorFrames(functions_, "$poll", 5, true);
+    for (std::size_t index = 0; index < functions_.size(); ++index)
+        rebuildYieldFacts(functions_[index], hirModel, hirFunctions[index]);
     return true;
 }
 }

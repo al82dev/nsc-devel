@@ -15,7 +15,7 @@ dentro de `nsc_driver`, que arrastra backend, runtime y linker aunque un editor 
 
 - Se creó `nsc_basic` para compartir la identidad canónica sin enlazar el driver completo.
 - Se creó `nsc_language_service`, una fachada estática con implementación oculta mediante PImpl.
-- La primera operación pública entrega release, versión de lenguaje, stage, target Windows x64,
+- La operación pública entrega release del producto, stage, target Windows x64,
   hash de build y versión del ABI de análisis.
 - CMake exporta `NativeSharp::LanguageService` y sus dependencias desde el árbol de build para que
   `A:\nsc-lsp` pueda enlazarlas estáticamente.

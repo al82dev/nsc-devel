@@ -2,7 +2,13 @@
 
 ## Español
 
-NativeSharp 3 hace visible cada frontera que puede romper las garantías del lenguaje. El
+> **Nota de vigencia (LIB-261, NSC-LIB-007, 2026-11-15).** El contexto `unsafe` ya no es
+> obligatorio: el compilador actual acepta desreferenciar un puntero raw y convertir entre entero y
+> puntero fuera de un bloque `unsafe` (comprobado en O0 y O2). La marca sigue siendo válida y
+> auditable, pero su ausencia no es un error. El texto siguiente describe el diseño original y se
+> conserva como historia.
+
+NativeSharp hace visible cada frontera que puede romper las garantías del lenguaje. El
 frontend mantiene un contexto `unsafe` léxico y rechaza las operaciones del catálogo fuera de
 él:
 
@@ -41,7 +47,13 @@ site.
 
 ## English
 
-NativeSharp 3 makes every boundary that can violate language guarantees visible. The frontend
+> **Currency note (LIB-261, NSC-LIB-007, 2026-11-15).** The `unsafe` context is no longer
+> required: the current compiler accepts dereferencing a raw pointer and converting between integers
+> and pointers outside an `unsafe` block (checked at O0 and O2). The marker is still valid and
+> auditable, but its absence is not an error. The text below describes the original design and is
+> kept as history.
+
+NativeSharp makes every boundary that can violate language guarantees visible. The frontend
 tracks a lexical unsafe context and rejects catalogued operations outside it:
 
 - dereferencing a raw pointer (`*pointer`, including `pointer->member`);

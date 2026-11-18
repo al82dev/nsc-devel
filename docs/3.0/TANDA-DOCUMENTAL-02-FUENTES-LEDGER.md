@@ -22,9 +22,9 @@ limitaciones, sin convertir nombres de tandas o pruebas aisladas en certificaci�
 
 ## Archivos del repositorio
 
-- `tools/native_sharp_3_catalog.py`.
-- `tools/verify_native_sharp_3_catalog.py`.
-- `tests/unit/test_native_sharp_3_catalog.py`.
+- `tools/native_sharp_catalog.py`.
+- `tools/verify_native_sharp_catalog.py`.
+- `tests/unit/test_native_sharp_catalog.py`.
 - Este expediente.
 
 ## Documentos de `A:\` actualizados
@@ -37,7 +37,7 @@ limitaciones, sin convertir nombres de tandas o pruebas aisladas en certificaci�
 
 ## Validación dirigida
 
-- `tests/unit/test_native_sharp_3_catalog.py`: 7/7.
-- `tests/unit/test_verify_native_sharp_3_plan.py`: 6/6.
+- `tests/unit/test_native_sharp_catalog.py`: 7/7.
+- `tests/unit/test_verify_native_sharp_plan.py`: 6/6.
 - Verificador real: 308 ítems, 16 componentes, ledger 1–156 completo y tracking idéntico al maestro.
 - No se ejecutó baseline, CTest general, compilación ni instalación.

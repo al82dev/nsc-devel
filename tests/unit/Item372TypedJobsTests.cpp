@@ -55,8 +55,8 @@ int main()
     std::filesystem::remove_all(root, filesystemError);
     std::filesystem::create_directories(root, filesystemError);
     const std::string threadingProject =
-        (std::filesystem::path(NSC_SOURCE_DIR) /
-            "lib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj").generic_string();
+        (std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) /
+            "stdlib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj").generic_string();
     writeFile(root / "TypedJobsItem372.nsproj",
         "<Project><PropertyGroup><Name>TypedJobsItem372</Name></PropertyGroup><ItemGroup>"
         "<Compile Include=\"Main.ns\"/><ProjectReference Include=\"" + threadingProject +
@@ -98,9 +98,15 @@ public class Program
         root / "TypedJobsItem372.nsproj", root / "TypedJobsO0.exe", "-O0", diagnostic),
         "typed jobs return int and long results at O0 (" + diagnostic + ")");
     diagnostic.clear();
+    tests.expect(compileAndRun(root / "TypedJobsItem372.nsproj", root / "TypedJobsO1.exe", "-O1", diagnostic),
+        "typed jobs return int and long results at O1 (" + diagnostic + ")");
+    diagnostic.clear();
     tests.expect(compileAndRun(
         root / "TypedJobsItem372.nsproj", root / "TypedJobsO2.exe", "-O2", diagnostic),
         "typed jobs return int and long results at O2 (" + diagnostic + ")");
+    diagnostic.clear();
+    tests.expect(compileAndRun(root / "TypedJobsItem372.nsproj", root / "TypedJobsO3.exe", "-O3", diagnostic),
+        "typed jobs return int and long results at O3 (" + diagnostic + ")");
     const int result = tests.result();
     if (result == 0) std::filesystem::remove_all(root, filesystemError);
     return result;

@@ -1,0 +1,9 @@
+<Project>
+<PropertyGroup>
+<Name>DivRoundingCases</Name>
+<OutputType>Exe</OutputType>
+</PropertyGroup>
+<ItemGroup>
+<Compile Include="DivRoundingCases.ns"/>
+</ItemGroup>
+</Project>

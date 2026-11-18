@@ -155,7 +155,7 @@ void ProjectMemberModel::applyMemberOrigin(
     const NamedTypeDeclarationPart& part,
     const ast::AstNode* memberNode) const
 {
-    // NSMETA 1.13 may place the producer's real `inline`/`forceinline` body in the
+    // NSMETA may place the producer's real `inline`/`forceinline` body in the
     // synthetic API unit. Those methods are executable input owned by this consumer,
     // unlike the empty declarations beside them. The source modifier is an explicit,
     // format-stable discriminator and also carries the required optimization policy.
@@ -163,7 +163,12 @@ void ProjectMemberModel::applyMemberOrigin(
         part.isPrecompiled && memberNode->kind() == ast::AstNodeKind::MethodDeclaration &&
         (memberNode->hasModifier(lexer::TokenKind::KwInline) ||
          memberNode->hasModifier(lexer::TokenKind::KwForceInline));
-    symbol.isPrecompiled = part.isPrecompiled && !transportedInlineBody;
+    const GenericSpecializationRecord* specialization = genericModel_ == nullptr
+        ? nullptr : genericModel_->specializationForSyntax(memberNode);
+    const bool locallySpecialized = specialization != nullptr &&
+        specialization->kind == GenericTemplateKind::Method &&
+        specialization->specializedSyntax == memberNode && memberNode->first() != nullptr;
+    symbol.isPrecompiled = part.isPrecompiled && !transportedInlineBody && !locallySpecialized;
     symbol.isTransportedInlineBody = transportedInlineBody;
     symbol.name = memberNode->text();
 }
@@ -369,8 +374,13 @@ void ProjectMemberModel::validateStaticOwnedMember(
         diagnostics::DiagnosticId::InvalidType,
         diagnostics::DiagnosticSeverity::Error,
         symbol.range,
-        "static field '" + symbol.name +
-            "' cannot be owned because no destruction ever releases it; ownership is "
+        // LKF-387: a synthesized backing field is named by its property, not by its internal name.
+        // LKF-387: un campo de respaldo sintetizado se nombra por su propiedad, no por su nombre interno.
+        (symbol.name.starts_with("__nsc_backing_")
+            ? "static property '" + symbol.name.substr(14, symbol.name.find('$') == std::string::npos
+                ? std::string::npos : symbol.name.find('$') - 14) + "'"
+            : "static field '" + symbol.name + "'") +
+            " cannot be owned because no destruction ever releases it; ownership is "
             "discharged by the containing object's destruction");
 }
 

@@ -1,0 +1,3 @@
+noinline decimal Add(decimal a, decimal b) { return checked(a + b); }
+noinline decimal Sub(decimal a, decimal b) { return checked(a - b); }
+int Main() { unsafe("construct decimal boundary") { i128 bits=((i128)1 << 96)-(i128)1; decimal a=*((decimal*)&bits); decimal r=Add(a,0m); if (*((i128*)&r)!=bits) return 1; decimal s=Sub(a,a); if (*((i128*)&s)!=(i128)0) return 2; return 0; } }

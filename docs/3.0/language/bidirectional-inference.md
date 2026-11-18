@@ -2,7 +2,7 @@
 
 ## Español
 
-NativeSharp 3 combina evidencia de argumentos con un tipo esperado exacto. El solver es local,
+NativeSharp combina evidencia de argumentos con un tipo esperado exacto. El solver es local,
 ordenado y terminante: nunca prueba cadenas de conversiones para adivinar un argumento genérico.
 
 ```nativesharp
@@ -48,7 +48,7 @@ viables e incompatibles, el compilador exige argumentos o tipos de lambda explí
 
 ## English
 
-NativeSharp 3 combines bottom-up argument evidence with one exact expected type. It first gathers
+NativeSharp combines bottom-up argument evidence with one exact expected type. It first gathers
 types already known by the expression, then unifies a candidate return type with the context. When
 one visible template has made a parameter fully concrete, that type may flow into a nested call,
 conditional branch, or tuple element. The contextual walk is bounded to depth 64 and never tries

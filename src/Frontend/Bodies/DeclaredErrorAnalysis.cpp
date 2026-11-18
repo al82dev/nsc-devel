@@ -7,11 +7,11 @@
 #include <string>
 #include <vector>
 
-// EN: Freeze 3.0 C-13: handle-or-propagate for `throws E`. A call, a delegate invocation, a `new`
+// EN: Freeze C-13: handle-or-propagate for `throws E`. A call, a delegate invocation, a `new`
 //     and a `this(...)`/`base(...)` initializer that reach a callable declaring `throws E` must be
 //     inside a try whose unfiltered catch accepts E, or in a callable whose own `throws` is E or a
 //     base of E. A filtered catch does not count: its filter may decline the error.
-// ES: Congelamiento 3.0 C-13: manejar o propagar para `throws E`. Una llamada, una invocacion de
+// ES: Congelamiento C-13: manejar o propagar para `throws E`. Una llamada, una invocacion de
 //     delegate, un `new` y un inicializador `this(...)`/`base(...)` que llegan a un callable con
 //     `throws E` deben estar dentro de un try cuyo catch sin filtro acepte E, o en un callable cuyo
 //     propio `throws` sea E o una base de E. Un catch con filtro no cuenta: su filtro puede rechazar
@@ -104,11 +104,11 @@ void ProjectMethodBodyModel::requireDeclaredErrorHandled(
             "or declare a compatible 'throws'");
 }
 
-// EN: Freeze 3.0 (checked throw): C-13 left the `throw` statement itself unchecked, so a method
+// EN: Freeze (checked throw): C-13 left the `throw` statement itself unchecked, so a method
 //     could throw an error it never declared and its callers never had to handle it. A thrown or
 //     rethrown exception must now be caught by an enclosing try or declared by the callable, the
 //     same rule a call to a `throws E` callable follows.
-// ES: Congelamiento 3.0 (throw chequeado): C-13 dejo sin chequeo la sentencia `throw`, asi que un
+// ES: Congelamiento (throw chequeado): C-13 dejo sin chequeo la sentencia `throw`, asi que un
 //     metodo podia lanzar un error que nunca declaro y sus llamadores nunca tenian que manejarlo.
 //     Una excepcion lanzada o relanzada ahora debe atraparla un try envolvente o declararla el
 //     callable, la misma regla que sigue una llamada a un callable `throws E`.

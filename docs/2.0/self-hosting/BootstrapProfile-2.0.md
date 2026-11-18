@@ -1,24 +1,26 @@
 # NativeSharp Bootstrap Profile 2.0
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 **Contrato:** `NativeSharp.BootstrapProfile/2.0`
 
 **Formato ejecutable:** `selfhost/bootstrap/bootstrap-profile.json`, versión 1
 
 **Host y target inicial:** Windows x64, ABI MSVC/COFF/PE
 
-**Compilador semilla:** `nsc0`, NativeSharp 2.0 Stage 70
+**Compilador semilla:** `nsc0`, NativeSharp Stage 70
 
 **Estado:** congelado por Gate SH01
 
 ## 1. Propósito
 
-Este perfil es el subconjunto de NativeSharp 2.0 autorizado para escribir `nsc-next`. No define un
-lenguaje nuevo ni reduce lo que NativeSharp 2.0 ofrece a sus usuarios. Su función es impedir una
+Este perfil es el subconjunto de NativeSharp autorizado para escribir `nsc-next`. No define un
+lenguaje nuevo ni reduce lo que NativeSharp ofrece a sus usuarios. Su función es impedir una
 dependencia circular: toda construcción usada por `nsc-next` debe poder compilarse con el `nsc0`
 bloqueado por SH00, y ninguna comodidad del compilador nuevo puede ser necesaria para construir la
 primera generación.
 
-La autoridad semántica continúa siendo la especificación NativeSharp 2.0. Este documento decide
+La autoridad semántica continúa siendo la especificación NativeSharp. Este documento decide
 qué parte de esa especificación puede usar el compilador autoalojado. El JSON ejecutable contiene
 la lista exacta de palabras reservadas, restricciones, diagnósticos y proyectos de biblioteca.
 
@@ -53,7 +55,7 @@ filesystem para crear una identidad semántica.
 
 ### 3.2 Tipos y expresiones
 
-- todos los tipos primitivos de NativeSharp 2.0;
+- todos los tipos primitivos de NativeSharp;
 - `string`, arrays unidimensionales, punteros crudos, referencias `ref`/`in`/`out` y null;
 - casts explícitos, conversiones numéricas definidas por 2.0, `is`, `as`, `sizeof`, `alignof` y
   `offsetof`;

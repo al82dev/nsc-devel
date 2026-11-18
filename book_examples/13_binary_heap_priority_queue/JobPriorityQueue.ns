@@ -59,10 +59,10 @@ namespace NativeSharp.BookExamples.BinaryHeap
             }
         }
 
-        public void Enqueue(Job job)
+        public void Enqueue(owned Job job)
         {
             if (count == heap.Length) { Grow(); }
-            heap[count] = job;
+            heap[count] = move(job);
             SiftUp(count);
             count = count + 1;
         }

@@ -20,17 +20,19 @@ int main()
     const std::string matrix = currentCompatibilityMatrix();
     tests.expect(matrix.starts_with("NSCOMPAT-MATRIX 1\ncertification=pending-final-baseline\n"),
         "N-1/N matrix remains pending until the final baseline is certified");
-    tests.expect(matrix.find("compiler.N=3.0.0\ncompiler.N-1=2.0.0\n") != std::string::npos,
-        "compiler window is explicit 2.0.0 and 3.0.0 rather than arithmetic");
-    tests.expect(matrix.find("nsmeta.N=" +
-            std::to_string(nativesharp::interop::kMetadataFormatMajor) + "." +
-            std::to_string(nativesharp::interop::kMetadataFormatMinor) + "\nnsmeta.N-1=1.21\n") !=
-            std::string::npos,
-        "the 3.0 window accepts NSMETA 1.21 producers in the current NSMETA compiler");
+    tests.expect(matrix.find("compiler.N=1.0.0\ncompiler.N-1=none\n") != std::string::npos,
+        "compiler window records the current product and no previous release");
+    tests.expect(matrix.find("nsmeta=content-compatible\n") != std::string::npos &&
+            matrix.find("nsmeta.N") == std::string::npos && matrix.find("row=nsmeta|") == std::string::npos,
+        "metadata compatibility is expressed by content");
     tests.expect(matrix.find("native-abi.N=1.0\nnative-abi.N-1=1.0\n") != std::string::npos &&
             matrix.find("runtime-abi.N=1.2\nruntime-abi.N-1=1.0\n") != std::string::npos,
         "Native ABI stays at 1.0 while Runtime ABI advances from 1.0 to 1.2");
-    for (const std::string surface : {"compiler", "nsmeta", "native-abi", "runtime-abi"})
+    tests.expect(matrix.find("row=compiler|consumer:N|producer:N|accept") != std::string::npos &&
+            matrix.find("row=compiler|consumer:N-1|") == std::string::npos &&
+            matrix.find("row=compiler|consumer:N|producer:N-1|") == std::string::npos,
+        "compiler matrix does not claim a previous release");
+    for (const std::string surface : {"native-abi", "runtime-abi"})
     {
         tests.expect(matrix.find("row=" + surface + "|consumer:N|producer:N-1|accept") !=
                 std::string::npos,
@@ -44,12 +46,38 @@ int main()
         nativesharp::tests::evidenceRoot("nativesharp_item405_final_compatibility_tests");
     std::error_code ignored;
     std::filesystem::remove_all(root, ignored);
-    const std::filesystem::path path = root / "NativeSharp3Compatibility.matrix";
+    const std::filesystem::path path = root / "NativeSharpCompatibility.matrix";
     std::string verificationError;
     tests.expect(writeCompatibilityMatrix(path, verificationError),
         "final compatibility matrix writes: " + verificationError);
     tests.expect(verifyCompatibilityMatrix(path, verificationError),
         "final compatibility matrix verifies: " + verificationError);
+
+    std::string opaqueCompilerLabels = matrix;
+    const std::string currentCompiler = "compiler.N=1.0.0\ncompiler.N-1=none\n";
+    const auto compilerPosition = opaqueCompilerLabels.find(currentCompiler);
+    opaqueCompilerLabels.replace(compilerPosition, currentCompiler.size(),
+        "compiler.N=historic-label\ncompiler.N-1=other-label\n");
+    {
+        std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+        stream << opaqueCompilerLabels;
+    }
+    tests.expect(verifyCompatibilityMatrix(path, verificationError),
+        "compiler version labels do not gate compatibility when contracts match");
+
+    std::string incompatibleAbi = matrix;
+    const std::string nativeAbi = "native-abi.N=1.0";
+    const auto abiPosition = incompatibleAbi.find(nativeAbi);
+    incompatibleAbi.replace(abiPosition, nativeAbi.size(), "native-abi.N=incompatible");
+    {
+        std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+        stream << incompatibleAbi;
+    }
+    tests.expect(!verifyCompatibilityMatrix(path, verificationError),
+        "an incompatible native ABI remains rejected");
+
+    tests.expect(writeCompatibilityMatrix(path, verificationError),
+        "restore the canonical matrix for the forward-claim negative: " + verificationError);
 
     std::ostringstream output;
     std::ostringstream error;
