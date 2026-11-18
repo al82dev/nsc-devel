@@ -44,8 +44,11 @@ struct CompilerInvocation final
         llvm_backend::LinkTimeOptimizationMode::None;
     bool linkTimeOptimizationSeen = false;
     bool incrementalLink = false;
-    // EN: Freeze 3.0 DEC-13: opt-in check of `extern C from "<dll>"` symbols against host DLLs.
-    // ES: Congelamiento 3.0 DEC-13: comprobacion opcional de simbolos `extern C from "<dll>"` contra
+    bool addressSanitizer = false;
+    std::filesystem::path addressSanitizerClang;
+    std::filesystem::path addressSanitizerRuntime;
+    // EN: Freeze DEC-13: opt-in check of `extern C from "<dll>"` symbols against host DLLs.
+    // ES: Congelamiento DEC-13: comprobacion opcional de simbolos `extern C from "<dll>"` contra
     //     las DLL del host.
     bool validateSystemImports = false;
     // EN: T15: --crt-startup; the executable starts through the C runtime startup given with --link-lib.

@@ -554,8 +554,8 @@ bool isTraitDeclaration(const NamedTypeDeclaration& type)
     {
         if (part.syntax == nullptr) return false;
         const std::string_view metadata = part.syntax->auxiliaryText();
-        return metadata == "ns3-trait" ||
-            metadata.find("nsc-meta:ns3-trait") != std::string_view::npos;
+        return metadata == "nsc-trait" ||
+            metadata.find("nsc-meta:nsc-trait") != std::string_view::npos;
     });
 }
 }
@@ -1271,10 +1271,10 @@ void ProjectMemberModel::validateReferenceReturnLifetime(
             diagnostics::DiagnosticSeverity::Error,
             symbol.range,
             "lifetime 'this' is available only on instance ref returns");
-    // EN: Freeze 3.0 P3: an explicit `ref[this]` on an instance member names the receiver, which
+    // EN: Freeze P3: an explicit `ref[this]` on an instance member names the receiver, which
     //     is always in scope. The public surface of a precompiled library writes the inferred
     //     lifetime explicitly, so without this the consumer rejected every ref-returning method.
-    // ES: Congelamiento 3.0 P3: un `ref[this]` explicito en un miembro de instancia nombra el
+    // ES: Congelamiento P3: un `ref[this]` explicito en un miembro de instancia nombra el
     //     receptor, que siempre esta en alcance. La superficie publica de una biblioteca precompilada
     //     escribe la vida inferida explicitamente, asi que sin esto el consumidor rechazaba todo
     //     metodo que devuelve ref.
@@ -1362,7 +1362,7 @@ void ProjectMemberModel::buildCallableSignature(
             diagnostics::DiagnosticId::InvalidOperand,
             diagnostics::DiagnosticSeverity::Error,
             symbol.range,
-            "user-defined operator has no NativeSharp 3 lang-item contract");
+            "user-defined operator has no NativeSharp lang-item contract");
 }
 
 void ProjectMemberModel::validateCAbiMember(

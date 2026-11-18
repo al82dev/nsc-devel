@@ -1,0 +1,1 @@
+struct A { public int Read() { return 7; } } int Main() { A a=default(A); string n=nameof(a.Read); return n=="Read" ? 0 : 1; }

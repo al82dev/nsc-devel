@@ -33,7 +33,7 @@ cambiar los valores normativos predeterminados.
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T04GenericResourceLimitTests.cpp`: ciclos directos/indirectos,
+- `tests/unit/NativeSharpT04GenericResourceLimitTests.cpp`: ciclos directos/indirectos,
   truncamiento causal, reutilización de caché, límite de cantidad, expansión ramificada, override
   CLI, crecimiento de profundidad y diagnóstico reproducible.
 - `docs/3.0/language/generic-resource-limits.md`: contrato de usuario ES/EN.

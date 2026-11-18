@@ -1,3 +1,5 @@
+> **Vigencia:** Este documento conserva evidencia histórica. El producto es 1.0 y NativeSharp es un lenguaje único y acumulativo, sin versiones ni ediciones. NSMeta no se versiona ni debe rechazarse por una etiqueta de versión.
+
 # NativeSharp.Core.Threading: auditoría y verificación de Language 3
 
 Fecha: 2026-10-05

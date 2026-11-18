@@ -1,0 +1,1 @@
+class Base { } class Mid : Base { } class Inspector : Mid { public static int Fold(MetadataFields.Record value) { return value.First + value.Last; } } int Main() { owned MetadataFields.Record value = new MetadataFields.Record(); value.First = 7; value.Last = 3; return Inspector.Fold(value) == 10 ? 0 : 1; }

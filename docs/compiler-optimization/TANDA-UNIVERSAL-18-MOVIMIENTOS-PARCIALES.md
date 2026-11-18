@@ -15,7 +15,7 @@ del lenguaje que convierta implícitamente todos los structs en move-only.
 
 ## Archivo
 
-- `tests/unit/NativeSharp3T06PartialMoveTests.cpp`
+- `tests/unit/NativeSharpT06PartialMoveTests.cpp`
 
 El nombre histórico del CTest se conserva. La prueba sigue verificando el mismo
 contrato de seguridad, pero ahora la capacidad move-only nace de la representación.

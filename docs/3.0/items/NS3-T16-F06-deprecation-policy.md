@@ -1,31 +1,29 @@
-# NS3-T16-F06 — Ventana de deprecación / Deprecation window
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
+# NS3-T16-F06 — Política de deprecación / Deprecation policy
 
 ## Español
 
-`nsc --print-deprecation-policy` publica `NSDEPRECATION 1`: siete aliases/comportamientos 2.x,
-su código MIG3xxx, release de deprecación y release mínima de eliminación. En edición 2 siguen
-activos; en edición 3 producen warning, admiten la supresión localizada del analizador y se vuelven
-error con `nsc --analyze-migration-strict <archivo.ns>` para CI. La política actual fija 4.0 como
-primera eliminación ordinaria.
+`nsc --print-deprecation-policy` publica `NSDEPRECATION 1`: siete aliases o comportamientos,
+su código de diagnóstico y su estado explícito. Las advertencias admiten supresión localizada y
+`nsc --analyze-migration-strict <archivo.ns>` las trata como errores para CI. El estado no depende
+de una versión del lenguaje.
 
-`nsc --simulate-deprecation-removal <feature> <major.minor> [--security-ub]` permite auditar el
-calendario. Una eliminación 3.x se rechaza aunque haya warning previo; sólo una corrección de
-seguridad/UB marcada explícitamente puede adelantarla. Una eliminación ordinaria desde 4.0 exige
-que el feature haya pasado por deprecación.
+`nsc --simulate-deprecation-removal <feature> [--security-ub]` evalúa si una característica ya
+deprecada puede retirarse o si aplica una excepción documentada de seguridad o comportamiento
+indefinido. La simulación no recibe ni compara una versión del lenguaje.
 
 ## English
 
-`nsc --print-deprecation-policy` publishes `NSDEPRECATION 1`: seven 2.x aliases/behaviors, their
-MIG3xxx code, deprecation release, and earliest removal release. They remain active in edition 2;
-edition 3 emits warnings, honors the analyzer's local suppression, and turns warnings into CI
-errors through `nsc --analyze-migration-strict <file.ns>`. The current ordinary-removal floor is
-4.0.
+`nsc --print-deprecation-policy` publishes `NSDEPRECATION 1`: seven aliases or behaviors, their
+diagnostic codes, and explicit states. Warnings can be locally suppressed; `nsc
+--analyze-migration-strict <file.ns>` treats them as CI errors. State does not depend on a language
+version.
 
-`nsc --simulate-deprecation-removal <feature> <major.minor> [--security-ub]` audits the calendar.
-Ordinary 3.x removal is rejected even after a warning; only an explicitly documented security/UB
-fix may advance it. Ordinary removal from 4.0 onward requires prior deprecation.
+`nsc --simulate-deprecation-removal <feature> [--security-ub]` checks prior deprecation or a
+documented security/undefined-behavior exception. It does not accept or compare a language version.
 
 ## Validación dirigida / Targeted validation
 
-Construcción y ejecución directa de `nsc_ns3_t16_migration_tests` y del helper T16 existente;
-sin CTest ni baseline.
+La ejecución histórica de `nsc_ns3_t16_migration_tests` corresponde a la implementación anterior.
+Las pruebas actualizadas quedan pendientes de ejecución por el usuario.

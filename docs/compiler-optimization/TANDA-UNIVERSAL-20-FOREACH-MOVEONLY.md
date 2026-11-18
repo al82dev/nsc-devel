@@ -14,7 +14,7 @@ es move-only, sin derivar esa capacidad de una edición del lenguaje.
 
 ## Archivo
 
-- `tests/unit/NativeSharp3T09ForeachProtocolTests.cpp`
+- `tests/unit/NativeSharpT09ForeachProtocolTests.cpp`
 
 ## Validación dirigida
 

@@ -1,8 +1,10 @@
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
 # NS3 baseline: límites `unsafe` en fixtures positivas
 
 ## Problema
 
-Cuatro fixtures positivas anteriores al endurecimiento de Edition 3 ejecutaban desreferencias,
+Cuatro fixtures positivas anteriores al endurecimiento de NativeSharp ejecutaban desreferencias,
 casts de procedencia o llamadas FFI sin un límite `unsafe` explícito. El compilador las rechazaba
 correctamente con NS3030, pero las pruebas seguían describiéndolas como programas válidos.
 
@@ -29,6 +31,6 @@ atraviesan el límite de auditoría antes de comprobar sus errores estructurales
 
 ## Mejora
 
-Las fixtures positivas documentan el modelo real de seguridad de NativeSharp 3.0 y conservan una
+Las fixtures positivas documentan el modelo real de seguridad de NativeSharp y conservan una
 superficie `unsafe` pequeña, auditable y justificada. La expectativa de retorno conserva además el
 diagnóstico vigente de contrato completo de puntero, en vez del texto antiguo limitado a `const`.

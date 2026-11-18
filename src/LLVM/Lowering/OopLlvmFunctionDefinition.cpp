@@ -33,11 +33,11 @@ bool OopLlvmImplementation::defineFunction(const frontend::ProjectOopMirFunction
         // (offset 0) so a debugger can inspect 0/-1/1..N. Only for the poll (self = parameter 0).
         emitPollStateDebugVariable(function);
         if (!prepareFunctionCleanupState(function, error)) return false;
-        // EN: Freeze 3.0 C-02: a poll/MoveNext dispatches on its state before the body.
-        // ES: Congelamiento 3.0 C-02: un poll/MoveNext despacha sobre su estado antes del cuerpo.
+        // EN: Freeze C-02: a poll/MoveNext dispatches on its state before the body.
+        // ES: Congelamiento C-02: un poll/MoveNext despacha sobre su estado antes del cuerpo.
         if (!beginCoroutineDispatch(function, error)) return false;
-        // EN: Freeze 3.0 DEC-11: element accesses of arrays with live bits, before the body.
-        // ES: Congelamiento 3.0 DEC-11: accesos a elementos de arreglos con bits de vida.
+        // EN: Freeze DEC-11: element accesses of arrays with live bits, before the body.
+        // ES: Congelamiento DEC-11: accesos a elementos de arreglos con bits de vida.
         classifyArrayElementAccesses(function.body.get());
         if (!lowerStatement(function.body.get(), error)) return false;
         if (!finishCoroutineDispatch(error)) return false;
@@ -265,7 +265,9 @@ bool OopLlvmImplementation::prepareFunctionCleanupState(
                 return fail(error, "OOP MIR cleanup contract contains a null action");
             cleanupRegions_.emplace(cleanup.ordinal, cleanup.action);
             if (memberModel_ == nullptr || !cleanup.action->automaticDestruction ||
-                !memberModel_->typeTransitivelyHasCustomDestructor(cleanup.typeKey)) continue;
+                (!memberModel_->typeTransitivelyHasCustomDestructor(cleanup.typeKey) &&
+                 !(cleanup.action->kind == frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow &&
+                   cleanup.action->referenceResult && memberModel_->typeRequiresValueDrop(cleanup.typeKey)))) continue;
             LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
             if (cleanup.localOrdinal.has_value())
             {
@@ -423,17 +425,17 @@ bool OopLlvmImplementation::collectLocalStorage(
             currentMirFunction_->capturedLocalOrdinals,
             *node->localOrdinal) != currentMirFunction_->capturedLocalOrdinals.end();
         LLVMValueRef slot = nullptr;
-        // EN: Freeze 3.0 C-17: an async-generator poll is a frame-resident coroutine now, so a
+        // EN: Freeze C-17: an async-generator poll is a frame-resident coroutine now, so a
         //     captured local keeps its cell in the frame like any other coroutine's (C-05); the
         //     former rejection of this case was lifted.
-        // ES: Congelamiento 3.0 C-17: el poll de un generador async ahora es una corrutina con frame
+        // ES: Congelamiento C-17: el poll de un generador async ahora es una corrutina con frame
         //     residente, asi que un local capturado guarda su celda en el frame como en cualquier
         //     otra corrutina (C-05); se retiro el rechazo que existia para este caso.
         if (captured && isFrameResidentCoroutine(*currentMirFunction_))
         {
-            // EN: Freeze 3.0 C-05: the cell outlives this call; aliasCoroutineFrameLocals finds it
+            // EN: Freeze C-05: the cell outlives this call; aliasCoroutineFrameLocals finds it
             //     in the frame or creates it on the first entry.
-            // ES: Congelamiento 3.0 C-05: la celda sobrevive a esta llamada;
+            // ES: Congelamiento C-05: la celda sobrevive a esta llamada;
             //     aliasCoroutineFrameLocals la encuentra en el frame o la crea en la primera entrada.
             coroutineCapturedLocals_.emplace(*node->localOrdinal, typeKey);
             localStorage_[*node->localOrdinal] = nullptr;

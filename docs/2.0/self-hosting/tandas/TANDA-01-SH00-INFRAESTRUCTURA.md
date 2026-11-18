@@ -1,4 +1,6 @@
-# NativeSharp 2.0 self-hosting — tanda 01: infraestructura SH00
+# NativeSharp self-hosting — tanda 01: infraestructura SH00
+
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
 
 ## 1. Identidad
 
@@ -44,7 +46,7 @@ permite configurar todas las rutas del baseline y evita escrituras fuera de raí
 - Código NativeSharp del compilador.
 - Bindings LLVM C y Win32.
 - Reescrituras de NSLink o NSAsm.
-- Características de NativeSharp 3.0.
+- Características de NativeSharp.
 
 ## 3. Diseño
 

@@ -2,7 +2,7 @@
 
 ## Español
 
-NativeSharp 3.0 incorpora contratos semánticos por cada nivel exterior de puntero sin cambiar
+NativeSharp incorpora contratos semánticos por cada nivel exterior de puntero sin cambiar
 su representación física de Windows x64 ni el uso de punteros opacos de LLVM:
 
 - `T*?`: puntero explícitamente anulable; el `T*` histórico conserva esta semántica.
@@ -34,7 +34,7 @@ cruzar una llamada, espacios de direcciones, alineaciones inválidas y aritméti
 
 ## English
 
-NativeSharp 3.0 adds semantic contracts to each outer pointer level without changing its
+NativeSharp adds semantic contracts to each outer pointer level without changing its
 Windows x64 physical representation or LLVM opaque-pointer lowering:
 
 - `T*?`: explicitly nullable pointer; legacy `T*` keeps this behavior.

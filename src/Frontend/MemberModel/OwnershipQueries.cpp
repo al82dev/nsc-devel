@@ -141,8 +141,8 @@ bool ProjectMemberModel::typeRequiresValueDrop(std::string_view typeKey) const
 {
     // NS304-T06-F07: iterator/async-iterator carry a Drop function pointer and therefore always
     // require a value drop (the drop glue dispatches through it), like a custom-destructor struct.
-    // EN: Freeze 3.0 C-14: a future carries its Drop function pointer too.
-    // ES: Congelamiento 3.0 C-14: un future tambien lleva su puntero a funcion Drop.
+    // EN: Freeze C-14: a future carries its Drop function pointer too.
+    // ES: Congelamiento C-14: un future tambien lleva su puntero a funcion Drop.
     return typeTransitivelyOwnsStorage(typeKey) ||
         typeTransitivelyHasCustomDestructor(typeKey) ||
         typeKey.starts_with("iterator:") || typeKey.starts_with("async-iterator:") ||
@@ -198,11 +198,11 @@ bool ProjectMemberModel::typeIsImplicitlyCopyable(std::string_view typeKey) cons
         {
             if (memberOrdinal >= members_.size()) continue;
             const ClassMemberSymbol& field = members_[memberOrdinal];
-            // EN: Freeze 3.0 C-11: a destructor is a non-trivial lifetime. A plain copy of such a
+            // EN: Freeze C-11: a destructor is a non-trivial lifetime. A plain copy of such a
             //     value ran the destructor once per copy (a returned local was destroyed in the
             //     callee and again in the caller), so the value is move-only, as with an owned
             //     field.
-            // ES: Congelamiento 3.0 C-11: un destructor es un lifetime no trivial. Una copia simple
+            // ES: Congelamiento C-11: un destructor es un lifetime no trivial. Una copia simple
             //     de ese valor corria el destructor una vez por copia (un local retornado se
             //     destruia en el llamado y otra vez en el llamador), asi que el valor es move-only,
             //     igual que con un campo owned.
@@ -259,6 +259,92 @@ bool ProjectMemberModel::typeIsPlainData(std::string_view typeKey) const
     return true;
 }
 
+bool ProjectMemberModel::typeContainsThreadLocalSharedPointer(std::string_view typeKey) const
+{
+    struct PendingType { std::string key; bool includeDerived; };
+    std::vector<PendingType> pending{{std::string(typeKey), true}};
+    std::vector<unsigned char> visited(nameLookup_ != nullptr ? nameLookup_->namedTypes().size() : 0, 0);
+    while (!pending.empty())
+    {
+        PendingType item = std::move(pending.back());
+        pending.pop_back();
+        std::string& candidate = item.key;
+        if (candidate.starts_with("ref:") || candidate.starts_with("refmut:"))
+        {
+            pending.push_back({candidate.substr(candidate.find(':') + 1), item.includeDerived});
+            continue;
+        }
+        if (candidate.ends_with('*'))
+        {
+            pending.push_back({candidate.substr(0, candidate.size() - 1), item.includeDerived});
+            continue;
+        }
+        if (const auto element = ProjectTypeConversion::nativeArrayElementType(candidate))
+        {
+            pending.push_back({*element, item.includeDerived});
+            continue;
+        }
+        if (const auto element = fixedArrayElementTypeKey(candidate))
+        {
+            pending.push_back({*element, item.includeDerived});
+            continue;
+        }
+        if (const auto elements = ProjectTypeConversion::tupleElementTypeKeys(candidate))
+        {
+            for (const auto& element : *elements) pending.push_back({element, item.includeDerived});
+            continue;
+        }
+        const auto ordinal = typeOrdinalForKey(candidate);
+        if (!ordinal.has_value() || nameLookup_ == nullptr ||
+            *ordinal >= nameLookup_->namedTypes().size()) continue;
+        const unsigned char bit = item.includeDerived ? 2 : 1;
+        if ((visited[*ordinal] & bit) != 0) continue;
+        visited[*ordinal] |= bit;
+        const auto& declaration = nameLookup_->namedTypes()[*ordinal];
+        if (genericModel_ != nullptr)
+        {
+            const auto* specialization = genericModel_->specializationForTypeKey(candidate);
+            if (specialization != nullptr && specialization->templateOrdinal < genericModel_->templates().size())
+            {
+                const auto& original = genericModel_->templates()[specialization->templateOrdinal];
+                const std::string expected = original.moduleName + "::" + original.namespaceName + "." +
+                    specialization->specializedName;
+                if (original.namespaceName == "NativeSharp.Core" && original.ownerName.empty() &&
+                    (original.name == "Rc" || original.name == "WeakRc") &&
+                    specialization->specializedName == declaration.identity.name() &&
+                    declaration.identity.key() == expected && specialization->templateKey == original.canonicalKey)
+                    return true;
+            }
+        }
+        if (item.includeDerived && *ordinal < sharedStaticDerivedByType_.size())
+            for (const std::size_t derived : sharedStaticDerivedByType_[*ordinal])
+                if (derived < nameLookup_->namedTypes().size())
+                    pending.push_back({"type:" + nameLookup_->namedTypes()[derived].identity.key(), true});
+        if (declaration.kind == NamedTypeDeclarationKind::Class)
+        {
+            for (const auto& part : declaration.parts)
+            {
+                if (part.syntax == nullptr) continue;
+                if (!part.syntax->typeSyntaxes().empty())
+                {
+                    for (const ast::TypeSyntax* base : part.syntax->typeSyntaxes())
+                        pending.push_back({canonicalTypeKey(base, *nameLookup_), false});
+                }
+                else if (part.syntax->typeSyntax() != nullptr)
+                    pending.push_back({canonicalTypeKey(part.syntax->typeSyntax(), *nameLookup_), false});
+            }
+        }
+        for (const std::size_t memberOrdinal : membersByType_[*ordinal])
+        {
+            if (memberOrdinal >= members_.size()) continue;
+            const auto& field = members_[memberOrdinal];
+            if (field.kind == ClassMemberKind::Field && !field.isStatic)
+                pending.push_back({field.declaredTypeKey, true});
+        }
+    }
+    return false;
+}
+
 bool ProjectMemberModel::typeIsMoveOnly(std::string_view typeKey) const
 {
     std::vector<std::string> pending{std::string(typeKey)};
@@ -270,8 +356,8 @@ bool ProjectMemberModel::typeIsMoveOnly(std::string_view typeKey) const
             candidate.starts_with("builtin:") || candidate.ends_with("*") ||
             candidate.ends_with("[]"))
             continue;
-        // EN: Freeze 3.0 C-14: a future owns its frame, so a copy would release it twice.
-        // ES: Congelamiento 3.0 C-14: un future es dueno de su frame; una copia lo liberaria dos veces.
+        // EN: Freeze C-14: a future owns its frame, so a copy would release it twice.
+        // ES: Congelamiento C-14: un future es dueno de su frame; una copia lo liberaria dos veces.
         if (candidate.starts_with("future:")) return true;
         if (const std::optional<std::vector<std::string>> tuple =
                 ProjectTypeConversion::tupleElementTypeKeys(candidate))

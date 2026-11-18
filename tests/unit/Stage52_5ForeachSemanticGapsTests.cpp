@@ -100,22 +100,16 @@ void writeProject(const std::filesystem::path& directory, std::string_view name)
             "</Name></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
 }
 
-// Same as writeProject, but with <ProjectReference>s pulling in the real
-// NativeSharp.Core / NativeSharp.Core.Collections.Generic library projects from this repo's own
-// lib/ tree (absolute paths via sourceRoot, so this works regardless of the fixture's temp
-// directory location) -- needed by any fixture that actually uses List<T> and friends, exactly
-// like examples/project_stage52x_foreach/Stage52xForeach.nsproj already does.
+// Build the external collections sources against external Core sources for semantic analysis.
 void writeProjectWithCollectionsLibrary(
     const std::filesystem::path& directory, std::string_view name, const std::filesystem::path& sourceRoot)
 {
-    const std::string corePath = (sourceRoot / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").string();
-    const std::string collectionsPath =
-        (sourceRoot / "lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj").string();
+    const std::string collectionsPath = (sourceRoot /
+        "stdlib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.Sources.nsproj").string();
     writeFile(
         directory / (std::string(name) + ".nsproj"),
         "<Project><PropertyGroup><Name>" + std::string(name) +
             "</Name></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" />"
-            "<ProjectReference Include=\"" + corePath + "\" />"
             "<ProjectReference Include=\"" + collectionsPath + "\" /></ItemGroup></Project>");
 }
 
@@ -578,18 +572,24 @@ namespace ForeachNonTrivialStructEnumerator
     std::string error;
     const bool ok = compilation.compileProjectMethodBodies(
         directory / "ForeachNonTrivialStructEnumerator.nsproj", error);
-    tests.expect(!ok,
-        "foreach rejects a struct enumerator whose value lifetime cannot yet be discharged");
+    // EN: Freeze C-11 (4d6237d84) made a struct enumerator with a non-trivial lifetime an ordinary
+    //     value local of the lowered loop, destroyed on every exit; the rejection this case expected
+    //     no longer exists.
+    // ES: Congelamiento C-11 (4d6237d84) hizo del enumerador struct con lifetime no trivial un
+    //     local de valor comun del ciclo bajado, destruido en cada salida; el rechazo esperado ya no
+    //     existe.
+    tests.expect(ok,
+        "foreach accepts a struct enumerator with a non-trivial value lifetime (" + error + ")");
     tests.expect(
-        hasDiagnosticText(compilation, "automatic destruction of value locals is not yet supported"),
-        "non-trivial struct enumerator gets a focused lifetime diagnostic");
+        !hasDiagnosticText(compilation, "automatic destruction of value locals is not yet supported"),
+        "a non-trivial struct enumerator no longer reports the retired lifetime diagnostic");
 }
 }
 
 int main()
 {
     TestContext tests;
-    const std::filesystem::path sourceRoot = std::filesystem::path(NSC_SOURCE_DIR);
+    const std::filesystem::path sourceRoot = std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT);
     const auto root = std::filesystem::temp_directory_path() / "nativesharp_stage52_5_foreach_gaps_tests";
     std::error_code cleanupError;
     std::filesystem::remove_all(root, cleanupError);

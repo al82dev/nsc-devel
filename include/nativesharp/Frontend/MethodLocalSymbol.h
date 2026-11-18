@@ -21,6 +21,8 @@
 #include "nativesharp/Frontend/ProjectEscapePropagationStatistics.h"
 #include "nativesharp/Frontend/ProjectMethodBodyBuildOptions.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
+#include "nativesharp/Frontend/ViewSourceIdentity.h"
+#include "nativesharp/Frontend/ViewUnknownOrigin.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Sema/ExpressionInfo.h"
 
@@ -49,10 +51,10 @@ struct MethodLocalSymbol final
     const ast::AstNode* syntax = nullptr;
     std::string name;
     std::string typeKey;
-    // NativeSharp 3.0.4 T01-F06. Static locals retain lexical name lookup but their storage and
+    // NativeSharp T01-F06. Static locals retain lexical name lookup but their storage and
     // lifetime belong to the defining module rather than to an invocation frame.
     bool isStatic = false;
-    // NativeSharp 2.0 item 269: `T[length] local;` is stack storage whose extent is
+    // NativeSharp item 269: `T[length] local;` is stack storage whose extent is
     // evaluated when the declaration executes.  Downstream expression typing uses the
     // pointer-shaped `typeKey`, while these two fields preserve the array declaration's
     // element type and count expression so HIR can synthesize the existing stack-allocation
@@ -68,7 +70,7 @@ struct MethodLocalSymbol final
     // Set on the VLA itself and on local pointer aliases derived from it. This provenance is
     // consumed by return, assignment, and lambda-capture checks so frame storage cannot escape.
     std::optional<std::size_t> variableLengthArrayRootLocalOrdinal;
-    // NativeSharp 2.0 item 312. typeKey is the logical element type; the physical local slot
+    // NativeSharp item 312. typeKey is the logical element type; the physical local slot
     // stores an address to another exact-type, mutable location.
     bool isReference = false;
     // Pattern `ref` and `ref mut` share the physical alias representation, but only the latter
@@ -89,7 +91,7 @@ struct MethodLocalSymbol final
     // validates this origin, not the one of `p`'s own slot.
     MethodEscapeOrigin pointerValueOrigin;
     std::optional<std::size_t> referenceLifetimeScopeOrdinal;
-    // NativeSharp 3.0 T06-F03. Mutable reference locals are exclusive borrows of a canonical
+    // NativeSharp T06-F03. Mutable reference locals are exclusive borrows of a canonical
     // storage place.  The key is rooted in a local/parameter (L#/P#) and contains field/index
     // projections.  "U" represents an origin that cannot be proven and therefore overlaps
     // every other live mutable borrow; empty is reserved for non-reference locals.
@@ -98,6 +100,8 @@ struct MethodLocalSymbol final
     // source reference while the child reference is live, and preserves the original place.
     std::optional<std::size_t> referenceReborrowSourceLocalOrdinal;
     bool isConst = false;
+    // Read-only capability inherited by a borrowed class alias from its initializer.
+    bool readonlyBorrowedObject = false;
     // T42: volatile local storage uses the same observable-load/store contract as volatile
     // fields. It is not atomic and supplies no inter-thread ordering.
     bool isVolatile = false;
@@ -138,13 +142,13 @@ struct MethodLocalSymbol final
     // usa para una pregunta concreta --¿el divisor es cero?-- y no para tipar nada.
     std::optional<std::int64_t> constantIntegerValue;
     bool isRaii = false;
-    // EN: Freeze 3.0 DEC-10. The exception a catch handles belongs to the handler until the handler
+    // EN: Freeze DEC-10. The exception a catch handles belongs to the handler until the handler
     //     ends or `move(e)` takes it out. `isCatchVariable` marks the catch parameter;
     //     `caughtExceptionScopeOrdinal` is the catch scope of the exception this local names. It is
     //     set on the catch parameter and on every local of that handler that copies it, so storing
     //     either where it outlives the handler (a field, a static, an outer local, a return) is a
     //     compile error.
-    // ES: Congelamiento 3.0 DEC-10. La excepcion que maneja un catch pertenece al handler hasta que
+    // ES: Congelamiento DEC-10. La excepcion que maneja un catch pertenece al handler hasta que
     //     termina o `move(e)` la saca. `isCatchVariable` marca el parametro del catch;
     //     `caughtExceptionScopeOrdinal` es el scope del catch cuya excepcion nombra este local. Se
     //     fija en el parametro del catch y en cada local de ese handler que lo copia, asi guardar
@@ -152,10 +156,10 @@ struct MethodLocalSymbol final
     //     es error de compilacion.
     bool isCatchVariable = false;
     std::optional<std::size_t> caughtExceptionScopeOrdinal;
-    // EN: Freeze 3.0 P10. The ordinal of the exception parameter this local copies: a non-owned
+    // EN: Freeze P10. The ordinal of the exception parameter this local copies: a non-owned
     //     parameter of an exception type is a loan from the caller (it may be a caught exception), so
     //     neither it nor a local that copies it may be stored where it outlives the call.
-    // ES: Congelamiento 3.0 P10. El ordinal del parametro de excepcion que copia este local: un
+    // ES: Congelamiento P10. El ordinal del parametro de excepcion que copia este local: un
     //     parametro no owned de tipo excepcion es un prestamo del llamador (puede ser una excepcion
     //     atrapada), asi que ni el ni un local que lo copia pueden guardarse donde sobreviven a la
     //     llamada.
@@ -174,7 +178,7 @@ struct MethodLocalSymbol final
     // T06-F02. A value local with an owned field or a (possibly nested) custom destructor owns
     // cleanup despite not being a reference-shaped `raii` local.
     bool requiresValueDrop = false;
-    // NativeSharp 3.0 T06-F06. A `pin raii` owner keeps its ownership slot and object identity
+    // NativeSharp T06-F06. A `pin raii` owner keeps its ownership slot and object identity
     // fixed until lexical cleanup. It may be borrowed and destroyed in place, but never moved or
     // replaced after initialization.
     bool isPinned = false;
@@ -202,5 +206,27 @@ struct MethodLocalSymbol final
     // el de este bloque; este contesta la pregunta que el bloque plantea -- devolver una vista
     // de un local -- y se equivoca siempre del lado de rechazar, nunca del de aceptar.
     std::string viewRootLocalName;
+    // Field names that may back a view from a direct instance receiver.
+    std::vector<std::string> viewSourceFields;
+    // Parallel identity for named roots. Unknown preserves the legacy lookup
+    // when a producer has not supplied a semantic identity.
+    std::vector<ViewSourceIdentity> viewSourceIdentities;
+    // Observed unknown roots; an empty vector means unrecorded, not proven safe.
+    // The count records analysis timing only, not a lifetime or non-aliasing bound.
+    std::vector<ViewUnknownOrigin> viewUnknownOrigins;
+    // Prototype only: direct tuple parameter that supplied a deconstructed view.
+    // This is an observed source, not an exhaustive provenance contract.
+    std::optional<std::size_t> prototypeTupleViewParameter;
+    // Possible expressions assigned to a local managed delegate; retain branch sources.
+    std::vector<const ast::AstNode*> possibleDelegateSources;
+    // Flow-insensitive possible sources for class reference assignments. Retain edges
+    // rather than replacing them so branches and later assignments stay conservative.
+    bool mayAliasThisField = false;
+    bool mayAliasUnknownReference = false;
+    // EN: Named as an argument or receiver of a call after that call's checks (NSC-NEW-018).
+    // ES: Nombrado como argumento o receptor de una llamada, tras sus comprobaciones (NSC-NEW-018).
+    bool passedToCall = false;
+    std::vector<std::size_t> possibleReferenceSourceLocals;
+    std::vector<std::size_t> possibleReferenceSourceParameters;
 };
 }

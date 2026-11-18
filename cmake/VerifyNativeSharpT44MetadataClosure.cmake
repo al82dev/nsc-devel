@@ -62,7 +62,7 @@ if(NOT package_result EQUAL 0 OR NOT EXISTS "${package_lib}" OR NOT EXISTS "${pa
     message(FATAL_ERROR "T44 package failed (${package_result})\n${package_output}\n${package_error}")
 endif()
 
-# The consumer names only T44Package. NSMETA 1.25 must locate T44Dependency, link both archives,
+# The consumer names only T44Package. NSMETA must locate T44Dependency, link both archives,
 # retain the package's private kernel32 import, and produce a runnable executable.
 execute_process(
     COMMAND "${NSC_EXECUTABLE}" build "${OUTPUT_DIR}/Consumer/T44Consumer.nsproj"

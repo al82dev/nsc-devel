@@ -59,7 +59,7 @@ namespace NativeSharp.BookExamples.DeitelNative
             next = 0;
         }
 
-        public Card Deal()
+        public Card Deal() throws InvalidOperationException
         {
             if (next == cards.Length)
             {
@@ -124,7 +124,7 @@ namespace NativeSharp.BookExamples.DeitelNative
             return status == CrapsStatus.Won;
         }
 
-        public static int Run()
+        public static int Run() throws InvalidOperationException
         {
             raii Random random = new Random(20260906L);
             raii Deck deck = new Deck();

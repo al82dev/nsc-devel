@@ -1,0 +1,10 @@
+struct Record { internal int Hidden; public int Visible; }
+int Main()
+{
+    Record value = default(Record);
+    value.Hidden = 3;
+    value.Visible = 7;
+    int sum = 0;
+    static foreach (field in Fields(Record)) { sum = sum + field.Get(value); }
+    return sum == 10 ? 0 : 1;
+}

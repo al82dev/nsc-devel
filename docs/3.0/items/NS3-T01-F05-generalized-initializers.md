@@ -17,7 +17,7 @@ Estado: terminado.
 ## Archivos
 
 - `CMakeLists.txt`: registra la prueba dirigida independiente.
-- `tests/unit/NativeSharp3T01GeneralizedInitializerTests.cpp`: nueve comprobaciones O0.
+- `tests/unit/NativeSharpT01GeneralizedInitializerTests.cpp`: nueve comprobaciones O0.
 - `docs/3.0/language/generalized-initializers.md`: contrato ES/EN.
 - `docs/3.0/TANDA-05-CALLS-PARAMS-INITIALIZERS-T01.md`: alinea el expediente histórico con el
   protocolo estático realmente productivo.

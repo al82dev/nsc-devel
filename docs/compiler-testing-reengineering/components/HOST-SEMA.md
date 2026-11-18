@@ -1,5 +1,7 @@
 # Host.Sema — inventario semántico y contrato reconstructivo
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Estado y alcance
 
 - **Revisión congelada:** `3bb175443a18b2049c20d75443dd6743e2993903`.
@@ -170,7 +172,7 @@ compilador procesan. Esa bifurcación se conserva como hecho observable y no se 
 - Redeclaración exige mismo tipo internado y mismo linkage; múltiples cuerpos se rechazan.
 - `extern C` no admite cuerpo y valida retorno/parámetros mediante la matriz C ABI.
 - Main se exige definido con firma exacta codificada; los textos vigentes contienen referencias a
-  `NativeSharp 2.0`, contradicción documental frente a la política posterior neutral a edición.
+  `NativeSharp`, contradicción documental frente a la política posterior neutral a edición.
 - Una función non-void cuyo body puede caer al final produce `NotAllPathsReturn`.
 - Al analizar body se crea scope de parámetros, se fija `currentFunction_` y se restaura el contexto previo.
 
@@ -313,7 +315,7 @@ compilador procesan. Esa bifurcación se conserva como hecho observable y no se 
 
 ## 34. Contradicciones y riesgos conservados
 
-1. Diagnósticos y aliases todavía contienen `NativeSharp 2.0`, `3.0`, `unsafe`, `owned` y `borrowed`, frente a
+1. Diagnósticos y aliases todavía contienen `NativeSharp`, `3.0`, `unsafe`, `owned` y `borrowed`, frente a
    decisiones posteriores del usuario de neutralidad de edición y de no forzar esas capacidades.
 2. `EffectContext`, los dumpers y el análisis de fallthrough usan recursión sin límites explícitos.
 3. La ruta single-file rechaza classes, instance context, enum underlying types, placement construction e inline

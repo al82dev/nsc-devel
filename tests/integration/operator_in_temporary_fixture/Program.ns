@@ -1,0 +1,7 @@
+/// <summary>Intentionally passes a temporary to an equality operator with in parameters.</summary>
+/// <returns>Zero when the values are equal.</returns>
+int Main()
+{
+    Rational value = new Rational(1, 1);
+    return value == new Rational(1, 1) ? 0 : 1;
+}

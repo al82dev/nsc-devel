@@ -2,7 +2,7 @@
   <PropertyGroup><Name>c25_binary_roundtrip</Name></PropertyGroup>
   <ItemGroup>
     <Compile Include="**/*.ns" />
-    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
-    <ProjectReference Include="../../../lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj" />
+    <LibraryReference Include="NativeSharpCore.lib" Metadata="NativeSharpCore.nsmeta" />
+    <LibraryReference Include="NativeSharpCoreIO.lib" Metadata="NativeSharpCoreIO.nsmeta" />
   </ItemGroup>
 </Project>

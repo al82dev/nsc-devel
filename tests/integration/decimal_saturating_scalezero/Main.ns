@@ -1,0 +1,21 @@
+noinline decimal Add(decimal a, decimal b) { return saturating(a + b); }
+noinline decimal Sub(decimal a, decimal b) { return saturating(a - b); }
+int Main()
+{
+    unsafe("inspect decimal limits") {
+        i128 maxBits = ((i128)1 << 96) - (i128)1;
+        i128 minBits = maxBits | ((i128)1 << 127);
+        decimal maximum = *((decimal*)&maxBits);
+        decimal minimum = *((decimal*)&minBits);
+        decimal r1 = Add(maximum, 1m);
+        decimal r2 = Sub(minimum, 1m);
+        decimal r3 = Add(maximum, 1.0m);
+        decimal r4 = Sub(minimum, 1.0m);
+        decimal r5 = Add(maximum, 0.0m);
+        decimal r6 = Sub(minimum, 0.0m);
+        if (*((i128*)&r1) != maxBits || *((i128*)&r2) != minBits) return 1;
+        if (*((i128*)&r3) != maxBits || *((i128*)&r4) != minBits) return 2;
+        if (*((i128*)&r5) != maxBits || *((i128*)&r6) != minBits) return 3;
+    }
+    return 0;
+}

@@ -1,4 +1,5 @@
 #include "Internal/DriverInternal.h"
+#include "Internal/ProjectCommandSupport.h"
 
 #include "nativesharp/Compilation/ImplicitProjectRegistry.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
@@ -11,59 +12,61 @@
 #include <sstream>
 #include <system_error>
 
-// EN: Freeze 3.0 C-05. The file actions of the driver (`nsc <file.ns>`, `--check`, the file dumps
-//     and the file code generation) used to run the 1.x single-file pipeline, which accepts a
-//     different language than the 3.x project pipeline. A lone `.ns` now compiles as its implicit
+// EN: Freeze C-05. The file actions of the driver (`nsc <file.ns>`, `--check`, the file dumps
+//     and the file code generation) used to run a separate single-file pipeline, which accepts a
+//     different language than the project pipeline. A lone `.ns` now compiles as its implicit
 //     project: an in-memory `.nsproj` beside the file that compiles only that file and references
 //     NativeSharp.Core. Each file action maps to the project action that answers the same
 //     question. DEC-05: the CFG, dominance, SSA, optimization and pass-pipeline actions inspect the
-//     LLVM that the 3.x pipeline generates for that project (LlvmModuleInspector).
-// ES: Congelamiento 3.0 C-05. Las acciones de archivo del driver (`nsc <file.ns>`, `--check`, los
-//     dumps de archivo y la generacion de codigo de archivo) corrian el pipeline 1.x de un solo
-//     archivo, que acepta un lenguaje distinto al del pipeline 3.x de proyectos. Un `.ns` suelto
+//     LLVM that the pipeline generates for that project (LlvmModuleInspector).
+// ES: Congelamiento C-05. Las acciones de archivo del driver (`nsc <file.ns>`, `--check`, los
+//     dumps de archivo y la generacion de codigo de archivo) corrian un pipeline separado de un solo
+//     archivo, que acepta un lenguaje distinto al del pipeline de proyectos. Un `.ns` suelto
 //     ahora compila como su proyecto implicito: un `.nsproj` en memoria junto al archivo, que
 //     compila solo ese archivo y referencia NativeSharp.Core. Cada accion de archivo corresponde a
 //     la accion de proyecto que responde la misma pregunta. DEC-05: las acciones de CFG, dominancia,
-//     SSA, optimizacion y pass-pipeline inspeccionan el LLVM que el pipeline 3.x genera para ese
+//     SSA, optimizacion y pass-pipeline inspeccionan el LLVM que el pipeline genera para ese
 //     proyecto (LlvmModuleInspector).
 namespace nativesharp::driver
 {
 namespace
 {
-std::filesystem::path compilerExecutablePath()
+std::optional<std::filesystem::path> findCoreLibrary(
+    llvm_backend::LlvmOptimizationLevel level, std::string& error)
 {
-    std::wstring buffer(MAX_PATH, L'\0');
-    for (;;)
+    const auto valid = [](const std::filesystem::path& directory) {
+        std::error_code ec;
+        return std::filesystem::is_regular_file(directory / "NativeSharpCore.lib", ec) &&
+               std::filesystem::is_regular_file(directory / "NativeSharpCore.nsmeta", ec);
+    };
+    if (const auto configured = environmentValue("NSC_CORE_LIBRARY_ROOT");
+        configured.has_value() && !configured->empty())
     {
-        const DWORD length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-        if (length == 0) return {};
-        if (length < buffer.size())
+        const std::filesystem::path directory = pathFromUtf8(*configured);
+        if (valid(directory)) return directory;
+        error = "NSC_CORE_LIBRARY_ROOT must contain NativeSharpCore.lib and its metadata";
+        return std::nullopt;
+    }
+    const std::filesystem::path packageRoot = compilerExecutablePath().parent_path().parent_path() /
+        "packages" / "NativeSharp.Core";
+    std::error_code ec;
+    if (!std::filesystem::is_directory(packageRoot, ec)) return std::nullopt;
+    std::optional<std::filesystem::path> result;
+    for (std::filesystem::directory_iterator it(packageRoot, ec), end; !ec && it != end; it.increment(ec))
+    {
+        const auto candidate = it->path() / "windows-x64" / std::string(llvm_backend::llvmOptimizationLevelName(level));
+        if (!valid(candidate)) continue;
+        if (result.has_value())
         {
-            buffer.resize(length);
-            return std::filesystem::path(buffer);
+            error = "multiple NativeSharp.Core packages match; select one with NSC_CORE_LIBRARY_ROOT";
+            return std::nullopt;
         }
-        buffer.resize(buffer.size() * 2U);
+        result = candidate;
     }
-}
-
-// EN: An installation keeps `bin/nsc.exe` and `lib/NativeSharp.Core/`; a build tree keeps
-//     `build-*/bin/nsc.exe` under the repository root. The nearest ancestor that holds the Core
-//     project wins.
-// ES: Una instalacion tiene `bin/nsc.exe` y `lib/NativeSharp.Core/`; un arbol de compilacion tiene
-//     `build-*/bin/nsc.exe` bajo la raiz del repositorio. Gana el ancestro mas cercano que contiene
-//     el proyecto Core.
-std::optional<std::filesystem::path> findCoreProject()
-{
-    const std::filesystem::path executable = compilerExecutablePath();
-    for (std::filesystem::path directory = executable.parent_path(); !directory.empty();
-         directory = directory.parent_path())
-    {
-        const std::filesystem::path candidate = directory / "lib" / "NativeSharp.Core" / "NativeSharp.Core.nsproj";
-        std::error_code filesystemError;
-        if (std::filesystem::is_regular_file(candidate, filesystemError)) return candidate.lexically_normal();
-        if (directory == directory.root_path()) break;
-    }
-    return std::nullopt;
+    if (ec) error = "cannot enumerate NativeSharp.Core packages: " + ec.message();
+    else if (!result.has_value())
+        error = "NativeSharp.Core package is missing for " + std::string(llvm_backend::llvmOptimizationLevelName(level));
+    return result;
 }
 
 std::string xmlEscaped(std::string_view text)
@@ -193,10 +196,10 @@ ExitCode dumpSourceFileSyntax(std::string_view action, std::string_view path, st
     return success && unit != nullptr ? ExitCode::Success : ExitCode::CompilationError;
 }
 
-// EN: Freeze 3.0 DEC-05. The CFG, dominance and SSA actions of a source file read the unoptimized
+// EN: Freeze DEC-05. The CFG, dominance and SSA actions of a source file read the unoptimized
 //     LLVM of its implicit project; -O does not change them. The module is lowered for the
 //     inspection only and is never used to generate code.
-// ES: Congelamiento 3.0 DEC-05. Las acciones de CFG, dominancia y SSA de un archivo fuente leen el
+// ES: Congelamiento DEC-05. Las acciones de CFG, dominancia y SSA de un archivo fuente leen el
 //     LLVM sin optimizar de su proyecto implicito; -O no las cambia. El modulo se baja solo para la
 //     inspeccion y nunca se usa para generar codigo.
 bool isLlvmGraphInspection(std::string_view action) noexcept
@@ -206,10 +209,10 @@ bool isLlvmGraphInspection(std::string_view action) noexcept
 }
 
 ExitCode inspectSourceFileLlvm(std::string_view action, std::string_view path, std::ostream& output,
-                               std::ostream& error)
+                               std::ostream& error, llvm_backend::LlvmOptimizationLevel optimizationLevel)
 {
     std::unique_ptr<llvm_backend::LlvmModule> module;
-    if (!lowerSourceFileModule(path, false, module, error)) return ExitCode::CompilationError;
+    if (!lowerSourceFileModule(path, false, module, error, optimizationLevel)) return ExitCode::CompilationError;
     using Inspector = llvm_backend::LlvmModuleInspector;
     std::string inspectionError;
     bool inspected = false;
@@ -227,7 +230,8 @@ ExitCode inspectSourceFileLlvm(std::string_view action, std::string_view path, s
 }
 
 std::optional<std::filesystem::path> registerImplicitProject(
-    std::string_view sourcePath, bool executable, std::string& error)
+    std::string_view sourcePath, bool executable, std::string& error,
+    llvm_backend::LlvmOptimizationLevel optimizationLevel)
 {
     std::error_code filesystemError;
     const std::filesystem::path source = std::filesystem::absolute(pathFromUtf8(sourcePath), filesystemError);
@@ -241,31 +245,34 @@ std::optional<std::filesystem::path> registerImplicitProject(
         error = "a NativeSharp source file must use the .ns extension: '" + std::string(sourcePath) + "'";
         return std::nullopt;
     }
-    const std::optional<std::filesystem::path> core = findCoreProject();
-    if (!core.has_value())
+    const auto library = findCoreLibrary(optimizationLevel, error);
+    if (!error.empty()) return std::nullopt;
+    if (!library.has_value())
     {
-        error = "the implicit project of a source file references NativeSharp.Core, but no "
-                "lib/NativeSharp.Core/NativeSharp.Core.nsproj was found above the compiler";
+        error = "NativeSharp.Core package was not found; build and install NativeSharp Libraries "
+                "or set NSC_CORE_LIBRARY_ROOT";
         return std::nullopt;
     }
     const std::filesystem::path project = source.parent_path() /
         (source.stem().string() + (executable ? ".nsc-exe.nsproj" : ".nsc-lib.nsproj"));
+    const std::string reference =
+        "<LibraryReference Include=\"" + xmlEscaped((*library / "NativeSharpCore.lib").generic_string()) +
+        "\" Metadata=\"" + xmlEscaped((*library / "NativeSharpCore.nsmeta").generic_string()) + "\" />";
     std::string text = "<Project>\n  <PropertyGroup>\n    <Name>" + implicitModuleName(source) +
         "</Name>\n    <OutputType>" + (executable ? "Exe" : "Library") +
         "</OutputType>\n  </PropertyGroup>\n  <ItemGroup>\n    <Compile Include=\"" +
-        xmlEscaped(source.filename().generic_string()) + "\" />\n    <ProjectReference Include=\"" +
-        xmlEscaped(core->generic_string()) + "\" />\n  </ItemGroup>\n</Project>\n";
+        xmlEscaped(source.filename().generic_string()) + "\" />\n    " + reference + "\n  </ItemGroup>\n</Project>\n";
     compilation::ImplicitProjectRegistry::add(project, std::move(text));
     return project;
 }
 
 bool lowerSourceFileModule(
     std::string_view sourcePath, bool executable, std::unique_ptr<llvm_backend::LlvmModule>& llvmModule,
-    std::ostream& error)
+    std::ostream& error, llvm_backend::LlvmOptimizationLevel optimizationLevel)
 {
     std::string loadError;
     const std::optional<std::filesystem::path> project =
-        registerImplicitProject(sourcePath, executable, loadError);
+        registerImplicitProject(sourcePath, executable, loadError, optimizationLevel);
     std::optional<compilation::CompilationInputManifest> manifest;
     if (project.has_value()) manifest = loadCompilationInputManifest(*project, loadError);
     if (!manifest.has_value())
@@ -284,7 +291,7 @@ bool lowerSourceFileModule(
     }
     const bool success = compilation.compileProjectOopMir(*project, loadError);
     if (!loadError.empty()) error << "nsc: error: " << loadError << '\n';
-    if (compilation.diagnostics().hasErrors())
+    if (!compilation.diagnostics().diagnostics().empty())
     {
         diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
         renderer.renderAll(compilation.diagnostics(), error);
@@ -306,13 +313,13 @@ bool lowerSourceFileModule(
     {
         error << "nsc: error: " << (ambiguousEntryPoint
             ? "OOP executable has multiple int Main() entry points\n"
-            : "OOP executable requires exactly one int Main() function or static method with no parameters\n");
+            : "OOP executable requires exactly one int Main() or int Main(string[] args) function or static method\n");
         return false;
     }
-    // EN: Freeze 3.0 (plan item 114): the module is lowered with the member model, without debug information, as
+    // EN: Freeze (plan item 114): the module is lowered with the member model, without debug information, as
     //     the emission lowers it. The value drops of C-11 need that model; without it a destructible struct
     //     failed with "value drop has no address/member model".
-    // ES: Congelamiento 3.0 (elemento 114 del plan): el módulo se baja con el modelo de miembros, sin información
+    // ES: Congelamiento (elemento 114 del plan): el módulo se baja con el modelo de miembros, sin información
     //     de depuración, como lo baja la emisión. Los drops de valor de C-11 necesitan ese modelo; sin él un
     //     struct con destructor fallaba con «value drop has no address/member model».
     llvm_backend::ProjectOopLlvmLowerer lowerer;
@@ -343,17 +350,17 @@ ExitCode Driver::runSourceFile(std::string_view action, std::string_view path,
     if (action == "--program")
     {
         std::unique_ptr<llvm_backend::LlvmModule> program;
-        if (!lowerSourceFileModule(path, true, program, error)) return ExitCode::CompilationError;
+        if (!lowerSourceFileModule(path, true, program, error, optimizationLevel)) return ExitCode::CompilationError;
         output << "program check: ok\n";
         return ExitCode::Success;
     }
-    if (isLlvmGraphInspection(action)) return inspectSourceFileLlvm(action, path, output, error);
+    if (isLlvmGraphInspection(action)) return inspectSourceFileLlvm(action, path, output, error, optimizationLevel);
     if (action == "--dump-pass-pipeline")
     {
         // EN: DEC-05: the pipeline that optimizes this file at the requested level.
         // ES: DEC-05: el pipeline que optimiza este archivo en el nivel pedido.
         std::unique_ptr<llvm_backend::LlvmModule> module;
-        if (!lowerSourceFileModule(path, false, module, error)) return ExitCode::CompilationError;
+        if (!lowerSourceFileModule(path, false, module, error, optimizationLevel)) return ExitCode::CompilationError;
         output << "pass.pipeline " << llvm_backend::kLlvmPassPipelineFormat << '\n';
         printLlvmPipeline(optimizationLevel, output);
         return ExitCode::Success;
@@ -373,7 +380,7 @@ ExitCode Driver::runSourceFile(std::string_view action, std::string_view path,
         return ExitCode::CommandLineError;
     }
     std::string projectError;
-    const std::optional<std::filesystem::path> project = registerImplicitProject(path, false, projectError);
+    const std::optional<std::filesystem::path> project = registerImplicitProject(path, false, projectError, optimizationLevel);
     if (!project.has_value())
     {
         error << "nsc: error: " << projectError << '\n';

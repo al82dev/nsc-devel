@@ -369,8 +369,8 @@ bool ProjectOopMirModel::appendOwnedFieldDestructionSteps(
             const std::size_t memberOrdinal = *memberIt;
             const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
             if (member.kind != ClassMemberKind::Field || member.isStatic) continue;
-            // EN: Freeze 3.0 (owned arrays): an owned array field is released too, with its elements.
-            // ES: Congelamiento 3.0 (arreglos owned): un campo de arreglo owned tambien se libera,
+            // EN: Freeze (owned arrays): an owned array field is released too, with its elements.
+            // ES: Congelamiento (arreglos owned): un campo de arreglo owned tambien se libera,
             //     con sus elementos.
             const bool ownedArray = member.declaredOwnership == sema::OwnershipKind::Owned &&
                 ProjectTypeConversion::isNativeArray(member.declaredTypeKey);
@@ -403,10 +403,10 @@ bool ProjectOopMirModel::appendOwnedFieldDestructionSteps(
     return true;
 }
 
-// EN: Freeze 3.0 C-11 (found while probing value lifetimes): an object's struct field with a
+// EN: Freeze C-11 (found while probing value lifetimes): an object's struct field with a
 //     destructor or owned fields was never destroyed when the object was, so its resources
 //     leaked. It is dropped in place, in the same reverse declaration order as owned fields.
-// ES: Congelamiento 3.0 C-11 (hallazgo al sondear lifetimes de valores): un campo struct de un
+// ES: Congelamiento C-11 (hallazgo al sondear lifetimes de valores): un campo struct de un
 //     objeto con destructor o campos owned nunca se destruia junto con el objeto, asi que sus
 //     recursos se fugaban. Se destruye en su lugar, en el mismo orden inverso de declaracion que
 //     los campos owned.
@@ -422,7 +422,7 @@ bool ProjectOopMirModel::appendValueFieldDropStep(
     const ObjectFieldLayout* layout = objectLayoutModel.fieldLayoutForMember(memberOrdinal);
     if (layout == nullptr)
     {
-        error = "Freeze 3.0 C-11 value field has no object layout";
+        error = "Freeze C-11 value field has no object layout";
         return false;
     }
     ProjectOopMirDispatchTable::DestructionStep step;
@@ -559,6 +559,21 @@ bool ProjectOopMirModel::materializeStaticFieldConstant(
             {
                 staticField.hasConstantInitializer = true;
                 staticField.constantFloatingValue = *value;
+                if (field.declaredTypeKey == "builtin:decimal")
+                {
+                    const ProjectOopHirNode* literal = initializer->value.get();
+                    while (literal != nullptr && literal->children.size() == 1U &&
+                           ((literal->kind == ProjectOopHirNodeKind::Conversion &&
+                             literal->typeKey == "builtin:decimal" &&
+                             literal->children.front()->typeKey == "builtin:decimal") ||
+                            (literal->kind == ProjectOopHirNodeKind::Unary &&
+                             (literal->operation == lexer::TokenKind::Plus ||
+                              literal->operation == lexer::TokenKind::Minus))))
+                        literal = literal->children.front().get();
+                    if (literal != nullptr && literal->kind == ProjectOopHirNodeKind::FloatingConstant &&
+                        literal->typeKey == "builtin:decimal")
+                        staticField.constantStringValue = literal->stringValue;
+                }
             }
         }
         else if (field.declaredTypeKey == "builtin:string")
@@ -586,7 +601,7 @@ bool ProjectOopMirModel::appendStaticField(
     std::size_t memberOrdinal,
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
-    const ProjectOopHirModel& hirModel,
+    const ProjectOopHirModel&,
     std::string& error)
 {
     const ClassMemberSymbol& field = memberModel.members()[memberOrdinal];
@@ -627,10 +642,6 @@ bool ProjectOopMirModel::appendStaticField(
         nameLookup.namedTypes()[field.declaringTypeOrdinal].identity.fullyQualifiedName() +
         "." + field.name;
     staticField.isEnumConstant = field.isEnumConstant;
-    if (field.isConst &&
-        !materializeStaticFieldConstant(
-            memberOrdinal, field, hirModel, staticField, error))
-        return false;
     staticFields_.push_back(std::move(staticField));
     return true;
 }
@@ -647,6 +658,65 @@ bool ProjectOopMirModel::buildStaticFields(
         if (field.kind == ClassMemberKind::Field && field.isStatic &&
             !appendStaticField(memberOrdinal, nameLookup, memberModel, hirModel, error))
             return false;
+    }
+    const std::size_t missing = std::numeric_limits<std::size_t>::max();
+    const std::size_t memberCount = memberModel.members().size();
+    std::vector<std::size_t> fieldIndex(memberCount, missing);
+    std::vector<std::vector<std::size_t>> dependents(memberCount);
+    std::vector<std::size_t> remaining(memberCount, 0U);
+    std::vector<std::size_t> ready;
+    std::size_t constantCount = 0U;
+    for (std::size_t index = 0; index < staticFields_.size(); ++index)
+    {
+        const auto ordinal = staticFields_[index].memberOrdinal;
+        if (ordinal < memberCount) fieldIndex[ordinal] = index;
+    }
+    for (const auto& field : staticFields_)
+    {
+        if (!field.isConst || field.memberOrdinal >= memberCount) continue;
+        const auto ordinal = field.memberOrdinal;
+        ++constantCount;
+        std::vector<std::size_t> dependencies;
+        if (ordinal < hirFieldInitializerByMember_.size() && hirFieldInitializerByMember_[ordinal] != nullptr)
+        {
+            std::vector<const ProjectOopHirNode*> nodes{hirFieldInitializerByMember_[ordinal]->value.get()};
+            while (!nodes.empty())
+            {
+                const ProjectOopHirNode* node = nodes.back();
+                nodes.pop_back();
+                if (node == nullptr) continue;
+                if (node->kind == ProjectOopHirNodeKind::StaticFieldValue && node->memberOrdinal.has_value())
+                {
+                    const auto dependency = *node->memberOrdinal;
+                    if (dependency < memberCount && fieldIndex[dependency] != missing &&
+                        staticFields_[fieldIndex[dependency]].isConst)
+                        dependencies.push_back(dependency);
+                }
+                for (const auto& child : node->children) nodes.push_back(child.get());
+            }
+        }
+        std::sort(dependencies.begin(), dependencies.end());
+        dependencies.erase(std::unique(dependencies.begin(), dependencies.end()), dependencies.end());
+        remaining[ordinal] = dependencies.size();
+        for (const auto dependency : dependencies) dependents[dependency].push_back(ordinal);
+        if (dependencies.empty()) ready.push_back(ordinal);
+    }
+    std::size_t completed = 0U;
+    for (std::size_t index = 0; index < ready.size(); ++index)
+    {
+        const auto ordinal = ready[index];
+        if (!materializeStaticFieldConstant(ordinal, memberModel.members()[ordinal], hirModel,
+                staticFields_[fieldIndex[ordinal]], error))
+            return false;
+        ++completed;
+        for (const auto dependent : dependents[ordinal])
+            if (--remaining[dependent] == 0U) ready.push_back(dependent);
+    }
+    if (completed != constantCount)
+    {
+        error = "Stage 37 const initializer validated semantically but could not be "
+                "materialized as a native constant";
+        return false;
     }
     return true;
 }
@@ -1068,32 +1138,49 @@ const ProjectOopMirFunction* ProjectOopMirModel::executableEntryPoint(
 {
     ambiguous = false;
     const ProjectOopMirFunction* result = nullptr;
+    const auto entryParameters = [](const auto& parameters)
+    {
+        return parameters.empty() ||
+            (parameters.size() == 1 && parameters.front().typeKey == "builtin:string[]" &&
+             parameters.front().passKind == ParameterPassKind::Value &&
+             parameters.front().ownership == sema::OwnershipKind::None &&
+             !parameters.front().isParameterPack);
+    };
     for (const ProjectOopMirFunction& function : functions_)
     {
         bool candidate = false;
+        bool sourceHasArguments = false;
         if (function.namespaceFunctionOrdinal.has_value())
         {
             if (*function.namespaceFunctionOrdinal >= namespaceFunctionModel.functions().size())
                 continue;
             const NamespaceFunctionSymbol& symbol =
                 namespaceFunctionModel.functions()[*function.namespaceFunctionOrdinal];
-            candidate = symbol.name == "Main" && symbol.parameters.empty() &&
+            sourceHasArguments = !symbol.parameters.empty();
+            candidate = symbol.name == "Main" && entryParameters(symbol.parameters) &&
                 symbol.declaredTypeKey == "builtin:int" && !symbol.isExternC;
         }
         else if (!function.isLambda && !function.constructor && !function.destructor &&
                  memberModel_ != nullptr && function.memberOrdinal < memberModel_->members().size())
         {
             const ClassMemberSymbol& member = memberModel_->members()[function.memberOrdinal];
+            sourceHasArguments = !member.parameters.empty();
             candidate = member.kind == ClassMemberKind::Method && member.name == "Main" &&
-                member.isStatic && member.parameters.empty() &&
+                member.isStatic && entryParameters(member.parameters) &&
                 member.declaredTypeKey == "builtin:int";
-            // Freeze 3.0 C-02: `static async int Main()` enters through its synthesized
+            // Freeze C-02: `static async int Main()` enters through its synthesized
             // `Main$entry`, never through the future constructor or the poll.
-            // Congelamiento 3.0 C-02: `static async int Main()` entra por su `Main$entry`.
+            // Congelamiento C-02: `static async int Main()` entra por su `Main$entry`.
             if (!candidate && member.kind == ClassMemberKind::Method && member.name == "Main" &&
                 member.isStatic && member.parameters.empty() &&
                 function.mangledName.ends_with("$entry"))
                 candidate = true;
+        }
+        if (candidate && sourceHasArguments)
+        {
+            candidate = function.parameterTypeKeys.size() == 1 &&
+                function.parameterTypeKeys.front() == "builtin:string[]" &&
+                function.returnTypeKey == "builtin:int";
         }
         if (!candidate) continue;
         if (result != nullptr)

@@ -18,7 +18,7 @@
     "lib/NativeSharp.LLVM.C"
   ],
   "compiler_project": "selfhost/nsc/NativeSharp.Compiler.nsproj",
-  "expected_identity": "nsc-next 2.0.0-bootstrap.sh14 (NativeSharp 2.0.0, promotion candidate)",
+  "expected_identity": "nsc-next 1.0.0-bootstrap.sh14 (NativeSharp 1.0.0, promotion candidate)",
   "expected_self_test_exit_code": 42,
   "work_items": [
     "NS2-SH-139", "NS2-SH-140", "NS2-SH-141", "NS2-SH-142",

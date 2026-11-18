@@ -8,7 +8,7 @@
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
 #include "nativesharp/Language/IterationSemantics.h"
-#include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Language/LanguageSurface.h"
 #include "nativesharp/Lexer/Lexer.h"
 
 #include <algorithm>
@@ -385,7 +385,7 @@ bool Parser::PostfixIterationMachine::startDelimitedUnary(Work& work)
         Work finish{WorkKind::FinishUnary, work.resultSlot, makeSlot()};
         finish.range = parser_.consume().range();
         finish.text = "stackalloc";
-        finish.typeSyntax = parser_.parseAllocationElementType();
+        finish.typeSyntax = parser_.parseAllocationElementType("stackalloc");
         parser_.expect(TokenKind::LeftBracket, "'['");
         work_.push_back(finish);
         scheduleChild(finish.childSlot);
@@ -1545,7 +1545,9 @@ void Parser::PostfixIterationMachine::finishArrayNew(Work work)
             ast::TypeModifierSyntaxKind::DynamicArray, nullptr, range});
         work.typeSyntax->setRange(parser_.join(work.typeSyntax->range(), range));
     }
-    if (inferred)
+    const bool explicitInitializer = work.ordinal == 1 && work.ranges.empty() &&
+        parser_.at(TokenKind::LeftBrace);
+    if (inferred || explicitInitializer)
     {
         parser_.consume();
         work.node->setAuxiliaryText("inferred-array-initializer");

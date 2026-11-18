@@ -22,7 +22,7 @@ namespace NativeSharp.Runtime.Smoke
             if (Process.CurrentProcessId() < 1) { return 5; }
             if (SystemInfo.PageSize() < 1) { return 6; }
             if (!Directory.Exists(".")) { return 7; }
-            if (!File.Exists(".")) { return 8; }
+            if (File.Exists(".")) { return 8; }
             if (Path.GetFullPath(".") == null) { return 9; }
 
             raii Mutex mutex = new Mutex();

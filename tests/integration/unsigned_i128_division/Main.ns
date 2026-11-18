@@ -1,0 +1,15 @@
+u128 Div(u128 a, u128 b) { return a / b; }
+int Main()
+{
+    u128 big = ((u128)1 << 80) + (u128)19;
+    u128 expected = ((u128)9362 << 64) + (u128)5270498306774157607L;
+    if (Div(big, (u128)7) != expected) return 1;
+    u128 maximum = ~((u128)0);
+    if (Div(maximum, (u128)1) != maximum) return 2;
+    if (Div(maximum, maximum) != (u128)1) return 3;
+    if (Div(maximum, (u128)2) != (maximum >> 1)) return 4;
+    u128 top = (u128)1 << 127;
+    if (Div(top, (u128)2) != ((u128)1 << 126)) return 5;
+    if (Div((u128)1, maximum) != (u128)0) return 6;
+    return 0;
+}

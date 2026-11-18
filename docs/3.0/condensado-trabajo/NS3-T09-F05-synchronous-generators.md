@@ -38,7 +38,7 @@ de iniciarse, no que deba alojarse en heap.
 - `include/nativesharp/Language/IterationSemantics.h`: contrato del plan, slots, estados, storage,
   yields y operaciones de cancelación/reanudación.
 - `src/Language/IterationSemantics.cpp`: validación, layout, liveness, pinning y transiciones.
-- `tests/unit/NativeSharp3T09SynchronousGeneratorTests.cpp`: prueba puntual del contrato completo.
+- `tests/unit/NativeSharpT09SynchronousGeneratorTests.cpp`: prueba puntual del contrato completo.
 - `CMakeLists.txt`: target aislado `nsc_ns3_t09_sync_generator_tests`.
 
 ### Validación dirigida

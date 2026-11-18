@@ -23,9 +23,8 @@ from nsc_suite.workspace import WorkspaceManager
 
 ORACLES = {
     "compiler-version-constants": {
-        "compiler_release": "3.0.0",
-        "language": "3.0.0",
-        "previous_release": "2.0.0",
+        "compiler_release": "1.0.0",
+        "previous_release": "none",
         "stage": "70",
     },
     "generated-identity-exports": {
@@ -39,7 +38,7 @@ ORACLES = {
         "versions_distinct": True,
     },
     "semantic-version": {
-        "release": "3.0.0",
+        "release": "1.0.0",
         "release_matches_semver_core": True,
         "semver_valid": True,
     },
@@ -106,7 +105,7 @@ class CompilerIdentityExecutorTests(unittest.TestCase):
         self.header.write_text(
             'inline constexpr auto kGeneratedCompilerBuildId = "0123456789abcdef";\n'
             'inline constexpr auto kGeneratedCompilerVersion = '
-            '"3.0.0+build.20261009T010203Z.0123456789abcdef";\n',
+            '"1.0.0+build.20261009T010203Z.0123456789abcdef";\n',
             encoding="utf-8",
         )
 
@@ -115,7 +114,7 @@ class CompilerIdentityExecutorTests(unittest.TestCase):
 
     def write_compiler(self, name: str, build_id: str, timestamp: str) -> Path:
         script = self.root / name
-        compiler_version = f"3.0.0+build.{timestamp}.{build_id}"
+        compiler_version = f"1.0.0+build.{timestamp}.{build_id}"
         script.write_text(
             "import sys\n"
             f"build = {build_id!r}\n"
@@ -123,15 +122,13 @@ class CompilerIdentityExecutorTests(unittest.TestCase):
             "if sys.argv[1] == '--print-compiler-identity':\n"
             "    print('NSCOMPILER 1')\n"
             "    print('compiler_version=' + version)\n"
-            "    print('compiler_release=3.0.0')\n"
-            "    print('language=3.0.0')\n"
+            "    print('compiler_release=1.0.0')\n"
             "    print('stage=70')\n"
             "    print('build=' + build)\n"
             "elif sys.argv[1] == '--print-compatibility-matrix':\n"
             "    print('NSCOMPAT-MATRIX 1')\n"
-            "    print('compiler.N=3.0.0')\n"
-            "    print('compiler.N-1=2.0.0')\n"
-            "    print('row=compiler|consumer:N|producer:N-1|accept')\n"
+            "    print('compiler.N=1.0.0')\n"
+            "    print('compiler.N-1=none')\n"
             "    print('row=compiler|consumer:N|producer:N|accept')\n"
             "else:\n"
             "    raise SystemExit(2)\n",

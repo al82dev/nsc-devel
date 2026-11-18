@@ -1,0 +1,9 @@
+<Project>
+<PropertyGroup>
+<Name>DivInteriorInexactChecked</Name>
+<OutputType>Exe</OutputType>
+</PropertyGroup>
+<ItemGroup>
+<Compile Include="DivInteriorInexactChecked.ns"/>
+</ItemGroup>
+</Project>

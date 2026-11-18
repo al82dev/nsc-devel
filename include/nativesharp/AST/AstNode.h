@@ -11,6 +11,7 @@
 #include "nativesharp/Basic/SourceRange.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -56,7 +57,7 @@ public:
 
     TypeSyntax* typeSyntax() const noexcept;
     void setTypeSyntax(TypeSyntax* typeSyntax) noexcept;
-    // NativeSharp 3.0 T07-F02. Present only on a callable declaration that spells
+    // NativeSharp T07-F02. Present only on a callable declaration that spells
     // `throws E`; independent from the ordinary return type and generic/base type lists.
     TypeSyntax* throwsTypeSyntax() const noexcept;
     void setThrowsTypeSyntax(TypeSyntax* typeSyntax) noexcept;
@@ -94,6 +95,9 @@ public:
 
     void addChild(AstNode* node);
     void prependChild(AstNode* node);
+    // Replaces an existing child while retaining its ordinal. The caller must
+    // supply an index smaller than children().size(); the arena owns both nodes.
+    void replaceChild(std::size_t index, AstNode* node) noexcept;
     const std::vector<AstNode*>& children() const noexcept;
 
     bool flag() const noexcept;
@@ -110,7 +114,7 @@ public:
     bool isVariadic() const noexcept;
     void setVariadic(bool value) noexcept;
 
-    // NativeSharp 3.0 T13-F05. On callable declarations this is the caller-side unsafe
+    // NativeSharp T13-F05. On callable declarations this is the caller-side unsafe
     // requirement. It is intentionally independent from flag()/isReference()/isVariadic(),
     // which already carry unrelated ABI state.
     bool isUnsafe() const noexcept;

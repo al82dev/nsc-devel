@@ -3,6 +3,7 @@
 #include "nativesharp/Interop/LibraryMetadata.h"
 
 #include "../support/TestContext.h"
+#include "../support/MetadataHeaderControl.h"
 
 #include <array>
 #include <cstdlib>
@@ -160,14 +161,22 @@ public class Api
     for (const auto& type : metadata.types)
         foundVectorCall = foundVectorCall || (type.fullyQualifiedName == "VectorSum" &&
             (type.delegateFlags & 3U) == 3U);
-    tests.expect(metadataRead && metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor && foundVectorCall,
+    tests.expect(metadataRead && foundVectorCall,
         "current NSMETA preserves the vectorcall delegate flag (" + metadataError + ")");
-    metadata.formatMinor = 19U;
+    // The vectorcall flag must survive a round trip with varied reserved header bytes.
     metadataError.clear();
-    tests.expect(metadataRead &&
-            !codec.writeModel(metadata, contract / "unsupported-1.19.nsmeta", metadataError) &&
-            metadataError.find("before 1.20") != std::string::npos,
-        "NSMETA rejects a lossy vectorcall downlevel (" + metadataError + ")");
+    nativesharp::interop::LibraryMetadata reread;
+    bool rereadVectorCall = false;
+    if (metadataRead && nativesharp::tests::metadataSurvivesReservedBytes(
+            codec, metadata, 19U, contract / "content-sample-19.nsmeta", metadataError) &&
+        codec.read(contract / "content-sample-19.nsmeta", reread, metadataError))
+    {
+        for (const auto& type : reread.types)
+            rereadVectorCall = rereadVectorCall || (type.fullyQualifiedName == "VectorSum" &&
+                (type.delegateFlags & 3U) == 3U);
+    }
+    tests.expect(rereadVectorCall,
+        "metadata keeps the vectorcall flag with varied reserved bytes (" + metadataError + ")");
 
     std::filesystem::remove_all(root, filesystemError);
     return tests.result();

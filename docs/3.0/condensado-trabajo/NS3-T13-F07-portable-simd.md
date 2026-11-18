@@ -2,7 +2,7 @@
 
 ## Español
 
-NativeSharp 3 incorpora los tipos estructurales `simd<T, N>` y `mask<T, N>`. El conjunto de
+NativeSharp incorpora los tipos estructurales `simd<T, N>` y `mask<T, N>`. El conjunto de
 lanes es explícito (enteros de 8/16/32/64 bits, `float` y `double`), el número de lanes es una
 constante potencia de dos y el ancho total no supera 512 bits. La identidad canónica conserva
 tipo y cantidad, por lo que módulos, layout y LLVM observan el mismo tipo.
@@ -18,7 +18,7 @@ y shuffles. No se ejecutó baseline ni una suite general.
 
 ## English
 
-NativeSharp 3 adds structural `simd<T, N>` and `mask<T, N>` types. Lane types are explicit
+NativeSharp adds structural `simd<T, N>` and `mask<T, N>` types. Lane types are explicit
 (8/16/32/64-bit integers, `float`, and `double`), lane count is a power-of-two constant, and total
 width is limited to 512 bits. Canonical identity retains both lane type and count so module
 boundaries, layout, and LLVM agree on the same type.

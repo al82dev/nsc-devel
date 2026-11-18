@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>DestructorReleaseProbe</Name></PropertyGroup><ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>

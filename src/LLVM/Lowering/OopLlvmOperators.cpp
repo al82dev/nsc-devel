@@ -192,6 +192,54 @@ LLVMValueRef OopLlvmImplementation::applyComparisonOperation(
         const std::optional<language::PortableSimdType>& portableSimd,
         const bool floating)
 {
+        if (operandType == "builtin:decimal" &&
+            (operation == lexer::TokenKind::EqualEqual || operation == lexer::TokenKind::BangEqual))
+            return applyDecimalEquality(operation, left, right);
+        if (operandType == "builtin:decimal" &&
+            (operation == lexer::TokenKind::Less || operation == lexer::TokenKind::LessEqual ||
+             operation == lexer::TokenKind::Greater || operation == lexer::TokenKind::GreaterEqual))
+        {
+            LLVMTypeRef encoded = LLVMIntTypeInContext(context_, 128);
+            LLVMTypeRef countType = LLVMInt32TypeInContext(context_);
+            std::uint64_t coefficientWords[2] = {0xFFFFFFFFFFFFFFFFull, 0xFFFFFFFFull};
+            LLVMValueRef mask = LLVMConstIntOfArbitraryPrecision(encoded, 2, coefficientWords);
+            LLVMValueRef leftCoeff = LLVMBuildAnd(builder_, left, mask, "decimal.order.left.coeff");
+            LLVMValueRef rightCoeff = LLVMBuildAnd(builder_, right, mask, "decimal.order.right.coeff");
+            LLVMValueRef shift = LLVMConstInt(encoded, 96, 0);
+            LLVMValueRef scaleMask = LLVMConstInt(encoded, 63, 0);
+            LLVMValueRef leftScale = LLVMBuildTrunc(builder_, LLVMBuildAnd(builder_,
+                LLVMBuildLShr(builder_, left, shift, "decimal.order.left.scale.raw"), scaleMask,
+                "decimal.order.left.scale.mask"), countType, "decimal.order.left.scale");
+            LLVMValueRef rightScale = LLVMBuildTrunc(builder_, LLVMBuildAnd(builder_,
+                LLVMBuildLShr(builder_, right, shift, "decimal.order.right.scale.raw"), scaleMask,
+                "decimal.order.right.scale.mask"), countType, "decimal.order.right.scale");
+            LLVMValueRef scaleLess = LLVMBuildICmp(builder_, LLVMIntULT, leftScale, rightScale, "decimal.order.scale.lt");
+            LLVMValueRef maximum = LLVMBuildSelect(builder_, scaleLess, rightScale, leftScale, "decimal.order.scale.max");
+            LLVMValueRef alignedLeft = alignDecimalCoefficient(leftCoeff,
+                LLVMBuildSub(builder_, maximum, leftScale, "decimal.order.left.diff"));
+            LLVMValueRef alignedRight = alignDecimalCoefficient(rightCoeff,
+                LLVMBuildSub(builder_, maximum, rightScale, "decimal.order.right.diff"));
+            LLVMValueRef magnitudeLess = LLVMBuildICmp(builder_, LLVMIntULT, alignedLeft, alignedRight, "decimal.order.mag.lt");
+            LLVMValueRef magnitudeGreater = LLVMBuildICmp(builder_, LLVMIntUGT, alignedLeft, alignedRight, "decimal.order.mag.gt");
+            LLVMValueRef magnitudeEqual = LLVMBuildICmp(builder_, LLVMIntEQ, alignedLeft, alignedRight, "decimal.order.mag.eq");
+            LLVMValueRef zero = LLVMConstInt(encoded, 0, 0);
+            LLVMValueRef signShift = LLVMConstInt(encoded, 127, 0);
+            LLVMValueRef leftNegative = LLVMBuildAnd(builder_,
+                LLVMBuildICmp(builder_, LLVMIntNE, LLVMBuildLShr(builder_, left, signShift, "decimal.order.left.sign"), zero, "decimal.order.left.signed"),
+                LLVMBuildICmp(builder_, LLVMIntNE, leftCoeff, zero, "decimal.order.left.nonzero"), "decimal.order.left.negative");
+            LLVMValueRef rightNegative = LLVMBuildAnd(builder_,
+                LLVMBuildICmp(builder_, LLVMIntNE, LLVMBuildLShr(builder_, right, signShift, "decimal.order.right.sign"), zero, "decimal.order.right.signed"),
+                LLVMBuildICmp(builder_, LLVMIntNE, rightCoeff, zero, "decimal.order.right.nonzero"), "decimal.order.right.negative");
+            LLVMValueRef differentSigns = LLVMBuildXor(builder_, leftNegative, rightNegative, "decimal.order.signs.differ");
+            LLVMValueRef sameSignLess = LLVMBuildSelect(builder_, leftNegative, magnitudeGreater, magnitudeLess, "decimal.order.same.sign.lt");
+            LLVMValueRef less = LLVMBuildSelect(builder_, differentSigns, leftNegative, sameSignLess, "decimal.order.lt");
+            LLVMValueRef equal = LLVMBuildAnd(builder_, magnitudeEqual,
+                LLVMBuildNot(builder_, differentSigns, "decimal.order.signs.same"), "decimal.order.eq");
+            if (operation == lexer::TokenKind::Less) return less;
+            if (operation == lexer::TokenKind::LessEqual) return LLVMBuildOr(builder_, less, equal, "decimal.order.le");
+            if (operation == lexer::TokenKind::GreaterEqual) return LLVMBuildNot(builder_, less, "decimal.order.ge");
+            return LLVMBuildNot(builder_, LLVMBuildOr(builder_, less, equal, "decimal.order.le.for.gt"), "decimal.order.gt");
+        }
         if (floating)
         {
             return applyFloatingPointMode(LLVMBuildFCmp(
@@ -202,6 +250,76 @@ LLVMValueRef OopLlvmImplementation::applyComparisonOperation(
             : (isSignedInteger(operandType) || operandType == "builtin:decimal");
         return LLVMBuildICmp(
             builder_, integerPredicate(operation, signedInteger), left, right, "icmp");
+}
+
+LLVMValueRef OopLlvmImplementation::alignDecimalCoefficient(
+        LLVMValueRef coefficient, LLVMValueRef scaleDifference)
+{
+        LLVMTypeRef alignedType = LLVMIntTypeInContext(context_, 320);
+        LLVMTypeRef countType = LLVMInt32TypeInContext(context_);
+        LLVMValueRef initial = LLVMBuildZExt(builder_, coefficient, alignedType, "decimal.eq.coeff.wide");
+        LLVMBasicBlockRef initialBlock = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef loopBlock = appendBlock("decimal.eq.align");
+        LLVMBasicBlockRef doneBlock = appendBlock("decimal.eq.done");
+        LLVMValueRef nonzero = LLVMBuildICmp(builder_, LLVMIntNE, scaleDifference,
+                                            LLVMConstInt(countType, 0, 0), "decimal.eq.needs.scale");
+        LLVMBuildCondBr(builder_, nonzero, loopBlock, doneBlock);
+        enterBlock(loopBlock);
+        LLVMValueRef current = LLVMBuildPhi(builder_, alignedType, "decimal.eq.coeff");
+        LLVMValueRef currentIndex = LLVMBuildPhi(builder_, countType, "decimal.eq.index");
+        LLVMValueRef next = LLVMBuildAdd(builder_,
+            LLVMBuildShl(builder_, current, LLVMConstInt(alignedType, 3, 0), "decimal.eq.x8"),
+            LLVMBuildShl(builder_, current, LLVMConstInt(alignedType, 1, 0), "decimal.eq.x2"), "decimal.eq.x10");
+        LLVMValueRef nextIndex = LLVMBuildAdd(builder_, currentIndex, LLVMConstInt(countType, 1, 0),
+                                             "decimal.eq.index.next");
+        LLVMValueRef more = LLVMBuildICmp(builder_, LLVMIntULT, nextIndex, scaleDifference, "decimal.eq.more");
+        LLVMBuildCondBr(builder_, more, loopBlock, doneBlock);
+        LLVMValueRef values[] = {initial, next};
+        LLVMValueRef indexValues[] = {LLVMConstInt(countType, 0, 0), nextIndex};
+        LLVMBasicBlockRef blocks[] = {initialBlock, loopBlock};
+        LLVMAddIncoming(current, values, blocks, 2);
+        LLVMAddIncoming(currentIndex, indexValues, blocks, 2);
+        enterBlock(doneBlock);
+        LLVMValueRef result = LLVMBuildPhi(builder_, alignedType, "decimal.eq.aligned");
+        LLVMAddIncoming(result, values, blocks, 2);
+        return result;
+}
+
+LLVMValueRef OopLlvmImplementation::applyDecimalEquality(
+        lexer::TokenKind operation, LLVMValueRef left, LLVMValueRef right)
+{
+        LLVMTypeRef encoded = LLVMIntTypeInContext(context_, 128);
+        LLVMTypeRef countType = LLVMInt32TypeInContext(context_);
+        std::uint64_t coefficientWords[2] = {0xFFFFFFFFFFFFFFFFull, 0xFFFFFFFFull};
+        LLVMValueRef coefficientMask = LLVMConstIntOfArbitraryPrecision(encoded, 2, coefficientWords);
+        LLVMValueRef leftCoeff = LLVMBuildAnd(builder_, left, coefficientMask, "decimal.eq.left.coeff");
+        LLVMValueRef rightCoeff = LLVMBuildAnd(builder_, right, coefficientMask, "decimal.eq.right.coeff");
+        LLVMValueRef scaleShift = LLVMConstInt(encoded, 96, 0);
+        LLVMValueRef scaleMask = LLVMConstInt(encoded, 63, 0);
+        LLVMValueRef leftScale = LLVMBuildTrunc(builder_, LLVMBuildAnd(builder_,
+            LLVMBuildLShr(builder_, left, scaleShift, "decimal.eq.left.scale.raw"), scaleMask,
+            "decimal.eq.left.scale.masked"), countType, "decimal.eq.left.scale");
+        LLVMValueRef rightScale = LLVMBuildTrunc(builder_, LLVMBuildAnd(builder_,
+            LLVMBuildLShr(builder_, right, scaleShift, "decimal.eq.right.scale.raw"), scaleMask,
+            "decimal.eq.right.scale.masked"), countType, "decimal.eq.right.scale");
+        LLVMValueRef leftSmaller = LLVMBuildICmp(builder_, LLVMIntULT, leftScale, rightScale, "decimal.eq.scale.lt");
+        LLVMValueRef maximum = LLVMBuildSelect(builder_, leftSmaller, rightScale, leftScale, "decimal.eq.scale.max");
+        LLVMValueRef leftDiff = LLVMBuildSub(builder_, maximum, leftScale, "decimal.eq.left.diff");
+        LLVMValueRef rightDiff = LLVMBuildSub(builder_, maximum, rightScale, "decimal.eq.right.diff");
+        LLVMValueRef alignedLeft = alignDecimalCoefficient(leftCoeff, leftDiff);
+        LLVMValueRef alignedRight = alignDecimalCoefficient(rightCoeff, rightDiff);
+        LLVMValueRef equalMagnitude = LLVMBuildICmp(builder_, LLVMIntEQ, alignedLeft, alignedRight,
+                                                    "decimal.eq.magnitude");
+        LLVMValueRef signDifference = LLVMBuildLShr(builder_, LLVMBuildXor(builder_, left, right, "decimal.eq.xor"),
+                                                   LLVMConstInt(encoded, 127, 0), "decimal.eq.sign.diff");
+        LLVMValueRef equalSigns = LLVMBuildICmp(builder_, LLVMIntEQ, signDifference, LLVMConstInt(encoded, 0, 0),
+                                               "decimal.eq.sign.same");
+        LLVMValueRef bothZero = LLVMBuildICmp(builder_, LLVMIntEQ,
+            LLVMBuildOr(builder_, leftCoeff, rightCoeff, "decimal.eq.coefficients.or"),
+            LLVMConstInt(encoded, 0, 0), "decimal.eq.both.zero");
+        LLVMValueRef equal = LLVMBuildAnd(builder_, equalMagnitude,
+            LLVMBuildOr(builder_, equalSigns, bothZero, "decimal.eq.sign.ok"), "decimal.eq.value");
+        return operation == lexer::TokenKind::BangEqual ? LLVMBuildNot(builder_, equal, "decimal.ne") : equal;
 }
 
 LLVMValueRef OopLlvmImplementation::tryApplyConstrainedFloatingOperation(
@@ -270,13 +388,15 @@ LLVMValueRef OopLlvmImplementation::applyFloatingBinaryOperation(
 
 LLVMValueRef OopLlvmImplementation::applyDecimalAddOrSubtract(
         lexer::TokenKind operation,
+        LLVMValueRef left,
         LLVMValueRef leftCoefficient,
         LLVMValueRef rightCoefficient,
         LLVMValueRef leftScale,
         LLVMValueRef right,
         LLVMValueRef scaleShift,
         LLVMValueRef scaleMask,
-        LLVMValueRef& effectiveScale)
+        LLVMValueRef& effectiveScale,
+        std::string& error)
 {
         // NS304-T15-F04 mixed scales: align both coefficients to the max scale by multiplying
         // each by 10^(max - its scale), then add/sub the aligned coefficients.
@@ -304,12 +424,153 @@ LLVMValueRef OopLlvmImplementation::applyDecimalAddOrSubtract(
             builder_, leftCoeff64, leftMult, "decimal.align.left");
         LLVMValueRef rightAligned = LLVMBuildMul(
             builder_, rightCoeff64, rightMult, "decimal.align.right");
-        LLVMValueRef aligned = operation == lexer::TokenKind::Plus
-            ? LLVMBuildAdd(builder_, leftAligned, rightAligned, "decimal.coeff.add")
-            : LLVMBuildSub(builder_, leftAligned, rightAligned, "decimal.coeff.sub");
+        LLVMTypeRef encoded = LLVMIntTypeInContext(context_, 128);
+        LLVMValueRef signShift = LLVMConstInt(encoded, 127, 0);
+        LLVMValueRef leftNegative = LLVMBuildICmp(builder_, LLVMIntNE,
+            LLVMBuildLShr(builder_, left, signShift, "decimal.add.left.sign"),
+            LLVMConstInt(encoded, 0, 0), "decimal.add.left.negative");
+        LLVMValueRef rightNegative = LLVMBuildICmp(builder_, LLVMIntNE,
+            LLVMBuildLShr(builder_, right, signShift, "decimal.add.right.sign"),
+            LLVMConstInt(encoded, 0, 0), "decimal.add.right.negative");
+        if (operation == lexer::TokenKind::Minus)
+            rightNegative = LLVMBuildNot(builder_, rightNegative, "decimal.sub.right.effective.sign");
+        LLVMValueRef sameSigns = LLVMBuildICmp(builder_, LLVMIntEQ, leftNegative, rightNegative,
+                                              "decimal.add.same.signs");
+        LLVMValueRef leftLarger = LLVMBuildICmp(builder_, LLVMIntUGE, leftAligned, rightAligned,
+                                               "decimal.add.left.larger");
+        LLVMValueRef sum = LLVMBuildAdd(builder_, leftAligned, rightAligned, "decimal.coeff.add");
+        LLVMValueRef difference = LLVMBuildSelect(builder_, leftLarger,
+            LLVMBuildSub(builder_, leftAligned, rightAligned, "decimal.coeff.left.minus.right"),
+            LLVMBuildSub(builder_, rightAligned, leftAligned, "decimal.coeff.right.minus.left"),
+            "decimal.coeff.difference");
+        LLVMValueRef aligned = LLVMBuildSelect(builder_, sameSigns, sum, difference, "decimal.coeff.result");
+        LLVMValueRef differenceSign = LLVMBuildSelect(builder_, leftLarger, leftNegative, rightNegative,
+                                                      "decimal.add.difference.sign");
+        LLVMValueRef negative = LLVMBuildSelect(builder_, sameSigns, leftNegative, differenceSign,
+                                               "decimal.add.result.sign");
+        negative = LLVMBuildAnd(builder_, negative,
+            LLVMBuildICmp(builder_, LLVMIntNE, aligned, LLVMConstInt(lane, 0, 0), "decimal.add.nonzero"),
+            "decimal.add.sign.nonzero");
         effectiveScale = maxScale;
-        return LLVMBuildZExt(
-            builder_, aligned, LLVMIntTypeInContext(context_, 128), "decimal.coeff.wide");
+        LLVMValueRef coefficient = LLVMBuildZExt(builder_, aligned, encoded, "decimal.coeff.wide");
+        LLVMValueRef sign = LLVMBuildShl(builder_, LLVMBuildZExt(builder_, negative, encoded,
+            "decimal.add.sign.wide"), signShift, "decimal.add.sign.bit");
+        LLVMValueRef previous = LLVMBuildOr(builder_, coefficient, sign, "decimal.add.signed");
+
+        // Compute the exact aligned magnitudes using the full 96-bit carriers.
+        // If the result cannot be represented at this scale, keep the previous
+        // behavior: overflow/normalization policy is not determined here.
+        std::uint64_t coefficientWords[2] = {0xFFFFFFFFFFFFFFFFull, 0xFFFFFFFFull};
+        LLVMValueRef fullMask = LLVMConstIntOfArbitraryPrecision(encoded, 2, coefficientWords);
+        LLVMValueRef fullLeft = LLVMBuildAnd(builder_, left, fullMask, "decimal.add.full.left");
+        LLVMValueRef fullRight = LLVMBuildAnd(builder_, right, fullMask, "decimal.add.full.right");
+        LLVMTypeRef countType = LLVMInt32TypeInContext(context_);
+        LLVMValueRef wideLeft = alignDecimalCoefficient(fullLeft,
+            LLVMBuildTrunc(builder_, leftDiff, countType, "decimal.add.wide.left.diff"));
+        LLVMValueRef wideRight = alignDecimalCoefficient(fullRight,
+            LLVMBuildTrunc(builder_, rightDiff, countType, "decimal.add.wide.right.diff"));
+        LLVMTypeRef alignedType = LLVMTypeOf(wideLeft);
+        LLVMValueRef wideLeftLarger = LLVMBuildICmp(builder_, LLVMIntUGE, wideLeft, wideRight,
+                                                   "decimal.add.wide.left.larger");
+        LLVMValueRef wideSum = LLVMBuildAdd(builder_, wideLeft, wideRight, "decimal.add.wide.sum");
+        LLVMValueRef wideDifference = LLVMBuildSelect(builder_, wideLeftLarger,
+            LLVMBuildSub(builder_, wideLeft, wideRight, "decimal.add.wide.left.minus.right"),
+            LLVMBuildSub(builder_, wideRight, wideLeft, "decimal.add.wide.right.minus.left"),
+            "decimal.add.wide.difference");
+        LLVMValueRef wideResult = LLVMBuildSelect(builder_, sameSigns, wideSum, wideDifference,
+                                                  "decimal.add.wide.result");
+        LLVMValueRef wideDifferenceSign = LLVMBuildSelect(builder_, wideLeftLarger,
+            leftNegative, rightNegative, "decimal.add.wide.difference.sign");
+        LLVMValueRef wideNegative = LLVMBuildSelect(builder_, sameSigns, leftNegative,
+            wideDifferenceSign, "decimal.add.wide.result.sign");
+        wideNegative = LLVMBuildAnd(builder_, wideNegative,
+            LLVMBuildICmp(builder_, LLVMIntNE, wideResult, LLVMConstInt(alignedType, 0, 0),
+                          "decimal.add.wide.nonzero"), "decimal.add.wide.sign.nonzero");
+        LLVMValueRef wideMask = LLVMBuildZExt(builder_, fullMask, alignedType, "decimal.add.wide.mask");
+        LLVMValueRef needsReduction = LLVMBuildAnd(builder_,
+            LLVMBuildICmp(builder_, LLVMIntUGT, wideResult, wideMask, "decimal.add.reduce.large"),
+            LLVMBuildICmp(builder_, LLVMIntNE, maxScale, LLVMConstInt(encoded, 0, 0), "decimal.add.reduce.scale"),
+            "decimal.add.reduce.needed");
+        LLVMBasicBlockRef reductionEntry = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef reductionLoop = appendBlock("decimal.add.reduce.loop");
+        LLVMBasicBlockRef reductionDone = appendBlock("decimal.add.reduce.done");
+        LLVMBuildCondBr(builder_, needsReduction, reductionLoop, reductionDone);
+        enterBlock(reductionLoop);
+        LLVMValueRef current = LLVMBuildPhi(builder_, alignedType, "decimal.add.reduce.value");
+        LLVMValueRef currentScale = LLVMBuildPhi(builder_, encoded, "decimal.add.reduce.current.scale");
+        LLVMTypeRef wordType = LLVMInt64TypeInContext(context_);
+        LLVMValueRef remainder = LLVMConstInt(wordType, 0, 0);
+        LLVMValueRef quotient = LLVMConstInt(alignedType, 0, 0);
+        // Long division of ten 32-bit limbs by ten. The carried remainder is
+        // below ten, so each 64-bit chunk contains at most 36 significant bits.
+        for (int limb = 9; limb >= 0; --limb)
+        {
+            LLVMValueRef shifted = LLVMBuildLShr(builder_, current,
+                LLVMConstInt(alignedType, static_cast<unsigned>(limb) * 32U, 0), "decimal.add.reduce.shift");
+            LLVMValueRef lowWord = LLVMBuildZExt(builder_, LLVMBuildTrunc(builder_, shifted, countType,
+                "decimal.add.reduce.word32"), wordType, "decimal.add.reduce.word64");
+            LLVMValueRef chunk = LLVMBuildOr(builder_, LLVMBuildShl(builder_, remainder,
+                LLVMConstInt(wordType, 32, 0), "decimal.add.reduce.carry"), lowWord, "decimal.add.reduce.chunk");
+            LLVMValueRef quotientWord = LLVMBuildUDiv(builder_, chunk, LLVMConstInt(wordType, 10, 0),
+                                                      "decimal.add.reduce.quotient.word");
+            remainder = LLVMBuildURem(builder_, chunk, LLVMConstInt(wordType, 10, 0), "decimal.add.reduce.remainder");
+            LLVMValueRef wideWord = LLVMBuildZExt(builder_, quotientWord, alignedType, "decimal.add.reduce.word.wide");
+            quotient = LLVMBuildOr(builder_, quotient, LLVMBuildShl(builder_, wideWord,
+                LLVMConstInt(alignedType, static_cast<unsigned>(limb) * 32U, 0), "decimal.add.reduce.word.position"),
+                "decimal.add.reduce.quotient");
+        }
+        LLVMValueRef divisible = LLVMBuildICmp(builder_, LLVMIntEQ, remainder, LLVMConstInt(wordType, 0, 0),
+                                               "decimal.add.reduce.exact");
+        LLVMValueRef nextValue = LLVMBuildSelect(builder_, divisible, quotient, current, "decimal.add.reduce.next");
+        LLVMValueRef nextScale = LLVMBuildSelect(builder_, divisible,
+            LLVMBuildSub(builder_, currentScale, LLVMConstInt(encoded, 1, 0), "decimal.add.reduce.scale.minus.one"),
+            currentScale, "decimal.add.reduce.next.scale");
+        LLVMValueRef more = LLVMBuildAnd(builder_, divisible, LLVMBuildAnd(builder_,
+            LLVMBuildICmp(builder_, LLVMIntUGT, nextValue, wideMask, "decimal.add.reduce.still.large"),
+            LLVMBuildICmp(builder_, LLVMIntNE, nextScale, LLVMConstInt(encoded, 0, 0), "decimal.add.reduce.has.scale"),
+            "decimal.add.reduce.needs.more"), "decimal.add.reduce.repeat");
+        LLVMBuildCondBr(builder_, more, reductionLoop, reductionDone);
+        LLVMBasicBlockRef reductionBlocks[] = {reductionEntry, reductionLoop};
+        LLVMValueRef reductionValues[] = {wideResult, nextValue};
+        LLVMValueRef reductionScales[] = {maxScale, nextScale};
+        LLVMAddIncoming(current, reductionValues, reductionBlocks, 2U);
+        LLVMAddIncoming(currentScale, reductionScales, reductionBlocks, 2U);
+        enterBlock(reductionDone);
+        LLVMValueRef reduced = LLVMBuildPhi(builder_, alignedType, "decimal.add.reduce.result");
+        LLVMValueRef reducedScale = LLVMBuildPhi(builder_, encoded, "decimal.add.reduce.result.scale");
+        LLVMAddIncoming(reduced, reductionValues, reductionBlocks, 2U);
+        LLVMAddIncoming(reducedScale, reductionScales, reductionBlocks, 2U);
+        LLVMValueRef fits = LLVMBuildICmp(builder_, LLVMIntULE, reduced, wideMask, "decimal.add.wide.fits");
+        if (currentOverflowPolicy_.empty() || currentOverflowPolicy_ == "checked")
+        {
+            // Addition and subtraction retain exact decimal results; unrepresentable
+            // magnitudes trap after all exact scale reductions, without rounding.
+            if (!emitGuard(fits, LlvmTrapReason::DecimalOverflow, "decimal.add.overflow", error))
+                return nullptr;
+        }
+        effectiveScale = LLVMBuildSelect(builder_, fits, reducedScale, maxScale, "decimal.add.final.scale");
+        LLVMValueRef exactCoefficient = LLVMBuildTrunc(builder_, reduced, encoded, "decimal.add.exact.coeff");
+        LLVMValueRef exactSign = LLVMBuildShl(builder_, LLVMBuildZExt(builder_, wideNegative, encoded,
+            "decimal.add.exact.sign.wide"), signShift, "decimal.add.exact.sign");
+        LLVMValueRef exact = LLVMBuildOr(builder_, exactCoefficient, exactSign, "decimal.add.exact");
+        LLVMValueRef result = LLVMBuildSelect(builder_, fits, exact, previous, "decimal.add.result");
+        if (currentOverflowPolicy_ == "saturating")
+        {
+            // Compare the exact magnitude at its aligned scale: a coefficient
+            // can exceed 96 bits even when its mathematical value is in range.
+            LLVMValueRef scaledLimit = alignDecimalCoefficient(fullMask,
+                LLVMBuildTrunc(builder_, maxScale, countType, "decimal.add.sat.scale"));
+            LLVMValueRef saturate = LLVMBuildICmp(builder_, LLVMIntUGT, wideResult,
+                scaledLimit, "decimal.add.sat.out.of.range");
+            LLVMValueRef valid = LLVMBuildOr(builder_, fits, saturate, "decimal.add.sat.valid");
+            if (!emitGuard(valid, LlvmTrapReason::DecimalOverflow, "decimal.add.sat.inexact", error))
+                return nullptr;
+            LLVMValueRef limit = LLVMBuildOr(builder_, fullMask, exactSign, "decimal.add.sat.limit");
+            effectiveScale = LLVMBuildSelect(builder_, saturate, LLVMConstInt(encoded, 0, 0),
+                effectiveScale, "decimal.add.sat.scale");
+            result = LLVMBuildSelect(builder_, saturate, limit, result, "decimal.add.saturated");
+        }
+        return result;
 }
 
 LLVMValueRef OopLlvmImplementation::buildSaturatedDecimalMultiply(
@@ -364,9 +625,12 @@ bool OopLlvmImplementation::resolveDecimalMultiplyOverflow(
         // policy traps DecimalOverflow; `saturating(expr)` yields MaxValue/MinValue.
         std::uint64_t maskWords[2] = { 0xFFFFFFFFFFFFFFFFull, 0xFFFFFFFFull };
         LLVMTypeRef wide = LLVMIntTypeInContext(context_, 128);
+        LLVMTypeRef productType = LLVMTypeOf(combined);
+        LLVMValueRef productMask96 = LLVMConstIntOfArbitraryPrecision(productType, 2, maskWords);
         LLVMValueRef mask96 = LLVMConstIntOfArbitraryPrecision(wide, 2, maskWords);
         LLVMValueRef overflow = LLVMBuildICmp(
-            builder_, LLVMIntUGT, combined, mask96, "decimal.mul.overflow");
+            builder_, LLVMIntUGT, combined, productMask96, "decimal.mul.overflow");
+        combined = LLVMBuildTrunc(builder_, combined, wide, "decimal.mul.truncated");
         LLVMBasicBlockRef preheader = LLVMGetInsertBlock(builder_);
         LLVMBasicBlockRef okBlock = appendBlock("decimal.mul.ok");
         LLVMBasicBlockRef trapBlock = appendBlock("decimal.mul.trap");
@@ -404,16 +668,238 @@ LLVMValueRef OopLlvmImplementation::applyDecimalMultiply(
         LLVMValueRef& effectiveScale,
         std::string& error)
 {
-        LLVMValueRef combined = LLVMBuildMul(
-            builder_, leftCoefficient, rightCoefficient, "decimal.coeff.mul");
         LLVMValueRef rightScale = LLVMBuildAnd(
             builder_, LLVMBuildLShr(builder_, right, scaleShift, "decimal.right.scale.raw"),
             scaleMask, "decimal.right.scale");
         effectiveScale = LLVMBuildAdd(builder_, leftScale, rightScale, "decimal.scale.add");
         if (!emitDecimalScaleOverflow(effectiveScale, "decimal.mul.scale", error)) return nullptr;
+
+        // Full 96 x 96 unsigned product in at most 96 shift/add steps. This avoids
+        // depending on a target-specific wide multiply runtime helper.
+        LLVMTypeRef productType = LLVMIntTypeInContext(context_, 192);
+        LLVMTypeRef countType = LLVMInt32TypeInContext(context_);
+        LLVMValueRef zero = LLVMConstInt(productType, 0, 0);
+        LLVMValueRef one = LLVMConstInt(productType, 1, 0);
+        LLVMValueRef multiplicand = LLVMBuildZExt(builder_, leftCoefficient, productType, "decimal.mul.left.wide");
+        LLVMValueRef multiplier = LLVMBuildZExt(builder_, rightCoefficient, productType, "decimal.mul.right.wide");
+        LLVMBasicBlockRef entry = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef loop = appendBlock("decimal.mul.loop");
+        LLVMBasicBlockRef done = appendBlock("decimal.mul.done");
+        LLVMBuildBr(builder_, loop);
+        enterBlock(loop);
+        LLVMValueRef sum = LLVMBuildPhi(builder_, productType, "decimal.mul.sum");
+        LLVMValueRef factor = LLVMBuildPhi(builder_, productType, "decimal.mul.factor");
+        LLVMValueRef remaining = LLVMBuildPhi(builder_, productType, "decimal.mul.remaining");
+        LLVMValueRef index = LLVMBuildPhi(builder_, countType, "decimal.mul.index");
+        LLVMValueRef bit = LLVMBuildICmp(builder_, LLVMIntNE,
+            LLVMBuildAnd(builder_, remaining, one, "decimal.mul.lowbit"), zero, "decimal.mul.bit.set");
+        LLVMValueRef addend = LLVMBuildSelect(builder_, bit, factor, zero, "decimal.mul.addend");
+        LLVMValueRef nextSum = LLVMBuildAdd(builder_, sum, addend, "decimal.mul.sum.next");
+        LLVMValueRef nextFactor = LLVMBuildShl(builder_, factor, one, "decimal.mul.factor.next");
+        LLVMValueRef nextRemaining = LLVMBuildLShr(builder_, remaining, one, "decimal.mul.remaining.next");
+        LLVMValueRef nextIndex = LLVMBuildAdd(builder_, index, LLVMConstInt(countType, 1, 0),
+                                              "decimal.mul.index.next");
+        LLVMValueRef moreBits = LLVMBuildICmp(builder_, LLVMIntNE, nextRemaining, zero, "decimal.mul.more.bits");
+        LLVMValueRef withinWidth = LLVMBuildICmp(builder_, LLVMIntULT, nextIndex,
+            LLVMConstInt(countType, 96, 0), "decimal.mul.within.width");
+        LLVMBuildCondBr(builder_, LLVMBuildAnd(builder_, moreBits, withinWidth, "decimal.mul.more"), loop, done);
+        LLVMBasicBlockRef blocks[] = {entry, loop};
+        LLVMValueRef sums[] = {zero, nextSum};
+        LLVMValueRef factors[] = {multiplicand, nextFactor};
+        LLVMValueRef multipliers[] = {multiplier, nextRemaining};
+        LLVMValueRef indices[] = {LLVMConstInt(countType, 0, 0), nextIndex};
+        LLVMAddIncoming(sum, sums, blocks, 2U);
+        LLVMAddIncoming(factor, factors, blocks, 2U);
+        LLVMAddIncoming(remaining, multipliers, blocks, 2U);
+        LLVMAddIncoming(index, indices, blocks, 2U);
+        enterBlock(done);
+        LLVMValueRef combined = nextSum;
         if (!resolveDecimalMultiplyOverflow(
                 left, right, combined, effectiveScale, error)) return nullptr;
-        return combined;
+        LLVMTypeRef encoded = LLVMIntTypeInContext(context_, 128);
+        LLVMValueRef signBit = LLVMBuildShl(builder_, LLVMConstInt(encoded, 1, 0),
+            LLVMConstInt(encoded, 127, 0), "decimal.mul.sign.bit");
+        LLVMValueRef sign = LLVMBuildAnd(builder_, LLVMBuildXor(builder_, left, right, "decimal.mul.sign.xor"),
+            signBit, "decimal.mul.sign.mask");
+        return LLVMBuildOr(builder_, combined, sign, "decimal.mul.signed");
+}
+
+// Emit scale alignment while preserving the caller's block-ordering protocol.
+template<class Append, class Enter>
+static void buildDecimalDivisionScaling(LLVMContextRef context, LLVMBuilderRef builder,
+    LLVMValueRef initialNumerator, LLVMValueRef maximum, LLVMValueRef expCount, LLVMValueRef targetCount,
+    Append& appendBlock, Enter& enterBlock, LLVMValueRef& scaledNumerator, LLVMValueRef& scaledBoundary)
+{
+        LLVMTypeRef wide = LLVMTypeOf(initialNumerator);
+        LLVMTypeRef countType = LLVMInt32TypeInContext(context);
+        LLVMValueRef one = LLVMConstInt(wide, 1, 0);
+        LLVMValueRef countZero = LLVMConstInt(countType, 0, 0);
+        LLVMValueRef countOne = LLVMConstInt(countType, 1, 0);
+        // Scale numerator and the saturation boundary together using x10 = x8+x2.
+        LLVMBasicBlockRef scaleEntry = LLVMGetInsertBlock(builder);
+        LLVMBasicBlockRef scaleLoop = appendBlock("decimal.div.scale.loop");
+        LLVMBasicBlockRef scaleDone = appendBlock("decimal.div.scale.done");
+        LLVMValueRef needsScale = LLVMBuildOr(builder,
+            LLVMBuildICmp(builder, LLVMIntNE, expCount, countZero, "decimal.div.exponent.nonzero"),
+            LLVMBuildICmp(builder, LLVMIntNE, targetCount, countZero, "decimal.div.target.nonzero"),
+            "decimal.div.scale.needed");
+        LLVMBuildCondBr(builder, needsScale, scaleLoop, scaleDone);
+        enterBlock(scaleLoop);
+        LLVMValueRef numerator = LLVMBuildPhi(builder, wide, "decimal.div.numerator");
+        LLVMValueRef boundary = LLVMBuildPhi(builder, wide, "decimal.div.boundary");
+        LLVMValueRef scaleIndex = LLVMBuildPhi(builder, countType, "decimal.div.scale.index");
+        LLVMValueRef numeratorTen = LLVMBuildAdd(builder,
+            LLVMBuildShl(builder, numerator, LLVMConstInt(wide, 3, 0), "decimal.div.numerator.x8"),
+            LLVMBuildShl(builder, numerator, one, "decimal.div.numerator.x2"), "decimal.div.numerator.x10");
+        LLVMValueRef boundaryTen = LLVMBuildAdd(builder,
+            LLVMBuildShl(builder, boundary, LLVMConstInt(wide, 3, 0), "decimal.div.boundary.x8"),
+            LLVMBuildShl(builder, boundary, one, "decimal.div.boundary.x2"), "decimal.div.boundary.x10");
+        LLVMValueRef nextNumerator = LLVMBuildSelect(builder,
+            LLVMBuildICmp(builder, LLVMIntULT, scaleIndex, expCount, "decimal.div.numerator.scale.more"),
+            numeratorTen, numerator, "decimal.div.numerator.next");
+        LLVMValueRef nextBoundary = LLVMBuildSelect(builder,
+            LLVMBuildICmp(builder, LLVMIntULT, scaleIndex, targetCount, "decimal.div.boundary.scale.more"),
+            boundaryTen, boundary, "decimal.div.boundary.next");
+        LLVMValueRef nextScaleIndex = LLVMBuildAdd(builder, scaleIndex, countOne, "decimal.div.scale.index.next");
+        LLVMValueRef scaleMore = LLVMBuildOr(builder,
+            LLVMBuildICmp(builder, LLVMIntULT, nextScaleIndex, expCount, "decimal.div.exponent.more"),
+            LLVMBuildICmp(builder, LLVMIntULT, nextScaleIndex, targetCount, "decimal.div.target.more"),
+            "decimal.div.scale.more");
+        LLVMBuildCondBr(builder, scaleMore, scaleLoop, scaleDone);
+        LLVMBasicBlockRef scaleBlocks[] = {scaleEntry, scaleLoop};
+        LLVMValueRef numeratorValues[] = {initialNumerator, nextNumerator};
+        LLVMValueRef boundaryValues[] = {maximum, nextBoundary};
+        LLVMValueRef scaleIndices[] = {countZero, nextScaleIndex};
+        LLVMAddIncoming(numerator, numeratorValues, scaleBlocks, 2U);
+        LLVMAddIncoming(boundary, boundaryValues, scaleBlocks, 2U);
+        LLVMAddIncoming(scaleIndex, scaleIndices, scaleBlocks, 2U);
+        enterBlock(scaleDone);
+        scaledNumerator = LLVMBuildPhi(builder, wide, "decimal.div.scaled.numerator");
+        scaledBoundary = LLVMBuildPhi(builder, wide, "decimal.div.scaled.boundary");
+        LLVMAddIncoming(scaledNumerator, numeratorValues, scaleBlocks, 2U);
+        LLVMAddIncoming(scaledBoundary, boundaryValues, scaleBlocks, 2U);
+
+}
+
+// Emit bounded restoring division and retain the exact remainder for half-up rounding.
+template<class Append, class Enter>
+static void buildDecimalDivisionQuotient(LLVMContextRef context, LLVMBuilderRef builder,
+    LLVMValueRef scaledNumerator, LLVMValueRef denominator, LLVMValueRef scaledBoundary,
+    Append& appendBlock, Enter& enterBlock, LLVMValueRef& rounded, LLVMValueRef& overBoundary)
+{
+        LLVMTypeRef wide = LLVMTypeOf(scaledNumerator);
+        LLVMTypeRef countType = LLVMInt32TypeInContext(context);
+        LLVMValueRef zero = LLVMConstInt(wide, 0, 0);
+        LLVMValueRef one = LLVMConstInt(wide, 1, 0);
+        LLVMValueRef countZero = LLVMConstInt(countType, 0, 0);
+        LLVMValueRef countOne = LLVMConstInt(countType, 1, 0);
+        // Restoring division is bounded by the width and emits no wide UDiv/URem.
+        LLVMBasicBlockRef divEntry = LLVMGetInsertBlock(builder);
+        LLVMBasicBlockRef divLoop = appendBlock("decimal.div.loop");
+        LLVMBasicBlockRef divDone = appendBlock("decimal.div.done");
+        LLVMBuildBr(builder, divLoop);
+        enterBlock(divLoop);
+        LLVMValueRef bits = LLVMBuildPhi(builder, wide, "decimal.div.bits");
+        LLVMValueRef remainder = LLVMBuildPhi(builder, wide, "decimal.div.remainder");
+        LLVMValueRef quotient = LLVMBuildPhi(builder, wide, "decimal.div.quotient");
+        LLVMValueRef divIndex = LLVMBuildPhi(builder, countType, "decimal.div.index");
+        LLVMValueRef shifted = LLVMBuildOr(builder, LLVMBuildShl(builder, remainder, one, "decimal.div.rem.shift"),
+            LLVMBuildLShr(builder, bits, LLVMConstInt(wide, 319, 0), "decimal.div.next.bit"),
+            "decimal.div.rem.shifted");
+        LLVMValueRef subtract = LLVMBuildICmp(builder, LLVMIntUGE, shifted, denominator, "decimal.div.subtract");
+        LLVMValueRef nextRemainder = LLVMBuildSelect(builder, subtract,
+            LLVMBuildSub(builder, shifted, denominator, "decimal.div.rem.sub"), shifted, "decimal.div.rem.next");
+        LLVMValueRef nextQuotient = LLVMBuildOr(builder, LLVMBuildShl(builder, quotient, one, "decimal.div.q.shift"),
+            LLVMBuildZExt(builder, subtract, wide, "decimal.div.q.bit"), "decimal.div.q.next");
+        LLVMValueRef nextBits = LLVMBuildShl(builder, bits, one, "decimal.div.bits.next");
+        LLVMValueRef nextDivIndex = LLVMBuildAdd(builder, divIndex, countOne, "decimal.div.index.next");
+        LLVMBuildCondBr(builder, LLVMBuildICmp(builder, LLVMIntEQ, nextDivIndex,
+            LLVMConstInt(countType, 320, 0), "decimal.div.finished"), divDone, divLoop);
+        LLVMBasicBlockRef divBlocks[] = {divEntry, divLoop};
+        LLVMValueRef bitValues[] = {scaledNumerator, nextBits};
+        LLVMValueRef remainderValues[] = {zero, nextRemainder};
+        LLVMValueRef quotientValues[] = {zero, nextQuotient};
+        LLVMValueRef divIndices[] = {countZero, nextDivIndex};
+        LLVMAddIncoming(bits, bitValues, divBlocks, 2U);
+        LLVMAddIncoming(remainder, remainderValues, divBlocks, 2U);
+        LLVMAddIncoming(quotient, quotientValues, divBlocks, 2U);
+        LLVMAddIncoming(divIndex, divIndices, divBlocks, 2U);
+        enterBlock(divDone);
+        overBoundary = LLVMBuildOr(builder,
+            LLVMBuildICmp(builder, LLVMIntUGT, nextQuotient, scaledBoundary, "decimal.div.boundary.gt"),
+            LLVMBuildAnd(builder,
+                LLVMBuildICmp(builder, LLVMIntEQ, nextQuotient, scaledBoundary, "decimal.div.boundary.eq"),
+                LLVMBuildICmp(builder, LLVMIntNE, nextRemainder, zero, "decimal.div.boundary.fraction"),
+                "decimal.div.boundary.partial"), "decimal.div.out.of.range");
+        LLVMValueRef roundUp = LLVMBuildICmp(builder, LLVMIntUGE,
+            LLVMBuildShl(builder, nextRemainder, one, "decimal.div.remainder.twice"),
+            denominator, "decimal.div.round.up");
+        rounded = LLVMBuildAdd(builder, nextQuotient,
+            LLVMBuildZExt(builder, roundUp, wide, "decimal.div.round.increment"), "decimal.div.rounded");
+
+}
+
+// Emit exact decimal scale reduction using ten 32-bit limbs per digit.
+template<class Append, class Enter>
+static void buildDecimalDivisionReduction(LLVMContextRef context, LLVMBuilderRef builder,
+    LLVMValueRef rounded, LLVMValueRef target, LLVMValueRef maximum, Append& appendBlock, Enter& enterBlock,
+    LLVMValueRef& current, LLVMValueRef& currentScale)
+{
+        LLVMTypeRef wide = LLVMTypeOf(rounded);
+        LLVMTypeRef encoded = LLVMTypeOf(target);
+        LLVMTypeRef countType = LLVMInt32TypeInContext(context);
+        LLVMValueRef encodedZero = LLVMConstInt(encoded, 0, 0);
+        // Reduce an oversized rounded coefficient only when division by ten is exact.
+        // Divide ten 32-bit limbs by ten; the carried remainder stays below ten,
+        // so every division operates on a 64-bit chunk of at most 36 bits.
+        LLVMBasicBlockRef reduceEntry = LLVMGetInsertBlock(builder);
+        LLVMBasicBlockRef reduceLoop = appendBlock("decimal.div.reduce.loop");
+        LLVMBasicBlockRef digitLoop = appendBlock("decimal.div.reduce.digit");
+        LLVMBasicBlockRef digitDone = appendBlock("decimal.div.reduce.digit.done");
+        LLVMBasicBlockRef reduceDone = appendBlock("decimal.div.reduce.done");
+        LLVMBuildBr(builder, reduceLoop);
+        enterBlock(reduceLoop);
+        current = LLVMBuildPhi(builder, wide, "decimal.div.reduce.current");
+        currentScale = LLVMBuildPhi(builder, encoded, "decimal.div.reduce.scale");
+        LLVMValueRef needsReduction = LLVMBuildAnd(builder,
+            LLVMBuildICmp(builder, LLVMIntUGT, current, maximum, "decimal.div.reduce.large"),
+            LLVMBuildICmp(builder, LLVMIntNE, currentScale, encodedZero, "decimal.div.reduce.has.scale"),
+            "decimal.div.reduce.needed");
+        LLVMBuildCondBr(builder, needsReduction, digitLoop, reduceDone);
+        enterBlock(digitLoop);
+        LLVMTypeRef wordType = LLVMInt64TypeInContext(context);
+        LLVMValueRef nextDigitRemainder = LLVMConstInt(wordType, 0, 0);
+        LLVMValueRef nextDigitQuotient = LLVMConstInt(wide, 0, 0);
+        for (int limb = 9; limb >= 0; --limb)
+        {
+            LLVMValueRef shifted = LLVMBuildLShr(builder, current,
+                LLVMConstInt(wide, static_cast<unsigned>(limb) * 32U, 0), "decimal.div.reduce.shift");
+            LLVMValueRef lowWord = LLVMBuildZExt(builder, LLVMBuildTrunc(builder, shifted, countType,
+                "decimal.div.reduce.word32"), wordType, "decimal.div.reduce.word64");
+            LLVMValueRef chunk = LLVMBuildOr(builder, LLVMBuildShl(builder, nextDigitRemainder,
+                LLVMConstInt(wordType, 32, 0), "decimal.div.reduce.carry"), lowWord, "decimal.div.reduce.chunk");
+            LLVMValueRef quotientWord = LLVMBuildUDiv(builder, chunk, LLVMConstInt(wordType, 10, 0),
+                "decimal.div.reduce.quotient.word");
+            nextDigitRemainder = LLVMBuildURem(builder, chunk, LLVMConstInt(wordType, 10, 0),
+                "decimal.div.reduce.remainder");
+            LLVMValueRef wideWord = LLVMBuildZExt(builder, quotientWord, wide, "decimal.div.reduce.word.wide");
+            nextDigitQuotient = LLVMBuildOr(builder, nextDigitQuotient, LLVMBuildShl(builder, wideWord,
+                LLVMConstInt(wide, static_cast<unsigned>(limb) * 32U, 0), "decimal.div.reduce.word.position"),
+                "decimal.div.reduce.quotient");
+        }
+        LLVMBuildBr(builder, digitDone);
+        enterBlock(digitDone);
+        LLVMValueRef exact = LLVMBuildICmp(builder, LLVMIntEQ, nextDigitRemainder,
+            LLVMConstInt(wordType, 0, 0), "decimal.div.reduce.exact");
+        LLVMValueRef nextReducedScale = LLVMBuildSub(builder, currentScale,
+            LLVMConstInt(encoded, 1, 0), "decimal.div.reduce.scale.next");
+        LLVMBuildCondBr(builder, exact, reduceLoop, reduceDone);
+        LLVMBasicBlockRef reduceBlocks[] = {reduceEntry, digitDone};
+        LLVMValueRef reducedValues[] = {rounded, nextDigitQuotient};
+        LLVMValueRef reducedScales[] = {target, nextReducedScale};
+        LLVMAddIncoming(current, reducedValues, reduceBlocks, 2U);
+        LLVMAddIncoming(currentScale, reducedScales, reduceBlocks, 2U);
+        enterBlock(reduceDone);
 }
 
 LLVMValueRef OopLlvmImplementation::applyDecimalDivide(
@@ -425,14 +911,19 @@ LLVMValueRef OopLlvmImplementation::applyDecimalDivide(
         LLVMValueRef& effectiveScale,
         std::string& error)
 {
-        // div: result scale = max(leftScale, rightScale) + (leftScale > rightScale ? 1 : 0),
-        // numerator = leftCoeff * 10^(rightScale - leftScale + target) / rightCoeff.
-        // This preserves the exact quotient when the scales differ (1.5m / 2m -> 75e-2)
-        // and keeps the equal-scale result at its natural scale (1.5m / 2.5m -> 6e-1).
-        // NS304-T15-F04: the quotient is rounded half-up, so 1/3 rounds to the target
-        // precision instead of truncating. 64-bit lane: __udivti3 is not linked.
-        LLVMValueRef rightScale = LLVMBuildLShr(
-            builder_, right, scaleShift, "decimal.div.right.scale");
+        // Validate the complete coefficient before scaling or dividing. A signed or
+        // scaled zero has the same zero coefficient as the canonical encoding.
+        LLVMTypeRef encoded = LLVMIntTypeInContext(context_, 128);
+        LLVMValueRef encodedZero = LLVMConstInt(encoded, 0, 0);
+        LLVMValueRef nonzero = LLVMBuildICmp(builder_, LLVMIntNE, rightCoefficient,
+            encodedZero, "decimal.div.nonzero");
+        if (!emitGuard(nonzero, LlvmTrapReason::DivisionByZero, "decimal.div.zero", error)) return nullptr;
+
+        // Preserve the historical target scale and half-up rule. At most 56 decimal
+        // shifts are needed, so a 96-bit coefficient scaled by 10^56 fits in i320.
+        LLVMValueRef rightScale = LLVMBuildAnd(builder_,
+            LLVMBuildLShr(builder_, right, scaleShift, "decimal.div.right.scale.raw"),
+            LLVMConstInt(encoded, 0x3f, 0), "decimal.div.right.scale");
         LLVMValueRef scaleGe = LLVMBuildICmp(
             builder_, LLVMIntUGE, leftScale, rightScale, "decimal.div.scale.ge");
         LLVMValueRef scaleGt = LLVMBuildICmp(
@@ -446,23 +937,44 @@ LLVMValueRef OopLlvmImplementation::applyDecimalDivide(
         LLVMValueRef exponent = LLVMBuildSub(
             builder_, LLVMBuildAdd(builder_, target, rightScale, "decimal.div.exp.a"),
             leftScale, "decimal.div.exponent");
-        LLVMTypeRef lane = LLVMInt64TypeInContext(context_);
-        LLVMValueRef leftCoeff64 = LLVMBuildTrunc(
-            builder_, leftCoefficient, lane, "decimal.div.left64");
-        LLVMValueRef rightCoeff64 = LLVMBuildTrunc(
-            builder_, rightCoefficient, lane, "decimal.div.right64");
-        LLVMValueRef exponent64 = LLVMBuildTrunc(
-            builder_, exponent, lane, "decimal.div.exponent64");
-        LLVMValueRef numerator = LLVMBuildMul(
-            builder_, leftCoeff64, buildPow10(exponent64, "decimal.div.pow10"),
-            "decimal.div.num");
-        LLVMValueRef half = LLVMBuildLShr(
-            builder_, rightCoeff64, LLVMConstInt(lane, 1, 0), "decimal.div.half");
-        LLVMValueRef rounded = LLVMBuildAdd(builder_, numerator, half, "decimal.div.roundnum");
-        LLVMValueRef quotient = LLVMBuildUDiv(builder_, rounded, rightCoeff64, "decimal.div.quotient");
-        effectiveScale = target;
-        return LLVMBuildZExt(
-            builder_, quotient, LLVMIntTypeInContext(context_, 128), "decimal.div.wide");
+        LLVMTypeRef wide = LLVMIntTypeInContext(context_, 320);
+        LLVMTypeRef countType = LLVMInt32TypeInContext(context_);
+        LLVMValueRef expCount = LLVMBuildTrunc(builder_, exponent, countType, "decimal.div.exponent.count");
+        LLVMValueRef targetCount = LLVMBuildTrunc(builder_, target, countType, "decimal.div.scale.count");
+        LLVMValueRef initialNumerator = LLVMBuildZExt(builder_, leftCoefficient, wide,
+                                                     "decimal.div.numerator.initial");
+        LLVMValueRef denominator = LLVMBuildZExt(builder_, rightCoefficient, wide, "decimal.div.denominator");
+        const std::uint64_t maskWords[2] = {0xFFFFFFFFFFFFFFFFull, 0xFFFFFFFFull};
+        LLVMValueRef maximum = LLVMConstIntOfArbitraryPrecision(wide, 2, maskWords);
+
+        auto append = [this](const std::string& stem) { return appendBlock(stem); };
+        auto enter = [this](LLVMBasicBlockRef block) { enterBlock(block); };
+        LLVMValueRef scaledNumerator = nullptr;
+        LLVMValueRef scaledBoundary = nullptr;
+        buildDecimalDivisionScaling(context_, builder_, initialNumerator, maximum, expCount, targetCount,
+            append, enter, scaledNumerator, scaledBoundary);
+        LLVMValueRef rounded = nullptr;
+        LLVMValueRef overBoundary = nullptr;
+        buildDecimalDivisionQuotient(context_, builder_, scaledNumerator, denominator, scaledBoundary,
+            append, enter, rounded, overBoundary);
+        LLVMValueRef current = nullptr;
+        LLVMValueRef currentScale = nullptr;
+        buildDecimalDivisionReduction(context_, builder_, rounded, target, maximum, append, enter,
+            current, currentScale);
+        LLVMValueRef fits = LLVMBuildICmp(builder_, LLVMIntULE, current, maximum, "decimal.div.fits");
+        LLVMValueRef valid = fits;
+        if (currentOverflowPolicy_ == "saturating")
+            valid = LLVMBuildOr(builder_, fits, overBoundary, "decimal.div.sat.valid");
+        if (!emitGuard(valid, LlvmTrapReason::DecimalOverflow, "decimal.div.overflow", error)) return nullptr;
+        LLVMValueRef result = current;
+        effectiveScale = currentScale;
+        if (currentOverflowPolicy_ == "saturating")
+        {
+            result = LLVMBuildSelect(builder_, overBoundary, maximum, current, "decimal.div.saturated");
+            effectiveScale = LLVMBuildSelect(builder_, overBoundary, encodedZero, currentScale,
+                "decimal.div.saturated.scale");
+        }
+        return LLVMBuildTrunc(builder_, result, encoded, "decimal.div.coefficient");
 }
 
 LLVMValueRef OopLlvmImplementation::applyDecimalRemainder(
@@ -535,16 +1047,36 @@ LLVMValueRef OopLlvmImplementation::applyDecimalBinaryOperation(
         LLVMValueRef combined = nullptr;
         if (operation == lexer::TokenKind::Plus || operation == lexer::TokenKind::Minus)
             combined = applyDecimalAddOrSubtract(
-                operation, leftCoefficient, rightCoefficient, leftScale,
-                right, scaleShift, scaleMask, effectiveScale);
+                operation, left, leftCoefficient, rightCoefficient, leftScale,
+                right, scaleShift, scaleMask, effectiveScale, error);
         else if (operation == lexer::TokenKind::Star)
+        {
+            const std::uint64_t maskWords[2] = {0xFFFFFFFFFFFFFFFFull, 0xFFFFFFFFull};
+            LLVMValueRef fullMask = LLVMConstIntOfArbitraryPrecision(wide, 2, maskWords);
+            LLVMValueRef fullLeft = LLVMBuildAnd(builder_, left, fullMask, "decimal.mul.left.coeff");
+            LLVMValueRef fullRight = LLVMBuildAnd(builder_, right, fullMask, "decimal.mul.right.coeff");
             combined = applyDecimalMultiply(
-                left, right, leftCoefficient, rightCoefficient, leftScale,
+                left, right, fullLeft, fullRight, leftScale,
                 scaleShift, scaleMask, effectiveScale, error);
+        }
         else if (operation == lexer::TokenKind::Slash)
+        {
+            const std::uint64_t maskWords[2] = {0xFFFFFFFFFFFFFFFFull, 0xFFFFFFFFull};
+            LLVMValueRef fullMask = LLVMConstIntOfArbitraryPrecision(wide, 2, maskWords);
+            LLVMValueRef fullLeft = LLVMBuildAnd(builder_, left, fullMask, "decimal.div.left.coeff");
+            LLVMValueRef fullRight = LLVMBuildAnd(builder_, right, fullMask, "decimal.div.right.coeff");
             combined = applyDecimalDivide(
-                right, leftCoefficient, rightCoefficient, leftScale,
-                scaleShift, effectiveScale, error);
+                right, fullLeft, fullRight, leftScale, scaleShift, effectiveScale, error);
+            if (combined == nullptr) return nullptr;
+            LLVMValueRef signBit = LLVMBuildShl(builder_, LLVMConstInt(wide, 1, 0),
+                LLVMConstInt(wide, 127, 0), "decimal.div.sign.bit");
+            LLVMValueRef sign = LLVMBuildAnd(builder_, LLVMBuildXor(builder_, left, right, "decimal.div.sign.xor"),
+                signBit, "decimal.div.sign.mask");
+            sign = LLVMBuildSelect(builder_, LLVMBuildICmp(builder_, LLVMIntNE, combined,
+                LLVMConstInt(wide, 0, 0), "decimal.div.nonzero.result"), sign,
+                LLVMConstInt(wide, 0, 0), "decimal.div.normalized.sign");
+            combined = LLVMBuildOr(builder_, combined, sign, "decimal.div.signed");
+        }
         else
             combined = applyDecimalRemainder(
                 right, leftCoefficient, rightCoefficient, leftScale,
@@ -563,6 +1095,73 @@ LLVMValueRef OopLlvmImplementation::applyIntegerBinaryOperation(
         std::string& error,
         bool divisorProvenNonZero)
 {
+        // EN: `checked(...)` traps on overflow for every fixed-width integer type. Only i128 was
+        //     handled, so checked(int.MaxValue + 1) silently wrapped; unsigned types use the
+        //     unsigned intrinsics.
+        // ES: `checked(...)` atrapa el desbordamiento en todo entero de ancho fijo. Solo se trataba
+        //     i128, asi que checked(int.MaxValue + 1) daba la vuelta en silencio; los tipos sin
+        //     signo usan los intrinsecos sin signo.
+        if ((operation == lexer::TokenKind::Plus || operation == lexer::TokenKind::Minus ||
+             operation == lexer::TokenKind::Star) &&
+            integerWidth(operandType) > 1U &&
+            currentOverflowPolicy_ == "checked")
+        {
+            if (trapFunction_ == nullptr || trapFunctionType_ == nullptr)
+                return failValue(error, "checked integer overflow but no trap is configured");
+            const bool signedOperands = isSignedInteger(operandType);
+            const std::string_view name = operation == lexer::TokenKind::Plus
+                ? (signedOperands ? "llvm.sadd.with.overflow" : "llvm.uadd.with.overflow")
+                : operation == lexer::TokenKind::Minus
+                ? (signedOperands ? "llvm.ssub.with.overflow" : "llvm.usub.with.overflow")
+                : (signedOperands ? "llvm.smul.with.overflow" : "llvm.umul.with.overflow");
+            const unsigned id = LLVMLookupIntrinsicID(name.data(), name.size());
+            LLVMTypeRef type = LLVMTypeOf(left);
+            LLVMValueRef intrinsic = LLVMGetIntrinsicDeclaration(module_, id, &type, 1U);
+            LLVMValueRef arguments[] = {left, right};
+            LLVMValueRef pair = LLVMBuildCall2(
+                builder_, LLVMGlobalGetValueType(intrinsic), intrinsic, arguments, 2U, "checked.add");
+            LLVMValueRef value = LLVMBuildExtractValue(builder_, pair, 0, "checked.add.value");
+            LLVMValueRef overflow = LLVMBuildExtractValue(builder_, pair, 1, "checked.add.overflow");
+            LLVMBasicBlockRef trapBlock = appendBlock("checked.add.trap");
+            LLVMBasicBlockRef okBlock = appendBlock("checked.add.ok");
+            LLVMBuildCondBr(builder_, overflow, trapBlock, okBlock);
+            enterBlock(trapBlock);
+            LLVMValueRef reason = LLVMConstInt(
+                LLVMInt32TypeInContext(context_),
+                static_cast<std::uint64_t>(LlvmTrapReason::IntegerOverflow), 0);
+            LLVMValueRef trapArguments[] = {reason};
+            buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
+            LLVMBuildUnreachable(builder_);
+            enterBlock(okBlock);
+            return value;
+        }
+        if ((operation == lexer::TokenKind::Plus || operation == lexer::TokenKind::Minus) &&
+            operandType == "builtin:int" &&
+            currentOverflowPolicy_ == "saturating")
+        {
+            const std::string_view name = operation == lexer::TokenKind::Plus
+                ? "llvm.sadd.sat" : "llvm.ssub.sat";
+            const unsigned id = LLVMLookupIntrinsicID(name.data(), name.size());
+            LLVMTypeRef type = LLVMTypeOf(left);
+            LLVMValueRef intrinsic = LLVMGetIntrinsicDeclaration(module_, id, &type, 1U);
+            LLVMValueRef arguments[] = {left, right};
+            return LLVMBuildCall2(
+                builder_, LLVMGlobalGetValueType(intrinsic), intrinsic, arguments, 2U, "saturating.add");
+        }
+        if (operation == lexer::TokenKind::Star && operandType == "builtin:int" &&
+            currentOverflowPolicy_ == "saturating")
+        {
+            LLVMTypeRef wide = LLVMInt64TypeInContext(context_);
+            LLVMValueRef product = LLVMBuildMul(builder_, LLVMBuildSExt(builder_, left, wide, "sat.mul.left"),
+                LLVMBuildSExt(builder_, right, wide, "sat.mul.right"), "sat.mul.product");
+            LLVMValueRef minimum = LLVMConstInt(wide, static_cast<std::uint64_t>(-2147483647LL - 1), 1);
+            LLVMValueRef maximum = LLVMConstInt(wide, 2147483647, 0);
+            LLVMValueRef lower = LLVMBuildSelect(builder_, LLVMBuildICmp(builder_, LLVMIntSLT, product, minimum,
+                "sat.mul.below"), minimum, product, "sat.mul.lower");
+            LLVMValueRef clamped = LLVMBuildSelect(builder_, LLVMBuildICmp(builder_, LLVMIntSGT, lower, maximum,
+                "sat.mul.above"), maximum, lower, "sat.mul.clamped");
+            return LLVMBuildTrunc(builder_, clamped, LLVMTypeOf(left), "sat.mul.result");
+        }
         switch (operation)
         {
             case lexer::TokenKind::Plus: return LLVMBuildAdd(builder_, left, right, "add");
@@ -582,6 +1181,104 @@ LLVMValueRef OopLlvmImplementation::applyIntegerBinaryOperation(
                     : LLVMBuildLShr(builder_, left, right, "lshr");
             default: return failValue(error, "unsupported integer binary operation in Stage 34");
         }
+}
+
+// Divide unsigned magnitudes one bit at a time, then restore the quotient sign.
+// The carry preserves the 129th remainder bit; exactly 128 iterations are emitted.
+LLVMValueRef OopLlvmImplementation::emitSignedI128Division(LLVMValueRef left, LLVMValueRef right)
+{
+        LLVMTypeRef wide = LLVMTypeOf(left);
+        LLVMTypeRef countType = LLVMInt32TypeInContext(context_);
+        LLVMValueRef zero = LLVMConstInt(wide, 0, 0);
+        LLVMValueRef one = LLVMConstInt(wide, 1, 0);
+        LLVMValueRef signBit = LLVMConstInt(wide, 127, 0);
+        LLVMValueRef leftSign = LLVMBuildAShr(builder_, left, signBit, "i128.div.left.sign");
+        LLVMValueRef rightSign = LLVMBuildAShr(builder_, right, signBit, "i128.div.right.sign");
+        LLVMValueRef numerator = LLVMBuildSub(
+            builder_, LLVMBuildXor(builder_, left, leftSign, "i128.div.left.xor"), leftSign, "i128.div.left.abs");
+        LLVMValueRef denominator = LLVMBuildSub(
+            builder_, LLVMBuildXor(builder_, right, rightSign, "i128.div.right.xor"), rightSign, "i128.div.right.abs");
+        LLVMBasicBlockRef entry = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef loop = appendBlock("i128.div.loop");
+        LLVMBasicBlockRef done = appendBlock("i128.div.done");
+        LLVMBuildBr(builder_, loop);
+        enterBlock(loop);
+        LLVMValueRef n = LLVMBuildPhi(builder_, wide, "i128.div.n");
+        LLVMValueRef r = LLVMBuildPhi(builder_, wide, "i128.div.r");
+        LLVMValueRef q = LLVMBuildPhi(builder_, wide, "i128.div.q");
+        LLVMValueRef i = LLVMBuildPhi(builder_, countType, "i128.div.i");
+        LLVMValueRef carry = LLVMBuildICmp(builder_, LLVMIntNE,
+            LLVMBuildLShr(builder_, r, signBit, "i128.div.carry.bit"), zero, "i128.div.carry");
+        LLVMValueRef shifted = LLVMBuildOr(builder_, LLVMBuildShl(builder_, r, one, "i128.div.r.shift"),
+            LLVMBuildLShr(builder_, n, signBit, "i128.div.next.bit"), "i128.div.r.shifted");
+        LLVMValueRef subtract = LLVMBuildOr(builder_, carry,
+            LLVMBuildICmp(builder_, LLVMIntUGE, shifted, denominator, "i128.div.ge"), "i128.div.subtract");
+        LLVMValueRef nextR = LLVMBuildSelect(builder_, subtract,
+            LLVMBuildSub(builder_, shifted, denominator, "i128.div.sub"), shifted, "i128.div.r.next");
+        LLVMValueRef nextQ = LLVMBuildOr(builder_, LLVMBuildShl(builder_, q, one, "i128.div.q.shift"),
+            LLVMBuildZExt(builder_, subtract, wide, "i128.div.q.bit"), "i128.div.q.next");
+        LLVMValueRef nextN = LLVMBuildShl(builder_, n, one, "i128.div.n.next");
+        LLVMValueRef nextI = LLVMBuildAdd(
+            builder_, i, LLVMConstInt(countType, 1, 0), "i128.div.i.next");
+        LLVMBuildCondBr(builder_, LLVMBuildICmp(builder_, LLVMIntEQ, nextI,
+            LLVMConstInt(countType, 128, 0), "i128.div.finished"), done, loop);
+        LLVMBasicBlockRef blocks[] = {entry, loop};
+        LLVMValueRef nValues[] = {numerator, nextN};
+        LLVMValueRef rValues[] = {zero, nextR};
+        LLVMValueRef qValues[] = {zero, nextQ};
+        LLVMValueRef iValues[] = {LLVMConstInt(countType, 0, 0), nextI};
+        LLVMAddIncoming(n, nValues, blocks, 2U);
+        LLVMAddIncoming(r, rValues, blocks, 2U);
+        LLVMAddIncoming(q, qValues, blocks, 2U);
+        LLVMAddIncoming(i, iValues, blocks, 2U);
+        enterBlock(done);
+        LLVMValueRef sign = LLVMBuildXor(builder_, leftSign, rightSign, "i128.div.sign");
+        return LLVMBuildSub(builder_, LLVMBuildXor(builder_, nextQ, sign, "i128.div.signed.xor"),
+            sign, "i128.div.signed");
+}
+
+// Unsigned restoring division, including the 129th remainder carry.
+LLVMValueRef OopLlvmImplementation::emitUnsignedI128Division(LLVMValueRef left, LLVMValueRef right)
+{
+        LLVMTypeRef wide = LLVMTypeOf(left);
+        LLVMTypeRef countType = LLVMInt32TypeInContext(context_);
+        LLVMValueRef zero = LLVMConstInt(wide, 0, 0);
+        LLVMValueRef one = LLVMConstInt(wide, 1, 0);
+        LLVMValueRef topBit = LLVMConstInt(wide, 127, 0);
+        LLVMBasicBlockRef entry = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef loop = appendBlock("u128.div.loop");
+        LLVMBasicBlockRef done = appendBlock("u128.div.done");
+        LLVMBuildBr(builder_, loop);
+        enterBlock(loop);
+        LLVMValueRef n = LLVMBuildPhi(builder_, wide, "u128.div.n");
+        LLVMValueRef r = LLVMBuildPhi(builder_, wide, "u128.div.r");
+        LLVMValueRef q = LLVMBuildPhi(builder_, wide, "u128.div.q");
+        LLVMValueRef i = LLVMBuildPhi(builder_, countType, "u128.div.i");
+        LLVMValueRef carry = LLVMBuildICmp(builder_, LLVMIntNE,
+            LLVMBuildLShr(builder_, r, topBit, "u128.div.carry.bit"), zero, "u128.div.carry");
+        LLVMValueRef shifted = LLVMBuildOr(builder_, LLVMBuildShl(builder_, r, one, "u128.div.r.shift"),
+            LLVMBuildLShr(builder_, n, topBit, "u128.div.next.bit"), "u128.div.r.shifted");
+        LLVMValueRef subtract = LLVMBuildOr(builder_, carry,
+            LLVMBuildICmp(builder_, LLVMIntUGE, shifted, right, "u128.div.ge"), "u128.div.subtract");
+        LLVMValueRef nextR = LLVMBuildSelect(builder_, subtract,
+            LLVMBuildSub(builder_, shifted, right, "u128.div.sub"), shifted, "u128.div.r.next");
+        LLVMValueRef nextQ = LLVMBuildOr(builder_, LLVMBuildShl(builder_, q, one, "u128.div.q.shift"),
+            LLVMBuildZExt(builder_, subtract, wide, "u128.div.q.bit"), "u128.div.q.next");
+        LLVMValueRef nextN = LLVMBuildShl(builder_, n, one, "u128.div.n.next");
+        LLVMValueRef nextI = LLVMBuildAdd(builder_, i, LLVMConstInt(countType, 1, 0), "u128.div.i.next");
+        LLVMBuildCondBr(builder_, LLVMBuildICmp(builder_, LLVMIntEQ, nextI,
+            LLVMConstInt(countType, 128, 0), "u128.div.finished"), done, loop);
+        LLVMBasicBlockRef blocks[] = {entry, loop};
+        LLVMValueRef nValues[] = {left, nextN};
+        LLVMValueRef rValues[] = {zero, nextR};
+        LLVMValueRef qValues[] = {zero, nextQ};
+        LLVMValueRef iValues[] = {LLVMConstInt(countType, 0, 0), nextI};
+        LLVMAddIncoming(n, nValues, blocks, 2U);
+        LLVMAddIncoming(r, rValues, blocks, 2U);
+        LLVMAddIncoming(q, qValues, blocks, 2U);
+        LLVMAddIncoming(i, iValues, blocks, 2U);
+        enterBlock(done);
+        return nextQ;
 }
 
 LLVMValueRef OopLlvmImplementation::applyIntegerDivision(
@@ -606,11 +1303,54 @@ LLVMValueRef OopLlvmImplementation::applyIntegerDivision(
 
         if (!isSignedInteger(operandType))
         {
+            if (remainder && operandType == "builtin:u128")
+            {
+                LLVMValueRef quotient = emitUnsignedI128Division(left, right);
+                return LLVMBuildSub(builder_, left,
+                    LLVMBuildMul(builder_, quotient, right, "u128.rem.product"), "u128.rem");
+            }
+            if (!remainder && operandType == "builtin:u128")
+                return emitUnsignedI128Division(left, right);
             return remainder
                 ? LLVMBuildURem(builder_, left, right, "urem")
                 : LLVMBuildUDiv(builder_, left, right, "udiv");
         }
 
+        if (remainder && operandType == "builtin:i128")
+        {
+            LLVMValueRef quotient = emitSignedI128Division(left, right);
+            // The quotient loop and these plain i128 operations use modulo 2^128;
+            // MinValue % -1 is therefore zero without signed division poison.
+            return LLVMBuildSub(builder_, left,
+                LLVMBuildMul(builder_, quotient, right, "i128.rem.product"), "i128.rem");
+        }
+        if (!remainder && operandType == "builtin:i128" && currentOverflowPolicy_ == "checked")
+        {
+            LLVMValueRef minimum = LLVMBuildShl(builder_,
+                LLVMConstInt(integerType, 1, 0), LLVMConstInt(integerType, 127, 0), "div.min.value");
+            LLVMValueRef isMinimum = LLVMBuildICmp(builder_, LLVMIntEQ, left, minimum, "div.minimum");
+            LLVMValueRef isMinusOne = LLVMBuildICmp(
+                builder_, LLVMIntEQ, right, LLVMConstInt(integerType, ~std::uint64_t{0}, 1), "div.minusone");
+            LLVMValueRef valid = LLVMBuildNot(
+                builder_, LLVMBuildAnd(builder_, isMinimum, isMinusOne, "div.overflow"), "div.valid");
+            if (!emitGuard(valid, LlvmTrapReason::IntegerOverflow, "div.checked.overflow", error))
+                return nullptr;
+        }
+        if (!remainder && operandType == "builtin:i128")
+            return emitSignedI128Division(left, right);
+        if (!remainder && operandType == "builtin:int" && currentOverflowPolicy_ == "saturating")
+        {
+            LLVMValueRef minimum = LLVMConstInt(integerType, 0x80000000U, 0);
+            LLVMValueRef minusOne = LLVMConstInt(integerType, 0xffffffffU, 0);
+            LLVMValueRef overflow = LLVMBuildAnd(builder_,
+                LLVMBuildICmp(builder_, LLVMIntEQ, left, minimum, "sat.div.minimum"),
+                LLVMBuildICmp(builder_, LLVMIntEQ, right, minusOne, "sat.div.minusone"), "sat.div.overflow");
+            LLVMValueRef divisor = LLVMBuildSelect(builder_, overflow, LLVMConstInt(integerType, 1, 0), right,
+                "sat.div.divisor");
+            LLVMValueRef quotient = LLVMBuildSDiv(builder_, left, divisor, "sat.div.quotient");
+            return LLVMBuildSelect(builder_, overflow, LLVMConstInt(integerType, 0x7fffffffU, 0), quotient,
+                "sat.div.result");
+        }
         LLVMValueRef divisor = correctedSignedDivisor(
             builder_, integerType, left, right, integerWidth(operandType), "div");
         return remainder

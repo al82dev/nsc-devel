@@ -28,7 +28,7 @@ struct CppBinaryDependency final
 
 struct ResolvedCppBinaryDependency final
 {
-    std::filesystem::path libraryPath;
+    std::filesystem::path libraryPath{};
     std::filesystem::path runtimePath;
 };
 

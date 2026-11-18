@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/CppAliasEnumType.h"
 #include "nativesharp/Frontend/CppAliasRecordType.h"
+#include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "../Internal/LookupEnvironment.h"
 #include "../Internal/ProjectNameLookupFrame.h"
 
@@ -31,6 +32,21 @@
 
 namespace nativesharp::frontend
 {
+// Open argument expressions are handled only after substitution. Avoid proving a name that
+// could refer to a generic parameter, including a projection or a nested argument of one.
+static bool dependsOnOpenGenericParameter(
+    const ast::TypeSyntax* syntax, const std::vector<std::string>& parameters)
+{
+    if (syntax == nullptr || syntax->isFunction() || syntax->isTuple() || !syntax->modifiers().empty())
+        return true;
+    for (const std::string& parameter : parameters)
+        if (syntax->baseName() == parameter || syntax->baseName().starts_with(parameter + "."))
+            return true;
+    for (const ast::TypeSyntax* argument : syntax->typeArguments())
+        if (dependsOnOpenGenericParameter(argument, parameters)) return true;
+    return false;
+}
+
 void ProjectNameLookup::bindUnit(
     const ProjectSyntaxUnit& unit,
     diagnostics::DiagnosticEngine& diagnostics,
@@ -108,14 +124,13 @@ bool ProjectNameLookup::bindGenericTemplateConstraints(
     // quedaba a medias: el error existia solo si alguien usaba la
     // plantilla.
     //
-    // Solo los tipos de constraint: el argumento sustituido no existe en
-    // una plantilla, y el parser ya rechaza que un constraint nombre otro
-    // parametro generico, de modo que aqui no puede llegar por construccion
-    // un nombre irresoluble.
+    // Bind concrete names now; parameters are resolved after substitution.
+    LookupEnvironment constraintEnvironment = environment;
+    constraintEnvironment.openConstraintParameters = node->genericParameters();
     for (const ast::GenericConstraintClause& clause : node->genericConstraints())
     {
         for (const ast::TypeSyntax* constraint : clause.typeConstraints)
-            bindTypeSyntax(unit, constraint, namespaceSegments, environment, diagnostics, index);
+            bindTypeSyntax(unit, constraint, namespaceSegments, constraintEnvironment, diagnostics, index);
         if (clause.equalityConstraint == nullptr ||
             std::find(
                 node->genericParameters().begin(),
@@ -128,7 +143,7 @@ bool ProjectNameLookup::bindGenericTemplateConstraints(
         if (!language::parseConstGenericArgumentMarker(
                 clause.equalityConstraint->baseName(), constantType, constantValue))
             bindTypeSyntax(
-                unit, clause.equalityConstraint, namespaceSegments, environment, diagnostics, index);
+                unit, clause.equalityConstraint, namespaceSegments, constraintEnvironment, diagnostics, index);
     }
     return true;
 }
@@ -236,7 +251,9 @@ void ProjectNameLookup::bindNode(
 
         if (frame.stage == Stage::Enter)
         {
-            if (bindGenericTemplateConstraints(
+            if (genericArgumentPrepass_ && genericModel_ != nullptr &&
+                genericModel_->specializationForSyntax(node) != nullptr) continue;
+            if (!genericArgumentPrepass_ && bindGenericTemplateConstraints(
                     unit,
                     node,
                     namespaceSegments,
@@ -261,7 +278,70 @@ void ProjectNameLookup::bindNode(
                 scopedEnvironments.back().enclosingTypeOrdinals.push_back(*ordinal);
                 activeEnvironment = &scopedEnvironments.back();
             }
+            if (genericArgumentPrepass_ && !node->genericParameters().empty())
+            {
+                scopedEnvironments.push_back(*activeEnvironment);
+                auto& parameters = scopedEnvironments.back().openConstraintParameters;
+                parameters.insert(parameters.end(), node->genericParameters().begin(), node->genericParameters().end());
+                activeEnvironment = &scopedEnvironments.back();
+            }
             const LookupEnvironment& scope = *activeEnvironment;
+            if (genericArgumentPrepass_)
+            {
+                // Inference can originate at an authored local or parameter type rather than
+                // at an explicit type argument. Capture only successful lexical bindings here;
+                // the regular pass remains responsible for diagnostics.
+                if ((node->kind() == ast::AstNodeKind::VariableDeclarationStatement ||
+                     node->kind() == ast::AstNodeKind::ParameterDeclaration) &&
+                    node->typeSyntax() != nullptr &&
+                    !dependsOnOpenGenericParameter(node->typeSyntax(), scope.openConstraintParameters))
+                {
+                    diagnostics::DiagnosticEngine localDiagnostics(diagnostics.errorLimit());
+                    UnitBindingIndex localIndex;
+                    bindTypeSyntax(unit, node->typeSyntax(), namespaceSegments, scope, localDiagnostics, localIndex);
+                    if (!localDiagnostics.hasErrors())
+                        for (TypeNameBinding& binding : localIndex.bindings)
+                        {
+                            if (binding.syntax == nullptr || index.bindingBySyntax.contains(binding.syntax)) continue;
+                            index.bindingBySyntax.emplace(binding.syntax, index.bindings.size());
+                            index.bindings.push_back(std::move(binding));
+                        }
+                }
+                if (node->kind() == ast::AstNodeKind::CallExpression && genericModel_ != nullptr &&
+                    genericModel_->genericCallCloneSource(node) == nullptr &&
+                    !genericModel_->genericCallArgumentsWereInferred(node))
+                {
+                    for (const ast::TypeSyntax* argument : genericModel_->rewrittenCallTypeArguments(node))
+                        bindTypeSyntax(unit, argument, namespaceSegments, scope, diagnostics, index);
+                    // Original open templates are not themselves checked eagerly: retain only
+                    // positively resolved concrete arguments, without emitting diagnostics until
+                    // an instantiated call is actually analyzed.
+                    if (!scope.openConstraintParameters.empty())
+                    {
+                        for (const ast::TypeSyntax* argument : node->typeSyntaxes())
+                        {
+                            if (dependsOnOpenGenericParameter(argument, scope.openConstraintParameters)) continue;
+                            diagnostics::DiagnosticEngine localDiagnostics(diagnostics.errorLimit());
+                            UnitBindingIndex localIndex;
+                            bindTypeSyntax(unit, argument, namespaceSegments, scope, localDiagnostics, localIndex);
+                            if (localDiagnostics.hasErrors()) continue;
+                            for (TypeNameBinding& binding : localIndex.bindings)
+                            {
+                                if (binding.syntax == nullptr || index.bindingBySyntax.contains(binding.syntax)) continue;
+                                index.bindingBySyntax.emplace(binding.syntax, index.bindings.size());
+                                index.bindings.push_back(std::move(binding));
+                            }
+                        }
+                    }
+                }
+                const auto children = node->children();
+                for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
+                    frames.push_back(Frame{*iterator, activeEnvironment, Stage::Enter});
+                frames.push_back(Frame{node->third(), activeEnvironment, Stage::Enter});
+                frames.push_back(Frame{node->second(), activeEnvironment, Stage::Enter});
+                frames.push_back(Frame{node->first(), activeEnvironment, Stage::Enter});
+                continue;
+            }
             bindSpecialNodeTypeReferences(
                 unit, node, namespaceSegments, scope, diagnostics, index);
 
@@ -381,7 +461,42 @@ void ProjectNameLookup::bindChildTypeSyntaxes(
 {
     for (const ast::TypeSyntax* argument : syntax->typeArguments())
         bindTypeSyntax(unit, argument, namespaceSegments, environment, diagnostics, index);
+    // EN: LKF-388: a tuple element has no ownership contract, so `(owned P, int)` dropped `owned`
+    //     silently and the object was never destroyed.
+    // ES: LKF-388: un elemento de tupla no tiene contrato de propiedad, así que `(owned P, int)`
+    //     descartaba `owned` en silencio y el objeto nunca se destruía.
+    if (syntax->isTuple())
+        for (const ast::TypeSyntax* argument : syntax->typeArguments())
+            if (argument != nullptr && argument->ownershipQualifier() == ast::OwnershipQualifierSyntaxKind::Owned)
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    argument->range(),
+                    "a tuple element cannot be owned: a tuple does not destroy the objects its elements "
+                    "refer to; declare a struct with an owned field instead");
     if (!syntax->isFunction()) return;
+    // EN: LKF-286: a function type has no ownership contract; `owned` on a parameter or the result
+    //     used to be dropped silently, so the written contract was not the one applied.
+    // ES: LKF-286: un tipo función no tiene contrato de propiedad; `owned` en un parámetro o en el
+    //     resultado se descartaba en silencio, así que el contrato escrito no era el aplicado.
+    for (const ast::TypeSyntax* argument : syntax->typeArguments())
+    {
+        if (argument == nullptr || argument->ownershipQualifier() != ast::OwnershipQualifierSyntaxKind::Owned)
+            continue;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            argument->range(),
+            "a function type parameter cannot be owned: a function type lends every parameter; declare a "
+            "delegate with an owned parameter instead");
+    }
+    if (syntax->functionReturnType() != nullptr &&
+        syntax->functionReturnType()->ownershipQualifier() == ast::OwnershipQualifierSyntaxKind::Owned)
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->functionReturnType()->range(),
+            "a function type cannot return an owner; declare a delegate with an owned return instead");
     bindTypeSyntax(
         unit, syntax->functionReturnType(), namespaceSegments,
         environment, diagnostics, index);

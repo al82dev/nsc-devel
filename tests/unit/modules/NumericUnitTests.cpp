@@ -86,7 +86,7 @@ void verifyNumericLiterals(TestContext& context)
 void registerNumericUnitTests(TestRegistry& registry)
 {
     registry.add(TestCase{
-        "nsc.ns3.t14.numeric-literals",
+        "nsc.language.t14.numeric-literals",
         "lexer",
         "numeric literal parsing and resolution",
         {"numeric", "literal", "width"},

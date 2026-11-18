@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # NS3-T03-F03 — Exhaustive match
 
 ## Estado
@@ -45,15 +47,15 @@ tipo/ownership, resultado `ref`, cleanup por brazo y selección branch/tag-switc
 - `src/LLVM/ProjectOopLlvmLowerer.cpp`: evaluación única, CFG por brazos, phi/ref result,
   cleanup de guard/resultado y switch por tag cuando es seguro.
 - `src/Language/SumTypeSemantics.cpp`: utilidad correcta tras cobertura completa.
-- `tests/unit/NativeSharp3T03SumTypeTests.cpp`: regresión del wildcard redundante.
-- `tests/unit/NativeSharp3T03TaggedVariantTests.cpp` y
+- `tests/unit/NativeSharpT03SumTypeTests.cpp`: regresión del wildcard redundante.
+- `tests/unit/NativeSharpT03TaggedVariantTests.cpp` y
   `tests/cc1/c59_ns3_variants/Main.ns`: uso de exhaustividad cerrada sin wildcard.
 - `CMakeLists.txt`: registro de la prueba exclusiva del ítem.
 - `docs/3.0/language/fundamental-patterns.md`: frontera actualizada entre dominio abierto/cerrado.
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T03ExhaustiveMatchTests.cpp`: ejecución directa y cross-module, casos
+- `tests/unit/NativeSharpT03ExhaustiveMatchTests.cpp`: ejecución directa y cross-module, casos
   faltantes, payload parcial, dominio abierto y brazos inalcanzables.
 - `docs/3.0/language/exhaustive-match.md`: contrato bilingüe de cobertura, utilidad y lowering.
 - Este documento: evidencia por commit y deuda explícita conforme a la metodología.

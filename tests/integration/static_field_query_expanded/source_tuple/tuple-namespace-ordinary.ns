@@ -1,0 +1,1 @@
+namespace N { public struct P { public int X; } } struct Record { public (int,N.P) Pair; } int Main() { Record value=default(Record); var item=value.Pair; return 0; }

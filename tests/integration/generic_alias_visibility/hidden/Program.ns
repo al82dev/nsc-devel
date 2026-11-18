@@ -1,0 +1,3 @@
+using Pick = External;
+struct Box<T> { public T Data; }
+class Program { public static int Main() { Box<Pick.Value<int>> foreign; return 0; } }

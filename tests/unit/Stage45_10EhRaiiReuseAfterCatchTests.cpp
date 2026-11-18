@@ -69,6 +69,10 @@
 // caught any of this: they all used a fixture with no destructor, so they passed while silently
 // operating on freed memory, and they all used a single catch clause.
 
+// C-13: a throw must be caught or declared. The fixtures whose callables let
+// InsufficientFundsException leave them (a Withdraw outside any matching catch) now declare it with
+// `throws`; the exercised paths and the expected exit codes are unchanged.
+
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/Driver/Driver.h"
 
@@ -376,7 +380,7 @@ void testCatchThenPlainCallNoSecondTry(TestContext& tests, const std::filesystem
     const std::string source = std::string(kAccountFixture) + R"NS(
     class Program
     {
-        public static int Main()
+        public static int Main() throws InsufficientFundsException
         {
             raii Account account = new Account(100);
             int caught = 0;
@@ -415,7 +419,7 @@ void testNestedTryInsideCatchSameRaii(TestContext& tests, const std::filesystem:
     const std::string source = std::string(kAccountFixture) + R"NS(
     class Program
     {
-        public static int Main()
+        public static int Main() throws InsufficientFundsException
         {
             raii Account account = new Account(100);
             int outerCaught = 0;
@@ -457,7 +461,7 @@ void testMultipleRaiiObjectsAfterCatch(TestContext& tests, const std::filesystem
     const std::string source = std::string(kAccountFixture) + R"NS(
     class Program
     {
-        public static int Main()
+        public static int Main() throws InsufficientFundsException
         {
             raii Account first = new Account(100);
             raii Account second = new Account(50);
@@ -579,7 +583,7 @@ void testRaiiObjectStillUsableAfterCatchWithHeapChurn(
     const std::string source = std::string(kAccountFixture) + R"NS(
     class Program
     {
-        public static int Main()
+        public static int Main() throws InsufficientFundsException
         {
             raii Account account = new Account(100);
             try
@@ -700,7 +704,7 @@ void testUnmatchedCatchStillRunsEnclosingCleanup(
 
     class Program
     {
-        public static int RunScope()
+        public static int RunScope() throws InsufficientFundsException
         {
             raii CountingAccount account = new CountingAccount(100);
             try
@@ -798,7 +802,7 @@ void testCatchAllAfterTypedClauseWithEnclosingRaii(
 
     class Program
     {
-        public static int Main()
+        public static int Main() throws InsufficientFundsException
         {
             raii Account account = new Account(100);
             int hit = 0;

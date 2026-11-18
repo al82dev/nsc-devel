@@ -2,6 +2,7 @@
 
 #include "Json.h"
 
+#include <charconv>
 #include <cctype>
 #include <utility>
 
@@ -39,10 +40,16 @@ bool JsonParser::parseValue(Json &value, std::string &error)
     if (position_ >= text_.size())
         return fail(error, "expected JSON value");
     const char current = text_[position_];
-    if (current == '{')
-        return parseObject(value, error);
-    if (current == '[')
-        return parseArray(value, error);
+    if (current == '{' || current == '[')
+    {
+        // LKF-250: see kMaximumDepth. / LKF-250: ver kMaximumDepth.
+        if (depth_ >= kMaximumDepth)
+            return fail(error, "JSON nesting is deeper than " + std::to_string(kMaximumDepth) + " levels");
+        ++depth_;
+        const bool parsed = current == '{' ? parseObject(value, error) : parseArray(value, error);
+        --depth_;
+        return parsed;
+    }
     if (current == '"')
     {
         std::string parsed;
@@ -71,20 +78,44 @@ bool JsonParser::parseValue(Json &value, std::string &error)
     }
     if (current == '-' || std::isdigit(static_cast<unsigned char>(current)))
     {
-        const std::size_t start = position_++;
-        while (position_ < text_.size() &&
-               (std::isdigit(static_cast<unsigned char>(text_[position_])) || text_[position_] == '.' ||
-                text_[position_] == 'e' || text_[position_] == 'E' || text_[position_] == '+' ||
-                text_[position_] == '-'))
-            ++position_;
-        try
-        {
-            value.value = std::stod(std::string(text_.substr(start, position_ - start)));
-        }
-        catch (...)
-        {
+        const std::size_t start = position_;
+        const auto isDigit = [](char c) { return c >= '0' && c <= '9'; };
+        if (text_[position_] == '-') ++position_;
+        if (position_ >= text_.size() || !isDigit(text_[position_]))
             return fail(error, "invalid JSON number");
+        if (text_[position_] == '0')
+        {
+            ++position_;
+            if (position_ < text_.size() && isDigit(text_[position_]))
+                return fail(error, "invalid JSON number");
         }
+        else
+        {
+            while (position_ < text_.size() && isDigit(text_[position_])) ++position_;
+        }
+        if (position_ < text_.size() && text_[position_] == '.')
+        {
+            ++position_;
+            if (position_ >= text_.size() || !isDigit(text_[position_]))
+                return fail(error, "invalid JSON number");
+            while (position_ < text_.size() && isDigit(text_[position_])) ++position_;
+        }
+        if (position_ < text_.size() && (text_[position_] == 'e' || text_[position_] == 'E'))
+        {
+            ++position_;
+            if (position_ < text_.size() && (text_[position_] == '+' || text_[position_] == '-')) ++position_;
+            if (position_ >= text_.size() || !isDigit(text_[position_]))
+                return fail(error, "invalid JSON number");
+            while (position_ < text_.size() && isDigit(text_[position_])) ++position_;
+        }
+        double number = 0;
+        const char* first = text_.data() + start;
+        const char* last = text_.data() + position_;
+        const auto [end, conversionError] = std::from_chars(first, last, number);
+        if (conversionError != std::errc{} || end != last)
+            return fail(error, "invalid JSON number");
+        value.numberText.assign(first, last);
+        value.value = number;
         return true;
     }
     return fail(error, "invalid JSON value");
@@ -153,6 +184,26 @@ bool JsonParser::parseString(std::string &value, std::string &error)
                 else
                     return fail(error, "invalid unicode escape");
             }
+            if (codePoint >= 0xd800U && codePoint <= 0xdbffU)
+            {
+                if (position_ + 6U > text_.size() || text_[position_] != '\\' || text_[position_ + 1U] != 'u')
+                    return fail(error, "missing low surrogate");
+                position_ += 2U;
+                unsigned low = 0;
+                for (unsigned index = 0; index < 4U; ++index)
+                {
+                    const char digit = text_[position_++];
+                    low <<= 4U;
+                    if (digit >= '0' && digit <= '9') low += static_cast<unsigned>(digit - '0');
+                    else if (digit >= 'a' && digit <= 'f') low += 10U + static_cast<unsigned>(digit - 'a');
+                    else if (digit >= 'A' && digit <= 'F') low += 10U + static_cast<unsigned>(digit - 'A');
+                    else return fail(error, "invalid unicode escape");
+                }
+                if (low < 0xdc00U || low > 0xdfffU) return fail(error, "invalid low surrogate");
+                codePoint = 0x10000U + ((codePoint - 0xd800U) << 10U) + (low - 0xdc00U);
+            }
+            else if (codePoint >= 0xdc00U && codePoint <= 0xdfffU)
+                return fail(error, "unexpected low surrogate");
             if (codePoint <= 0x7fU)
                 value.push_back(static_cast<char>(codePoint));
             else if (codePoint <= 0x7ffU)
@@ -160,9 +211,16 @@ bool JsonParser::parseString(std::string &value, std::string &error)
                 value.push_back(static_cast<char>(0xc0U | (codePoint >> 6U)));
                 value.push_back(static_cast<char>(0x80U | (codePoint & 0x3fU)));
             }
-            else
+            else if (codePoint <= 0xffffU)
             {
                 value.push_back(static_cast<char>(0xe0U | (codePoint >> 12U)));
+                value.push_back(static_cast<char>(0x80U | ((codePoint >> 6U) & 0x3fU)));
+                value.push_back(static_cast<char>(0x80U | (codePoint & 0x3fU)));
+            }
+            else
+            {
+                value.push_back(static_cast<char>(0xf0U | (codePoint >> 18U)));
+                value.push_back(static_cast<char>(0x80U | ((codePoint >> 12U) & 0x3fU)));
                 value.push_back(static_cast<char>(0x80U | ((codePoint >> 6U) & 0x3fU)));
                 value.push_back(static_cast<char>(0x80U | (codePoint & 0x3fU)));
             }

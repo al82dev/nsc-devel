@@ -1,6 +1,8 @@
 # Tanda 17: telemetría estructurada, memoria y failure bundles
 
-## Correspondencia con el plan NativeSharp 3.0
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+## Correspondencia con el plan NativeSharp
 
 Este commit cierra la **tanda operativa 01** del documento maestro: el vertical pequeño y
 verificable de P00/P01/P02. No declara certificados todos los corpus, presupuestos ni herramientas

@@ -41,7 +41,7 @@ prueba de que la batería histórica no cambia es la corrida integral final, que
 - **Evidencia de partida.** Corrida de NSC Builder 3 `20261025-222449-571bf9f4` (FAIL=18, 11 causas
   terminales), reproducida caso por caso con `nsc_component_tests --case` en Release el 2026-10-26.
 - **Archivos modificables.** `include/nativesharp/Diagnostics/DiagnosticId.h`,
-  `src/Language/Language3Surface.cpp`, `tests/compiler-suite/host/modules/DiagnosticIdentityModule.cpp`,
+  `src/Language/LanguageSurface.cpp`, `tests/compiler-suite/host/modules/DiagnosticIdentityModule.cpp`,
   `tests/compiler-suite/host/modules/LanguageSurfaceModule.cpp`,
   `tests/compiler-suite/host/modules/ParserSwitchCoordinatorCounterfactualModule.cpp`,
   `tests/compiler-suite/manifest/cases.jsonl`, las filas de esos casos en
@@ -80,7 +80,7 @@ prueba de que la batería histórica no cambia es la corrida integral final, que
 
 ## Cambio
 
-`src/Language/Language3Surface.cpp`, entrada `MoveOnlyDefaults`; rationale nueva:
+`src/Language/LanguageSurface.cpp`, entrada `MoveOnlyDefaults`; rationale nueva:
 
 ```text
 structs without a destructor whose fields are all copyable copy implicitly; structs with a destructor or owned
@@ -89,7 +89,7 @@ require move(value) and await consumes its future
 ```
 
 La disposición (`implemented`), el nombre y el orden no cambian. Se conserva el comentario de C-06 y se agrega uno
-bilingüe con DEC-07/DEC-08. Consumidores del texto: `nsc --print-language-3-surface`, `language3SurfaceDiagnostic`
+bilingüe con DEC-07/DEC-08. Consumidores del texto: `nsc --print-language-surface`, `languageSurfaceDiagnostic`
 (parser) y las pruebas TL-LANG-155..161 (oráculo fijado en el commit siguiente) y
 `tests/unit/NativeSharp3T49LanguageSurfaceTests.cpp`, que sólo exige el prefijo `move-only-defaults=implemented`.
 
@@ -121,7 +121,7 @@ separado):
 Pruebas focales (`nsc_component_tests --case <ID>`, Debug y Release), sin batería completa: 42 de 42 PASS
 (TD-DIA-003..006, TD-DIA-047..052, TL-LANG-155..161, TL-LANG-339, TL-LANG-376, TL-LANG-413, TP-PAR-561).
 
-`nsc --print-language-3-surface` del nsc recién construido imprime la línea `move-only-defaults=implemented:` con la
+`nsc --print-language-surface` del nsc recién construido imprime la línea `move-only-defaults=implemented:` con la
 rationale nueva. TL-LANG-155..161 PASS en Debug y Release con los oráculos del commit siguiente; en este commit,
 aislado, esos casos seguían fallando por C-06.
 

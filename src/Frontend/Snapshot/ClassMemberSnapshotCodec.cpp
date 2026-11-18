@@ -59,6 +59,12 @@ void writeMemberContracts(PrecompiledSnapshotWriter& writer, const ClassMemberSy
     writeSnapshotTexts(writer, member.lifetimeParameters);
     writeSnapshotTextPairs(writer, member.lifetimeOutlivesConstraints);
     writeSnapshotEscapes(writer, member.parameterEscapeSummary);
+    writer.u32(static_cast<std::uint32_t>(member.pointerOutputObjectOrigins.size()));
+    for (const auto& origins : member.pointerOutputObjectOrigins)
+    {
+        writer.u32(static_cast<std::uint32_t>(origins.size()));
+        for (const auto origin : origins) writer.u32(origin);
+    }
     writer.node(member.bitWidthSyntax);
     writer.byte(static_cast<std::uint8_t>(member.inliningPolicy));
     writer.u32(member.effects.bits());
@@ -77,6 +83,20 @@ bool readMemberContracts(PrecompiledSnapshotReader& reader, ClassMemberSymbol& m
     member.lifetimeParameters = readSnapshotTexts(reader);
     member.lifetimeOutlivesConstraints = readSnapshotTextPairs(reader);
     member.parameterEscapeSummary = readSnapshotEscapes(reader);
+    const std::uint32_t outputCount = reader.u32();
+    if (reader.failed() || (outputCount != 0 && outputCount != member.parameters.size())) return false;
+    member.pointerOutputObjectOrigins.resize(outputCount);
+    for (auto& origins : member.pointerOutputObjectOrigins)
+    {
+        const std::uint32_t count = reader.u32();
+        if (reader.failed() || count > member.parameters.size()) return false;
+        origins.resize(count);
+        for (auto& origin : origins)
+        {
+            origin = reader.u32();
+            if (reader.failed() || origin >= member.parameters.size()) return false;
+        }
+    }
     member.bitWidthSyntax = reader.node();
     member.inliningPolicy = static_cast<InliningPolicy>(reader.byte());
     const std::uint32_t effectBits = reader.u32();

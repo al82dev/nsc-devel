@@ -1,0 +1,1 @@
+int Main() { owned Child.Box<int> value=new Child.Box<int>(); value.Set(3); value.Tail=7; owned Beta.Base<int> b=new Beta.Base<int>(); b.Set(9); b.Other=4; return value.Read()==3 && value.Tail==7 && b.Read()==9 && b.Other==4 ? 0 : 1; }

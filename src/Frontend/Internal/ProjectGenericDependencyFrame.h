@@ -12,5 +12,6 @@ struct ProjectGenericModel::DependencyFrame final
     std::string namespaceName;
     std::string ownerName;
     GenericLookupScope scope;
+    std::vector<GenericTemplateSourceImport> sourceImports;
 };
 }

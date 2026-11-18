@@ -6,7 +6,7 @@ Validation profile: directed O0/NSLink only; no baseline
 
 ## Delivered contract
 
-NativeSharp 3 now has productive structural function types across parser, name/type binding,
+NativeSharp now has productive structural function types across parser, name/type binding,
 generic specialization, overload resolution, ownership/HIR, NSMETA, LLVM, and execution:
 
 - `fn*` is a raw function pointer; `fn&` is a managed callable reference.

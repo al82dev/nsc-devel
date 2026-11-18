@@ -251,24 +251,28 @@ LoopBlockAdvance ProjectOopHirModel::initializeScheduledDestructionFrame(
     {
         const bool nativeString =
             frame.operandType->typeKey == "builtin:string";
-        // EN: Freeze 3.0 C-12: a struct element that needs a drop is deleted through its address.
-        // ES: Congelamiento 3.0 C-12: un elemento struct que requiere drop se borra por su direccion.
-        const bool dropsValueElement = !current->flag() && elementBinding != nullptr &&
+        // EN: A generic scalar delete whose T became a dynamic array is the array form.
+        // ES: Un delete escalar generico cuyo T resulto arreglo dinamico es la forma de arreglo.
+        const bool arrayForm = current->flag() ||
+            (methodBodyModel_ != nullptr && methodBodyModel_->scalarDeleteReleasesArray(current));
+        // EN: Freeze C-12: a struct element that needs a drop is deleted through its address.
+        // ES: Congelamiento C-12: un elemento struct que requiere drop se borra por su direccion.
+        const bool dropsValueElement = !arrayForm && elementBinding != nullptr &&
             elementBinding->kind == MethodCoreOperationKind::ArrayElement &&
             !isReferenceType(frame.operandType->typeKey) && !nativeString &&
             !frame.operandType->typeKey.ends_with("*") && memberModel_ != nullptr &&
             memberModel_->typeRequiresValueDrop(frame.operandType->typeKey);
-        // EN: Freeze 3.0 (owned arrays): `delete[]` of an owned array field addresses the field,
+        // EN: Freeze (owned arrays): `delete[]` of an owned array field addresses the field,
         //     so the slot is cleared and the container's destruction entry finds it empty.
-        // ES: Congelamiento 3.0 (arreglos owned): `delete[]` de un campo de arreglo owned direcciona
+        // ES: Congelamiento (arreglos owned): `delete[]` de un campo de arreglo owned direcciona
         //     el campo, asi el slot queda vacio y la entrada de destruccion del contenedor no lo libera.
-        const bool clearsOwnedField = current->flag() && methodBodyModel_ != nullptr &&
+        const bool clearsOwnedField = arrayForm && methodBodyModel_ != nullptr &&
             methodBodyModel_->arrayDeleteClearsOwnedField(current);
-        // EN: Freeze 3.0 (item 121): `delete p` of an owned parameter addresses it, so it is cleared.
-        // ES: Congelamiento 3.0 (elemento 121): `delete p` de un parametro owned lo direcciona y lo vacia.
-        const bool clearsOwnedParameter = !current->flag() && methodBodyModel_ != nullptr &&
+        // EN: Freeze (item 121): `delete p` of an owned parameter addresses it, so it is cleared.
+        // ES: Congelamiento (elemento 121): `delete p` de un parametro owned lo direcciona y lo vacia.
+        const bool clearsOwnedParameter = !arrayForm && methodBodyModel_ != nullptr &&
             methodBodyModel_->deleteClearsOwnedParameter(current);
-        frame.operandAddressContext = current->flag()
+        frame.operandAddressContext = arrayForm
             ? directElement || clearsOwnedField
             : (directElement &&
                 (isReferenceType(frame.operandType->typeKey) || nativeString)) || dropsValueElement ||

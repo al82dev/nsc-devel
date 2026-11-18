@@ -21,6 +21,10 @@
 #include "nativesharp/Basic/SourceRange.h"
 #include "nativesharp/Basic/TransparentStringHash.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
+#include "nativesharp/Frontend/StaticFieldAccessSelection.h"
+#include "nativesharp/Frontend/PrecompiledFieldCertificate.h"
+#include "nativesharp/Frontend/PrecompiledTemplateFieldCertificate.h"
+#include "nativesharp/Frontend/StaticFieldIterationSelection.h"
 #include "nativesharp/Frontend/TemplateParseCache.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Language/GenericSemantics.h"
@@ -53,6 +57,8 @@ struct TypeWork;
 class ProjectGenericModel final
 {
 public:
+    void addPrecompiledFieldCertificates(std::span<const PrecompiledFieldCertificate> certificates);
+    void addPrecompiledTemplateFieldCertificates(std::span<const PrecompiledTemplateFieldCertificate> certificates);
     static constexpr std::size_t DefaultMaximumInstantiationDepth = 64;
     static constexpr std::size_t DefaultMaximumInstantiationCount = 16384;
     static constexpr std::size_t DefaultMaximumPackExpansionCount = 1024;
@@ -74,6 +80,20 @@ public:
     std::span<const GenericTemplateRecord> templates() const noexcept;
     void setCaptureForeignReferenceCandidates(bool enabled) noexcept { captureForeignReferenceCandidates_ = enabled; }
     std::span<const GenericSpecializationRecord> specializations() const noexcept;
+    // Returns the immediate source of a cloned construction, or null when it is unknown.
+    // The source remains owned by the compilation's syntax arenas.
+    const ast::AstNode* constructionCloneSource(const ast::AstNode* clone) const noexcept;
+    // Returns the immediate source of a cloned field, or null if its origin is unavailable.
+    const ast::AstNode* fieldCloneSource(const ast::AstNode* clone) const noexcept;
+    // Returns the immediate source type of a substitution clone, if it is known.
+    const ast::TypeSyntax* substitutedTypeCloneSource(const ast::TypeSyntax* clone) const noexcept;
+    // Distinguishes a cloned call from an authored call and records inferred arguments separately.
+    const ast::AstNode* genericCallCloneSource(const ast::AstNode* clone) const noexcept;
+    bool genericCallArgumentsWereInferred(const ast::AstNode* call) const noexcept;
+    const StaticFieldAccessSelection* staticFieldAccessSelection(
+        const ast::AstNode* expression) const noexcept;
+    const StaticFieldIterationSelection* staticFieldIterationSelection(
+        const ast::AstNode* statement) const noexcept;
     const GenericTemplateRecord* templateForCanonicalKey(
         std::string_view canonicalKey) const noexcept;
     const GenericSpecializationRecord* specializationForSyntax(
@@ -92,6 +112,11 @@ public:
         std::string_view elementTypeKey) const;
     // The recorded resolved identity for an open generic reference (`Box<T>`), or null when absent.
     const std::string* resolvedTypeIdentity(const ast::TypeSyntax* syntax) const noexcept;
+    // Arguments retained when a closed generic use is rewritten to its specialization name.
+    std::span<const ast::TypeSyntax* const> rewrittenTypeArguments(
+        const ast::TypeSyntax* syntax) const noexcept;
+    std::span<const ast::TypeSyntax* const> rewrittenCallTypeArguments(
+        const ast::AstNode* call) const noexcept;
     GenericInstantiationReport instantiationReport() const noexcept;
     // NSC305-P01. Sub-phase and counter telemetry for the generic pass. Always available; the
     // data is populated only when the compilation wired a timing sink (see compileProjectGenerics).
@@ -155,6 +180,9 @@ private:
         // Last member, so the positional initializers of the members above keep their meaning
         // (they pass {} for it).
         std::string qualifiedTypeSpelling;
+        // Lexical imports of a generic method's declaration, not its call site.
+        std::vector<std::string> declarationImports = {};
+        std::unordered_map<std::string, std::string> declarationAliases = {};
     };
 
     // A lightweight predeclaration used only while the generic pass is choosing a cache key.
@@ -168,12 +196,21 @@ private:
         std::string sourceName;
         std::string identityKey;
         bool isPublic = false;
+        const ast::AstNode* syntax = nullptr;
     };
 
     struct DeclaredTypeOrigin final
     {
         std::size_t projectOrdinal = 0;
         std::string namespaceName;
+    };
+
+    struct DeclaredFieldContext final
+    {
+        ProjectSyntaxUnit* unit = nullptr;
+        std::string namespaceName;
+        std::vector<std::string> imports;
+        std::unordered_map<std::string, std::string> aliases;
     };
 
     struct GenericLookupScope;
@@ -462,6 +499,9 @@ private:
         // carries both the target syntax and its optional type-parameter list.
         Cow<std::unordered_map<std::string, const ast::AstNode*>> typeAliases;
         Cow<std::unordered_set<std::string>> typeParameters;
+        Cow<std::unordered_set<std::string>> constParameters;
+        // Lexical loop-expression labels visible at this source position.
+        Cow<std::vector<const ast::AstNode*>> activeLoopLabels;
         // NSC305-G04. Item 277. Types written on parameters, fields, and preceding locals are
         // sufficient for local generic inference. This container is the one that grows with the
         // number of locals, so it is a persistent parent-linked chain: copying a scope is O(1) and
@@ -490,6 +530,8 @@ private:
         // carries the governing source type lexically so those synthetic receivers remain typed
         // before the definitive body model creates its single-evaluation storage.
         const ast::TypeSyntax* matchValueType = nullptr;
+        // Exact lexical owner for access checks during deferred expansion.
+        const ast::AstNode* lexicalTypeSyntax = nullptr;
         std::string matchValuePassKind;
         // T08-F04. Generic lambdas are lexical templates, not members and therefore not entries
         // in the project-wide template catalogue. The generic pass closes each invocation in
@@ -544,6 +586,11 @@ private:
         std::vector<GenericTypeDemand> childDemands;
         std::unordered_map<const ast::TypeSyntax*, std::string> resolvedTypeIdentities;
         std::unordered_map<const ast::TypeSyntax*, DeclaredTypeOrigin> resolvedTypeOrigins;
+        std::unordered_map<const ast::AstNode*, const ast::AstNode*> constructionCloneSources;
+        std::unordered_map<const ast::AstNode*, const ast::AstNode*> fieldCloneSources;
+        std::unordered_map<const ast::AstNode*, const ast::AstNode*> memberCloneSources;
+        std::unordered_map<const ast::TypeSyntax*, const ast::TypeSyntax*> substitutedTypeCloneSources;
+        std::unordered_map<const ast::AstNode*, const ast::AstNode*> genericCallCloneSources;
         bool success = false;
         // NSC305-G09. Causal clone errors captured on the worker thread, so the serial committer can
         // report them without reading the worker's thread-local state.
@@ -748,6 +795,23 @@ private:
         GenericLookupScope& currentScope,
         bool insideTemplate,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool collectStaticFieldCandidates(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* statement,
+        const std::string& currentNamespace,
+        const std::string& ownerName,
+        const GenericLookupScope& scope,
+        bool projectsFieldType,
+        std::unordered_set<const ast::AstNode*>& activeTypes,
+        StaticFieldIterationSelection& selection,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool expandStaticFieldIteration(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* statement,
+        const std::string& currentNamespace,
+        const std::string& ownerName,
+        const GenericLookupScope& scope,
+        diagnostics::DiagnosticEngine& diagnostics);
     void prepareMatchExpressionScope(
         ProjectSyntaxUnit& unit,
         const ast::AstNode* node,
@@ -887,6 +951,8 @@ private:
         const std::string& methodName,
         const std::string& namespaceName,
         const std::vector<TemplateState*>& shared,
+        ast::AstNode* closedOwner,
+        const std::string& closedOwnerKey,
         diagnostics::DiagnosticEngine& diagnostics);
     // NSC305-G08. Normalizes and materializes the single resolved method of a generic call, then
     // rewrites the call site. Returns false on error.
@@ -896,7 +962,10 @@ private:
         ast::AstNode* callee,
         TemplateState& state,
         const std::string& namespaceName,
+        ast::AstNode* closedOwner,
+        const std::string& closedOwnerKey,
         diagnostics::DiagnosticEngine& diagnostics);
+    void preserveCallTypeArguments(const ast::AstNode* call);
 
     bool inferGenericCall(
         ProjectSyntaxUnit& unit,
@@ -1189,7 +1258,8 @@ private:
         const ProjectSyntaxUnit& unit,
         std::string_view namespaceName,
         std::string_view writtenName,
-        std::size_t arity);
+        std::size_t arity,
+        const GenericLookupScope& scope);
     // LAS PLANTILLAS QUE UNA LLAMADA NOMBRA, y solo esas.
     //
     // Los tres filtros baratos --nombre, aridad generica y cuenta de argumentos de VALOR-- se
@@ -1356,7 +1426,9 @@ private:
         // ID 132. Cuando varias plantillas comparten nombre y aridad generica, todas se
         // especializan con ESTE nombre y se convierten en sobrecargas ordinarias. Vacio para el
         // caso normal, donde el nombre lo deriva la propia clave.
-        std::string_view sharedName = {});
+        std::string_view sharedName = {},
+        ast::AstNode* closedOwner = nullptr,
+        std::string_view closedOwnerKey = {});
     std::string typeSpecializedName(
         const GenericTemplateRecord& record,
         std::size_t argumentCount,
@@ -1402,6 +1474,7 @@ private:
     std::string completeMethodSpecialization(
         TemplateState& state,
         ast::AstNode* clone,
+        std::span<ast::TypeSyntax* const> arguments,
         const std::string& key,
         const std::string& specializedName,
         std::size_t ordinal,
@@ -1626,6 +1699,8 @@ private:
     ProjectCompilationIndexes ownedIndexes_;
     ProjectCompilationIndexes* indexes_ = nullptr;
     std::vector<TemplateState> templateStates_;
+    // Exact original template resolution for a type syntax; nullptr means conflicting contexts.
+    std::unordered_map<const ast::TypeSyntax*, TemplateState*> resolvedGenericTypeTemplates_;
     // NSC305-G01. O(1) lookups that replace the linear `stateForSyntax` scan and the
     // imported-specialization seed `find_if`. Populated after template collection (and, for
     // `stateByCanonicalKey_`, after canonical-key disambiguation). `templateStates_` is stable from
@@ -1654,6 +1729,7 @@ private:
     std::unordered_map<const ast::AstNode*, std::size_t> genericLambdaTemplateOrdinals_;
     std::unordered_map<const ast::AstNode*, std::string> genericLambdaCarrierKeys_;
     std::vector<DeclaredTypeIdentity> declaredTypeIdentities_;
+    std::unordered_map<const ast::AstNode*, DeclaredFieldContext> declaredFieldContexts_;
     // Positions in declaredTypeIdentities_ by sourceName, in vector order; appended together
     // with the vector by collectDeclaredTypeIdentity, its only writer.
     std::unordered_map<
@@ -1684,6 +1760,10 @@ private:
     SpecializationPlanner specializationPlanner_;
     std::unordered_map<const ast::AstNode*, std::size_t> specializationBySyntax_;
     std::unordered_map<const ast::TypeSyntax*, std::string> resolvedTypeIdentityBySyntax_;
+    std::unordered_map<const ast::TypeSyntax*, std::vector<const ast::TypeSyntax*>>
+        rewrittenTypeArgumentsBySyntax_;
+    std::unordered_map<const ast::AstNode*, std::vector<const ast::TypeSyntax*>>
+        rewrittenCallTypeArgumentsBySyntax_;
     std::unordered_map<const ast::TypeSyntax*, DeclaredTypeOrigin> resolvedTypeOriginBySyntax_;
     std::unordered_map<const ast::AstNode*, ast::TypeSyntax*> inferredCallReturnTypes_;
     // Body-only syntax may request a closed type whose concrete receiver is known by the generic
@@ -1748,6 +1828,23 @@ private:
     std::size_t nextOverloadGroup_ = 0;
     language::InstantiationBudget instantiationBudget_;
     std::size_t instantiationCacheHitCount_ = 0;
+    std::unordered_map<const ast::AstNode*, const ast::AstNode*> constructionCloneSources_;
+    std::unordered_map<const ast::AstNode*, const ast::AstNode*> fieldCloneSources_;
+    std::unordered_map<const ast::AstNode*, const ast::AstNode*> memberCloneSources_;
+    std::unordered_map<const ast::TypeSyntax*, const ast::TypeSyntax*> substitutedTypeCloneSources_;
+    std::unordered_map<const ast::AstNode*, const ast::AstNode*> genericCallCloneSources_;
+    std::unordered_set<const ast::AstNode*> inferredGenericCalls_;
+    // Published only after a complete field expansion; selection is still
+    // checked against the semantic member model at each generated access.
+    std::unordered_map<const ast::AstNode*, StaticFieldAccessSelection> staticFieldAccessSelections_;
+    std::unordered_map<const ast::AstNode*, StaticFieldIterationSelection> staticFieldIterationSelections_;
+    std::vector<std::tuple<ProjectSyntaxUnit*, ast::AstNode*, std::string, std::string, GenericLookupScope>>
+        deferredStaticFieldIterations_;
+    std::unordered_set<const ast::AstNode*> deferredStaticFieldNodes_;
+    std::unordered_map<std::string, PrecompiledFieldCertificate> precompiledFieldCertificates_;
+    std::unordered_set<std::string> duplicatePrecompiledFieldCertificates_;
+    std::unordered_map<std::string, PrecompiledTemplateFieldCertificate> precompiledTemplateFieldCertificates_;
+    std::unordered_set<std::string> duplicatePrecompiledTemplateFieldCertificates_;
     // NSC305-P01. Causal instrumentation for the generic pass; see GenericTelemetry.
     GenericTelemetry telemetry_;
     // NSC305-G09. Per-worker (thread-local) clone state, see the associated-projection members.
@@ -1767,6 +1864,16 @@ private:
     thread_local static inline
         std::unordered_map<const ast::TypeSyntax*, DeclaredTypeOrigin>* workerResolvedTypeOrigins_ = nullptr;
     thread_local static inline const SpecializationContext* workerSpecializationContext_ = nullptr;
+    thread_local static inline
+        std::unordered_map<const ast::AstNode*, const ast::AstNode*>* workerConstructionCloneSources_ = nullptr;
+    thread_local static inline
+        std::unordered_map<const ast::AstNode*, const ast::AstNode*>* workerFieldCloneSources_ = nullptr;
+    thread_local static inline
+        std::unordered_map<const ast::AstNode*, const ast::AstNode*>* workerMemberCloneSources_ = nullptr;
+    thread_local static inline
+        std::unordered_map<const ast::TypeSyntax*, const ast::TypeSyntax*>* workerSubstitutedTypeCloneSources_ = nullptr;
+    thread_local static inline
+        std::unordered_map<const ast::AstNode*, const ast::AstNode*>* workerGenericCallCloneSources_ = nullptr;
 };
 
 const char* genericTemplateKindName(GenericTemplateKind kind) noexcept;

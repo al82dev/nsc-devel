@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <Name>c69_ns3_extension_methods</Name>
-    <Language>3</Language>
+
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="**/*.ns" />

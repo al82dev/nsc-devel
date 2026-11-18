@@ -1,13 +1,15 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Operadores mediante traits / Trait-based operators
 
 ## Contrato / Contract
 
-ES: En NativeSharp 3.0 cada operador sobrecargable tiene una identidad `lang:*` estable. La
+ES: En NativeSharp cada operador sobrecargable tiene una identidad `lang:*` estable. La
 escritura fuente selecciona esa identidad por operador y aridad; la identidad selecciona un
 requisito estático de trait y su witness concreto. El nombre ABI `op_*` continúa siendo un detalle
 compatible de símbolo, no la identidad semántica.
 
-EN: In NativeSharp 3.0 every overloadable operator has a stable `lang:*` identity. Source syntax
+EN: In NativeSharp every overloadable operator has a stable `lang:*` identity. Source syntax
 selects that identity by spelling and arity; the identity selects a static trait requirement and
 its concrete witness. The ABI `op_*` name remains a compatible symbol detail, not the semantic
 identity.
@@ -88,12 +90,12 @@ future branching protocol must define and version that behavior first.
 
 ## Módulos y metadata / Modules and metadata
 
-F07 no incrementa NSMETA. El formato 1.32 ya transporta declaraciones públicas de trait,
+NSMeta transporta declaraciones públicas de trait,
 requisitos estáticos y operadores con su nombre/forma ABI. El consumidor deriva la identidad
-`lang:*` de la tabla versionada por nombre y aridad; serializar una cuarta copia habría permitido
-divergencia. Cambiar esta tabla es un cambio de lenguaje/ABI y exige versionado deliberado.
+`lang:*` de la tabla por nombre y aridad; serializar una cuarta copia habría permitido
+divergencia. Cambiar esta tabla exige revisar deliberadamente el contrato del lenguaje y el ABI.
 
-F07 does not bump NSMETA. Format 1.32 already transports public traits, static requirements, and
+NSMeta transports public traits, static requirements, and
 operator declarations with their ABI shape. Consumers derive the `lang:*` identity from the
-versioned name-and-arity table; serializing a fourth copy would allow divergence. Changing this
-table is a language/ABI change and requires deliberate versioning.
+name-and-arity table; serializing a fourth copy would allow divergence. Changing this table requires
+a deliberate review of the language contract and ABI.

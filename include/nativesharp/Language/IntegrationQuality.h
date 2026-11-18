@@ -35,21 +35,21 @@ bool validateInteractionMatrix(std::span<const InteractionCase> cases, std::stri
 bool validatePrioritizedInteractionMatrix(
     std::span<const InteractionCase> cases,
     std::string& error);
-std::vector<InteractionCase> buildNativeSharp3InteractionMatrix(std::uint64_t seedBase);
+std::vector<InteractionCase> buildNativeSharpInteractionMatrix(std::uint64_t seedBase);
 std::optional<InteractionCase> minimizeInteractionCase(
     const InteractionCase& failing,
     std::span<const FeatureArea> essentialAreas,
     std::string& error);
 
 bool validateWholeProgramCorpus(std::span<const WholeProgramWitness> programs, std::string& error);
-std::vector<WholeProgramWitness> buildNativeSharp3WholeProgramCorpus();
-bool validateNativeSharp3WholeProgramCorpus(
+std::vector<WholeProgramWitness> buildNativeSharpWholeProgramCorpus();
+bool validateNativeSharpWholeProgramCorpus(
     std::span<const WholeProgramWitness> programs,
     std::string& error);
 
 bool withinPerformanceBudget(const PerformanceBudget& measured, const PerformanceBudget& maximum) noexcept;
 
-std::vector<PerformanceBudgetProfile> nativeSharp3PerformanceBudgets();
+std::vector<PerformanceBudgetProfile> nativeSharpPerformanceBudgets();
 PerformanceAssessment assessLanguagePerformance(
     const PerformanceBudget& measured,
     const PerformanceBudgetProfile& profile,

@@ -12,7 +12,7 @@ namespace nativesharp::compilation
 struct CppLibraryReference final
 {
     std::filesystem::path headerPath;
-    std::filesystem::path libraryPath;
+    std::filesystem::path libraryPath{};
     std::filesystem::path runtimePath;
     // EN: T08-D04b. With RuntimeTls="ImportDirectory", the DLL as declared; runtimePath is then NSC's adapted copy.
     // ES: T08-D04b. Con RuntimeTls="ImportDirectory", la DLL declarada; runtimePath es entonces la copia adaptada.

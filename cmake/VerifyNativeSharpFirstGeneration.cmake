@@ -2,6 +2,8 @@ if(NOT DEFINED NSC_EXECUTABLE OR NOT DEFINED PYTHON_EXECUTABLE OR NOT DEFINED SO
    NOT DEFINED OUTPUT_DIR OR NOT DEFINED ENV{NS_ROOT})
     message(FATAL_ERROR "SH10 requires nsc0, Python, roots and NSLink")
 endif()
+include("${CMAKE_CURRENT_LIST_DIR}/NativeSharpCleanRootLibraries.cmake")
+nsc_clean_root_libraries_source("${SOURCE_ROOT}" libraries_root)
 
 file(MAKE_DIRECTORY "${OUTPUT_DIR}")
 set(prefix "$ENV{NS_ROOT}")
@@ -16,7 +18,7 @@ foreach(clean_root IN ITEMS "${clean_a}" "${clean_b}")
     file(MAKE_DIRECTORY "${clean_root}/selfhost" "${clean_root}/lib")
     file(COPY "${SOURCE_ROOT}/selfhost/nsc" DESTINATION "${clean_root}/selfhost")
     foreach(library IN ITEMS NativeSharp.Core NativeSharp.Core.Collections.Generic NativeSharp.Core.IO NativeSharp.LLVM.C)
-        file(COPY "${SOURCE_ROOT}/lib/${library}" DESTINATION "${clean_root}/lib")
+        nsc_copy_clean_root_library("${SOURCE_ROOT}" "${libraries_root}" "${library}" "${clean_root}/lib")
     endforeach()
 endforeach()
 

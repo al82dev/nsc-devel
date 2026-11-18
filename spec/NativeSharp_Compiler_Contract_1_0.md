@@ -1,7 +1,9 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # NativeSharp Compiler Contract 1.0
 
 **Status:** normative candidate for the NativeSharp 1.0 compiler  
-**Supported compiler line:** 0.9.x  
+**Supported compiler line:** 1.0<br>
 **Supported LLVM line:** 23.x  
 **Supported target:** x86_64-pc-windows-msvc
 
@@ -37,7 +39,7 @@ must not be passed to the linker.
 
 ## NSC-LLVM-001 — Supported LLVM major
 
-NativeSharp 0.9 supports LLVM 23.x. A configured LLVM package outside that major shall be rejected
+NativeSharp 1.0 supports LLVM 23.x. A configured LLVM package outside that major shall be rejected
 by CMake. A monolithic library discovered without package metadata shall be checked through
 `LLVMGetVersion` before lowering, verification, optimization or emission continues.
 
@@ -45,8 +47,8 @@ by CMake. A monolithic library discovered without package metadata shall be chec
 
 ## NSC-OPT-001 — Optimization equivalence
 
-O0 and O2 shall preserve the same observable language behavior. Every corrected optimization-only
-miscompilation must keep a differential fixture that executes both configurations.
+O0, O1, O2 and O3 shall preserve the same observable language behavior. Every corrected
+optimization-only miscompilation must keep a differential fixture that executes all four levels.
 
 ## NSC-EXIT-001 — Exit-code classes
 
@@ -170,9 +172,10 @@ and `share` roots shall survive.
 ## NSC-COMPAT-001 — Installed compatibility policy
 
 Every distributable build shall generate and install `NativeSharpCompatibility.policy` in the
-canonical `NSCOMPAT 1` format. The policy shall independently publish compiler and language
-releases, NSMETA read/write versions, native and runtime ABI versions, package format versions and
-the deprecation rule. The build id shall not appear in this compatibility artifact.
+canonical `NSCOMPAT 1` format. The policy shall publish the compiler product release, compatibility
+capabilities, NSMETA content handling, native and runtime ABI versions, package format versions and
+the deprecation rule. It shall not publish or require a language version or an NSMETA version. The
+build id shall not appear in this compatibility artifact.
 
 `nsc --print-compatibility-policy`, `--write-compatibility-policy` and
 `--verify-compatibility-policy` shall share one field authority. The installed-layout verifier and
@@ -180,10 +183,9 @@ cryptographic inventory shall require and authenticate the same policy bytes.
 
 ## NSC-COMPAT-002 — Version requirement decisions
 
-`nsc --check-compiler-compatibility <major.minor.patch>` shall accept only canonical semantic
-versions. Before compiler 1.0, compatibility requires the same major and minor with an installed
-patch greater than or equal to the requested patch. Starting with 1.0, a compiler may satisfy an
-older requirement only inside the same major line and when its minor/patch is not older.
+`nsc --check-compiler-compatibility` treats supplied compiler labels as informational; concrete
+capabilities and contracts are validated where they are used. A language version is not selected
+or required.
 
 A supported behavior may be removed only after a diagnostic deprecation period of at least one
 minor release. A safety correction or miscompilation fix may reject formerly accepted input, but

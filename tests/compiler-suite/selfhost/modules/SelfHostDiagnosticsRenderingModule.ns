@@ -66,7 +66,8 @@ namespace NativeSharp.CompilerSuite.SelfHost.Diagnostics
             raii Diagnostic note = new Diagnostic("NSC0002", DiagnosticSeverity.Note, "--x", 2);
             raii string first = DiagnosticRenderer.Human(warning);
             raii string second = DiagnosticRenderer.Human(note);
-            return first == "nsc: error: unknown option '--x'" && second == first ? 0 : 20;
+            return first == "nsc: warning: unknown option '--x'" &&
+                second == "nsc: note: unknown option '--x'" ? 0 : 20;
         }
 
         private static int HumanDeterminismAndPath()
@@ -115,6 +116,12 @@ namespace NativeSharp.CompilerSuite.SelfHost.Diagnostics
         // the stable controller oracle. This keeps the boundary case focused on JSON validity.
         private static int JsonControlCharacter()
         {
+            raii Diagnostic specialCode = new Diagnostic("C\"\\\n", DiagnosticSeverity.Note, "arg", 0);
+            raii string renderedCode = DiagnosticRenderer.Json(specialCode);
+            if (renderedCode != "{\"schema\":\"nativesharp-diagnostic\",\"version\":1,\"code\":\"C\\\"\\\\\\n\",\"severity\":\"note\",\"argument\":\"arg\"}")
+            {
+                return 23;
+            }
             raii Diagnostic controls = new Diagnostic("CTRL-ALL", DiagnosticSeverity.Error,
                 "\b\f\t\v\r\n", 0);
             raii string rendered = DiagnosticRenderer.Json(controls);

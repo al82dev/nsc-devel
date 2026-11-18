@@ -1,5 +1,7 @@
 # Tanda correctiva 17: pruebas del lenguaje acumulativo
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Cambio
 
 Las pruebas que convertían `Language` o `unsafe` en permisos obligatorios ahora validan el
@@ -17,7 +19,7 @@ contrato vigente:
 
 - `src/Language/ExpressionErgonomics.cpp`: disponibilidad acumulativa de expresiones.
 - `src/Frontend/ProjectInterfaceModel.cpp`: la marca histórica `unsafe` no condiciona un `impl`.
-- Pruebas dirigidas de compilación, frontend y Language 3 que conservaban expectativas de
+- Pruebas dirigidas de compilación, frontend y lenguaje que conservaban expectativas de
   rechazo administrativas.
 
 ## Validación

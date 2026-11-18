@@ -51,7 +51,7 @@ de una candidata descartada sólo se publica si ninguna candidata válida atiend
 
 ## English
 
-A `where` clause limits the arguments that may materialize a template. NativeSharp 3 supports
+A `where` clause limits the arguments that may materialize a template. NativeSharp supports
 nominal bounds (`class`, a base class, interface or trait), representation bounds (`struct`,
 `unmanaged`, `notnull`), operation bounds (`new()`, `copy`, `move`), tracked-lifetime bounds, and
 type or constant equality.

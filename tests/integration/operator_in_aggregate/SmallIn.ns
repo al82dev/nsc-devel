@@ -1,0 +1,6 @@
+public struct SmallIn
+{
+    public long x;
+    public SmallIn(long a) { x = a; }
+    public static SmallIn operator +(in SmallIn a, in SmallIn b) { return new SmallIn(a.x + b.x); }
+}

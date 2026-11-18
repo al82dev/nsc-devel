@@ -55,17 +55,12 @@ void classificationContract(TestContext& context, std::size_t)
 
 void schemaContract(TestContext& context, std::size_t variant)
 {
-    // NS304-T08-F07 (retirado): ya no se exige un minor literal. El contrato comprueba invariantes
-    // reales: el major reconocido sigue vigente y el modelo por defecto usa las constantes públicas
-    // actuales. El número minor interno puede cambiar sin romper pruebas funcionalmente correctas.
-    context.expect(interop::kMetadataFormatMajor == 1,
-        "current public NSMETA format major must remain recognized");
     context.expect(interop::kNativeAbiMajor == 1 && interop::kNativeAbiMinor == 0,
-        "native ABI version must be independent from metadata format");
+        "native ABI contract must remain stable");
     context.expect(interop::kManagedDelegateCellSize == 32, "managed delegate cell size must remain ABI-visible");
     interop::LibraryMetadata metadata = minimalMetadata();
-    context.expect(metadata.formatMajor == interop::kMetadataFormatMajor &&
-        metadata.formatMinor == interop::kMetadataFormatMinor, "default model must use current schema constants");
+    context.expect(metadata.pointerSize == 8 && metadata.pointerAlignment == 8 && metadata.targetId == 1,
+        "metadata model must preserve the Windows x64 target layout");
     if (variant == 8)
         context.expect((interop::kMetadataTypeRecordDeriveMask & interop::kMetadataTypeRecord) == 0,
             "record marker and derive mask must occupy disjoint bits");

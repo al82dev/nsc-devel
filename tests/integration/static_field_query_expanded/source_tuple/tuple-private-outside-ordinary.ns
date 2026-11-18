@@ -1,0 +1,1 @@
+class Outer { private struct P { public int X; } public struct Record { public (int,P) Pair; } } int Main() { Outer.P item=default(Outer.P); return 0; }

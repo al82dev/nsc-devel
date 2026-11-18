@@ -135,6 +135,9 @@ void testDynamicLibraryPublication(
         writeFile(publication.importLibraryStage, "import");
         writeFile(publication.headerStage, "header");
         writeFile(publication.metadataStage, "metadata");
+        // The .nsproducts companion joined the DLL publication in 5b948560b; the test never staged it.
+        // El acompañante .nsproducts se unió a la publicación DLL en 5b948560b; la prueba no lo preparaba.
+        if (!publication.productSidecarStage.empty()) writeFile(publication.productSidecarStage, "products");
         writeFile(publication.pdbStage, "pdb");
     }
     const bool committed = prepared &&
@@ -144,7 +147,9 @@ void testDynamicLibraryPublication(
             readFile(publication.importLibraryDestination) == "import" &&
             readFile(publication.headerDestination) == "header" &&
             readFile(publication.metadataDestination) == "metadata" &&
-            readFile(publication.pdbDestination) == "pdb",
+            readFile(publication.pdbDestination) == "pdb" &&
+            (publication.productSidecarDestination.empty() ||
+             readFile(publication.productSidecarDestination) == "products"),
         "DLL publication commits its primary and every companion together: " + error);
 }
 }

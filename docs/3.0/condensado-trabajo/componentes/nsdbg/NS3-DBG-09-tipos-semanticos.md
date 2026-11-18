@@ -1,15 +1,15 @@
-# NS3-DBG-09 — Visualización semántica 3.0 / NativeSharp 3.0 semantic visualization
+# NS3-DBG-09 — Visualización semántica 3.0 / NativeSharp semantic visualization
 
 ## Resultado / Result
 
 ES: NSDBG ya no muestra tuples, records, variants, bindings de patrones, objetos trait y `Result`
 como agregados CodeView anónimos. Una capa pura posterior a la lectura segura de tipos reconoce el
-contrato NativeSharp 3.0, conserva el árbol expandible y genera un resumen semántico acotado. Si el
+contrato NativeSharp, conserva el árbol expandible y genera un resumen semántico acotado. Si el
 tag de un variant fue optimizado o no está disponible, el debugger lo dice y no fabrica un caso.
 
 EN: NSDBG no longer displays tuples, records, variants, pattern bindings, trait objects, and
 `Result` as anonymous CodeView aggregates. A pure layer applied after safe type materialization
-recognizes the NativeSharp 3.0 contract, preserves the expandable tree, and produces a bounded
+recognizes the NativeSharp contract, preserves the expandable tree, and produces a bounded
 semantic summary. If a variant tag was optimized out or is unavailable, the debugger reports that
 fact instead of inventing an active case.
 
@@ -44,7 +44,7 @@ fact instead of inventing an active case.
 
 `A:\nsc-debugger\build\nsdbg_ns3_value_tests.exe`
 
-Resultado / Result: `PASS: NativeSharp 3 tuples, records, variants, patterns, traits, and Result render honestly`.
+Resultado / Result: `PASS: NativeSharp tuples, records, variants, patterns, traits, and Result render honestly`.
 
 No se ejecutó baseline, mini-baseline, CTest general, instalación ni deploy. / No baseline,
 mini-baseline, broad CTest, installation, or deployment was run.

@@ -1,0 +1,14 @@
+static class Inspector
+{
+    public static int Fold<T>(T value)
+    {
+        int sum = 0;
+        static foreach (field in Fields(T)) { field.Type item = field.Get(value); sum = sum + 1; }
+        return sum;
+    }
+}
+int Main()
+{
+    BinaryNominalPrivate.Record value = default(BinaryNominalPrivate.Record);
+    return Inspector.Fold<BinaryNominalPrivate.Record>(value);
+}

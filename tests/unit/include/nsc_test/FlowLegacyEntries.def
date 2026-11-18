@@ -6,9 +6,9 @@ NSC_FLOW_ENTRY("nsc.stage50_6.ownership-control-flow", "cfg", nscStage50_6Owners
 NSC_FLOW_ENTRY("nsc.stage56.c7-definite-assignment", "cfg", nscStage56C7DefiniteAssignmentLegacyEntry)
 NSC_FLOW_ENTRY("nsc.dominance", "dominance", nscDominanceLegacyEntry)
 NSC_FLOW_ENTRY("nsc.dominance-verifier", "dominance", nscDominanceVerifierLegacyEntry)
-NSC_FLOW_ENTRY("nsc.ns3.t09.iteration-borrows", "ownership", nscNativeSharp3T09IterationBorrowLegacyEntry)
+NSC_FLOW_ENTRY("nsc.language.t09.iteration-borrows", "ownership", nscNativeSharpT09IterationBorrowLegacyEntry)
 NSC_FLOW_ENTRY(
-    "nsc.ns3.t13.cross-module-lifetime", "ownership", nscNativeSharp3T13CrossModuleLifetimeLegacyEntry)
+    "nsc.language.t13.cross-module-lifetime", "ownership", nscNativeSharpT13CrossModuleLifetimeLegacyEntry)
 NSC_FLOW_ENTRY(
     "nsc.stage50-11.ownership-execution", "ownership", nscStage50_11OwnershipExecutionLegacyEntry)
 NSC_FLOW_ENTRY("nsc.partial-class-aggregation", "ssa", nscPartialClassAggregationLegacyEntry)

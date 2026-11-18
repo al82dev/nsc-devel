@@ -61,7 +61,7 @@ ExecutableMigrationGuide buildExecutableMigrationGuide(
     if (grouped.empty())
     {
         MigrationFinding verification;
-        verification.message = "no known 2.x to 3.0 migration risk detected";
+        verification.message = "no known migration risk detected";
         verification.alternative = "compile the source and preserve behavioral tests";
         grouped["VERIFY"].push_back({verification, "<unchanged>", "<unchanged>", false});
     }
@@ -107,7 +107,7 @@ std::string renderExecutableMigrationGuide(
     const ExecutableMigrationGuide& guide)
 {
     std::ostringstream output;
-    output << "# NativeSharp 2.x → 3.0 migration\n\n"
+    output << "# NativeSharp migration\n\n"
            << "Source: `" << guide.sourcePath.generic_string() << "`\n\n"
            << "## Incremental strategy\n\n"
            << "1. `nsc --analyze-migration " << guide.sourcePath.generic_string() << "`\n"

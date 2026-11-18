@@ -1730,7 +1730,7 @@ namespace NativeSharp.Core
             return FormatUnsignedDigits((ulong)value);
         }
 
-        // NativeSharp 3.0 targets Windows x64, so nuint has the complete ulong range. This
+        // NativeSharp targets Windows x64, so nuint has the complete ulong range. This
         // widening preserves every bit and prevents sizeof results from taking a signed path.
         public static owned string ToString(nuint value)
         {

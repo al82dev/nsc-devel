@@ -57,7 +57,7 @@ bool ProjectMethodBodyModel::aggregateAllowsSynthesizedMember(
     std::string_view memberName) const noexcept
 {
     // Ordinary 2.x structs and structural tuples retain their existing root members. Only a
-    // NativeSharp 3.0 record changes to explicit opt-ins. The declaration marker survives generic
+    // NativeSharp record changes to explicit opt-ins. The declaration marker survives generic
     // specialization but never enters the value layout.
     if (nameLookup_ == nullptr || !typeKey.starts_with("type:"))
     {
@@ -735,6 +735,38 @@ bool ProjectMethodBodyModel::bindAggregateValueEntry(
         valid = false;
         return false;
     }
+    if (value.addressable && memberModel_ != nullptr &&
+        ProjectTypeConversion::tupleElementTypeKeys(targetTypeKey).has_value() &&
+        memberModel_->typeIsMoveOnly(value.typeKey) &&
+        element->kind() != ast::AstNodeKind::MoveExpression)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+            diagnostics::DiagnosticSeverity::Error,
+            element->range(),
+            "move-only value cannot be copied into a tuple element");
+        valid = false;
+        return true;
+    }
+    if (value.readonlyBorrowedObject)
+    {
+        const NamedTypeDeclaration* aggregate = namedTypeForTypeKey(targetTypeKey);
+        const bool unqualifiedStructField = aggregate != nullptr &&
+            aggregate->kind == NamedTypeDeclarationKind::Struct &&
+            target < elementMemberOrdinals.size() && elementMemberOrdinals[target].has_value() &&
+            memberModel_ != nullptr && *elementMemberOrdinals[target] < memberModel_->members().size() &&
+            memberModel_->members()[*elementMemberOrdinals[target]].declaredOwnership == sema::OwnershipKind::None;
+        if (unqualifiedStructField || ProjectTypeConversion::tupleElementTypeKeys(targetTypeKey).has_value())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                element->range(),
+                "readonly borrowed value cannot be stored in an aggregate without lifetime tracking");
+            valid = false;
+            return true;
+        }
+    }
     const ProjectImplicitConversion conversion = classifyImplicit(
         value.typeKey, elementTypeKey, value.integerConstant);
     if (!conversion.exists())
@@ -1062,6 +1094,9 @@ void ProjectMethodBodyModel::recordConstructionSite(ProjectConstructionSite site
         constructionSites_[*previous] = std::move(site);
         return;
     }
+
+    if (arrayReferenceReplaySource_ != nullptr)
+        arrayReferenceFlow_.noteTrace(ArrayReferenceTraceKind::Construction, site.syntax);
 
     site.sequenceWithinCallable = nextConstructionSequenceByCallable_[site.callableOrdinal]++;
     const std::size_t siteOrdinal = constructionSites_.size();

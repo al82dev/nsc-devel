@@ -1,0 +1,30 @@
+namespace NativeSharp.Examples.Chapter16.GenericVectorAndMatrix
+{
+    // Dimensions are positive and indices are within the matrix.
+    public class Matrix<T> where T : copy
+    {
+        private T[] cells;
+        private int columns;
+
+        public Matrix(int rows, int columns)
+        {
+            this.columns = columns;
+            cells = new T[rows * columns];
+        }
+
+        ~Matrix()
+        {
+            delete[] cells;
+        }
+
+        public T Get(int row, int column)
+        {
+            return cells[row * columns + column];
+        }
+
+        public void Set(int row, int column, T value)
+        {
+            cells[row * columns + column] = value;
+        }
+    }
+}

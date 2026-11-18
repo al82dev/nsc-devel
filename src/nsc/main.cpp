@@ -258,10 +258,10 @@ void configureCompilerRun(
     CompilerRunConfiguration& configuration)
 {
     configuration.arguments.reserve(consoleArguments.arguments.size());
-    // EN: Freeze 3.0 D-10: a failure no longer writes error.log, error1.log, ... into the working
+    // EN: Freeze D-10: a failure no longer writes error.log, error1.log, ... into the working
     //     directory unless --error-log asks for it; NSC_NO_ERROR_LOG=1 and --no-error-log still turn it
     //     off.
-    // ES: Congelamiento 3.0 D-10: un fallo ya no escribe error.log, error1.log, ... en el directorio de
+    // ES: Congelamiento D-10: un fallo ya no escribe error.log, error1.log, ... en el directorio de
     //     trabajo salvo que lo pida --error-log; NSC_NO_ERROR_LOG=1 y --no-error-log lo siguen apagando.
     bool errorLogRequested = false;
     for (const std::string_view argument : consoleArguments.arguments)

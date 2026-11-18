@@ -59,6 +59,9 @@ public:
     void setExtraLinkLibraries(std::vector<std::filesystem::path> extraLibraries);
     void setRuntimeLibrary(std::filesystem::path runtimeLibrary);
     void setLinkerSelection(std::string selection);
+    void setMainArguments(bool enabled) noexcept;
+    // Enables the internal ASan executable path using the specified external Clang driver.
+    void setAddressSanitizerClang(std::filesystem::path clang);
     void setSubsystem(WindowsExecutableSubsystem subsystem) noexcept;
     void setDebugInformation(llvm_backend::DebugInformationKind debugInformation) noexcept;
     void setIncrementalLink(bool enabled) noexcept;
@@ -82,9 +85,11 @@ private:
     std::vector<std::filesystem::path> extraLinkLibraries_;
     std::filesystem::path runtimeLibrary_;
     std::string linkerSelection_;
+    std::filesystem::path addressSanitizerClang_;
     WindowsExecutableSubsystem subsystem_ = WindowsExecutableSubsystem::Console;
     llvm_backend::DebugInformationKind debugInformation_ = llvm_backend::DebugInformationKind::None;
     bool incrementalLink_ = false;
+    bool mainArguments_ = false;
     bool programObjectsVerified_ = false;
     bool removeUnreferencedSections_ = false;
     bool crtStartup_ = false;

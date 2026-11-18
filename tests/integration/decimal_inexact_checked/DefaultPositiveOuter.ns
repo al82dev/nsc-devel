@@ -1,0 +1,2 @@
+noinline decimal Calc(decimal a, decimal b) { return a + b; }
+int Main() { unsafe("inspect decimal boundary") { i128 bits = (((i128)1 << 96) - (i128)1); decimal a = *((decimal*)&bits); decimal r = Calc(a, 0.1m); return 31 + (int)(*((i128*)&r) & (i128)1); } }

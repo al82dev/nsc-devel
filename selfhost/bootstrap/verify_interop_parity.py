@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SH46: execute the NativeSharp 2.0 C/C++/COM/callback/DLL ABI matrix."""
+"""SH46: execute the NativeSharp C/C++/COM/callback/DLL ABI matrix."""
 
 from __future__ import annotations
 

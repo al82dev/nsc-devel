@@ -135,19 +135,15 @@ bool verifyFrozenAbiContract(const LibraryMetadata& metadata, std::string& error
 
 void normalizeWritableDelegateContracts(LibraryMetadata& metadata)
 {
-    if (metadata.formatMinor >= 31)
+    for (LibraryMetadataType& type : metadata.types)
     {
-        for (LibraryMetadataType& type : metadata.types)
+        if (type.kind == LibraryMetadataTypeKind::Delegate &&
+            type.delegateParameterDynamicTraits.empty())
         {
-            if (type.kind == LibraryMetadataTypeKind::Delegate &&
-                type.delegateParameterDynamicTraits.empty())
-            {
-                type.delegateParameterDynamicTraits.resize(
-                    type.delegateParameterTypeKeys.size(), 0U);
-            }
+            type.delegateParameterDynamicTraits.resize(
+                type.delegateParameterTypeKeys.size(), 0U);
         }
     }
-    if (metadata.formatMinor < 34) return;
     for (LibraryMetadataType& type : metadata.types)
     {
         if (type.kind != LibraryMetadataTypeKind::Delegate) continue;
@@ -184,7 +180,6 @@ bool normalizeWritableEscapeSummaries(
     LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 35) return true;
     for (LibraryMetadataMember& member : metadata.members)
     {
         if (!normalizeWritableEscapeSummary(member, "member", error)) return false;
@@ -211,7 +206,7 @@ bool validateWritableMetadataTarget(
     // en silencio hace que la prueba diga "el objetivo sobrevivio" cuando lo que
     // sobrevivio es la constante.
     //
-    // NativeSharp 2.0 solo tiene un objetivo, asi que lo unico correcto es
+    // NativeSharp solo tiene un objetivo, asi que lo unico correcto es
     // rechazar cualquier otro con su numero delante, y no producir un fichero que
     // el lector rechazaria despues.
     if (metadata.targetId == kWindowsX64Target &&
@@ -224,7 +219,7 @@ bool validateWritableMetadataTarget(
         std::to_string(metadata.targetId) + " with pointer " +
         std::to_string(metadata.pointerSize) + "/" +
         std::to_string(metadata.pointerAlignment) +
-        "; NativeSharp 2.0 targets Windows x64 only";
+        "; NativeSharp targets Windows x64 only";
     return false;
 }
 
@@ -236,412 +231,35 @@ bool prepareWritableMetadata(
     const std::array<LibraryMetadata, 1> fragments = {model};
     LibraryMetadataMerger merger;
     if (!merger.merge(fragments, metadata, error)) return false;
-    if (metadata.formatMajor != kFormatMajor || metadata.formatMinor > kFormatMinor)
-    {
-        error = "cannot write NativeSharp metadata format " +
-            std::to_string(metadata.formatMajor) + "." +
-            std::to_string(metadata.formatMinor);
-        return false;
-    }
+    // A model's content determines its representation, not its historical labels.
     normalizeWritableDelegateContracts(metadata);
     if (!normalizeWritableEscapeSummaries(metadata, error)) return false;
     if (!validateWritableMetadataTarget(metadata, error)) return false;
-    return metadata.formatMinor < 8 || verifyFrozenAbiContract(metadata, error);
+    return verifyFrozenAbiContract(metadata, error);
 }
 
-bool genericTemplateIsNotPublic(const LibraryMetadataGenericTemplate& generic)
-{
-    return generic.accessibility != 3U;
-}
-
-bool specializationTemplateIsNotPublic(
-    const std::unordered_set<std::string>& publicTemplateKeys,
-    const LibraryMetadataGenericSpecialization& specialization)
-{
-    return !publicTemplateKeys.contains(specialization.templateKey);
-}
-
-void downgradeGenericClosureBefore11(LibraryMetadata& metadata)
-{
-    if (metadata.formatMinor >= 11) return;
-    // A down-level file must preserve the semantics of that historical minor, not merely omit
-    // the bytes introduced later. NSMETA <= 1.10 contained public templates only; retaining a
-    // private closure entry while dropping its 1.11 dependency edges would create a file that no
-    // historical producer could have emitted and would silently widen what old readers hydrate.
-    std::erase_if(metadata.genericTemplates, genericTemplateIsNotPublic);
-    std::unordered_set<std::string> publicTemplateKeys;
-    for (const LibraryMetadataGenericTemplate& generic : metadata.genericTemplates)
-        publicTemplateKeys.insert(generic.canonicalKey);
-    std::erase_if(
-        metadata.genericSpecializations,
-        std::bind_front(specializationTemplateIsNotPublic, publicTemplateKeys));
-}
-
-void downgradeMetadataBefore18(LibraryMetadata& metadata)
-{
-    downgradeGenericClosureBefore11(metadata);
-    if (metadata.formatMinor < 13)
-    {
-        for (LibraryMetadataMember& member : metadata.members)
-        {
-            member.flags &= ~kMetadataMemberInliningMask;
-            member.inlineSourceText.clear();
-        }
-    }
-    if (metadata.formatMinor < 14)
-    {
-        for (LibraryMetadataMember& member : metadata.members)
-            member.flags &= ~kMetadataMemberVolatile;
-        for (LibraryMetadataType& type : metadata.types)
-            for (LibraryMetadataField& field : type.fields)
-                field.flags &= ~kMetadataMemberVolatile;
-    }
-    if (metadata.formatMinor < 15)
-        for (LibraryMetadataMember& member : metadata.members)
-            member.flags &= ~kMetadataMemberReferenceReturn;
-    if (metadata.formatMinor < 16)
-        for (LibraryMetadataMember& member : metadata.members)
-            member.flags &= ~kMetadataMemberNoHeap;
-    if (metadata.formatMinor < 17)
-        for (LibraryMetadataType& type : metadata.types)
-            for (LibraryMetadataField& field : type.fields)
-                field.flags &= ~kMetadataFieldAnonymousCarrier;
-}
-
-bool validateMetadataBefore21(
-    const LibraryMetadata& metadata,
-    std::string& error)
-{
-    if (metadata.formatMinor < 18)
-    {
-        for (const LibraryMetadataType& type : metadata.types)
-            for (const LibraryMetadataField& field : type.fields)
-                if ((field.flags & kMetadataFieldBitField) != 0U)
-                {
-                    error = "NativeSharp metadata before 1.18 cannot represent bit-field layout";
-                    return false;
-                }
-    }
-    if (metadata.formatMinor < 19)
-    {
-        for (const LibraryMetadataMember& member : metadata.members)
-            if ((member.flags & kMetadataMemberVariadic) != 0U)
-            {
-                error = "NativeSharp metadata before 1.19 cannot represent a variadic C declaration";
-                return false;
-            }
-    }
-    if (metadata.formatMinor < 20)
-    {
-        for (const LibraryMetadataType& type : metadata.types)
-            if ((type.delegateFlags & 2U) != 0U)
-            {
-                error = "NativeSharp metadata before 1.20 cannot represent vectorcall delegates";
-                return false;
-            }
-    }
-    return true;
-}
-
-template<typename Callable>
-bool hasParameterPack(const Callable& callable)
-{
-    for (const LibraryMetadataParameter& parameter : callable.parameters)
-        if (parameter.isParameterPack) return true;
-    return false;
-}
-
-bool validateMetadataBefore31(
-    const LibraryMetadata& metadata,
-    std::string& error)
-{
-    if (metadata.formatMinor < 24)
-    {
-        for (const LibraryMetadataMember& member : metadata.members)
-            if (hasParameterPack(member))
-            {
-                error = "NativeSharp metadata before 1.24 cannot represent a params "
-                    "ReadOnlySpan<T> declaration";
-                return false;
-            }
-        for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
-            if (hasParameterPack(function))
-            {
-                error = "NativeSharp metadata before 1.24 cannot represent a params "
-                    "ReadOnlySpan<T> declaration";
-                return false;
-            }
-    }
-    if (metadata.formatMinor < 26)
-    {
-        for (const LibraryMetadataType& type : metadata.types)
-            if ((type.flags & (kMetadataTypeRecord | kMetadataTypeRecordDeriveMask)) != 0U)
-            {
-                error = "NativeSharp metadata before 1.26 cannot represent record derive policy";
-                return false;
-            }
-    }
-    if (metadata.formatMinor < 27)
-    {
-        for (const LibraryMetadataType& type : metadata.types)
-            if ((type.flags & kMetadataTypeVariant) != 0U || !type.variantCases.empty())
-            {
-                error = "NativeSharp metadata before 1.27 cannot represent tagged variants";
-                return false;
-            }
-    }
-    if (metadata.formatMinor < 28)
-    {
-        for (const LibraryMetadataType& type : metadata.types)
-            if ((type.flags & kMetadataTypeTrait) != 0U ||
-                !type.traitMethodSignatures.empty())
-            {
-                error = "NativeSharp metadata before 1.28 cannot represent trait declarations";
-                return false;
-            }
-    }
-    if (metadata.formatMinor < 29)
-    {
-        for (const LibraryMetadataType& type : metadata.types)
-            if (!type.associatedItems.empty())
-            {
-                error = "NativeSharp metadata before 1.29 cannot represent associated items";
-                return false;
-            }
-    }
-    if (metadata.formatMinor < 30)
-    {
-        for (const LibraryMetadataType& type : metadata.types)
-            if ((type.flags & kMetadataTypeOpaqueResult) != 0U)
-            {
-                error = "NativeSharp metadata before 1.30 cannot represent opaque result types";
-                return false;
-            }
-    }
-    return true;
-}
-
-template<typename Callable>
-bool hasDynamicParameter(const Callable& callable)
-{
-    for (const LibraryMetadataParameter& parameter : callable.parameters)
-        if (parameter.isDynamicTrait) return true;
-    return false;
-}
-
-bool typeUsesDynamicTrait(const LibraryMetadataType& type)
-{
-    if (type.traitObjectFlags != 0U || type.traitObjectWordCount != 0U ||
-        type.delegateReturnDynamicTrait)
-    {
-        return true;
-    }
-    for (const std::uint8_t value : type.delegateParameterDynamicTraits)
-        if (value != 0U) return true;
-    for (const LibraryMetadataField& field : type.fields)
-        if ((field.flags & kMetadataMemberDynamicTrait) != 0U) return true;
-    return false;
-}
-
-bool validateDynamicMetadataBefore31(
-    const LibraryMetadata& metadata,
-    std::string& error)
-{
-    if (metadata.formatMinor >= 31) return true;
-    for (const LibraryMetadataType& type : metadata.types)
-        if (typeUsesDynamicTrait(type))
-        {
-            error = "NativeSharp metadata before 1.31 cannot represent the dyn trait-object ABI";
-            return false;
-        }
-    for (const LibraryMetadataMember& member : metadata.members)
-        if ((member.flags & kMetadataMemberDynamicTrait) != 0U ||
-            hasDynamicParameter(member))
-        {
-            error = "NativeSharp metadata before 1.31 cannot represent explicit dyn signatures";
-            return false;
-        }
-    for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
-        if ((function.flags & 16U) != 0U || hasDynamicParameter(function))
-        {
-            error = "NativeSharp metadata before 1.31 cannot represent explicit dyn signatures";
-            return false;
-        }
-    for (const LibraryMetadataNamespaceState& state : metadata.namespaceStates)
-        if ((state.flags & 2U) != 0U)
-        {
-            error = "NativeSharp metadata before 1.31 cannot represent explicit dyn signatures";
-            return false;
-        }
-    return true;
-}
-
-template<typename Callable>
-bool callableHasLifetime(const Callable& callable)
-{
-    if (!callable.returnLifetimeName.empty() ||
-        !callable.lifetimeParameters.empty() ||
-        !callable.lifetimeOutlivesConstraints.empty())
-    {
-        return true;
-    }
-    for (const LibraryMetadataParameter& parameter : callable.parameters)
-        if (!parameter.lifetimeName.empty()) return true;
-    return false;
-}
-
-bool typeHasLifetime(const LibraryMetadataType& type)
-{
-    if (!type.lifetimeParameters.empty() ||
-        !type.lifetimeOutlivesConstraints.empty() ||
-        type.delegateReferenceReturn ||
-        !type.delegateReturnLifetimeName.empty())
-    {
-        return true;
-    }
-    for (const std::string& lifetime : type.delegateParameterLifetimeNames)
-        if (!lifetime.empty()) return true;
-    for (const LibraryMetadataParameterPassKind pass : type.delegateParameterPassKinds)
-        if (pass != LibraryMetadataParameterPassKind::Value) return true;
-    for (const LibraryMetadataField& field : type.fields)
-        if (!field.lifetimeName.empty()) return true;
-    return false;
-}
-
-bool validateMetadataBefore35(
-    const LibraryMetadata& metadata,
-    std::string& error)
-{
-    if (metadata.formatMinor < 32)
-        for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
-            if ((function.flags & kMetadataNamespaceFunctionExtension) != 0U)
-            {
-                error = "NativeSharp metadata before 1.32 cannot represent extension methods";
-                return false;
-            }
-    if (metadata.formatMinor < 33)
-        for (const LibraryMetadataType& type : metadata.types)
-            if ((type.flags & kMetadataTypeCopy) != 0U)
-            {
-                error = "NativeSharp metadata before 1.33 cannot represent explicit Copy value types";
-                return false;
-            }
-    if (metadata.formatMinor >= 34) return true;
-    for (const LibraryMetadataType& type : metadata.types)
-        if (typeHasLifetime(type))
-        {
-            error = "NativeSharp metadata before 1.34 cannot represent named lifetime contracts";
-            return false;
-        }
-    for (const LibraryMetadataMember& member : metadata.members)
-        if (callableHasLifetime(member))
-        {
-            error = "NativeSharp metadata before 1.34 cannot represent named lifetime contracts";
-            return false;
-        }
-    for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
-        if (callableHasLifetime(function))
-        {
-            error = "NativeSharp metadata before 1.34 cannot represent named lifetime contracts";
-            return false;
-        }
-    return true;
-}
-
-bool validateMetadataBefore38(
+bool validateWritableSourceImports(
     LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 35)
+    for (const auto& generic : metadata.genericTemplates)
     {
-        // Old consumers already treat a missing summary conservatively. Dropping the 1.35 field
-        // therefore preserves safety and is the canonical historical encoding; rejecting every
-        // current model made deliberate 1.12/1.13/1.16 production impossible even when none of
-        // those formats promised interprocedural escape precision.
-        for (LibraryMetadataMember& member : metadata.members)
-            member.parameterEscapeSummary.clear();
-        for (LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
-            function.parameterEscapeSummary.clear();
-    }
-    if (metadata.formatMinor < 36)
-        for (const LibraryMetadataType& type : metadata.types)
-            if (!type.dropGlueEntryName.empty())
+        for (const auto& directive : generic.sourceImports)
+        {
+            const bool enclosingScope = directive.namespaceName.empty() ||
+                directive.namespaceName == generic.namespaceName ||
+                (generic.namespaceName.starts_with(directive.namespaceName) &&
+                 generic.namespaceName.size() > directive.namespaceName.size() &&
+                 generic.namespaceName[directive.namespaceName.size()] == '.');
+            if (directive.target.empty() || !enclosingScope || directive.importKind > 5U ||
+                (directive.importKind == 0U && directive.reexport))
             {
-                error = "NativeSharp metadata before 1.36 cannot represent value drop glue";
-                return false;
-            }
-    if (metadata.formatMinor >= 37) return true;
-    for (const LibraryMetadataType& type : metadata.types)
-        if (!type.delegateErrorTypeKey.empty())
-        {
-            error = "NativeSharp metadata before 1.37 cannot represent typed throws contracts";
-            return false;
-        }
-    for (const LibraryMetadataMember& member : metadata.members)
-        if (!member.declaredErrorTypeKey.empty())
-        {
-            error = "NativeSharp metadata before 1.37 cannot represent typed throws contracts";
-            return false;
-        }
-    for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
-        if (!function.declaredErrorTypeKey.empty())
-        {
-            error = "NativeSharp metadata before 1.37 cannot represent typed throws contracts";
-            return false;
-        }
-    return true;
-}
-
-bool validateMetadataBefore40(
-    LibraryMetadata& metadata,
-    std::string& error)
-{
-    if (metadata.formatMinor < 38)
-    {
-        for (const LibraryMetadataGenericTemplate& generic : metadata.genericTemplates)
-        {
-            if (!generic.parameterContracts.empty() ||
-                !generic.lifetimeParameters.empty() ||
-                !generic.lifetimeOutlivesConstraints.empty())
-            {
-                error = "NativeSharp metadata before 1.38 cannot represent exported generic "
-                    "ownership, constraints, or lifetime contracts";
+                error = "invalid template source import or lexical scope";
                 return false;
             }
         }
     }
-    if (metadata.formatMinor < 39) metadata.languageFeatureFlags = 0;
-    if (metadata.formatMinor < 42 && !metadata.cppCRecordCatalog.empty())
-    {
-        error = "NativeSharp metadata before 1.42 cannot represent C record catalogue";
-        return false;
-    }
-    if (metadata.formatMinor < 41 && !metadata.cppBinaryDependencies.empty())
-    {
-        error = "NativeSharp metadata before 1.41 cannot represent C/C++ binary dependencies";
-        return false;
-    }
-    if (metadata.formatMinor < 25 &&
-        (!metadata.binaryDependencies.empty() || !metadata.platformImports.empty()))
-    {
-        error = "NativeSharp metadata before 1.25 cannot represent binary closure or private "
-            "platform imports";
-        return false;
-    }
     return true;
-}
-
-bool applyWritableMetadataDowngrade(
-    LibraryMetadata& metadata,
-    std::string& error)
-{
-    downgradeMetadataBefore18(metadata);
-    if (!validateMetadataBefore21(metadata, error)) return false;
-    if (!validateMetadataBefore31(metadata, error)) return false;
-    if (!validateDynamicMetadataBefore31(metadata, error)) return false;
-    if (!validateMetadataBefore35(metadata, error)) return false;
-    if (!validateMetadataBefore38(metadata, error)) return false;
-    return validateMetadataBefore40(metadata, error);
 }
 
 bool writeMetadataFile(
@@ -653,7 +271,7 @@ bool writeMetadataFile(
 {
     metadata.abiFingerprint = basic::sha256(encodeAbiProjection(metadata));
     const std::vector<std::uint8_t> payload =
-        encodePayload(metadata, kLegacySourceRevisionByte, metadata.formatMinor >= 40);
+        encodePayload(metadata);
     if (payload.size() > kMaximumPayloadSize)
     {
         error = "NativeSharp metadata payload exceeds 128 MiB format limit";
@@ -662,13 +280,8 @@ bool writeMetadataFile(
     const std::array<std::uint8_t, 32> payloadHash = basic::sha256(payload);
     ByteWriter file;
     file.raw(kMagic);
-    // El encabezado escribe el minor DEL MODELO, no la constante. El cuerpo ya se
-    // codifica segun `metadata.formatMinor` (`if (metadata.formatMinor >= N)`),
-    // asi que tomar el numero de otro sitio serian dos fuentes de verdad para el
-    // mismo campo dentro del mismo fichero -- y un encabezado que dijera 2 sobre
-    // un cuerpo escrito como 1 es un fichero que no se puede leer.
-    file.u16(metadata.formatMajor);
-    file.u16(metadata.formatMinor);
+    // Reserved header bytes do not select the layout or describe a format edition.
+    file.u32(0U);
     // El marcador de endianidad es una propiedad de la CODIFICACION, no del
     // modelo: no hay campo que pueda decir otra cosa, y por eso este si es una
     // constante. Los tres siguientes salen del modelo, ya validado arriba.
@@ -716,8 +329,6 @@ bool readMetadataBytes(
 
 bool readMetadataHeader(
     ByteReader& reader,
-    std::uint16_t& major,
-    std::uint16_t& minor,
     std::uint32_t& targetId,
     std::uint32_t& pointerSize,
     std::uint32_t& pointerAlignment,
@@ -727,13 +338,18 @@ bool readMetadataHeader(
     std::string& error)
 {
     std::array<std::uint8_t, 8> magic{};
-    if (!reader.raw(magic) || magic != kMagic)
+    // The seventh byte is reserved. The signature, terminator, payload hash and ABI
+    // fingerprint determine whether the file can be read.
+    const bool magicRead = reader.raw(magic);
+    if (!magicRead ||
+        !std::equal(magic.begin(), magic.begin() + 6, kMagic.begin()) || magic[7] != 0U)
     {
         error = "invalid NativeSharp metadata magic";
         return false;
     }
+    std::uint32_t reserved = 0;
     std::uint32_t endianMarker = 0;
-    if (!reader.u16(major) || !reader.u16(minor) || !reader.u32(endianMarker) ||
+    if (!reader.u32(reserved) || !reader.u32(endianMarker) ||
         !reader.u32(targetId) || !reader.u32(pointerSize) || !reader.u32(pointerAlignment) ||
         !reader.u64(payloadSize) || !reader.raw(abiFingerprint) || !reader.raw(payloadHash))
     {
@@ -747,29 +363,15 @@ bool readMetadataHeader(
 
 void initializeDecodedMetadata(
     LibraryMetadata& decoded,
-    std::uint16_t major,
-    std::uint16_t minor,
     std::uint32_t targetId,
     std::uint32_t pointerSize,
     std::uint32_t pointerAlignment,
     const std::array<std::uint8_t, 32>& abiFingerprint)
 {
-    decoded.formatMajor = major;
-    decoded.formatMinor = minor;
     decoded.targetId = targetId;
     decoded.pointerSize = pointerSize;
     decoded.pointerAlignment = pointerAlignment;
     decoded.abiFingerprint = abiFingerprint;
-    if (minor >= 8) return;
-    decoded.nativeAbiMajor = 0;
-    decoded.nativeAbiMinor = 0;
-    decoded.runtimeAbiMajor = 0;
-    decoded.runtimeAbiMinor = 0;
-    decoded.manglingAbiVersion = 0;
-    decoded.objectAbiVersion = 0;
-    decoded.delegateAbiVersion = 0;
-    decoded.exceptionAbiVersion = 0;
-    decoded.managedDelegateCellSize = 0;
 }
 
 bool authenticateDecodedMetadata(

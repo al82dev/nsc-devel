@@ -56,6 +56,10 @@ public:
         diagnostics::DiagnosticEngine& diagnostics);
 
     std::span<const GenericConstraintViolation> violations() const noexcept;
+    bool hasDeferredSpecializationViolations() const noexcept
+    {
+        return !deferredBySpecialization_.empty();
+    }
     bool isBuilt() const noexcept;
     std::string_view normalizedConstraintIdentity(std::size_t templateOrdinal) const noexcept;
     std::span<const std::string> normalizedConstraintAtoms(
@@ -88,6 +92,10 @@ public:
     // `nullptr` responde `true`: lo que no salio de una especializacion no tiene clausula que
     // incumplir.
     bool specializationSatisfiesConstraints(const ast::AstNode* specializedSyntax) const noexcept;
+    // A positive result identifies one cloned construction and its validated canonical argument.
+    // Missing or ambiguous provenance never certifies a construction.
+    bool certifiesDefaultConstruction(
+        const ast::AstNode* construction, std::string_view typeKey) const noexcept;
     // `callRange` es el sitio de ESTA llamada. La especializacion se cachea por clave, de modo
     // que guarda el rango de la PRIMERA instanciacion y lo conserva: reportar ese rango cuando el
     // programa falla en la tercera llamada manda al lector a una linea correcta. El sitio lo sabe
@@ -128,6 +136,7 @@ private:
         std::size_t templateOrdinal,
         const ast::GenericConstraintClause& clause,
         const ast::TypeSyntax* constraintSyntax,
+        const ProjectGenericModel& genericModel,
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
         std::unordered_map<std::string, std::string>& seenByKey,
@@ -151,6 +160,7 @@ private:
         std::size_t templateOrdinal,
         const GenericTemplateRecord& templateRecord,
         const ast::GenericConstraintClause& clause,
+        const ProjectGenericModel& genericModel,
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
         std::vector<std::string>& templateAtoms,
@@ -232,12 +242,16 @@ private:
         const NamedTypeDeclaration& argument,
         std::size_t argumentOrdinal,
         bool sendMarker,
-        const ProjectMemberModel& memberModel);
+        std::string_view markerTypeKey,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectInheritanceModel& inheritanceModel);
     static bool satisfiesTypeConstraint(
         const NamedTypeDeclaration& argument,
         std::size_t argumentOrdinal,
         const NamedTypeDeclaration& constraint,
         std::size_t constraintOrdinal,
+        const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
         const ProjectInheritanceModel& inheritanceModel,
         const ProjectInterfaceModel& interfaceModel);
@@ -310,6 +324,10 @@ private:
     void emitUngroupedViolations(
         const std::vector<internal::PendingDiagnostic>& ungrouped,
         diagnostics::DiagnosticEngine& diagnostics);
+    void collectCertifiedDefaultConstructions(
+        const ProjectGenericModel& genericModel,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel);
     // Las tres formas de infringir la regla de constraint primario comparten registro y
     // diagnostico; solo cambia el mensaje, que es lo unico que las distingue para el lector.
     void reportPrimaryConstraint(
@@ -347,6 +365,7 @@ private:
     // `specializationOrdinal`. Recolectarlo de ahi hace que una regla de declaracion que se
     // anada manana entre sola, sin que nadie se acuerde de tocar este conjunto.
     std::unordered_set<std::size_t> invalidTemplateOrdinals_;
+    std::unordered_map<const ast::AstNode*, std::string> certifiedDefaultConstructions_;
     // Parameter ordinals plus sorted semantic atoms. This is stable under source reordering and
     // is the identity consumed by diagnostics/metadata/cache-facing tests.
     std::vector<std::string> normalizedConstraintIdentities_;

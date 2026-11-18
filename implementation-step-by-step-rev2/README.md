@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # NativeSharp: historia de una implementación, paso a paso — Revisión 2
 
 > **Revisión 2 — 8 de septiembre de 2026.** Esta revisión amplía, sin reemplazar ni modificar, la

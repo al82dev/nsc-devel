@@ -22,7 +22,7 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
             }
         }
 
-        private int ParseNumber()
+        private int ParseNumber() throws InvalidOperationException
         {
             SkipSpaces();
             int value = 0;
@@ -40,7 +40,7 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
             return value;
         }
 
-        private int ParsePrimary()
+        private int ParsePrimary() throws InvalidOperationException
         {
             SkipSpaces();
             if (position < text.Length && text[position] == '(')
@@ -58,7 +58,7 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
             return ParseNumber();
         }
 
-        private int ParseUnary()
+        private int ParseUnary() throws InvalidOperationException
         {
             SkipSpaces();
             if (position < text.Length && text[position] == '-')
@@ -69,7 +69,7 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
             return ParsePrimary();
         }
 
-        private int ParseTerm()
+        private int ParseTerm() throws InvalidOperationException
         {
             int value = ParseUnary();
             SkipSpaces();
@@ -95,7 +95,7 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
             return value;
         }
 
-        private int ParseExpression()
+        private int ParseExpression() throws InvalidOperationException
         {
             int value = ParseTerm();
             SkipSpaces();
@@ -110,7 +110,7 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
             return value;
         }
 
-        public int Evaluate()
+        public int Evaluate() throws InvalidOperationException
         {
             int value = ParseExpression();
             SkipSpaces();
@@ -289,7 +289,7 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
         private static int WordFrequencyChecksum()
         {
             string[] words = new string[] { "tree", "graph", "tree", "heap", "hash", "tree", "graph", "trie", "heap" };
-            string[] unique = new string[words.Length];
+            int[] unique = new int[words.Length];
             int[] counts = new int[words.Length];
             int uniqueCount = 0;
             int index = 0;
@@ -299,7 +299,7 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
                 int candidate = 0;
                 while (candidate < uniqueCount)
                 {
-                    if (unique[candidate] == words[index])
+                    if (words[unique[candidate]] == words[index])
                     {
                         found = candidate;
                     }
@@ -307,7 +307,7 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
                 }
                 if (found < 0)
                 {
-                    unique[uniqueCount] = words[index];
+                    unique[uniqueCount] = index;
                     counts[uniqueCount] = 1;
                     uniqueCount = uniqueCount + 1;
                 }
@@ -352,7 +352,7 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
             return valid ? 31 : -1;
         }
 
-        public static int Run()
+        public static int Run() throws InvalidOperationException
         {
             int records = FixedRecordRoundTrip();
             int library = LibraryLoans();

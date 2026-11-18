@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ComptimeEngine.h"
 #include "Internal/ComptimeScan.h"
 #include "Internal/IntegerExpression.h"
+#include "Internal/ComptimeFunctionEvaluator.h"
 #include "Internal/ComptimeCapabilityCall.h"
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Language/MetaprogrammingSemantics.h"
@@ -282,13 +283,22 @@ bool parseAuthoredDiagnostic(
     return true;
 }
 
+// EN: LKF-342: `limit` is the memory budget left. The input used to be read whole and compared
+//     with the budget afterwards, so a large file or variable was copied into memory first; it is
+//     now refused before it is copied, and a file is read at most one byte past the limit.
+// ES: LKF-342: `limit` es el presupuesto de memoria restante. La entrada se leía completa y se
+//     comparaba después, así que un archivo o una variable grande se copiaba antes a memoria; ahora
+//     se rechaza antes de copiarla, y de un archivo se lee como mucho un byte más que el límite.
 bool readCapabilityInput(
     std::string_view kind,
     const std::string& identity,
     const ComptimeExecutionContext& context,
+    std::size_t limit,
     std::string& content,
     std::string& error)
 {
+    static constexpr std::string_view budgetExceeded =
+        "comptime memory budget exceeded while reading declared input";
     if (kind == "file")
     {
         const std::filesystem::path relative(identity);
@@ -304,7 +314,27 @@ bool readCapabilityInput(
             error = "cannot read declared comptime file '" + identity + "'";
             return false;
         }
-        content.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+        std::error_code sizeError;
+        const std::uintmax_t size = std::filesystem::file_size(path, sizeError);
+        if (!sizeError && size > limit)
+        {
+            error = std::string(budgetExceeded);
+            return false;
+        }
+        content.clear();
+        char buffer[4096];
+        while (stream)
+        {
+            stream.read(buffer, sizeof(buffer));
+            const std::size_t count = static_cast<std::size_t>(stream.gcount());
+            if (count > limit - std::min(content.size(), limit))
+            {
+                content.clear();
+                error = std::string(budgetExceeded);
+                return false;
+            }
+            content.append(buffer, count);
+        }
         return true;
     }
 
@@ -316,9 +346,31 @@ bool readCapabilityInput(
         error = "declared comptime environment variable is unset: '" + identity + "'";
         return false;
     }
-    content.assign(value, valueLength == 0 ? 0 : valueLength - 1);
+    const std::size_t length = valueLength == 0 ? 0 : valueLength - 1;
+    if (length > limit)
+    {
+        std::free(value);
+        error = std::string(budgetExceeded);
+        return false;
+    }
+    content.assign(value, length);
     std::free(value);
     return true;
+}
+
+// Only call-shaped identifiers need function-source cache dependencies.
+bool containsFunctionCall(std::string_view expression)
+{
+    for (std::size_t i = 0; i < expression.size(); ++i)
+    {
+        if (!asciiAlpha(expression[i]) && expression[i] != '_') continue;
+        if (i != 0 && identifierByte(expression[i - 1])) continue;
+        std::size_t end = i + 1;
+        while (end < expression.size() && identifierByte(expression[end])) ++end;
+        while (end < expression.size() && asciiSpace(expression[end])) ++end;
+        if (end < expression.size() && expression[end] == '(') return true;
+    }
+    return false;
 }
 
 std::string comptimeCacheKey(std::string_view expression)
@@ -395,7 +447,8 @@ bool resolveCapabilityCalls(
             }
 
             std::string content;
-            if (!readCapabilityInput(call.kind, identity, context, content, error)) return false;
+            const std::size_t remaining = maximumMemoryBytes - std::min(memoryUsed, maximumMemoryBytes);
+            if (!readCapabilityInput(call.kind, identity, context, remaining, content, error)) return false;
             if (content.size() > maximumMemoryBytes - std::min(memoryUsed, maximumMemoryBytes))
             { error = "comptime memory budget exceeded while reading declared input"; return false; }
             memoryUsed += content.size();
@@ -721,6 +774,7 @@ bool ComptimeEngine::locateRunExpression(
 }
 
 bool ComptimeEngine::resolveRunExpression(
+    std::string_view source,
     std::string_view expression,
     std::size_t cursor,
     std::string& resolvedExpression,
@@ -739,6 +793,15 @@ bool ComptimeEngine::resolveRunExpression(
         return false;
     }
     std::string cacheMaterial = resolvedExpression;
+    if (containsFunctionCall(resolvedExpression))
+    {
+        if (source.size() > internal::maximumComptimeFunctionSourceBytes)
+        {
+            result.error = "comptime function source limit exceeded";
+            return false;
+        }
+        cacheMaterial += "\nsource=" + digestText(source);
+    }
     for (const ComptimeDependency& dependency : externalDependencies)
         cacheMaterial += "\n" + dependency.kind + ":" +
             dependency.identity + "=" + dependency.digest;
@@ -751,6 +814,7 @@ bool ComptimeEngine::resolveRunExpression(
 }
 
 bool ComptimeEngine::evaluateRunExpression(
+    std::string_view source,
     const std::string& resolvedExpression,
     const std::string& dependencyDigest,
     std::size_t cursor,
@@ -759,9 +823,12 @@ bool ComptimeEngine::evaluateRunExpression(
     ComptimeResult& result) const
 {
     std::string error;
-    if (cache_)
+    // Function results are not cached until cache entries also account for parse memory.
+    if (cache_ && !containsFunctionCall(resolvedExpression))
     {
-        if (const auto cached = cache_->find(dependencyDigest); cached.has_value())
+        if (const auto cached = cache_->find(dependencyDigest);
+            cached.has_value() && cached->maximumObservedNesting.has_value() &&
+            *cached->maximumObservedNesting <= limits_.maximumNesting)
         {
             if (cached->executedSteps > limits_.maximumSteps -
                 std::min(result.executedSteps, limits_.maximumSteps))
@@ -782,10 +849,19 @@ bool ComptimeEngine::evaluateRunExpression(
             resolvedExpression, limits_.maximumSteps, limits_.maximumNesting,
             result.executedSteps, context_.cancellationRequested);
         value = evaluator.evaluate(error);
+        if (!value.has_value() && containsFunctionCall(resolvedExpression) &&
+            error == "comptime sandbox forbids identifiers, calls, FFI, and host access")
+        {
+            error.clear();
+            value = internal::evaluateComptimeFunction(
+                source, resolvedExpression, cursor, limits_, result.executedSteps,
+                result.memoryUsed, context_.cancellationRequested, error);
+        }
         ++result.cacheMisses;
-        if (value.has_value() && cache_)
+        if (value.has_value() && cache_ && !containsFunctionCall(resolvedExpression))
             cache_->store(
-                dependencyDigest, {*value, result.executedSteps - stepsBefore});
+                dependencyDigest, {*value, result.executedSteps - stepsBefore,
+                                   evaluator.maximumObservedNesting()});
     }
     if (value.has_value()) return true;
     result.error = error + " (directive at byte " + std::to_string(cursor) + ")";
@@ -837,12 +913,12 @@ bool ComptimeEngine::processRunDirective(
     std::string resolvedExpression;
     std::string dependencyDigest;
     if (!resolveRunExpression(
-            expression, cursor, resolvedExpression, dependencyDigest, result))
+            source, expression, cursor, resolvedExpression, dependencyDigest, result))
         return false;
     std::optional<std::int64_t> value;
     bool cacheHit = false;
     if (!evaluateRunExpression(
-            resolvedExpression, dependencyDigest, cursor, value, cacheHit, result))
+            source, resolvedExpression, dependencyDigest, cursor, value, cacheHit, result))
         return false;
     if (!commitRunEvaluation(
             cursor, end, dependencyDigest, *value, cacheHit, result))
@@ -853,13 +929,24 @@ bool ComptimeEngine::processRunDirective(
 
 ComptimeResult ComptimeEngine::execute(std::string_view source) const
 {
+    const std::string_view authoredSource = source;
     ComptimeResult result;
-    if (!initializeExecution(source, result)) return result;
+    const auto cancelledResult = [&result, authoredSource]
+    {
+        ComptimeResult cancelled;
+        cancelled.source = authoredSource;
+        cancelled.error = "comptime evaluation cancelled";
+        cancelled.executedSteps = result.executedSteps;
+        cancelled.memoryUsed = result.memoryUsed;
+        return cancelled;
+    };
+    if (!initializeExecution(source, result))
+        return result.error == "comptime evaluation cancelled" ? cancelledResult() : result;
     Scan state = Scan::Code;
     bool escaped = false;
     for (std::size_t cursor = 0; cursor < source.size(); ++cursor)
     {
-        if (cancellationRequested(result)) return result;
+        if (cancellationRequested(result)) return cancelledResult();
         if (advanceScanState(source, cursor, state, escaped)) continue;
         if (startsWord(source, cursor, "comptime"))
         {
@@ -875,8 +962,15 @@ ComptimeResult ComptimeEngine::execute(std::string_view source) const
         if (matched) continue;
         if (!processAttributeDirective(source, cursor, result, matched)) return result;
         if (matched) continue;
-        if (!processRunDirective(source, cursor, result, matched)) return result;
+        if (!processRunDirective(source, cursor, result, matched))
+        {
+            if (result.error == "comptime evaluation cancelled" ||
+                result.error.starts_with("comptime evaluation cancelled (directive at byte "))
+                return cancelledResult();
+            return result;
+        }
     }
+    if (cancellationRequested(result)) return cancelledResult();
     result.success = true;
     result.reproducibilityDigest = reproducibilityDigestOf(result);
     return result;

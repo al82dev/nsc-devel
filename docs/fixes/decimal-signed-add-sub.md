@@ -1,0 +1,9 @@
+# Signos en suma y resta decimal
+
+El sondeo basal relacionado con el cálculo financiero del informe encontró seis escenarios incorrectos con operandos negativos o cruce por cero en O0 y O2; los dos controles positivos pasaron. La matriz completa y sus fuentes están en `A:/nsc-fixes-agent1-temp/decimal-signed-arithmetic-observe-20261112.log` y el directorio indicado en ese log.
+
+La rama de suma/resta ahora combina magnitudes según los signos efectivos, invierte el signo derecho para resta y normaliza cero. El ajuste afecta solo esa ruta; no modifica multiplicación, división, comparación ni tipos enteros. La cabecera privada modificada también es compartida con la rama de interoperabilidad y deberá revisarse al integrarla.
+
+El fixture de signos y las regresiones de igualdad, orden y representación de orden pasaron en O0/O2; la matriz basal se repitió con sus 16 resultados esperados. Logs `A:/nsc-fixes-agent1-temp/decimal-signed-integrated-20261112.log` y `A:/nsc-fixes-agent1-temp/decimal-signed-after-20261112.log`; compilador SHA-256 `a137ddcbc30a865e3b65e2937e995ccb134e8fa3796d6a6ffda5cfbe85b77ef5`, runtime e import libraries sin cambios durante las pruebas. El build contiene WIP, no certifica un árbol limpio.
+
+La corrección conserva extracción y aritmética intermedia de 64 bits. Un sondeo basal separado mostró tres discrepancias cuyos resultados esperados caben en 96 bits: entrada con coeficiente mayor de 64 bits, suma con resultado `2^64` y alineación cuyo resultado es `2^64+5`; cada una en O0/O2. La inspección de bits usa `unsafe`. Ver `A:/nsc-fixes-agent1-temp/decimal-wide-intermediate-baseline-20261112.log`. Esos casos siguen pendientes y no se establece aquí una política para overflow verdadero de 96 bits. El runner CMake exacto integrado pasó O0/O2 con salida 0; artefactos en `A:/nsc-fixes-agent1-temp/decimal-signed-cmake-20261112`, log vacío por diseño al pasar. No se ejecutó CTest.

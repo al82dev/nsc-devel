@@ -127,6 +127,17 @@ bool ProjectMethodBodyModel::elementTypeHasTrivialLifetime(std::string_view type
         {
             return false;
         }
+        // EN: A struct field carries its own lifetime: `struct Outer { Inner I; }` with an owned field
+        //     in Inner passed the stackalloc and raw new checks (LKF-302). Recurse into value fields;
+        //     a struct cannot contain itself by value, so the recursion is finite.
+        // ES: Un campo struct lleva su propia vida: `struct Outer { Inner I; }` con un campo owned en
+        //     Inner pasaba las comprobaciones de stackalloc y raw new (LKF-302). Se recorre cada campo
+        //     valor; un struct no puede contenerse por valor, así que la recursión termina.
+        if (member.kind == ClassMemberKind::Field && !member.isStatic &&
+            member.declaredTypeKey != typeKey && !elementTypeHasTrivialLifetime(member.declaredTypeKey))
+        {
+            return false;
+        }
     }
     return true;
 }

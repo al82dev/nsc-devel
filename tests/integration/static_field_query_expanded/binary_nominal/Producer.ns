@@ -1,0 +1,5 @@
+namespace BinaryNominal
+{
+    public struct Node { public int Value; }
+    public struct Record { public Node Item; public int Count; }
+}

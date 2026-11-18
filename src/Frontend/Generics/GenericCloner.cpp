@@ -1,5 +1,6 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "../Internal/CloneDepthGuard.h"
+#include "Support/FixedArraySpelling.h"
 #include "../Cache/CachePayloadReader.h"
 #include "../Internal/EnumConstResolver.h"
 #include "../Internal/SpecializationWaveTimer.h"
@@ -211,12 +212,13 @@ ast::TypeSyntax* ProjectGenericModel::cloneProjectionResult(
     const std::size_t modifierCount = std::min(source->modifiers().size(), modifierLimit);
     for (std::size_t index = 0; index < modifierCount; ++index)
     {
-        const ast::TypeModifierSyntax& modifier = source->modifiers()[index];
-        result->addModifier(ast::TypeModifierSyntax{
-            modifier.kind,
-            cloneNode(arena, modifier.arrayCount, substitutions, "", ""),
-            modifier.range,
-            modifier.arrayRank});
+        // EN: LKF-357: copy the whole modifier (pointer nullability, provenance, alignment and address space
+        //     included) and clone only its array extent.
+        // ES: LKF-357: copia el modificador completo (nulidad, procedencia, alineación y espacio de direcciones
+        //     del puntero incluidos) y clona solo su extensión de arreglo.
+        ast::TypeModifierSyntax copied = source->modifiers()[index];
+        copied.arrayCount = cloneNode(arena, copied.arrayCount, substitutions, "", "");
+        result->addModifier(copied);
     }
     result->setOwnershipQualifier(source->ownershipQualifier());
     result->setDynamicTrait(source->isDynamicTrait());
@@ -384,6 +386,9 @@ ast::TypeSyntax* ProjectGenericModel::cloneTypeWorkItem(
         return cloneType(arena, item.source, substitutions);
 
     ast::TypeSyntax* child = cloneTypeGenericShallow(arena, item.source);
+    // An unchanged nested argument must retain the identity resolved at its request site.
+    if (substitutions.empty())
+        applyClonedTypeSurface(item.source, child, false);
     if (item.source->constExpression() != nullptr)
         child->setConstExpression(cloneNode(
             arena, item.source->constExpression(), substitutions, "", ""));
@@ -391,12 +396,11 @@ ast::TypeSyntax* ProjectGenericModel::cloneTypeWorkItem(
     const std::size_t count = std::min(item.source->modifiers().size(), modifierLimit);
     for (std::size_t i = 0; i < count; ++i)
     {
-        const ast::TypeModifierSyntax& modifier = item.source->modifiers()[i];
-        child->addModifier(ast::TypeModifierSyntax{
-            modifier.kind,
-            cloneNode(arena, modifier.arrayCount, substitutions, "", ""),
-            modifier.range,
-            modifier.arrayRank});
+        // LKF-357: the whole modifier, with its array extent cloned.
+        // LKF-357: el modificador completo, con su extensión de arreglo clonada.
+        ast::TypeModifierSyntax copied = item.source->modifiers()[i];
+        copied.arrayCount = cloneNode(arena, copied.arrayCount, substitutions, "", "");
+        child->addModifier(copied);
     }
     for (auto it = item.source->typeArguments().rbegin();
          it != item.source->typeArguments().rend(); ++it)
@@ -461,11 +465,11 @@ void ProjectGenericModel::appendCloneModifiers(
     for (std::size_t modifierIndex = 0; modifierIndex < modifierCount; ++modifierIndex)
     {
         const ast::TypeModifierSyntax& modifier = source->modifiers()[modifierIndex];
-        result->addModifier(ast::TypeModifierSyntax{
-            modifier.kind,
-            cloneNode(arena, modifier.arrayCount, substitutions, "", ""),
-            modifier.range,
-            modifier.arrayRank});
+        // LKF-357: the whole modifier, with its array extent cloned.
+        // LKF-357: el modificador completo, con su extensión de arreglo clonada.
+        ast::TypeModifierSyntax copied = modifier;
+        copied.arrayCount = cloneNode(arena, modifier.arrayCount, substitutions, "", "");
+        result->addModifier(copied);
         // In the substitution branch `result` already carries the argument's canonical identity
         // (including modifiers written on that argument). Modifiers written on the template
         // parameter occurrence are outer modifiers and must be appended as well: substituting
@@ -484,8 +488,9 @@ void ProjectGenericModel::appendCloneModifiers(
                 *identity += "[*]";
             else if (modifier.kind == ast::TypeModifierSyntaxKind::IncompleteArray)
                 *identity += "[?]";
+            // LKF-371: the extent is part of the identity. / LKF-371: la extensión forma parte de la identidad.
             else
-                *identity += "[fixed]";
+                *identity += internal::fixedArrayModifierSpelling(modifier);
         }
     }
 }
@@ -502,6 +507,10 @@ ast::TypeSyntax* ProjectGenericModel::cloneSubstitutedOrGenericType(
     {
         substituted = true;
         ast::TypeSyntax* result = cloneType(arena, substitution->second, {});
+        auto& sources = workerSubstitutedTypeCloneSources_ != nullptr
+            ? *workerSubstitutedTypeCloneSources_ : substitutedTypeCloneSources_;
+        if (result != nullptr && substitution->second != nullptr)
+            sources.emplace(result, substitution->second);
         // Stage 52 fix: `result` now names a type ARGUMENT the caller supplied at the
         // instantiation site (e.g. the "MyOwnClass" in "List<MyOwnClass>"), not part of the
         // template's own source text -- so it must resolve using the REQUESTING project's
@@ -522,7 +531,14 @@ ast::TypeSyntax* ProjectGenericModel::cloneSubstitutedOrGenericType(
         return result;
     }
     substituted = false;
-    return cloneTypeGeneric(arena, source, substitutions, modifierLimit);
+    ast::TypeSyntax* result = cloneTypeGeneric(arena, source, substitutions, modifierLimit);
+    if (result != nullptr)
+    {
+        auto& sources = workerSubstitutedTypeCloneSources_ != nullptr
+            ? *workerSubstitutedTypeCloneSources_ : substitutedTypeCloneSources_;
+        sources.emplace(result, source);
+    }
+    return result;
 }
 
 ast::TypeSyntax* ProjectGenericModel::clonePackType(
@@ -564,6 +580,12 @@ ast::TypeSyntax* ProjectGenericModel::clonePackType(
             source->range(), lexer::TokenKind::KwInt, "int");
     }
     ast::TypeSyntax* selected = cloneType(arena, pack->second[index], substitutions);
+    if (selected != nullptr && pack->second[index] != nullptr)
+    {
+        auto& sources = workerSubstitutedTypeCloneSources_ != nullptr
+            ? *workerSubstitutedTypeCloneSources_ : substitutedTypeCloneSources_;
+        sources.emplace(selected, pack->second[index]);
+    }
     appendCloneModifiers(arena, source, selected, substitutions, modifierLimit, false);
     selected->setOwnershipQualifier(source->ownershipQualifier());
     selected->setLifetimeName(source->lifetimeName());
@@ -848,6 +870,11 @@ ast::AstNode* ProjectGenericModel::cloneNodeCopyFields(
     result->setFfiUnwindPolicy(source->ffiUnwindPolicy());
     result->setIntegerValue(source->integerValue());
     result->setFloatingValue(source->floatingValue());
+    // EN: LKF-358: `new (allocator, failure: null|result|throws|panic) T(...)` keeps its failure profile in a
+    //     specialized body; without it the construction fell back to the default profile.
+    // ES: LKF-358: `new (allocator, failure: null|result|throws|panic) T(...)` conserva su perfil de fallo en
+    //     un cuerpo especializado; sin él la construcción volvía al perfil por defecto.
+    result->setAllocatorFailureProfile(source->allocatorFailureProfile());
     // Modifiers are semantic template state, not decoration.
     for (const lexer::TokenKind modifier : source->modifiers()) result->addModifier(modifier);
     return result;
@@ -902,14 +929,22 @@ void ProjectGenericModel::cloneGenericConstraints(
                  found != substitutions.end())
         {
             ast::TypeSyntax* substitutedArgument = cloneType(arena, found->second, substitutions);
+            if (substitutedArgument != nullptr && found->second != nullptr)
+            {
+                auto& sources = workerSubstitutedTypeCloneSources_ != nullptr
+                    ? *workerSubstitutedTypeCloneSources_ : substitutedTypeCloneSources_;
+                sources.emplace(substitutedArgument, found->second);
+            }
             preserveOrAttachInstantiationOrigin(substitutedArgument);
             copy.substitutedArgument = substitutedArgument;
         }
-        else if (clause.enclosingTypeParameter && clause.substitutedArgument != nullptr)
+        else if (clause.substitutedArgument != nullptr &&
+                 (clause.enclosingTypeParameter ||
+                  source->auxiliaryText().starts_with("stage44-specialization:")))
         {
-            // EN: Freeze 3.0 P1: a member clause keeps the argument of its closed type when the
+            // EN: Freeze P1: a member clause keeps the argument of its closed type when the
             //     member is cloned again without that parameter.
-            // ES: Congelamiento 3.0 P1: una clausula de miembro conserva el argumento de su tipo
+            // ES: Congelamiento P1: una clausula de miembro conserva el argumento de su tipo
             //     cerrado cuando el miembro se vuelve a clonar sin ese parametro.
             copy.substitutedArgument = cloneType(arena, clause.substitutedArgument, substitutions);
         }
@@ -935,6 +970,47 @@ ast::AstNode* ProjectGenericModel::cloneNodeGeneric(
             : ast::AstNodeKind::AlignofTypeExpression;
     }
     ast::AstNode* result = cloneNodeCopyFields(arena, source, clonedKind);
+    if (source->kind() == ast::AstNodeKind::CallExpression)
+    {
+        auto& calls = workerGenericCallCloneSources_ != nullptr
+            ? *workerGenericCallCloneSources_ : genericCallCloneSources_;
+        calls.emplace(result, source);
+    }
+    if (source->kind() == ast::AstNodeKind::PlacementConstructionExpression ||
+        source->kind() == ast::AstNodeKind::ObjectCreationExpression)
+    {
+        auto& origins = workerConstructionCloneSources_ != nullptr
+            ? *workerConstructionCloneSources_ : constructionCloneSources_;
+        origins.emplace(result, source);
+    }
+    if (source->kind() == ast::AstNodeKind::FieldDeclaration)
+    {
+        auto& fields = workerFieldCloneSources_ != nullptr
+            ? *workerFieldCloneSources_ : fieldCloneSources_;
+        fields.emplace(result, source);
+    }
+    if (source->kind() == ast::AstNodeKind::MemberExpression)
+    {
+        // The scheduler joins the clone workers before serially committing and
+        // processing any product, so the published selections and origins are
+        // read-only here. Follow this worker's own unpublished edges separately.
+        const ast::AstNode* origin = source;
+        bool selected = false;
+        for (std::size_t depth = 0; origin != nullptr && depth < 1024; ++depth)
+        {
+            if (staticFieldAccessSelection(origin) != nullptr) { selected = true; break; }
+            if (workerMemberCloneSources_ == nullptr) break;
+            const auto found = workerMemberCloneSources_->find(origin);
+            if (found == workerMemberCloneSources_->end()) break;
+            origin = found->second;
+        }
+        if (selected)
+        {
+            auto& members = workerMemberCloneSources_ != nullptr
+                ? *workerMemberCloneSources_ : memberCloneSources_;
+            members.emplace(result, source);
+        }
+    }
     // A scalar `new T` inside a generic template allocates one raw storage slot whose element
     // type is T. Preserve the source-level intent before substituting its type.
     if (source->kind() == ast::AstNodeKind::NewExpression && !source->flag() &&
@@ -965,6 +1041,12 @@ ast::AstNode* ProjectGenericModel::cloneNodeGeneric(
     {
         ast::TypeSyntax* measuredType = cloneType(
             arena, substitutions.at(source->first()->text()), substitutions);
+        if (measuredType != nullptr)
+        {
+            auto& sources = workerSubstitutedTypeCloneSources_ != nullptr
+                ? *workerSubstitutedTypeCloneSources_ : substitutedTypeCloneSources_;
+            sources.emplace(measuredType, substitutions.at(source->first()->text()));
+        }
         preserveOrAttachInstantiationOrigin(measuredType);
         result->setTypeSyntax(measuredType);
     }
@@ -1062,6 +1144,34 @@ ast::AstNode* ProjectGenericModel::tryCloneSpecialNode(
     return nullptr;
 }
 
+// The descriptor is scoped to the iteration body, not to the queried type. Copy the map only
+// when a shadowed name is present; sibling work retains its original substitutions.
+static std::shared_ptr<const std::unordered_map<std::string, const ast::TypeSyntax*>>
+staticFieldBodySubstitutions(
+    const ast::AstNode* node,
+    const std::unordered_map<std::string, const ast::TypeSyntax*>& active,
+    std::shared_ptr<const std::unordered_map<std::string, const ast::TypeSyntax*>> inherited)
+{
+    if (node->kind() != ast::AstNodeKind::StaticFieldIterationStatement) return inherited;
+    const std::string projectionPrefix = node->text() + ".";
+    bool shadowed = false;
+    for (const auto& [name, type] : active)
+    {
+        (void)type;
+        if (name == node->text() || name.starts_with(projectionPrefix)) { shadowed = true; break; }
+    }
+    if (!shadowed) return inherited;
+    auto scoped = std::make_shared<std::unordered_map<std::string, const ast::TypeSyntax*>>(active);
+    for (auto iterator = scoped->begin(); iterator != scoped->end();)
+    {
+        if (iterator->first == node->text() || iterator->first.starts_with(projectionPrefix))
+            iterator = scoped->erase(iterator);
+        else
+            ++iterator;
+    }
+    return scoped;
+}
+
 void ProjectGenericModel::cloneNodeChildrenIterative(
     ast::AstArena& arena,
     const ast::AstNode* source,
@@ -1073,37 +1183,40 @@ void ProjectGenericModel::cloneNodeChildrenIterative(
     std::vector<ChildWork> work;
     for (auto iterator = source->children().rbegin();
          iterator != source->children().rend(); ++iterator)
-        work.push_back(ChildWork{*iterator, result, 4});
+        work.push_back(ChildWork{*iterator, result, 4, {}});
     if (source->third() != nullptr)
-        work.push_back(ChildWork{source->third(), result, 3});
+        work.push_back(ChildWork{source->third(), result, 3, {}});
     if (source->second() != nullptr)
-        work.push_back(ChildWork{source->second(), result, 2});
+        work.push_back(ChildWork{source->second(), result, 2, {}});
     if (!isLayoutQueryOfSubstitutedParameter(source, substitutions))
-        work.push_back(ChildWork{source->first(), result, 1});
+        work.push_back(ChildWork{source->first(), result, 1,
+            staticFieldBodySubstitutions(source, substitutions, {})});
     while (!work.empty())
     {
         ChildWork item = work.back();
         work.pop_back();
+        const auto& active = item.substitutions != nullptr ? *item.substitutions : substitutions;
         ast::AstNode* child = nullptr;
         if (item.source != nullptr)
         {
             child = tryCloneSpecialNode(
-                arena, item.source, substitutions,
+                arena, item.source, active,
                 rewrittenContainingTypeName, originalContainingTypeName);
             if (child == nullptr)
             {
                 child = cloneNodeGeneric(
-                    arena, item.source, substitutions,
+                    arena, item.source, active,
                     rewrittenContainingTypeName, originalContainingTypeName);
                 for (auto iterator = item.source->children().rbegin();
                      iterator != item.source->children().rend(); ++iterator)
-                    work.push_back(ChildWork{*iterator, child, 4});
+                    work.push_back(ChildWork{*iterator, child, 4, item.substitutions});
                 if (item.source->third() != nullptr)
-                    work.push_back(ChildWork{item.source->third(), child, 3});
+                    work.push_back(ChildWork{item.source->third(), child, 3, item.substitutions});
                 if (item.source->second() != nullptr)
-                    work.push_back(ChildWork{item.source->second(), child, 2});
-                if (!isLayoutQueryOfSubstitutedParameter(item.source, substitutions))
-                    work.push_back(ChildWork{item.source->first(), child, 1});
+                    work.push_back(ChildWork{item.source->second(), child, 2, item.substitutions});
+                if (!isLayoutQueryOfSubstitutedParameter(item.source, active))
+                    work.push_back(ChildWork{item.source->first(), child, 1,
+                        staticFieldBodySubstitutions(item.source, active, item.substitutions)});
             }
         }
         switch (item.slot)

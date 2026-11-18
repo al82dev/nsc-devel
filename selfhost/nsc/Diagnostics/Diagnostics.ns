@@ -53,7 +53,9 @@ namespace NativeSharp.Compiler.Diagnostics
             return "error";
         }
 
-        private static owned string JsonEscape(string value)
+        // EN: Public so other JSON writers of the driver escape their strings the same way (LKF-219).
+        // ES: Publica para que otros escritores JSON del driver escapen igual sus cadenas (LKF-219).
+        public static owned string JsonEscape(string value)
         {
             string hexadecimal = "0123456789abcdef";
             raii StringBuilder escaped = new StringBuilder(value.Length);
@@ -83,15 +85,18 @@ namespace NativeSharp.Compiler.Diagnostics
 
         public static owned string Human(Diagnostic diagnostic)
         {
-            string prefix = "nsc: error: unknown diagnostic";
+            string message = "unknown diagnostic";
             if (diagnostic.Code() == "NSC0001")
             {
-                prefix = "nsc: error: cannot open source file '";
+                message = "cannot open source file '";
             }
             else if (diagnostic.Code() == "NSC0002")
             {
-                prefix = "nsc: error: unknown option '";
+                message = "unknown option '";
             }
+            raii string severity = String.Concat("nsc: ", JsonSeverity(diagnostic.Severity()));
+            raii string label = String.Concat(severity, ": ");
+            raii string prefix = String.Concat(label, message);
             raii string withArgument = String.Concat(prefix, diagnostic.Argument());
             return String.Concat(withArgument, "'");
         }
@@ -99,7 +104,8 @@ namespace NativeSharp.Compiler.Diagnostics
         public static owned string Json(Diagnostic diagnostic)
         {
             raii string escaped = JsonEscape(diagnostic.Argument());
-            raii string first = String.Concat("{\"schema\":\"nativesharp-diagnostic\",\"version\":1,\"code\":\"", diagnostic.Code());
+            raii string escapedCode = JsonEscape(diagnostic.Code());
+            raii string first = String.Concat("{\"schema\":\"nativesharp-diagnostic\",\"version\":1,\"code\":\"", escapedCode);
             raii string severityPrefix = String.Concat(first, "\",\"severity\":\"");
             raii string severity = String.Concat(severityPrefix, JsonSeverity(diagnostic.Severity()));
             raii string argumentPrefix = String.Concat(severity, "\",\"argument\":\"");

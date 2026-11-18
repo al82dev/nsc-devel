@@ -14,6 +14,22 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+# EN: The standard Core is consumed as the library built by the external SDK (compiler first, then libraries),
+#     one package per optimization level, under NSC_STDLIB_PACKAGE_ROOT (default: build-clang/packages, where
+#     NSC Builder installs them).
+# ES: El Core estandar se consume como la biblioteca construida por el SDK externo (primero el compilador, despues
+#     las bibliotecas), un paquete por nivel de optimizacion, bajo NSC_STDLIB_PACKAGE_ROOT (por defecto:
+#     build-clang/packages, donde los instala NSC Builder).
+STDLIB_PACKAGE_ROOT = Path(os.environ.get('NSC_STDLIB_PACKAGE_ROOT',
+                                          Path(__file__).resolve().parents[2] / 'build-clang' / 'packages'))
+
+
+def core_reference(opt):
+    found = sorted(STDLIB_PACKAGE_ROOT.glob(f'NativeSharp.Core/*/windows-x64/O{opt}/NativeSharpCore.lib'))
+    if not found:
+        raise SystemExit(f'NativeSharp.Core O{opt} package not found under {STDLIB_PACKAGE_ROOT}; build the external '
+                         'libraries first or set NSC_STDLIB_PACKAGE_ROOT')
+    return '<LibraryReference Include="' + found[-1].as_posix() + '" />'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
@@ -23,7 +39,7 @@ root = Path(tempfile.mkdtemp(prefix='nsc-t19-nivel-cpu-', dir='A:/temp'))
 env = os.environ.copy()
 env['TEMP'] = env['TMP'] = str(root)
 print('Evidencia:', root, flush=True)
-CORE = '<ProjectReference Include="A:/nsc-devel/lib/NativeSharp.Core/NativeSharp.Core.nsproj" />'
+CORE = core_reference(0)
 HEADER = '''namespace T {
 typedef float f8 __attribute__((vector_size(32)));
 float fsum8(f8 v) noexcept;

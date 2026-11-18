@@ -30,7 +30,7 @@ int main()
 {
     TestContext tests; const std::filesystem::path root = std::filesystem::path(NSC_BINARY_DIR) / "item355_packed_gpu";
     std::error_code error; std::filesystem::remove_all(root, error); std::filesystem::create_directories(root, error);
-    const std::string core = (std::filesystem::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+    const std::string core = (std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
     writeFile(root / "PackedGpu.nsproj", "<Project><PropertyGroup><Name>PackedGpu</Name></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\"/><ProjectReference Include=\"" + core + "\"/></ItemGroup></Project>");
     writeFile(root / "Main.ns", R"NS(

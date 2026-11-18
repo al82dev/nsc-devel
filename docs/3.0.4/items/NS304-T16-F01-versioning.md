@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # NS304-T16-F01 — Versiones definitivas HIR/MIR/NSMETA/runtime ABI
 
 - **Estado**: COMPLETO — invariantes consolidados + matriz de versiones (sin gate de versionado NSMETA).

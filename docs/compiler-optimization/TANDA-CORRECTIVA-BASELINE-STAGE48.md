@@ -1,5 +1,7 @@
 # Tanda correctiva — gates administrados Stage 48
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 **Fecha:** 1 de octubre de 2026  
 **Rama:** `development`  
 **Plataforma:** Windows x64  
@@ -7,7 +9,7 @@
 
 ## Problemas observados
 
-El baseline de NativeSharp 3.0 produjo dos falsos negativos en la integración administrada:
+El baseline de NativeSharp produjo dos falsos negativos en la integración administrada:
 
 - Stage 48.5 compiló correctamente el host C#, pero el test buscó el ensamblado en
   `bin/Release/net9.0` aunque `<PlatformTarget>x64</PlatformTarget>` lo publica en

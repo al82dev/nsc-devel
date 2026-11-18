@@ -24,5 +24,10 @@ private:
 
     mutable std::mutex mutex_;
     std::unordered_map<std::string, ModuleState> modules_;
+    // EN: TL-LANG-085: live objects per complete type contract (crossModuleLifetimeFingerprint), so a release
+    //     must name the contract that registered the object, not only its module.
+    // ES: TL-LANG-085: objetos vivos por contrato completo de tipo (crossModuleLifetimeFingerprint); una
+    //     liberación debe nombrar el contrato que registró el objeto, no sólo su módulo.
+    std::unordered_map<std::string, std::size_t> typeContracts_;
 };
 }

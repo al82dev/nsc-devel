@@ -5,6 +5,7 @@
 #include "nativesharp/Basic/FileId.h"
 #include "nativesharp/Lexer/Token.h"
 #include "nativesharp/Parser/KnownTypeNameSet.h"
+#include "nativesharp/Frontend/SyntaxUnitOrigin.h"
 
 #include <cstddef>
 #include <memory>
@@ -37,7 +38,8 @@ public:
         std::size_t sourceOrdinal,
         std::string moduleName,
         FileId fileId,
-        bool precompiled = false);
+        bool precompiled = false,
+        SyntaxUnitOrigin origin = SyntaxUnitOrigin::Unknown);
 
     bool lex(const source::SourceFile& sourceFile, diagnostics::DiagnosticEngine& diagnostics);
     bool parse(
@@ -59,6 +61,7 @@ public:
     bool isLexicallyValid() const noexcept;
     bool isSyntaxValid() const noexcept;
     bool isPrecompiled() const noexcept;
+    SyntaxUnitOrigin origin() const noexcept;
 
 private:
     std::size_t projectOrdinal_ = 0;
@@ -71,5 +74,6 @@ private:
     bool lexicallyValid_ = false;
     bool syntaxValid_ = false;
     bool precompiled_ = false;
+    SyntaxUnitOrigin origin_ = SyntaxUnitOrigin::Unknown;
 };
 }

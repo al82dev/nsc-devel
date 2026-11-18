@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "nativesharp/Frontend/ArrayReferenceLatePathProof.h"
 #include "../Support/OwnershipArgumentClassification.h"
 #include "../Support/OperatorClassification.h"
 #include "../Support/IntegralConstantArithmetic.h"
@@ -211,16 +212,29 @@ bool ProjectMethodBodyModel::analyzeNativeArrayIndex(
     {
         result.typeKey = *element;
         result.valid = true;
-        result.assignable = true;
-        // An array element is real mutable storage. Item 329 made addressability
-        // explicit so bit fields could reject `&field`; preserve the long-standing
-        // `&array[index]` raw-pointer boundary as a separate property.
+        result.assignable = !base.readonlyBorrowedObject;
+        result.readonlyReceiver = base.readonlyBorrowedObject;
+        const NamedTypeDeclaration* elementType = base.readonlyBorrowedObject
+            ? namedTypeForTypeKey(result.typeKey) : nullptr;
+        result.readonlyBorrowedObject = base.readonlyBorrowedObject &&
+            (isReferenceTypeKey(result.typeKey) || ProjectTypeConversion::isNativeArray(result.typeKey) ||
+             (elementType != nullptr && elementType->kind == NamedTypeDeclarationKind::Struct));
+        if (result.readonlyBorrowedObject)
+        {
+            result.ownership = sema::OwnershipKind::Borrowed;
+            result.objectLifetimeOwnership = sema::OwnershipKind::Borrowed;
+            result.storageOwnership = sema::OwnershipKind::Borrowed;
+            result.ownershipSourceLocalOrdinal = base.ownershipSourceLocalOrdinal;
+            result.borrowedLocalOrdinal = base.borrowedLocalOrdinal;
+        }
+        // Elements remain addressable even when this particular borrow forbids mutation;
+        // addressability and permission to write are separate properties.
         result.addressable = true;
         coreBindings_.push_back(MethodCoreBinding{
             arrayRank > 1 ? MethodCoreOperationKind::RangeArrayElement
                           : MethodCoreOperationKind::ArrayElement,
             expression, methodMemberOrdinal, scopeOrdinal, result.typeKey,
-            result.typeKey, true, std::nullopt, std::nullopt});
+            result.typeKey, result.assignable, std::nullopt, std::nullopt});
     }
     if (!result.valid)
     {
@@ -525,7 +539,7 @@ bool ProjectMethodBodyModel::analyzeRangeIndexer(
         ? indexSyntaxes.front() : expression->second();
     if (rangeSyntax == nullptr || rangeSyntax->kind() != ast::AstNodeKind::RangeExpression ||
         (!indexSyntaxes.empty() && indexSyntaxes.size() != 1)) return false;
-    // NativeSharp 3.0 T01-F04. Range indexing is a statically resolved structural
+    // NativeSharp T01-F04. Range indexing is a statically resolved structural
     // protocol, not a hidden allocation and not a magical Range carrier:
     //
     //     receiver[start..end]
@@ -577,6 +591,13 @@ bool ProjectMethodBodyModel::analyzeUserIndexer(
     const std::optional<std::size_t> receiverType = base.valid
         ? accessorReceiverTypeOrdinalForTypeKey(base.typeKey) : std::nullopt;
     if (!receiverType.has_value()) return false;
+    if (base.readonlyBorrowedObject)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "readonly borrowed object cannot invoke an unchecked indexer");
+        return true;
+    }
     const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
     if (caller == nullptr) return true;
     const std::size_t accessingTypeOrdinal = caller->declaringTypeOrdinal;
@@ -604,9 +625,9 @@ bool ProjectMethodBodyModel::analyzeUserIndexer(
     const std::vector<std::size_t> setters = stage38AccessorCandidates(
         *receiverType, "set_Item", false, false, false,
         accessingTypeOrdinal, *receiverType);
-    // EN: Freeze 3.0 P3: a `ref readonly` getter (finishSyntheticCall marks it readonlyReceiver)
+    // EN: Freeze P3: a `ref readonly` getter (finishSyntheticCall marks it readonlyReceiver)
     //     gives an addressable place even on a readonly receiver, but never an assignable one.
-    // ES: Congelamiento 3.0 P3: un getter `ref readonly` (finishSyntheticCall lo marca
+    // ES: Congelamiento P3: un getter `ref readonly` (finishSyntheticCall lo marca
     //     readonlyReceiver) da un lugar direccionable aun sobre un receptor readonly, pero nunca
     //     uno asignable.
     const bool referenceGetter = result.addressable;
@@ -619,6 +640,11 @@ bool ProjectMethodBodyModel::analyzeUserIndexer(
     result.receiverSyntax = expression->first();
     result.receiverTypeKey = base.typeKey;
     result.receiverTypeOrdinal = receiverType;
+    // EN: An indexer read returns a reference the receiver holds (route R03b, doc 15).
+    // ES: Una lectura de indexador devuelve una referencia que guarda el receptor (ruta R03b, doc 15).
+    if (arrayReferenceReplaySource_ != nullptr && !inUnevaluatedOperand_ && ownershipFlowReachable_ &&
+        result.valid && isReferenceTypeKey(result.typeKey))
+        recordArrayReferenceIndexerUse(expression, expression->first(), scopeOrdinal, methodMemberOrdinal);
     return true;
 }
 
@@ -948,9 +974,162 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
     std::vector<ExpressionResult> indices;
     analyzeIndexOperands(
         base, indices, expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    const auto simd = language::parsePortableSimdType(base.typeKey);
+    if (base.valid && simd.has_value() && simd->mask)
+    {
+        const ast::AstNode* indexSyntax = expression->children().empty()
+            ? expression->second() : expression->children().front();
+        if (indices.size() != 1 || !indices.front().valid ||
+            !ProjectTypeConversion::isIntegral(indices.front().typeKey) ||
+            indices.front().typeKey == "builtin:bool" || indexSyntax == nullptr ||
+            indexSyntax->kind() == ast::AstNodeKind::FromEndExpression)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidIndex,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "SIMD mask indexing requires one integral index");
+            return result;
+        }
+        const auto& constant = indices.front().integerConstant;
+        if (constant.has_value() && (constant->isNegative || constant->value >= simd->laneCount))
+        {
+            diagnostics.report(diagnostics::DiagnosticId::ConstantIndexOutOfBounds,
+                diagnostics::DiagnosticSeverity::Error, indexSyntax->range(),
+                "constant SIMD mask index is outside [0, " + std::to_string(simd->laneCount) + ")");
+            return result;
+        }
+        result.valid = true;
+        result.typeKey = "builtin:bool";
+        coreBindings_.push_back(MethodCoreBinding{
+            MethodCoreOperationKind::SimdMaskElement, expression, methodMemberOrdinal,
+            scopeOrdinal, result.typeKey, result.typeKey, false, std::nullopt, std::nullopt});
+        return result;
+    }
     if (analyzeNativeArrayIndex(
             result, expression, base, indices,
-            methodMemberOrdinal, scopeOrdinal, diagnostics)) return result;
+            methodMemberOrdinal, scopeOrdinal, diagnostics))
+    {
+        if (arrayReferenceReplaySource_ != nullptr && !inUnevaluatedOperand_ &&
+            ownershipFlowReachable_ && result.valid &&
+            isReferenceTypeKey(result.typeKey) && activeUnionWriteTarget_ != expression)
+        {
+            ArrayReferenceRead state = ArrayReferenceRead::Unknown;
+            ArrayReferenceUseLife useLife = ArrayReferenceUseLife::NoLifeEvent;
+            std::optional<std::size_t> loopRoot;
+            std::optional<std::int64_t> loopIndex;
+            std::vector<std::size_t> loopCandidates;
+            bool loopMustWritten = false;
+            bool trackedRoot = false;
+            bool deadPathWitness = false;
+            bool requiresLateValidation = false;
+            bool potentialIndex = false;
+            std::optional<ArrayReferenceRead> potentialCandidateState;
+            std::optional<ArrayReferencePathEvidence> deadPathEvidence;
+            if (expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const auto array = lookupScopeName(scopeOrdinal, expression->first()->text());
+                if (array.has_value() && array->kind == ScopeNameKind::Local)
+                {
+                    const auto root = arrayReferenceFlow_.arrayForLocal(array->semanticOrdinal);
+                    const ast::AstNode* index = expression->children().size() == 1
+                        ? expression->children().front()
+                        : (expression->children().empty() ? expression->second() : nullptr);
+                    auto constant = index != nullptr
+                        ? storageIntegerConstant(index, scopeOrdinal, methodMemberOrdinal)
+                        : std::optional<std::int64_t>{};
+                    bool stableLocalIndex = false;
+                    if (!constant && index != nullptr)
+                    {
+                        constant = arrayReferenceReplaySource_->arrayReferenceStableLocalIndex(index, methodMemberOrdinal);
+                        stableLocalIndex = constant.has_value();
+                    }
+                    trackedRoot = root.has_value();
+                    if (root && !arrayReferenceNeverEntered_.contains(expression))
+                    {
+                        useLife = arrayReferenceFlow_.assessUse({*root, constant});
+                        // EN: Facts for the loop pass; a use on a stopped path is not reached.
+                        // ES: Hechos para la pasada de ciclos; un uso en camino detenido no se alcanza.
+                        if (!arrayReferenceFlow_.stopped)
+                        {
+                            loopRoot = root;
+                            loopIndex = constant;
+                            const auto candidates = arrayReferenceFlow_.useCandidates({*root, constant});
+                            loopCandidates.assign(candidates.begin(), candidates.end());
+                            loopMustWritten = arrayReferenceFlow_.mustWritten({*root, constant});
+                        }
+                    }
+                    if (root && arrayReferencePendingReturns_.empty())
+                    {
+                        state = arrayReferenceFlow_.read({*root, constant});
+                        requiresLateValidation = arrayReferenceFlow_.lateValidationSlots.contains(
+                            {*root, constant}) || stableLocalIndex;
+                        potentialIndex = arrayReferenceFlow_.potentialIndexSlots.contains(
+                            {*root, constant});
+                        deadPathWitness = arrayReferenceFlow_.hasDeadPathWitness({*root, constant});
+                        if (deadPathWitness)
+                        {
+                            const auto evidence = arrayReferenceFlow_.deadPathEvidence.find(
+                                {*root, constant});
+                            if (evidence != arrayReferenceFlow_.deadPathEvidence.end())
+                                deadPathEvidence = evidence->second;
+                        }
+                        else if (state == ArrayReferenceRead::Dead &&
+                            !arrayReferenceFlow_.traceUnknown && !arrayReferenceFlow_.escapedArrays.contains(*root))
+                            deadPathEvidence = ArrayReferencePathEvidence{arrayReferenceFlow_.traceEvents, false};
+                        if (!constant && isUnconstrainedArrayIndexParameter(
+                                *arrayReferenceReplaySource_, index, methodMemberOrdinal))
+                        {
+                            for (const auto& [slot, values] : arrayReferenceFlow_.slots)
+                            {
+                                (void)values;
+                                if (slot.array != *root || !slot.index || *slot.index < 0 ||
+                                    *slot.index > 0x7fffffff ||
+                                    arrayReferenceFlow_.potentialIndexSlots.contains(slot)) continue;
+                                const auto candidate = arrayReferenceFlow_.read(slot);
+                                const bool witness = arrayReferenceFlow_.hasDeadPathWitness(slot);
+                                if (candidate == ArrayReferenceRead::MaybeDead && witness)
+                                {
+                                    const auto evidence = arrayReferenceFlow_.deadPathEvidence.find(slot);
+                                    if (evidence == arrayReferenceFlow_.deadPathEvidence.end()) continue;
+                                    deadPathEvidence = evidence->second;
+                                }
+                                else if (candidate == ArrayReferenceRead::Dead &&
+                                    !arrayReferenceFlow_.traceUnknown &&
+                                    !arrayReferenceFlow_.escapedArrays.contains(*root))
+                                    deadPathEvidence = ArrayReferencePathEvidence{arrayReferenceFlow_.traceEvents, false};
+                                else continue;
+                                state = candidate;
+                                deadPathWitness = witness;
+                                requiresLateValidation = true;
+                                potentialIndex = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            // EN: An element read of an array that is not a tracked local (doc 08).
+            // ES: Una lectura de elemento de un arreglo que no es un local rastreado (doc 08).
+            if (!trackedRoot && !arrayReferenceFlow_.stopped && !arrayReferenceNeverEntered_.contains(expression))
+                useLife = assessUntrackedArrayReferenceRead();
+            if (potentialIndex)
+            {
+                potentialCandidateState = state;
+                state = ArrayReferenceRead::Unknown;
+            }
+            arrayReferenceReplayObservations_.push_back(
+                {methodMemberOrdinal, expression, state, arrayReferenceFlow_.publicationUnknown,
+                 false, deadPathWitness, std::move(deadPathEvidence), requiresLateValidation, potentialIndex,
+                 potentialCandidateState, false, false, false, ArrayReferenceUseLife::NoLifeEvent,
+                 std::nullopt, std::nullopt, {}});
+            arrayReferenceReplayObservations_.back().useLife = useLife;
+            arrayReferenceReplayObservations_.back().arrayRoot = loopRoot;
+            arrayReferenceReplayObservations_.back().arrayIndex = loopIndex;
+            arrayReferenceReplayObservations_.back().candidateObjects = std::move(loopCandidates);
+            arrayReferenceReplayObservations_.back().mustWritten = loopMustWritten;
+        }
+        return result;
+    }
     if (analyzeNativeStringIndex(
             result, expression, base, indices,
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return result;

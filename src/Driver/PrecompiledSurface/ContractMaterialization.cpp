@@ -1,8 +1,38 @@
 #include "../Internal/DriverInternal.h"
 
+#include <cmath>
+#include <locale>
+
 namespace nativesharp::driver
 {
 using target::BuiltinLayoutKind;
+
+static bool isInternalTemplateDependency(const interop::LibraryMetadata& metadata,
+                                         const interop::LibraryMetadataMember& member)
+{
+    if (member.accessibility != 2U || member.kind != 2U) return false;
+    return std::ranges::any_of(metadata.genericTemplates, [&](const auto& generic)
+    {
+        const std::string& source = generic.sourceText;
+        std::size_t pos = 0;
+        while ((pos = source.find(member.name, pos)) != std::string::npos)
+        {
+            const std::size_t end = pos + member.name.size();
+            const auto identifierPart = [](char c)
+            {
+                return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                    (c >= '0' && c <= '9') || c == '_';
+            };
+            std::size_t before = pos;
+            while (before > 0 && (source[before - 1] == ' ' || source[before - 1] == '\t' ||
+                                  source[before - 1] == '\r' || source[before - 1] == '\n')) --before;
+            if (before > 0 && source[before - 1] == '.' &&
+                (end == source.size() || !identifierPart(source[end]))) return true;
+            pos = end;
+        }
+        return false;
+    });
+}
 
 bool isPubliclyReachableNamedType(std::span<const frontend::NamedTypeDeclaration> types,
                                   std::size_t typeOrdinal) noexcept
@@ -86,14 +116,10 @@ bool canMaterializeContractType(const interop::LibraryMetadata &metadata, const 
     if (type->kind == interop::LibraryMetadataTypeKind::Delegate)
     {
         const bool externC = (type->delegateFlags & 1U) != 0U;
-        // NSMETA 1.5 hizo reconstruible el puntero de funcion C. Un delegate
-        // ordinario necesita una garantía adicional: que productor y consumidor
-        // hablan la misma celda code/context/ destroy/reserved. Esa garantía
-        // aparece por primera vez en el contrato 1.8.
-        const bool managedAbiKnown = metadata.formatMinor >= 8 &&
-                                     metadata.delegateAbiVersion == interop::kDelegateAbiVersion &&
+        // Managed delegates require the declared code/context cell contract.
+        const bool managedAbiKnown = metadata.delegateAbiVersion == interop::kDelegateAbiVersion &&
                                      metadata.managedDelegateCellSize == interop::kManagedDelegateCellSize;
-        if (metadata.formatMinor < 5 || (!externC && !managedAbiKnown) || type->delegateReturnTypeKey.empty())
+        if ((!externC && !managedAbiKnown) || type->delegateReturnTypeKey.empty())
         {
             return false;
         }
@@ -186,13 +212,7 @@ bool canMaterializeNativeMethod(const interop::LibraryMetadata &metadata, const 
     {
         return false;
     }
-    if (metadata.formatMinor >= 4)
-        return true;
-    // NSMETA <=1.3 encoded the pointer carrier but not whether the source said
-    // ref/out/in.
-    return member.signatureKey.find("ref ") == std::string::npos &&
-           member.signatureKey.find("out ") == std::string::npos &&
-           member.signatureKey.find("in ") == std::string::npos;
+    return true;
 }
 
 bool canMaterializeConstructor(const interop::LibraryMetadata &metadata, const interop::LibraryMetadataMember &member)
@@ -222,7 +242,7 @@ bool canMaterializeConstructor(const interop::LibraryMetadata &metadata, const i
                                                { return candidate.typeKey == member.declaringTypeKey; });
     if (dispatch == metadata.dispatchTables.end() || dispatch->descriptorAccessorName.empty())
     {
-        // NSMETA <=1.5 remains readable and its ordinary methods remain consumable,
+        // NSMETA remains readable and its ordinary methods remain consumable,
         // but it did not publish a PE-safe way to obtain the class descriptor, so
         // `new` is intentionally not materialized for that predecessor.
         return false;
@@ -248,12 +268,23 @@ bool canMaterializePrecompiledDeclaration(const interop::LibraryMetadata &metada
     const interop::LibraryMetadataType *declaringType = metadataTypeForKey(metadata, member.declaringTypeKey);
     if (declaringType == nullptr)
         return false;
+    const auto isTemplateOwner = [&]()
+    {
+        return std::ranges::any_of(metadata.genericTemplates, [&](const auto &generic)
+        {
+            constexpr std::uint8_t kGenericMethodKind = 3U;
+            if (generic.kind != kGenericMethodKind || generic.ownerName.empty()) return false;
+            const std::string owner = generic.namespaceName.empty()
+                ? generic.ownerName : generic.namespaceName + "." + generic.ownerName;
+            return "type:" + generic.moduleName + "::" + owner == member.declaringTypeKey;
+        });
+    };
 
     if (member.kind == kFieldKind)
     {
         constexpr std::uint32_t kStatic = 1U << 0U;
         constexpr std::uint32_t kConst = 1U << 2U;
-        const bool materializable = hasConsumerCallableAccessibility(member.accessibility) &&
+        const bool materializable = (hasConsumerCallableAccessibility(member.accessibility) || isTemplateOwner()) &&
                                     canMaterializeContractType(metadata, member.declaredTypeKey);
         if ((member.flags & kConst) != 0U)
             return materializable && member.constantKind != 0U;
@@ -279,14 +310,15 @@ bool canMaterializePrecompiledDeclaration(const interop::LibraryMetadata &metada
     // by a DLL. Reconstructing it as an ordinary precompiled NativeSharp method invents a mangled
     // symbol that neither product publishes. Only `export extern C` is part of the consumable
     // NativeSharp surface (and keeps its ordinary NativeSharp entry alongside the C ABI thunk).
-    // An imported C declaration is different: its owning DLL is part of NSMETA 1.10 and the
+    // An imported C declaration is different: its owning DLL is part of NSMETA and the
     // consumer must recreate that external import instead of looking for it in the producer.
     if ((member.flags & kExternC) != 0U && (member.flags & (kExportedC | kImportedC)) == 0U)
     {
         return false;
     }
 
-    if (!hasConsumerCallableAccessibility(member.accessibility) &&
+    if (!hasConsumerCallableAccessibility(member.accessibility) && !isTemplateOwner() &&
+        !isInternalTemplateDependency(metadata, member) &&
         declaringType->kind != interop::LibraryMetadataTypeKind::Interface)
     {
         return false;
@@ -367,6 +399,30 @@ std::string enumConstantSource(const interop::LibraryMetadataType &type, std::ui
     return std::to_string(bits);
 }
 
+// EN: LKF-261: spell a floating constant independently of the global locale and of non-finite values. The
+//     classic locale keeps '.' as the decimal separator; infinities and NaN have no literal, so they are
+//     spelled as the constant divisions the front-end folds to the same IEEE value.
+// ES: LKF-261: escribe una constante flotante sin depender del locale global ni de valores no finitos. El
+//     locale clásico mantiene '.' como separador decimal; infinito y NaN no tienen literal, así que se
+//     escriben como las divisiones constantes que el front-end pliega al mismo valor IEEE.
+template <typename Floating>
+std::string floatingConstantSource(const Floating value, const char *suffix)
+{
+    const std::string one = std::string("1.0") + suffix;
+    const std::string zero = std::string("0.0") + suffix;
+    if (std::isnan(value))
+        return "(" + zero + " / " + zero + ")";
+    if (std::isinf(value))
+        return std::string(value < 0 ? "(-" : "(") + one + " / " + zero + ")";
+    std::ostringstream stream;
+    stream.imbue(std::locale::classic());
+    stream << std::setprecision(std::numeric_limits<Floating>::max_digits10) << value;
+    std::string source = stream.str();
+    if (source.find_first_of(".eE") == std::string::npos)
+        source += ".0";
+    return source + suffix;
+}
+
 bool metadataConstantSource(const interop::LibraryMetadataMember &member, std::string &source, std::string &error)
 {
     switch (member.constantKind)
@@ -405,23 +461,12 @@ bool metadataConstantSource(const interop::LibraryMetadataMember &member, std::s
         return true;
     case 4U:
     {
-        std::ostringstream stream;
-        stream << std::setprecision(std::numeric_limits<float>::max_digits10)
-               << std::bit_cast<float>(static_cast<std::uint32_t>(member.constantBits));
-        source = stream.str();
-        if (source.find_first_of(".eE") == std::string::npos)
-            source += ".0";
-        source += 'f';
+        source = floatingConstantSource(std::bit_cast<float>(static_cast<std::uint32_t>(member.constantBits)), "f");
         return true;
     }
     case 5U:
     {
-        std::ostringstream stream;
-        stream << std::setprecision(std::numeric_limits<double>::max_digits10)
-               << std::bit_cast<double>(member.constantBits);
-        source = stream.str();
-        if (source.find_first_of(".eE") == std::string::npos)
-            source += ".0";
+        source = floatingConstantSource(std::bit_cast<double>(member.constantBits), "");
         return true;
     }
     case 6U:
@@ -439,6 +484,10 @@ std::string_view metadataOperatorToken(std::string_view name) noexcept
         return "+";
     if (name == "op_UnaryNegation" || name == "op_Subtraction")
         return "-";
+    if (name == "op_Increment")
+        return "++";
+    if (name == "op_Decrement")
+        return "--";
     if (name == "op_Multiply")
         return "*";
     if (name == "op_Division")
@@ -505,7 +554,9 @@ std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata &
         // questions. The verifier must account for every symbol the producer
         // exported, including struct constructors that a precompiled consumer
         // does not reconstruct as `new` declarations.
-        if (isConsumerCallableNativeMethod(member) && canMaterializeNativeMethod(metadata, member))
+        if ((isConsumerCallableNativeMethod(member) && canMaterializeNativeMethod(metadata, member)) ||
+            (isInternalTemplateDependency(metadata, member) && !member.mangledName.empty() &&
+             canMaterializePrecompiledDeclaration(metadata, member)))
         {
             symbols.push_back(member.mangledName);
         }
@@ -603,12 +654,6 @@ std::string describeSymbols(std::span<const std::string> symbols)
 
 void printMetadataAbiContract(const interop::LibraryMetadata &metadata, std::ostream &output)
 {
-    if (metadata.formatMinor < 8)
-    {
-        output << "abi-contract: legacy implicit contract (NSMETA " << metadata.formatMajor << '.'
-               << metadata.formatMinor << ")\n";
-        return;
-    }
     output << "native-abi: " << metadata.nativeAbiMajor << '.' << metadata.nativeAbiMinor << '\n'
            << "runtime-abi: " << metadata.runtimeAbiMajor << '.' << metadata.runtimeAbiMinor << '\n'
            << "mangling-abi: " << metadata.manglingAbiVersion << '\n'
@@ -638,12 +683,7 @@ bool sourceDefaultValue(const interop::LibraryMetadataParameter &parameter, std:
         return true;
     case Kind::Floating:
     {
-        std::ostringstream stream;
-        stream << std::setprecision(std::numeric_limits<double>::max_digits10)
-               << std::bit_cast<double>(parameter.defaultValueBits);
-        source = stream.str();
-        if (source.find_first_of(".eE") == std::string::npos)
-            source += ".0";
+        source = floatingConstantSource(std::bit_cast<double>(parameter.defaultValueBits), "");
         return true;
     }
     case Kind::Character:
@@ -661,6 +701,18 @@ bool sourceDefaultValue(const interop::LibraryMetadataParameter &parameter, std:
             source = "'\\t'";
         else if (value >= 32 && value <= 126)
             source = std::string("'") + static_cast<char>(value) + "'";
+        else if (value <= 0xFFU)
+        {
+            // EN: LKF-260: a char is one byte; any other byte (controls, DEL, 0x80..0xFF) is spelled with
+            //     the `\xHH` escape the lexer decodes back to the same byte.
+            // ES: LKF-260: un char es un byte; cualquier otro byte (controles, DEL, 0x80..0xFF) se escribe con
+            //     el escape `\xHH` que el lexer decodifica al mismo byte.
+            static constexpr char kHex[] = "0123456789ABCDEF";
+            source = "'\\x";
+            source.push_back(kHex[(value >> 4U) & 0xFU]);
+            source.push_back(kHex[value & 0xFU]);
+            source.push_back('\'');
+        }
         else
         {
             error = "metadata-backed source import cannot spell non-ASCII character "

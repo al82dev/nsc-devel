@@ -1,5 +1,7 @@
 # Tanda baseline 06A — Contrato runtime SH03 alineado
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Problema
 
 SH03 comparaba el runtime actual contra valores históricos:
@@ -13,7 +15,7 @@ contrato fuente de SH03.
 ## Cambio
 
 `selfhost/contracts/runtime-bootstrap.contract.json` ahora exige ABI `1.1` y conjunto de símbolos
-`3`, que coinciden con el contrato generado por NativeSharp 3.0.
+`3`, que coinciden con el contrato generado por NativeSharp.
 
 ## Archivos
 

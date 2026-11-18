@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Tagged variants / Variants etiquetados
 
 ## Español
@@ -16,7 +18,7 @@ public variant Result<T, E>
 ```
 
 El orden declarado forma parte de la identidad observable: `Ok` tiene tag 0 y `Error` tag 1.
-NSMETA 1.27 publica la marca nominal `variant` y el catálogo ordenado `(nombre, tipo de payload)`.
+NSMeta publica la marca nominal `variant` y el catálogo ordenado `(nombre, tipo de payload)`.
 Un consumidor precompilado reconstruye la declaración, no intenta deducirla de una tabla de
 métodos ordenada alfabéticamente.
 
@@ -31,7 +33,7 @@ métodos ordenada alfabéticamente.
   presente. Por ello `variant Optional { None, Some(int*) }` mide 16 bytes en Windows x64.
 
 `pack`, `align`, `size`, `readonly` y `borrowed` no pueden cambiar este contrato canónico. En
-NativeSharp 3.0 no existe una autorización alternativa de niche: todos los variants usan este tag
+NativeSharp no existe una autorización alternativa de niche: todos los variants usan este tag
 explícito y estable.
 
 ### Recursión y lifetime
@@ -42,13 +44,13 @@ productivos: el cambio de caso destruye el payload desplazado después de evalua
 salida normal o excepcional destruye exactamente una vez el caso que permanezca activo.
 
 Un `variant` posee su almacenamiento activo. Por ello `borrowed variant` y un payload calificado
-directamente como `borrowed` no forman parte del contrato 3.0. Cuando un caso necesita transportar
+directamente como `borrowed` no forman parte del contrato actual. Cuando un caso necesita transportar
 una vista, ésta se encapsula en un `borrowed struct` con lifetime nombrado. `readonly` también sigue
 siendo un modificador exclusivo de structs no-union y no altera la construcción interna del variant.
 
 Los tipos genéricos variant son productivos dentro del proyecto que los declara. La importación
 nominal de un tipo genérico desde `LibraryReference` pertenece al frente general de genéricos
-precompilados; NSMETA 1.27 sí conserva la identidad de todo variant concreto publicado.
+precompilados; NSMeta sí conserva la identidad de todo variant concreto publicado.
 
 ## English
 
@@ -57,7 +59,7 @@ precompilados; NSMETA 1.27 sí conserva la identidad de todo variant concreto pu
 A `variant` defines a nominal, closed case domain. A case is either unit-like or carries one
 payload; use a tuple to carry multiple values without introducing another layout rule.
 
-Declaration order is observable: `Ok` has tag 0 and `Error` has tag 1. NSMETA 1.27 publishes the
+Declaration order is observable: `Ok` has tag 0 and `Error` has tag 1. NSMeta publishes the
 nominal `variant` flag and the ordered `(name, payload type)` catalogue. A precompiled consumer
 reconstructs the declaration instead of guessing it from an alphabetically sorted method table.
 
@@ -72,7 +74,7 @@ reconstructs the declaration instead of guessing it from an alphabetically sorte
   remains present, so `variant Optional { None, Some(int*) }` is 16 bytes on Windows x64.
 
 `pack`, `align`, `size`, `readonly`, and `borrowed` cannot override this canonical contract.
-NativeSharp 3.0 defines no alternate niche authorization: every variant keeps this explicit,
+NativeSharp defines no alternate niche authorization: every variant keeps this explicit,
 stable tag.
 
 ### Recursion and lifetime
@@ -83,10 +85,10 @@ changing the active case destroys the displaced payload after evaluating the rep
 normal or exceptional scope exit destroys the remaining active case exactly once.
 
 A `variant` owns its active storage. Consequently, `borrowed variant` and directly qualified
-`borrowed` payloads are outside the 3.0 contract. A case that transports a view wraps it in a
+`borrowed` payloads are outside the current contract. A case that transports a view wraps it in a
 `borrowed struct` with a named lifetime. `readonly` also remains exclusive to non-union structs and
 does not alter a variant's internal construction.
 
 Generic variants are productive in their declaring project. Nominal import of a generic type from
-a `LibraryReference` belongs to the general precompiled-generics frontier; NSMETA 1.27 preserves
+a `LibraryReference` belongs to the general precompiled-generics frontier; NSMeta preserves
 the identity of every published concrete variant.

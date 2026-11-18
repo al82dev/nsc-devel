@@ -32,7 +32,7 @@ def main() -> int:
                               f"references={c['expected_references']}"):
                 need(invariant in text, f"{profile} dump misses {invariant}"); checks += 1
             dumps.append(dump.read_bytes())
-            need(metadata.read_text(encoding="utf-8").startswith("NSMETA/2\n"), "bad nsmeta")
+            need(metadata.read_text(encoding="utf-8").startswith("NSMETA\n"), "bad nsmeta")
             need("target=x86_64-pc-windows-msvc" in manifest.read_text(encoding="utf-8"), "bad manifest")
             checks += 2
             for route in ("nslink",):
@@ -43,7 +43,7 @@ def main() -> int:
         need(rsp.is_file() and rsp_dump.read_bytes() == dumps[0], "response-file precedence differs")
         report = {"schema":"nativesharp-selfhost-sh09-report","version":1,"status":"passed",
                   "profiles":4,"linkers":len(c["linkers"]),"project_checks":checks,"response_files":True,
-                  "metadata_compatibility":"N-1,N","work_items":c["work_items"],
+                  "metadata_compatibility":"content","work_items":c["work_items"],
                   "artifacts":dict(sorted(hashes.items()))}
         args.report.write_text(json.dumps(report,indent=2,sort_keys=True)+"\n",encoding="utf-8")
     except (OSError, ValueError, json.JSONDecodeError) as error:

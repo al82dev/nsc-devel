@@ -3,7 +3,7 @@
 ## Problema
 
 `selfhost/tests/llvm/EmitMinimalObject/Main.ns` llamaba `i32` a una variable que contiene un
-`LLVMTypeRef`. En NativeSharp 3.0, `i32` forma parte del vocabulario reservado de tipos y ya no se
+`LLVMTypeRef`. En NativeSharp, `i32` forma parte del vocabulario reservado de tipos y ya no se
 puede analizar como identificador ordinario. Esto rompía el bridge LLVM y, por dependencia, las
 comparaciones del frontend y varios cierres self-hosted.
 

@@ -15,7 +15,7 @@ namespace
 {
 using nativesharp::diagnostics::DiagnosticId;
 using nativesharp::diagnostics::diagnosticIdName;
-using nativesharp::diagnostics::isNativeSharp3Diagnostic;
+using nativesharp::diagnostics::isNativeSharpDiagnostic;
 
 using DiagnosticEntry = std::pair<DiagnosticId, std::string_view>;
 
@@ -89,8 +89,8 @@ constexpr std::array kOrdinaryEntries{
     DiagnosticEntry{DiagnosticId::MissingMain, "MissingMain"},
     DiagnosticEntry{DiagnosticId::InvalidMainSignature, "InvalidMainSignature"},
     DiagnosticEntry{DiagnosticId::InvalidExternCSignature, "InvalidExternCSignature"},
-    // EN: Freeze 3.0 diagnostics, appended after NS3099 with the values 74, 75 and 76.
-    // ES: Diagnosticos del congelamiento 3.0, agregados despues de NS3099 con los valores 74, 75 y 76.
+    // EN: Freeze diagnostics, appended after NS3099 with the values 74, 75 and 76.
+    // ES: Diagnosticos del congelamiento, agregados despues de NS3099 con los valores 74, 75 y 76.
     DiagnosticEntry{DiagnosticId::LostOwnership, "LostOwnership"},
     DiagnosticEntry{DiagnosticId::SynchronousAwaitCanSuspend, "SynchronousAwaitCanSuspend"},
     DiagnosticEntry{DiagnosticId::UnhandledDeclaredError, "UnhandledDeclaredError"},
@@ -111,7 +111,7 @@ constexpr std::size_t ordinaryValue(std::size_t index) noexcept
     return index < kHistoricalOrdinaryCount ? index : kFirstFreezeValue + (index - kHistoricalOrdinaryCount);
 }
 
-constexpr std::array kNativeSharp3Entries{
+constexpr std::array kShortCodeEntries{
     DiagnosticEntry{DiagnosticId::NS3010InvalidCompilationStage, "NS3010"},
     DiagnosticEntry{DiagnosticId::NS3020InvalidValueCategory, "NS3020"},
     DiagnosticEntry{DiagnosticId::NS3030MissingEffectContext, "NS3030"},
@@ -131,7 +131,7 @@ void registerCatalogCase(TestRegistry& registry)
 {
     addCase(registry, "TD-DIA-003", [](TestContext& context) {
         std::unordered_set<std::string_view> names;
-        names.reserve(kOrdinaryEntries.size() + kNativeSharp3Entries.size());
+        names.reserve(kOrdinaryEntries.size() + kShortCodeEntries.size());
         for (const DiagnosticEntry& entry : kOrdinaryEntries)
         {
             context.expect(diagnosticIdName(entry.first) == entry.second,
@@ -139,7 +139,7 @@ void registerCatalogCase(TestRegistry& registry)
             context.expect(names.insert(entry.second).second,
                 "TD-DIA-003 every diagnostic name must be unique");
         }
-        for (const DiagnosticEntry& entry : kNativeSharp3Entries)
+        for (const DiagnosticEntry& entry : kShortCodeEntries)
         {
             context.expect(diagnosticIdName(entry.first) == entry.second,
                 "TD-DIA-003 every short diagnostic code must preserve its exact name");
@@ -159,19 +159,19 @@ void registerClassificationCases(TestRegistry& registry)
         for (std::size_t index = 0; index < kOrdinaryEntries.size(); ++index)
         {
             const DiagnosticEntry& entry = kOrdinaryEntries[index];
-            context.expect(!isNativeSharp3Diagnostic(entry.first),
+            context.expect(!isNativeSharpDiagnostic(entry.first),
                 "TD-DIA-004 every ordinary diagnostic ID must remain outside the short-code subset");
             context.expect(static_cast<std::size_t>(entry.first) == ordinaryValue(index),
                 "TD-DIA-004 every ordinary diagnostic ID must keep its frozen numeric value");
         }
     });
     addCase(registry, "TD-DIA-005", [](TestContext& context) {
-        context.expect(kNativeSharp3Entries.size() == 5,
+        context.expect(kShortCodeEntries.size() == 5,
             "TD-DIA-005 the short-code diagnostic partition must contain exactly five IDs");
-        for (std::size_t index = 0; index < kNativeSharp3Entries.size(); ++index)
+        for (std::size_t index = 0; index < kShortCodeEntries.size(); ++index)
         {
-            const DiagnosticEntry& entry = kNativeSharp3Entries[index];
-            context.expect(isNativeSharp3Diagnostic(entry.first),
+            const DiagnosticEntry& entry = kShortCodeEntries[index];
+            context.expect(isNativeSharpDiagnostic(entry.first),
                 "TD-DIA-005 every short-code diagnostic ID must remain classified");
             context.expect(diagnosticIdName(entry.first) == entry.second,
                 "TD-DIA-005 every classified ID must preserve its short code");
@@ -186,15 +186,15 @@ void registerUnknownCase(TestRegistry& registry)
 {
     addCase(registry, "TD-DIA-006", [](TestContext& context) {
         // The frozen API intentionally defines behavior outside the enumerator set.
-        // EN: Freeze 3.0: the largest int is outside the enumerator domain no matter how many IDs are
+        // EN: Freeze: the largest int is outside the enumerator domain no matter how many IDs are
         //     appended later; 74 stopped being unknown once the freeze diagnostics were added.
-        // ES: Congelamiento 3.0: el int mas grande queda fuera del dominio de enumeradores sin importar
+        // ES: Congelamiento: el int mas grande queda fuera del dominio de enumeradores sin importar
         //     cuantos IDs se agreguen despues; 74 dejo de ser desconocido al agregar los del congelamiento.
         // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
         constexpr auto unknown = static_cast<DiagnosticId>((std::numeric_limits<int>::max)());
         context.expect(diagnosticIdName(unknown) == "UnknownDiagnostic",
             "TD-DIA-006 an unknown diagnostic ID must use the stable fallback name");
-        context.expect(!isNativeSharp3Diagnostic(unknown),
+        context.expect(!isNativeSharpDiagnostic(unknown),
             "TD-DIA-006 an unknown diagnostic ID must not be classified as a short code");
     });
 }

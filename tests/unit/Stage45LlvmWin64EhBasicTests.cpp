@@ -154,8 +154,16 @@ class Runner
         "normal catch completion exits its funclet through catchret");
     tests.expect(text.find("call void @__nativesharp_exception_clear()") != std::string::npos,
         "handled catch clears the thread-local current exception after catchret");
-    tests.expect(text.find("cleanuppad") == std::string::npos &&
-            text.find("cleanupret") == std::string::npos,
+    // EN: Since 8b128ac6b the implicit constructor of Runner restores the base descriptor in a cleanup
+    //     funclet, so the module has cleanup pads; the catch-all function under test still has none.
+    // ES: Desde 8b128ac6b el constructor implícito de Runner restaura el descriptor base en un funclet
+    //     de cleanup, así que el módulo tiene pads de cleanup; la función con el catch-all no tiene.
+    const std::size_t runBegin = text.find("Runner__Run");
+    const std::size_t runEnd = runBegin == std::string::npos ? std::string::npos : text.find("\n}\n", runBegin);
+    const std::string runText = runBegin == std::string::npos ? std::string{}
+        : text.substr(runBegin, runEnd == std::string::npos ? std::string::npos : runEnd - runBegin);
+    tests.expect(!runText.empty() && runText.find("cleanuppad") == std::string::npos &&
+            runText.find("cleanupret") == std::string::npos,
         "Stage 45.9 does not prematurely implement Stage 45.10 cleanup funclets");
 
     std::string targetError;

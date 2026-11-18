@@ -31,9 +31,9 @@ regenera sus conteos; el verificador rechaza diferencias entre el resumen, §24 
 
 ## Archivos
 
-- `tools/native_sharp_3_catalog.py`: genera el resumen por componente.
-- `tools/verify_native_sharp_3_catalog.py`: comprueba que el resumen sea derivado.
-- `tests/unit/test_native_sharp_3_catalog.py`: regresión del conteo por estado.
+- `tools/native_sharp_catalog.py`: genera el resumen por componente.
+- `tools/verify_native_sharp_catalog.py`: comprueba que el resumen sea derivado.
+- `tests/unit/test_native_sharp_catalog.py`: regresión del conteo por estado.
 - Este expediente.
 - Fuera del repositorio: Documento maestro y tracking generado en `A:\`.
 

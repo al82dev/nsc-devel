@@ -101,6 +101,28 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
+# EN: The standard Core is consumed as the library built by the external SDK (compiler first, then libraries),
+#     one package per optimization level, under NSC_STDLIB_PACKAGE_ROOT (default: build-clang/packages, where
+#     NSC Builder installs them).
+# ES: El Core estandar se consume como la biblioteca construida por el SDK externo (primero el compilador, despues
+#     las bibliotecas), un paquete por nivel de optimizacion, bajo NSC_STDLIB_PACKAGE_ROOT (por defecto:
+#     build-clang/packages, donde los instala NSC Builder).
+STDLIB_PACKAGE_ROOT = Path(os.environ.get('NSC_STDLIB_PACKAGE_ROOT',
+                                          Path(__file__).resolve().parents[2] / 'build-clang' / 'packages'))
+
+
+# EN: Marker of the Core reference in the case tables and the level being compiled.
+# ES: Marca de la referencia a Core en las tablas de casos y nivel que se compila.
+CORE_TOKEN = '@NATIVESHARP_CORE@'
+CORE_LEVEL = [0]
+
+
+def core_reference(opt):
+    found = sorted(STDLIB_PACKAGE_ROOT.glob(f'NativeSharp.Core/*/windows-x64/O{opt}/NativeSharpCore.lib'))
+    if not found:
+        raise SystemExit(f'NativeSharp.Core O{opt} package not found under {STDLIB_PACKAGE_ROOT}; build the external '
+                         'libraries first or set NSC_STDLIB_PACKAGE_ROOT')
+    return '<LibraryReference Include="' + found[-1].as_posix() + '" />'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
@@ -721,7 +743,7 @@ f4 __vectorcall vscale(f4 v, double k) noexcept { return v * (float)k; }
                'return (int)T::fsum(v) + T::isum(b) * 3 + (int)T::lsum(l, 2) * 7 + (int)T::fsum(T::vscale(v, 0.5)) * 11 + '
                '(int)v[3] + b[2] + (int)l[1];',
         'ns_prelude': 'using NativeSharp.Core.Numerics;\n',
-        'ns_refs': '<ProjectReference Include="A:/nsc-devel/lib/NativeSharp.Core/NativeSharp.Core.nsproj" />',
+        'ns_refs': CORE_TOKEN,
         'ns': 'Float32x4 a = new Float32x4(1.0f, 2.0f, 3.0f, 4.0f); Float32x4 v = T.scale(a, 2.0f); '
               'Int32x4 i; i.X = 1; i.Y = 2; i.Z = 3; i.W = 4; Int32x4 j; j.X = 5; j.Y = 6; j.Z = 7; j.W = 8; '
               'Int32x4 sum4 = T.iadd(i, 3, j); Int64x2 pair = T.lmake(4, 5); '
@@ -767,7 +789,7 @@ float total(f4 v) noexcept { return v[0] + v[1] * 10.0f + v[2] * 100.0f + v[3] *
 ''',
         'cpp': 'return (int)T::total(T::twice(T::f4{1.0f, 2.0f, 3.0f, 4.0f}));',
         'ns_prelude': 'using NativeSharp.Core.Numerics;\n',
-        'ns_refs': '<ProjectReference Include="A:/nsc-devel/lib/NativeSharp.Core/NativeSharp.Core.nsproj" />',
+        'ns_refs': CORE_TOKEN,
         'ns': 'return (int)T.total(T.twice(new Float32x4(1.0f, 2.0f, 3.0f, 4.0f)));',
         'crt': False,
         'ir': True,
@@ -796,7 +818,7 @@ long long __vectorcall vlsum(l2 v, int k) noexcept { return v[0] * k + v[1]; }
                'T::i4{5, 6, 7, 8}); return (int)T::dsum(d) + (int)T::dsum(s) * 3 + i[0] + i[1] * 10 + i[2] * 100 + '
                'i[3] * 1000 + (int)T::vlsum(T::l2{7, 9}, 5) * 7 + (int)s[1];',
         'ns_prelude': 'using NativeSharp.Core.Numerics;\n',
-        'ns_refs': '<ProjectReference Include="A:/nsc-devel/lib/NativeSharp.Core/NativeSharp.Core.nsproj" />',
+        'ns_refs': CORE_TOKEN,
         'ns': 'Float64x2 d = T.dmake(2.0, 4.0); Float64x2 s = T.vdscale(d, 2.0); Int32x4 a; a.X = 1; a.Y = 2; '
               'a.Z = 3; a.W = 4; Int32x4 b; b.X = 5; b.Y = 6; b.Z = 7; b.W = 8; Int32x4 i = T.viadd(a, b); '
               'Int64x2 l; l.X = 7L; l.Y = 9L; return (int)T.dsum(d) + (int)T.dsum(s) * 3 + i.X + i.Y * 10 + '
@@ -840,7 +862,7 @@ d4 __vectorcall vdmix4(d4 a, d4 b) noexcept { return a + b * 0.5; }
                'return (int)T::fsum8(v) + (int)T::dsum4(T::vdmix4(d, d)) + T::isum8(j) * 3 + (int)T::lsum4(l) * 7 + '
                '(int)T::fsum8(T::vscale8(v, 0.5)) * 11 + (int)v[7] + j[6] + (int)l[3] + (int)d[2];',
         'ns_prelude': 'using NativeSharp.Core.Numerics;\n',
-        'ns_refs': '<ProjectReference Include="A:/nsc-devel/lib/NativeSharp.Core/NativeSharp.Core.nsproj" />',
+        'ns_refs': CORE_TOKEN,
         'ns': 'Float32x8 a; a.X = 1.0f; a.Y = 2.0f; a.Z = 3.0f; a.W = 4.0f; a.A = 5.0f; a.B = 6.0f; a.C = 7.0f; '
               'a.D = 8.0f; Float32x8 v = T.fscale8(a, 2.0f); Float64x4 d = T.dmake4(2.0); Int32x8 i; i.X = 1; '
               'i.Y = 2; i.Z = 3; i.W = 4; i.A = 5; i.B = 6; i.C = 7; i.D = 8; Int32x8 j = T.iadd8(i, i); '
@@ -1065,6 +1087,8 @@ def reference(dll, prefix=''):
 
 
 def project(folder, body, dll, references=None, library=False, name='T19Traslados', source=None, cpu=None):
+    if references is not None:
+        references = references.replace(CORE_TOKEN, core_reference(CORE_LEVEL[0]))
     output = ('<OutputType>Library</OutputType>' if library else '') + ('<CpuLevel>' + cpu + '</CpuLevel>' if cpu else '')
     (folder / 'Main.ns').write_text(source or ('int Main()\n{\n    ' + body + '\n}\n'), encoding='utf-8')
     (folder / 'App.nsproj').write_text(
@@ -1157,6 +1181,7 @@ def crt_build_args(case):
 
 
 def precompiled(name, case, folder, opt, control):
+    CORE_LEVEL[0] = opt
     """The same body from a precompiled NativeSharp generic, with and without the C++ header for the consumer."""
     # El mismo cuerpo desde una plantilla NativeSharp precompilada, con y sin el encabezado C++ en el consumidor.
     producer = folder / 'producer'
@@ -1234,6 +1259,7 @@ def check(name, case):
         run(name + '-api-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], library)
         header = API + case['header']
     for opt in range(4):
+        CORE_LEVEL[0] = opt
         folder = root / f'{name}-O{opt}'
         folder.mkdir()
         (folder / 'api.h').write_text(header, encoding='utf-8')
@@ -1347,6 +1373,7 @@ def rejected(name, index, body, expected, folder):
 
 
 def cpu_rejections(name, case, folder):
+    CORE_LEVEL[0] = 0
     """Without the CPU level, the direct import and a precompiled plan of a higher level are rejected."""
     # Sin el nivel de CPU se rechazan la importacion directa y un plan precompilado de nivel mayor.
     expected = case['cpu_rechazo']

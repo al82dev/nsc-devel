@@ -4,7 +4,7 @@
 
 ### Resultado
 
-La iteración por referencia de NativeSharp 3 mantiene un préstamo léxico del almacenamiento fuente
+La iteración por referencia de NativeSharp mantiene un préstamo léxico del almacenamiento fuente
 durante todo el `foreach`:
 
 ```ns
@@ -36,7 +36,7 @@ la misma regla una vez que `foreach` seleccionó el candidato tipado.
 - `include/nativesharp/Frontend/ProjectMethodBodyModel.h`: pila de préstamos de iteración activos.
 - `src/Frontend/ProjectMethodBodyModel.cpp`: apertura/cierre léxico y rechazo de asignaciones o
   llamadas mutantes incompatibles.
-- `tests/unit/NativeSharp3T09IterationBorrowTests.cpp`: comprobación dirigida O0/NSLink.
+- `tests/unit/NativeSharpT09IterationBorrowTests.cpp`: comprobación dirigida O0/NSLink.
 - `CMakeLists.txt`: objetivo aislado `nsc_ns3_t09_iteration_borrow_tests`.
 
 ### Evidencia puntual
@@ -47,7 +47,7 @@ mutante. No se ejecutó baseline ni suite general.
 
 ## English
 
-NativeSharp 3 reference iteration now holds a lexical loan on the original source storage for the
+NativeSharp reference iteration now holds a lexical loan on the original source storage for the
 entire `foreach`. A shared `ref` iteration rejects source writes; `ref mut` permits writes through
 the generated element binding and compatible indexed element access. Both modes reject source
 replacement and mutating receiver calls that could invalidate yielded references, while readonly

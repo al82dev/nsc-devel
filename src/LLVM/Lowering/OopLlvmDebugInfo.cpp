@@ -3,8 +3,10 @@
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
+#include "nativesharp/Basic/Version.h"
 
 #include <cctype>
+#include <string>
 
 namespace nativesharp::llvm_backend
 {
@@ -149,7 +151,7 @@ bool OopLlvmImplementation::initializeDebugInformation(std::string& error)
         if (primaryFile == nullptr)
             return fail(error, "failed to create the primary LLVM debug source file");
 
-        static constexpr std::string_view producer = "NativeSharp nsc 3.0.0";
+        const std::string producer = "NativeSharp nsc " + std::string(kCompilerReleaseVersion);
         const LLVMDWARFEmissionKind emission =
             debugInformation_ == DebugInformationKind::LineTablesOnly
             ? LLVMDWARFEmissionLineTablesOnly
@@ -182,7 +184,10 @@ LLVMMetadataRef OopLlvmImplementation::createDebugSubprogram(const frontend::Pro
 {
         if (debugBuilder_ == nullptr || function.isImportedC || function.isImportedNative)
             return nullptr;
-        if (function.namespaceFunctionOrdinal.has_value())
+        const bool namespaceLambda = function.isLambda && memberModel_ != nullptr &&
+            function.memberOrdinal >= memberModel_->members().size() &&
+            function.declaringTypeOrdinal == nameLookup_.namedTypes().size();
+        if (function.namespaceFunctionOrdinal.has_value() || namespaceLambda)
         {
             if (function.body == nullptr || function.body->syntax == nullptr)
                 return nullptr;
@@ -389,7 +394,10 @@ LLVMMetadataRef OopLlvmImplementation::debugSubprogramLocation(
         const frontend::ProjectOopMirFunction& origin,
         LLVMMetadataRef subprogram)
 {
-        if (origin.namespaceFunctionOrdinal.has_value())
+        const bool namespaceLambda = origin.isLambda && memberModel_ != nullptr &&
+            origin.memberOrdinal >= memberModel_->members().size() &&
+            origin.declaringTypeOrdinal == nameLookup_.namedTypes().size();
+        if (origin.namespaceFunctionOrdinal.has_value() || namespaceLambda)
         {
             if (subprogram == nullptr || sourceManager_ == nullptr ||
                 origin.body == nullptr || origin.body->syntax == nullptr)

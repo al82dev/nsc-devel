@@ -1,3 +1,7 @@
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # NS3-T05-F04 — Opaque result types
 
 ## Estado
@@ -9,7 +13,7 @@ escribible por el consumidor.
 ## Qué se hizo
 
 - El parser reconoce `some Trait` únicamente en retornos directos de funciones y métodos de
-  edition 3. Campos, parámetros, locales, argumentos de tipo, punteros, arrays, tuplas y la mezcla
+  NativeSharp. Campos, parámetros, locales, argumentos de tipo, punteros, arrays, tuplas y la mezcla
   con `dyn` se rechazan explícitamente.
 - `ProjectOpaqueResultModel` infiere todos los retornos no recursivos, exige un único tipo concreto
   y valida conformidad nominal con el trait. Tener métodos con el mismo nombre no cuenta como
@@ -54,7 +58,7 @@ escribible por el consumidor.
 - `include/nativesharp/Frontend/ProjectOpaqueResultModel.h` y
   `src/Frontend/ProjectOpaqueResultModel.cpp`: una fase única posee inferencia, identidad y lowering
   del resultado opaco; evita repartir decisiones incompatibles entre parser, genéricos y backend.
-- `tests/unit/NativeSharp3T05OpaqueResultTests.cpp`: 14 checks dirigidos O0/NSLink para ejecución,
+- `tests/unit/NativeSharpT05OpaqueResultTests.cpp`: 14 checks dirigidos O0/NSLink para ejecución,
   diagnósticos, herencia, asociados, módulos, inferencia genérica y NSMETA.
 - `tests/fixtures/nsmeta/historical-1.29.nsmeta`: bytes históricos generados por el mecanismo
   oficial sin sobrescribir fixtures anteriores.

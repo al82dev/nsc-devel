@@ -15,7 +15,7 @@ Estado: terminado.
 ## Archivos
 
 - `src/Frontend/ProjectMethodBodyModel.cpp`: aplica accesibilidad real a cada campo nombrado.
-- `tests/unit/NativeSharp3T01WithExpressionTests.cpp`: prueba O0 independiente (nuevo).
+- `tests/unit/NativeSharpT01WithExpressionTests.cpp`: prueba O0 independiente (nuevo).
 - `CMakeLists.txt`: registra el target dirigido.
 - `docs/3.0/language/with-expressions.md`: contrato y equivalencia ES/EN (nuevo).
 - `docs/3.0/TANDA-OPERATIVA-06-T01-NULL-RANGE-INTERPOLATION-WITH.md`: corrige el expediente

@@ -1,0 +1,9 @@
+# Reducción exacta de escala decimal
+
+Una suma como `MaxDecimal + 0.0m` conserva el mismo valor matemático, pero su coeficiente alineado a escala uno supera 96 bits. Antes del cambio el fallback devolvía un resultado incorrecto; el fixture basal falló en O0 y O2 (`A:/nsc-fixes-agent1-temp/decimal-reduction-baseline-20261112.log`).
+
+Para suma y resta, si la magnitud alineada no cabe, se intenta quitar un factor diez únicamente cuando la división es exacta y la escala es positiva. La división procesa diez fragmentos de 32 bits con operaciones de 64 bits. Si se alcanza una magnitud representable, se usa la escala reducida; de lo contrario se conserva la salida y escala anteriores. No se define redondeo ni política de overflow real, y el fallback no se considera un contrato correcto.
+
+El fixture correcto cubre la suma con cero en ambos órdenes, más de un cero removible, valores negativos y una suma que ya cabía sin cambiar escala. Tras el build incremental pasó en O0/O2, junto con regresiones de precisión, signos, igualdad y orden; log `A:/nsc-fixes-agent1-temp/decimal-reduction-integrated-20261112.log`, compilador SHA-256 `53a71a869e78be626ac97975ab73387681c518974d0a34aaa9088fc93f215867`, hashes de runtime e import libraries estables. El compilador contiene WIP y no acredita árbol limpio.
+
+Las observaciones separadas de fallback no divisible, reducción parcial insuficiente y escala cero conservaron los bits anteriores; no se registran como regresiones ni garantizan que esos resultados sean correctos. Los programas enlazaron, pero los temporales conservados no incluyeron el objeto del programa, así que no se verificó la ausencia de helpers estáticos. No se certifican todas las escalas ni la política de redondeo o overflow. El runner CMake exacto integrado pasó O0/O2 con salida 0; artefactos en `A:/nsc-fixes-agent1-temp/decimal-reduction-cmake-20261112` y log vacío por diseño. No se ejecutó CTest.

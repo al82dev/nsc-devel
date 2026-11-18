@@ -8,8 +8,8 @@ bool validateFreezeManifest(const FreezeManifest& manifest, std::string& error)
 {
     error.clear();
     if (manifest.syntaxRevision.empty() || manifest.semanticRevision.empty() ||
-        manifest.win64AbiRevision.empty() || manifest.metadataRevision.empty())
-    { error = "freeze manifest requires syntax, semantic, Win64 ABI, and metadata revisions"; return false; }
+        manifest.win64AbiRevision.empty() || manifest.metadataContentIdentity.empty())
+    { error = "freeze manifest requires syntax, semantic, Win64 ABI, and metadata content evidence"; return false; }
     return true;
 }
 
@@ -38,9 +38,8 @@ bool validateSemanticFreeze(const SemanticFreezeManifest& manifest, std::string&
     { error = "semantic freeze requires a revision for every normative subsystem"; return false; }
     for (const std::string& milestone : manifest.deferredIssueMilestones)
     {
-        if (!milestone.starts_with("3.1") && !milestone.starts_with("3.2") &&
-            !milestone.starts_with("4."))
-        { error = "semantic freeze exceptions must target a post-3.0 milestone"; return false; }
+        if (milestone.empty())
+        { error = "semantic freeze exceptions require a non-empty milestone"; return false; }
     }
     if (!manifest.normativeSuitePassed || !manifest.differentialConfigurationsDeterministic)
     { error = "semantic freeze evidence is incomplete"; return false; }
@@ -51,12 +50,12 @@ bool validateWin64AbiFreeze(const Win64AbiFreezeManifest& manifest, std::string&
 {
     error.clear();
     if (manifest.target != "windows-x64")
-    { error = "NativeSharp 3.0 ABI freeze is restricted to windows-x64"; return false; }
+    { error = "NativeSharp ABI freeze is restricted to windows-x64"; return false; }
     if (manifest.manglingRevision.empty() || manifest.layoutRevision.empty() ||
         manifest.callingConventionRevision.empty() || manifest.variantRevision.empty() ||
         manifest.traitObjectRevision.empty() || manifest.errorRevision.empty() ||
-        manifest.publicCoroutineRevision.empty() || manifest.moduleMetadataRevision.empty())
-    { error = "Win64 ABI freeze requires a revision for every public ABI surface"; return false; }
+        manifest.publicCoroutineRevision.empty() || manifest.moduleMetadataContentIdentity.empty())
+    { error = "Win64 ABI freeze requires ABI revisions and metadata content evidence"; return false; }
     if (!manifest.preservedDllFixturesPassed || !manifest.crossVersionConsumerPassed ||
         !manifest.symbolSnapshotsPassed || !manifest.pdbContractPassed)
     { error = "Win64 ABI freeze evidence is incomplete"; return false; }
@@ -200,7 +199,7 @@ PromotionStatus officialPromotionStatus(
     if (manifest.stableFeatureSetHash.empty()) missing.emplace_back("feature-set-hash");
     if (manifest.specificationHash.empty()) missing.emplace_back("specification-hash");
     if (manifest.conformanceSuiteHash.empty()) missing.emplace_back("conformance-suite-hash");
-    if (manifest.maintenanceBranch != "v.3.0") missing.emplace_back("maintenance-branch");
+    if (manifest.maintenanceBranch.empty()) missing.emplace_back("maintenance-branch");
     if (!manifest.experimentalFeaturesNamedAndFlagged) missing.emplace_back("experimental-feature-boundary");
     if (!manifest.referenceWin64InstallPassed) missing.emplace_back("reference-win64-install");
     if (!manifest.smokeInteropPassed) missing.emplace_back("smoke-interop");
@@ -209,6 +208,5 @@ PromotionStatus officialPromotionStatus(
     return missing.empty() ? PromotionStatus::Ready : PromotionStatus::NotReady;
 }
 
-std::string_view stableLanguageVersion() noexcept { return "3.0.0"; }
 std::string_view normativeTarget() noexcept { return "windows-x64"; }
 }

@@ -1,0 +1,20 @@
+bool Equal(decimal left, decimal right) { return left == right; }
+bool NotEqual(decimal left, decimal right) { return left != right; }
+
+int Main()
+{
+    if (!Equal(checked(0.10m + 0.20m), 0.300m)) return 1;
+    if (!Equal(0.30m, 0.300m) || !Equal(0.300m, 0.30m)) return 2;
+    if (NotEqual(0.30m, 0.300m) || !NotEqual(0.30m, 0.301m)) return 3;
+    if (!Equal(-0.10m, -0.100m) || Equal(-0.10m, 0.100m)) return 4;
+    if (!Equal(-0.0m, 0.000m) || NotEqual(-0.0m, 0.000m)) return 5;
+    if (!Equal(0.000000000000000000000000001m, 0.0000000000000000000000000010m)) return 6;
+    decimal large = 18446744073709551615m;
+    decimal scaled = checked(large * 1.0m);
+    if (!Equal(large, scaled) || NotEqual(large, scaled)) return 7;
+    if (Equal(large, 1.0m)) return 8;
+    if (42 != 42 || 20 == 22) return 9;
+    if (Equal(1m, 0.0000000000000000000000000001m)) return 10;
+    if (!Equal(0m, 0.0000000000000000000000000000m)) return 11;
+    return 0;
+}

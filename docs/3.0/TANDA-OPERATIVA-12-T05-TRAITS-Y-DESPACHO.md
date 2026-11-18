@@ -1,3 +1,7 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Tanda operativa 12 — T05 traits y despacho explícito
 
 > **Actualización 2026-10-03:** este documento conserva la evidencia histórica de la primera
@@ -43,7 +47,7 @@ helpers habría producido dos sistemas semánticos incompatibles.
 
 ### `trait` como contrato nominal storage-free
 
-`trait` es contextual y exclusivo de edition 3. Se parsea por la ruta productiva de
+`trait` es contextual. Se parsea por la ruta productiva de
 `InterfaceDeclaration`; por ello herencia, accesibilidad, constraints, generic templates,
 implementación por una clase, tablas, lowering y metadata usan una sola semántica.
 
@@ -63,7 +67,7 @@ boxing, tabla ni diccionario genérico runtime.
 
 ### `dyn Trait` y despacho dinámico
 
-`dyn` es un calificador contextual edition 3 conservado por `TypeSyntax`, aliases y clonación
+`dyn` es un calificador contextual conservado por `TypeSyntax`, aliases y clonación
 genérica. No cambia la identidad canónica: `dyn IScore` y `IScore` comparten el ABI de interfaz, pero
 el AST/dump conserva la escritura explícita y name lookup exige que el destino sea interfaz/trait.
 `dyn int`, `dyn tuple` y `dyn Class` fallan con diagnóstico causal.
@@ -75,7 +79,7 @@ dinámico es inspeccionable sin introducir una representación experimental.
 ### Frontera `.nsmeta`
 
 Un productor `StaticLibrary` con trait y clase implementadora fue emitido como `.lib/.nsmeta`. La
-API pública se rehidrata usando el contrato de interfaz compatible; un consumidor edition 3 declara
+API pública se rehidrata usando el contrato de interfaz compatible; un consumidor declara
 `dyn IScore`, construye la clase del productor, enlaza el archive y devuelve 42. La semántica y ABI
 cruzan el módulo, aunque el marcador fuente `trait` todavía no tiene un campo propio en NSMETA.
 
@@ -84,8 +88,8 @@ cruzan el módulo, aunque el marcador fuente `trait` todavía no tiene un campo 
 ### Modificados
 
 - `include/nativesharp/Parser/Parser.h`, `src/Parser/Parser.cpp`
-  - reconocen `trait` contextual edition 3 y lo envían al parser productivo de interfaces;
-  - reconocen `dyn` en el scanner/parser de tipos sin reservar el identificador en 2.x;
+  - reconocen `trait` contextual y lo envían al parser productivo de interfaces;
+  - reconocen `dyn` en el scanner/parser de tipos como identificador contextual;
   - rechazan modificadores y métodos genéricos no object-safe en esta vertical.
 - `include/nativesharp/AST/TypeSyntax.h`, `src/AST/TypeSyntax.cpp`
   - conservan el marcador source-level de despacho dinámico.
@@ -103,7 +107,7 @@ cruzan el módulo, aunque el marcador fuente `trait` todavía no tiene un campo 
 ### Nuevos
 
 - `tests/cc1/c62_ns3_traits_dispatch/c62_ns3_traits_dispatch.nsproj`
-  - fixture mínima edition 3.
+  - fixture mínima.
 - `tests/cc1/c62_ns3_traits_dispatch/Main.ns`
   - traits simples/heredados/genéricos, constraint estático y tres vistas `dyn`; devuelve 42.
 - `docs/3.0/TANDA-OPERATIVA-12-T05-TRAITS-Y-DESPACHO.md`
@@ -114,7 +118,7 @@ logs temporales se eliminan antes del commit.
 
 ## Mejora concreta
 
-- NativeSharp 3.0 ya expresa contratos storage-free como `trait` sin duplicar el ABI de interfaces.
+- NativeSharp ya expresa contratos storage-free como `trait` sin duplicar el ABI de interfaces.
 - El autor distingue en fuente `T : Trait`/monomorfización de `dyn Trait`/tabla dinámica.
 - Traits genéricos e inheritance usan las identidades y tablas deterministas existentes.
 - Usos `dyn` inválidos fallan durante name lookup y no llegan al backend.
@@ -132,9 +136,9 @@ logs temporales se eliminan antes del commit.
    - tres `interface-binding` con tablas y slots deterministas.
 4. Productor `.lib/.nsmeta` → consumidor separado con `dyn IScore`: emisión, enlace y ejecución
    correctos; exit 42.
-5. Ocho negativos individuales con exit distinto de cero y causa esperada: trait edition 2, dyn
-   edition 2, dyn class, dyn builtin, storage en trait, contrato faltante, static trait y método
-   genérico no object-safe.
+5. Ocho negativos individuales con exit distinto de cero y causa esperada: dos correspondían a
+   la selección de edición, ahora retirada; los demás cubrían dyn class, dyn builtin, storage en
+   trait, contrato faltante, static trait y método genérico no object-safe.
 
 No se ejecutó baseline, CTest general, O1/O2/O3, instalación, deploy ni operación remota.
 

@@ -31,7 +31,7 @@ namespace NativeSharp.BookExamples.HashTable
             return (int)(hash % buckets.Length);
         }
 
-        public bool Add(Symbol symbol)
+        public bool Add(owned Symbol symbol)
         {
             int index = Hash(symbol.Name);
             BucketNode current = buckets[index];
@@ -40,7 +40,6 @@ namespace NativeSharp.BookExamples.HashTable
             {
                 if (String.Equals(current.Value.Name, symbol.Name))
                 {
-                    delete symbol;
                     return false;
                 }
                 current = current.Next;
@@ -48,7 +47,7 @@ namespace NativeSharp.BookExamples.HashTable
             // Congelamiento 3.0 (C-01): el `new` va directo a la cubeta que lo guarda; la tabla es su
             // dueno manual y lo libera con `delete`.
             BucketNode rest = buckets[index];
-            buckets[index] = new BucketNode(symbol);
+            buckets[index] = new BucketNode(move(symbol));
             buckets[index].Next = rest;
             count = count + 1;
             return true;
@@ -78,7 +77,6 @@ namespace NativeSharp.BookExamples.HashTable
                     if (previous == null) { buckets[index] = current.Next; }
                     else { previous.Next = current.Next; }
                     current.Next = null;
-                    delete current.Value;
                     delete current;
                     count = count - 1;
                     return true;
@@ -129,7 +127,6 @@ namespace NativeSharp.BookExamples.HashTable
             {
                 BucketNode next = current.Next;
                 current.Next = null;
-                delete current.Value;
                 delete current;
                 current = next;
             }

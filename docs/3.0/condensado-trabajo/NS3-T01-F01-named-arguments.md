@@ -25,7 +25,7 @@ rechazos de nombres duplicados y desconocidos sin ejecutar el resto de CC1.
 
 ### Nuevos
 
-- `tests/unit/NativeSharp3T01NamedArgumentTests.cpp`: prueba vertical aislada para no depender de
+- `tests/unit/NativeSharpT01NamedArgumentTests.cpp`: prueba vertical aislada para no depender de
   una corrida completa ni repetir CC1.
 - `docs/3.0/language/named-arguments.md`: contrato ES/EN para usuarios y autores de bibliotecas.
 - `docs/3.0/items/NS3-T01-F01-named-arguments.md`: expediente de implementación del ítem.

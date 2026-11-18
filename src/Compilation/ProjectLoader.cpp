@@ -5,6 +5,7 @@
 #include "Internal/ProjectLoaderCache.h"
 #include "Internal/SourceIncludeRule.h"
 #include "Internal/RuntimeTlsImportDirectory.h"
+#include "Internal/StandardPackageLookup.h"
 
 #include "nativesharp/Compilation/GlobPattern.h"
 #include "nativesharp/Compilation/ImplicitProjectRegistry.h"
@@ -472,7 +473,7 @@ bool parsePropertyGroup(
             return false;
         }
         const std::string value = trim(property.text);
-        if (value.empty())
+        if (value.empty() && property.name != "Language")
         {
             error = "project property '" + property.name + "' cannot be empty";
             return false;
@@ -973,9 +974,9 @@ bool loadDescriptorFile(
     error.clear();
     std::error_code filesystemError;
     canonicalProject = std::filesystem::weakly_canonical(projectFile, filesystemError);
-    // EN: Freeze 3.0 C-05: the implicit project of a lone `.ns` has no file; its text was
+    // EN: Freeze C-05: the implicit project of a lone `.ns` has no file; its text was
     //     registered by the driver. Its descriptor is parsed each time (it is tiny).
-    // ES: Congelamiento 3.0 C-05: el proyecto implicito de un `.ns` suelto no tiene archivo; el
+    // ES: Congelamiento C-05: el proyecto implicito de un `.ns` suelto no tiene archivo; el
     //     driver registro su texto. Su descriptor se analiza cada vez (es diminuto).
     if (!filesystemError)
     {
@@ -1108,10 +1109,16 @@ bool prepareProjectDescriptor(
     return true;
 }
 
+struct SourceCandidate
+{
+    std::filesystem::path path;
+    std::optional<std::filesystem::path> externalRoot;
+};
+
 bool collectSourceCandidates(
     const std::filesystem::path& projectDirectory,
     const ProjectDescriptor& descriptor,
-    std::vector<std::filesystem::path>& candidates,
+    std::vector<SourceCandidate>& candidates,
     std::string& error)
 {
     std::vector<std::string> candidateKeys;
@@ -1130,7 +1137,7 @@ bool collectSourceCandidates(
             }
             const std::string key = pathKey(relative);
             if (std::find(candidateKeys.begin(), candidateKeys.end(), key) != candidateKeys.end()) continue;
-            candidates.push_back(source);
+            candidates.push_back(SourceCandidate{source, std::nullopt});
             candidateKeys.push_back(key);
         }
         return true;
@@ -1168,7 +1175,7 @@ bool collectSourceCandidates(
                     const std::string key = pathKey(relative);
                     if (std::find(candidateKeys.begin(), candidateKeys.end(), key) == candidateKeys.end())
                     {
-                        candidates.push_back(entry.path());
+                        candidates.push_back(SourceCandidate{entry.path(), std::nullopt});
                         candidateKeys.push_back(key);
                     }
                 }
@@ -1176,20 +1183,151 @@ bool collectSourceCandidates(
         }
         iterator.increment(filesystemError);
     }
-    if (!filesystemError) return true;
-    error = "cannot enumerate project sources: " + filesystemError.message();
-    return false;
+    if (filesystemError)
+    {
+        error = "cannot enumerate project sources: " + filesystemError.message();
+        return false;
+    }
+
+    for (const SourceIncludeRule& rule : descriptor.includes)
+    {
+        const std::filesystem::path pattern(rule.include.pattern());
+        if (pattern.begin() == pattern.end() || *pattern.begin() != "..") continue;
+
+        std::filesystem::path ancestor = projectDirectory;
+        for (const auto& segment : pattern)
+        {
+            if (segment != "..") break;
+            const std::filesystem::path parent = ancestor.parent_path();
+            if (parent.empty() || parent == ancestor)
+            {
+                error = "external source pattern traverses above the filesystem root: '" +
+                    rule.include.pattern() + "'";
+                return false;
+            }
+            ancestor = parent;
+        }
+
+        std::filesystem::path prefix;
+        bool wildcard = false;
+        bool recursive = false;
+        std::size_t remainingSegments = 0;
+        for (const auto& segment : pattern)
+        {
+            const std::string component = segment.string();
+            if (component.find_first_of("*?") != std::string::npos)
+            {
+                wildcard = true;
+            }
+            if (wildcard)
+            {
+                ++remainingSegments;
+                recursive = recursive || component == "**";
+            }
+            else prefix /= segment;
+        }
+        if (!wildcard)
+        {
+            prefix = prefix.parent_path();
+            remainingSegments = 1;
+        }
+        bool reservedPrefix = false;
+        for (const auto& segment : prefix)
+        {
+            if (segment != ".." && isReservedDirectory(segment))
+            {
+                reservedPrefix = true;
+                break;
+            }
+        }
+        if (reservedPrefix) continue;
+        const std::filesystem::path root = (projectDirectory / prefix).lexically_normal();
+        if (!std::filesystem::exists(root, filesystemError))
+        {
+            if (!filesystemError) continue;
+            error = "cannot inspect external source root: " + filesystemError.message();
+            return false;
+        }
+        if (!std::filesystem::is_directory(root, filesystemError) || filesystemError)
+        {
+            error = "external source root is not a directory: '" + root.string() + "'";
+            return false;
+        }
+        const std::filesystem::path canonicalRoot = std::filesystem::canonical(root, filesystemError);
+        if (filesystemError)
+        {
+            error = "cannot resolve external source root: " + filesystemError.message();
+            return false;
+        }
+        std::filesystem::recursive_directory_iterator external(
+            root, std::filesystem::directory_options::skip_permission_denied, filesystemError);
+        while (!filesystemError && external != end)
+        {
+            const std::filesystem::directory_entry entry = *external;
+            if (entry.is_directory(filesystemError))
+            {
+                if (isReservedDirectory(entry.path()) ||
+                    (!recursive && static_cast<std::size_t>(external.depth()) + 1 >= remainingSegments))
+                    external.disable_recursion_pending();
+            }
+            else if (!filesystemError && entry.is_regular_file(filesystemError) &&
+                     entry.path().extension() == ".ns")
+            {
+                const std::filesystem::path relative = entry.path().lexically_relative(projectDirectory);
+                if (rule.include.matches(relative) && !matchesAny(rule.excludes, relative) &&
+                    !matchesAny(descriptor.removes, relative))
+                    candidates.push_back(SourceCandidate{entry.path(), canonicalRoot});
+            }
+            external.increment(filesystemError);
+        }
+        if (filesystemError)
+        {
+            error = "cannot enumerate external project sources: " + filesystemError.message();
+            return false;
+        }
+    }
+    return true;
 }
 
 bool populateSourceSet(
-    const std::vector<std::filesystem::path>& candidates,
+    const std::vector<SourceCandidate>& candidates,
     bool hasProjectReferences,
     ProjectSourceSet& sourceSet,
     std::string& error)
 {
-    for (const std::filesystem::path& sourcePath : candidates)
+    std::vector<std::string> canonicalKeys;
+    for (const SourceCandidate& candidate : candidates)
     {
-        if (!sourceSet.add(sourcePath, error)) return false;
+        if (!candidate.externalRoot.has_value())
+        {
+            if (!sourceSet.add(candidate.path, error)) return false;
+            canonicalKeys.push_back(pathKey(sourceSet.sources().back().absolutePath));
+            continue;
+        }
+        std::error_code filesystemError;
+        const std::filesystem::path source = std::filesystem::canonical(candidate.path, filesystemError);
+        if (filesystemError || !std::filesystem::is_regular_file(source) || source.extension() != ".ns")
+        {
+            error = "project source does not exist or is not a regular .ns file: '" + candidate.path.string() + "'";
+            return false;
+        }
+        const std::filesystem::path withinRoot = source.lexically_relative(*candidate.externalRoot);
+        if (withinRoot.empty() || *withinRoot.begin() == "..")
+        {
+            error = "external project source escapes its search root: '" + candidate.path.string() + "'";
+            return false;
+        }
+        const std::string key = pathKey(source);
+        if (std::find(canonicalKeys.begin(), canonicalKeys.end(), key) != canonicalKeys.end()) continue;
+        canonicalKeys.push_back(key);
+        const std::filesystem::path relative = source.lexically_relative(sourceSet.projectDirectory());
+        if (relative.empty())
+        {
+            error = "external project source cannot be expressed relative to the project: '" +
+                source.string() + "'";
+            return false;
+        }
+        if (!sourceSet.addCanonical(source, relative, error)) return false;
     }
     return sourceSet.finalize(error, hasProjectReferences);
 }
@@ -1236,11 +1374,45 @@ std::optional<std::vector<std::filesystem::path>> loadProjectReferences(
     return projectReferences;
 }
 
+std::optional<std::filesystem::path> standardPackageArtifactImpl(
+    const std::filesystem::path& artifact, const ProjectLoadOptions& options, std::string& error)
+{
+    if (!options.standardPackageRoot.has_value() || artifact.has_parent_path() ||
+        (artifact.extension() != ".lib" && artifact.extension() != ".nsmeta")) return std::nullopt;
+    const std::string stem = artifact.stem().string();
+    std::string_view package;
+    if (stem == "NativeSharpCore") package = "NativeSharp.Core";
+    else if (stem == "NativeSharpCoreCollectionsGeneric") package = "NativeSharp.Core.Collections.Generic";
+    else if (stem == "NativeSharpCoreThreading") package = "NativeSharp.Core.Threading";
+    else if (stem == "NativeSharpCoreIO") package = "NativeSharp.Core.IO";
+    else if (stem == "NativeSharpCoreDiagnostics") package = "NativeSharp.Core.Diagnostics";
+    else return std::nullopt;
+    const std::filesystem::path root = *options.standardPackageRoot / package;
+    std::error_code ec;
+    if (!std::filesystem::is_directory(root, ec)) return std::nullopt;
+    std::optional<std::filesystem::path> result;
+    for (std::filesystem::directory_iterator it(root, ec), end; !ec && it != end; it.increment(ec))
+    {
+        const auto directory = it->path() / "windows-x64" / options.standardPackageOptimization;
+        std::error_code fileError;
+        if (!std::filesystem::is_regular_file(directory / (stem + ".lib"), fileError) ||
+            !std::filesystem::is_regular_file(directory / (stem + ".nsmeta"), fileError)) continue;
+        if (result.has_value())
+        {
+            error = "multiple installed packages provide '" + artifact.string() + "'";
+            return std::nullopt;
+        }
+        result = directory / artifact;
+    }
+    if (ec) error = "cannot enumerate standard packages: " + ec.message();
+    return result;
+}
+
 std::filesystem::path resolveLibraryReferencePath(
     const std::filesystem::path& projectDirectory,
     const ProjectDescriptor& descriptor,
     const ProjectLoadOptions& options,
-    std::string_view text)
+    std::string_view text, std::string& error)
 {
     const std::filesystem::path path{std::u8string(text.begin(), text.end())};
     const std::optional<std::filesystem::path>& explicitRoot =
@@ -1253,10 +1425,11 @@ std::filesystem::path resolveLibraryReferencePath(
         return resolveProjectPath(projectDirectory, *explicitRoot) / path;
     }
     const std::filesystem::path local = projectDirectory / path;
-    if (!options.libraryReferenceFallbackRoot.has_value()) return local;
     std::error_code existenceError;
     if (std::filesystem::is_regular_file(local, existenceError)) return local;
-    return *options.libraryReferenceFallbackRoot / path;
+    if (options.libraryReferenceFallbackRoot.has_value()) return *options.libraryReferenceFallbackRoot / path;
+    const auto standard = standardPackageArtifact(path, options, error);
+    return standard.value_or(local);
 }
 
 bool loadLibraryArtifact(
@@ -1288,12 +1461,13 @@ bool loadMetadataArtifact(
     std::filesystem::path unresolvedMetadata;
     if (reference.metadata.has_value())
         unresolvedMetadata = resolveLibraryReferencePath(
-            projectDirectory, descriptor, options, *reference.metadata);
+            projectDirectory, descriptor, options, *reference.metadata, error);
     else
     {
         unresolvedMetadata = unresolvedLibrary;
         unresolvedMetadata.replace_extension(".nsmeta");
     }
+    if (!error.empty()) return false;
     std::error_code filesystemError;
     metadata = std::filesystem::weakly_canonical(unresolvedMetadata, filesystemError);
     if (filesystemError || !std::filesystem::is_regular_file(metadata))
@@ -1316,7 +1490,8 @@ bool loadRuntimeArtifact(
 {
     if (!reference.runtime.has_value()) return true;
     const std::filesystem::path unresolvedRuntime = resolveLibraryReferencePath(
-        projectDirectory, descriptor, options, *reference.runtime);
+        projectDirectory, descriptor, options, *reference.runtime, error);
+    if (!error.empty()) return false;
     std::error_code filesystemError;
     runtime = std::filesystem::weakly_canonical(unresolvedRuntime, filesystemError);
     if (filesystemError || !std::filesystem::is_regular_file(runtime))
@@ -1340,7 +1515,8 @@ std::optional<std::vector<LibraryReference>> loadLibraryReferences(
     for (const LibraryReferenceDescriptor& reference : descriptor.libraryReferences)
     {
         const std::filesystem::path unresolvedLibrary = resolveLibraryReferencePath(
-            projectDirectory, descriptor, options, reference.include);
+            projectDirectory, descriptor, options, reference.include, error);
+        if (!error.empty()) return std::nullopt;
         std::filesystem::path library;
         if (!loadLibraryArtifact(unresolvedLibrary, library, error)) return std::nullopt;
         std::filesystem::path metadata;
@@ -1391,12 +1567,16 @@ std::optional<std::vector<CppLibraryReference>> loadCppLibraryReferences(
         }
         if (input.library)
         {
-            const auto library = resolveLibraryReferencePath(projectDirectory, descriptor, options, *input.library);
+            const auto library = resolveLibraryReferencePath(projectDirectory, descriptor, options, *input.library,
+                                                             error);
+            if (!error.empty()) return std::nullopt;
             if (!loadLibraryArtifact(library, reference.libraryPath, error)) return std::nullopt;
         }
         if (input.runtime)
         {
-            const auto runtime = resolveLibraryReferencePath(projectDirectory, descriptor, options, *input.runtime);
+            const auto runtime = resolveLibraryReferencePath(projectDirectory, descriptor, options, *input.runtime,
+                                                             error);
+            if (!error.empty()) return std::nullopt;
             ec.clear();
             reference.runtimePath = std::filesystem::weakly_canonical(runtime, ec);
             if (ec || !std::filesystem::is_regular_file(reference.runtimePath, ec) || ec ||
@@ -1496,6 +1676,12 @@ std::optional<std::vector<SdkManifest>> loadSdkReferences(
 }
 }
 
+std::optional<std::filesystem::path> standardPackageArtifact(
+    const std::filesystem::path& artifact, const ProjectLoadOptions& options, std::string& error)
+{
+    return standardPackageArtifactImpl(artifact, options, error);
+}
+
 ProjectLoader::ProjectLoader()
     : cache_(std::make_shared<ProjectLoaderCache>())
 {
@@ -1550,11 +1736,14 @@ std::optional<Project> ProjectLoader::load(
 
     const std::filesystem::path projectDirectory = canonicalProject.parent_path();
     ProjectSourceSet sourceSet(projectDirectory);
-    std::vector<std::filesystem::path> candidates;
+    std::vector<SourceCandidate> candidates;
     if (!collectSourceCandidates(projectDirectory, descriptor, candidates, error))
         return std::nullopt;
     if (!populateSourceSet(
-            candidates, !descriptor.projectReferences.empty(), sourceSet, error))
+            candidates,
+            !descriptor.projectReferences.empty() ||
+                (descriptor.outputKind == ProjectOutputKind::Library && !descriptor.libraryReferences.empty()),
+            sourceSet, error))
         return std::nullopt;
 
     std::optional<std::vector<std::filesystem::path>> projectReferences =

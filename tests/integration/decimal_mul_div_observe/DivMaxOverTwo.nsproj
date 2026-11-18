@@ -1,0 +1,9 @@
+<Project>
+<PropertyGroup>
+<Name>DivMaxOverTwo</Name>
+<OutputType>Exe</OutputType>
+</PropertyGroup>
+<ItemGroup>
+<Compile Include="DivMaxOverTwo.ns"/>
+</ItemGroup>
+</Project>

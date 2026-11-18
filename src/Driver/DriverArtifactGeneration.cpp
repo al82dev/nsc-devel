@@ -19,7 +19,16 @@
 #include "nativesharp/Interop/CppMemberThunk.h"
 #include "nativesharp/LLVM/CppLifetimeObjectEmitter.h"
 #include "../Interop/Internal/CppCRecordMetadataCodec.h"
+#endif
+// EN: T08-D19 template dependencies are NativeSharp surface, needed with or without C/C++ interoperability.
+// ES: Las dependencias de plantilla de T08-D19 son superficie NativeSharp, necesarias con o sin interop C/C++.
 #include "../Interop/Internal/TemplateDependencyMembers.h"
+#if defined(_WIN32)
+#include "ProductContractLock.h"
+#include "nativesharp/Frontend/ClassImplicitLifecycleProof.h"
+#include "nativesharp/Frontend/ClassReceiverContractManifest.h"
+#include <algorithm>
+#include <fstream>
 #endif
 
 namespace nativesharp::driver
@@ -403,8 +412,7 @@ static bool appendCppTlsAliasedFunctionImports(
         std::vector<interop::CppCEnumSnapshot> enums;
         interop::metadata_detail::CDependencyCatalog dependencies;
         if (!interop::metadata_detail::decodeCTypeCatalogAndDependencies(
-                module.cppCTypeCatalog, module.cppCTypeCatalogFormatMinor,
-                records, enums, dependencies, error)) return false;
+                module.cppCTypeCatalog, records, enums, dependencies, error)) return false;
         for (const auto &function : dependencies.functions)
         {
             if (!required.contains(function.linkSymbol)) continue;
@@ -442,6 +450,8 @@ std::unique_ptr<llvm_backend::ProjectOopObjectBundle> generateProjectObjects(
 {
     llvm_backend::ProjectOopObjectGenerator objectGenerator;
     configureObjectGeneratorProgress(objectGenerator);
+    if (activeExecutionScope != nullptr && !activeExecutionScope->addressSanitizerClang.empty())
+        objectGenerator.setAddressSanitizer(true);
     objectGenerator.setThinLtoUnitBitcodeCapture(captureThinLtoUnits);
     objectGenerator.setThinLtoLibraryUnits(std::move(thinLtoLibraries));
     // Native objects emitted from Clang sessions are appended after ThinLTO.
@@ -510,6 +520,15 @@ bool prepareExecutableProject(std::string_view inputPath,
         return false;
     }
     renderCppInteropWarnings(compilation, error);
+    // EN: LKF-108. A successful build still shows its warnings (for example stackalloc in a loop);
+    //     only a failed one rendered diagnostics before.
+    // ES: LKF-108. Una compilacion correcta tambien muestra sus advertencias (por ejemplo stackalloc
+    //     en un bucle); antes solo una fallida mostraba diagnosticos.
+    if (compilation.diagnostics().warningCount() != 0U)
+    {
+        diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
+        renderer.renderAll(compilation.diagnostics(), error);
+    }
     if (compilation.nameLookup() == nullptr || compilation.memberModel() == nullptr ||
         compilation.oopMirModel() == nullptr)
     {
@@ -533,7 +552,7 @@ bool prepareExecutableProject(std::string_view inputPath,
     if (entryFunction == nullptr)
     {
         error << "nsc: error: OOP executable requires exactly one int Main() "
-                 "function or static method with no parameters"
+                 "or int Main(string[] args) function or static method"
               << std::endl;
         return false;
     }
@@ -581,11 +600,11 @@ void printExecutableGenerationResult(const frontend::ProjectOopMirFunction &entr
         appendCodeUnitTelemetry(output, objectBundle);
 }
 
-/// EN: Freeze 3.0 DEC-13. Under --validate-system-imports, checks the complete import list (own and
+/// EN: Freeze DEC-13. Under --validate-system-imports, checks the complete import list (own and
 ///     inherited) against the DLLs found on this host; without the option it does nothing, so the
 ///     artifact never depends on the host. Returns false and reports on `error` when a symbol is not
 ///     exported by its DLL.
-/// ES: Congelamiento 3.0 DEC-13. Con --validate-system-imports comprueba la lista completa de
+/// ES: Congelamiento DEC-13. Con --validate-system-imports comprueba la lista completa de
 ///     imports (propios y heredados) contra las DLL que se encuentran en este host; sin la opcion no
 ///     hace nada, asi que el artefacto nunca depende del host. Devuelve false y lo reporta en `error`
 ///     cuando la DLL no exporta un simbolo.
@@ -815,13 +834,16 @@ bool publishExecutableArtifact(std::string_view outputPath, const frontend::Proj
         error << "nsc: error: precompiled DLL/import-library mismatch: " << referenceError << '\n';
         return false;
     }
+    std::vector<std::filesystem::path> runtimeClosure(runtimeLibraries.begin(), runtimeLibraries.end());
+    if (activeExecutionScope != nullptr && !activeExecutionScope->addressSanitizerRuntime.empty())
+        runtimeClosure.push_back(activeExecutionScope->addressSanitizerRuntime);
     if (!validateCppRuntimeDestinations(compilation, runtimeLibraries, aliases,
                                         destination.parent_path(), referenceError))
     {
         error << "nsc: error: C/C++ runtime output preflight failed: " << referenceError << '\n';
         return false;
     }
-    if (!packageRuntimeClosure(runtimeLibraries, dynamicallyLoadedRuntimes, aliases, publication.stage,
+    if (!packageRuntimeClosure(runtimeClosure, dynamicallyLoadedRuntimes, aliases, publication.stage,
                                packagedRuntimes, referenceError))
     {
         removePackagedFiles(packagedRuntimes);
@@ -886,6 +908,8 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
     addCompilationLinkIdentity(
         *manifest, incrementalLink, subsystem, extraLinkLibraries, selectedLinker);
     frontend::ProjectCompilation compilation;
+    compilation.setReceiverRequiresThinLtoSidecar(
+        llvm_backend::ProjectOopObjectGenerator::thinLtoRuns(linkTimeOptimization, optimizationLevel));
     const frontend::ProjectOopMirFunction *entryFunction = nullptr;
     bool restored = false;
     if (!prepareExecutableProject(
@@ -916,6 +940,9 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
     if (!prepareExecutableBuilder(compilation, extraLinkLibraries, debugInformation, incrementalLink, subsystem,
                                   linkLibraries, runtimeLibraries, builder, error))
         return ExitCode::CompilationError;
+    builder.setMainArguments(!entryFunction->parameterTypeKeys.empty());
+    if (activeExecutionScope != nullptr && !activeExecutionScope->addressSanitizerClang.empty())
+        builder.setAddressSanitizerClang(activeExecutionScope->addressSanitizerClang);
     const std::vector<std::string> entrySymbols = {entryFunction->mangledName};
     std::optional<std::vector<std::string>> preservedSymbols =
         thinLtoLibraries.preservedSymbols(linkLibraries, entrySymbols);
@@ -949,11 +976,103 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
                                     linkTimeOptimization, incrementalLink, subsystem, linkLibraries.size(),
                                     packagedRuntimes.size(), resultOutput);
     thinLtoLibraries.printResult(resultOutput);
+    if (activeExecutionScope != nullptr && !activeExecutionScope->addressSanitizerClang.empty())
+        resultOutput << "address-sanitizer: enabled (precompiled libraries are not instrumented)\n";
     manifest->setBundleResultOutput(resultOutput.str());
     publishCompilationBundle(*manifest);
     output << resultOutput.str();
     return ExitCode::Success;
 }
+
+#if defined(_WIN32)
+namespace
+{
+constexpr std::string_view kReceiverContractUnknown = "NSC-RECEIVER-UNKNOWN\n";
+
+std::filesystem::path receiverContractPath(const std::filesystem::path& library)
+{
+    std::filesystem::path result = library;
+    result += ".nsreceiver";
+    return result;
+}
+
+bool receiverContractState(const std::filesystem::path& path, bool& exists, bool& marker, std::string& error)
+{
+    std::error_code ec;
+    exists = std::filesystem::exists(path, ec);
+    if (ec) { error = "cannot inspect previous receiver contract: " + ec.message(); return false; }
+    marker = false;
+    if (!exists) return true;
+    const auto size = std::filesystem::file_size(path, ec);
+    if (ec) { error = "cannot inspect previous receiver contract: " + ec.message(); return false; }
+    if (size != kReceiverContractUnknown.size()) return true;
+    std::ifstream input(path, std::ios::binary);
+    if (!input) { error = "cannot read previous receiver contract"; return false; }
+    std::string bytes(kReceiverContractUnknown.size(), '\0');
+    input.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    if (!input) { error = "cannot read previous receiver contract"; return false; }
+    marker = bytes == kReceiverContractUnknown;
+    return true;
+}
+
+bool stageReceiverContract(const frontend::ProjectCompilation& compilation,
+                           const StaticLibraryPublication& publication,
+                           const linker::CoffArchiveInfo& archive, bool previousExists,
+                           bool& staged, std::string& error)
+{
+    staged = false;
+    frontend::ReceiverContractManifest contract;
+    const auto* graph = compilation.projectGraph();
+    const auto* names = compilation.nameLookup();
+    if (graph != nullptr && names != nullptr && graph->rootProject() != nullptr)
+    {
+        const auto projects = graph->projects();
+        std::optional<std::size_t> root;
+        for (std::size_t i = 0; i < projects.size(); ++i)
+            if (&projects[i] == graph->rootProject()) { root = i; break; }
+        if (root.has_value())
+            for (std::size_t i = 0; i < names->namedTypes().size(); ++i)
+            {
+                const auto proof = frontend::inspectImplicitLifecycleEvidence(compilation, i, *root);
+                if (!proof.has_value()) continue;
+                if (std::ranges::find(archive.symbolNames, proof->constructorSymbol) == archive.symbolNames.end() ||
+                    std::ranges::find(archive.symbolNames, proof->objectDestructionSymbol) == archive.symbolNames.end())
+                    continue;
+                frontend::ReceiverContractRecord constructor{
+                    frontend::ReceiverContractKind::Constructor, proof->typeIdentity};
+                frontend::ReceiverContractRecord destructor{
+                    frontend::ReceiverContractKind::Destructor, proof->typeIdentity};
+                if (frontend::validReceiverContractRecord(constructor) &&
+                    frontend::validReceiverContractRecord(destructor))
+                {
+                    contract.records.push_back(std::move(constructor));
+                    contract.records.push_back(std::move(destructor));
+                }
+            }
+    }
+    std::ranges::sort(contract.records, frontend::receiverContractRecordLess);
+    std::string bytes;
+    if (!contract.records.empty())
+    {
+        std::uintmax_t size = 0;
+        if (!basic::sha256File(publication.stage, contract.libraryDigest, size, error) ||
+            !basic::sha256File(publication.metadataStage, contract.metadataDigest, size, error)) return false;
+        const auto encoded = frontend::encodeReceiverContractManifest(contract);
+        if (encoded.has_value()) bytes.assign(encoded->begin(), encoded->end());
+    }
+    // No complete representable proof: invalidate only an existing sidecar.
+    if (bytes.empty() && previousExists) bytes = kReceiverContractUnknown;
+    if (bytes.empty()) return true;
+    std::ofstream output(publication.receiverContractStage, std::ios::binary | std::ios::trunc);
+    if (!output) { error = "cannot stage receiver contract"; return false; }
+    output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    output.close();
+    if (!output) { error = "cannot finish receiver contract"; return false; }
+    staged = true;
+    return true;
+}
+}
+#endif
 
 bool prepareStaticLibraryProject(std::string_view inputPath,
                                  compilation::CompilationInputManifest &manifest,
@@ -993,6 +1112,15 @@ bool prepareStaticLibraryProject(std::string_view inputPath,
         return false;
     }
     renderCppInteropWarnings(compilation, error);
+    // EN: LKF-108. A successful build still shows its warnings (for example stackalloc in a loop);
+    //     only a failed one rendered diagnostics before.
+    // ES: LKF-108. Una compilacion correcta tambien muestra sus advertencias (por ejemplo stackalloc
+    //     en un bucle); antes solo una fallida mostraba diagnosticos.
+    if (compilation.diagnostics().warningCount() != 0U)
+    {
+        diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
+        renderer.renderAll(compilation.diagnostics(), error);
+    }
     if (compilation.projectGraph() == nullptr || compilation.nameLookup() == nullptr ||
         compilation.memberModel() == nullptr || compilation.oopMirModel() == nullptr)
     {
@@ -1124,6 +1252,7 @@ bool publishStaticLibraryArtifact(std::string_view outputPath, const frontend::P
                                   std::span<const linker::ExternalImportModule> inheritedImports,
                                   llvm_backend::LlvmOptimizationLevel optimizationLevel,
                                   linker::WindowsLibraryBuilder &builder, StaticLibraryPublication &publication,
+                                  bool previousReceiverContract,
                                   std::ostream &error)
 {
     builder.setProgramObjectsVerified(true);
@@ -1172,6 +1301,18 @@ bool publishStaticLibraryArtifact(std::string_view outputPath, const frontend::P
     publishPrecompiledSnapshot(compilation, publication.metadataStage);
     // Sidecar v3 carries generated native objects alongside bitcode; otherwise
     // the writer keeps the existing v2 representation.
+#if defined(_WIN32)
+    if (!stageReceiverContract(compilation, publication, builder.archiveInfo(), previousReceiverContract,
+                               publication.receiverContractStaged, buildError) ||
+        (publication.receiverContractStaged &&
+         !artifactPublisher.addStaticLibraryReceiverContract(publication, buildError)))
+    {
+        error << "nsc: error: static-library receiver contract staging failed: " << buildError << '\n';
+        return false;
+    }
+#else
+    (void)previousReceiverContract;
+#endif
     if (!objectBundle.thinLtoUnitBitcode().empty())
     {
         // The sidecar binds the staged .lib and .nsmeta, so it is written after both (item 48).
@@ -1202,6 +1343,14 @@ bool publishStaticLibraryArtifact(std::string_view outputPath, const frontend::P
         // Un sidecar de un build ThinLTO anterior solo seria rechazado; se borra de todos modos.
         std::error_code staleError;
         std::filesystem::remove(publication.thinLtoSidecarDestination, staleError);
+        // EN: LKF-246: the stale sidecar is harmless (its fingerprints reject it) but a removal
+        //     that failed is reported instead of silently ignored.
+        // ES: LKF-246: el sidecar viejo no hace daño (sus huellas lo rechazan), pero una eliminación
+        //     fallida se informa en lugar de ignorarse.
+        if (staleError)
+            error << "nsc: warning: stale ThinLTO sidecar '"
+                  << publication.thinLtoSidecarDestination.string() << "' could not be removed: "
+                  << staleError.message() << '\n';
     }
     return true;
 }
@@ -1257,6 +1406,37 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
                                                       std::string_view linkerSelection,
                                                       std::ostream &output, std::ostream &error)
 {
+    bool previousReceiverContract = false;
+#if defined(_WIN32)
+    const std::filesystem::path receiverOutput = pathFromUtf8(outputPath);
+    std::error_code receiverError;
+    const auto absoluteOutput = std::filesystem::absolute(receiverOutput, receiverError);
+    if (receiverError)
+    {
+        error << "nsc: error: cannot resolve static-library destination: " << receiverError.message() << '\n';
+        return ExitCode::CompilationError;
+    }
+    std::filesystem::create_directories(absoluteOutput.parent_path(), receiverError);
+    if (receiverError)
+    {
+        error << "nsc: error: cannot prepare static-library destination: " << receiverError.message() << '\n';
+        return ExitCode::CompilationError;
+    }
+    contract_lock_prototype::ProductLock receiverLock;
+    if (!receiverLock.acquire(receiverOutput, true))
+    {
+        error << "nsc: error: cannot acquire static-library receiver-contract lock\n";
+        return ExitCode::CompilationError;
+    }
+    bool previousReceiverMarker = false;
+    std::string receiverStateError;
+    if (!receiverContractState(receiverContractPath(receiverOutput), previousReceiverContract,
+                               previousReceiverMarker, receiverStateError))
+    {
+        error << "nsc: error: " << receiverStateError << '\n';
+        return ExitCode::CompilationError;
+    }
+#endif
     std::string loadError;
     std::optional<compilation::CompilationInputManifest> manifest =
         loadCompilationInputManifest(pathFromUtf8(inputPath), loadError);
@@ -1267,11 +1447,20 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     }
     addCompilationProductIdentity(
         *manifest, "static-library", pathFromUtf8(outputPath));
+#if defined(_WIN32)
+    // The bundle must not reuse entries created before receiver sidecars were
+    // part of the product. This is a cache identity, not a language version.
+    manifest->addIdentityField("receiver-contract-transport", "implicit-root-v1");
+    if (previousReceiverContract && !previousReceiverMarker)
+        manifest->addRequiredBundleOutput(receiverContractPath(receiverOutput));
+#endif
     addCompilationCodegenIdentity(
         *manifest, optimizationLevel, debugInformation,
         debugPrefixMaps, linkTimeOptimization);
     addCompilationLinkToolIdentity(*manifest, linkerSelection);
     frontend::ProjectCompilation compilation;
+    compilation.setReceiverRequiresThinLtoSidecar(
+        llvm_backend::ProjectOopObjectGenerator::thinLtoRuns(linkTimeOptimization, optimizationLevel));
     std::vector<std::filesystem::path> referencedLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
     std::vector<linker::ExternalImportModule> inheritedImports;
@@ -1306,8 +1495,12 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     builder.setLinkerSelection(std::string(linkerSelection));
     StaticLibraryPublication publication;
     if (!publishStaticLibraryArtifact(outputPath, compilation, *objectBundle, referencedLibraries, inheritedImports,
-                                      optimizationLevel, builder, publication, error))
+                                      optimizationLevel, builder, publication, previousReceiverContract, error))
         return ExitCode::CompilationError;
+#if defined(_WIN32)
+    if (publication.receiverContractStaged)
+        manifest->addRequiredBundleOutput(publication.receiverContractDestination);
+#endif
     std::ostringstream resultOutput;
     printStaticLibraryGenerationResult(*objectBundle, builder, publication, optimizationLevel, debugInformation,
                                        linkTimeOptimization, referencedLibraries.size(), resultOutput);
@@ -1352,6 +1545,15 @@ bool prepareDynamicLibraryProject(std::string_view inputPath,
         return false;
     }
     renderCppInteropWarnings(compilation, error);
+    // EN: LKF-108. A successful build still shows its warnings (for example stackalloc in a loop);
+    //     only a failed one rendered diagnostics before.
+    // ES: LKF-108. Una compilacion correcta tambien muestra sus advertencias (por ejemplo stackalloc
+    //     en un bucle); antes solo una fallida mostraba diagnosticos.
+    if (compilation.diagnostics().warningCount() != 0U)
+    {
+        diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
+        renderer.renderAll(compilation.diagnostics(), error);
+    }
     if (compilation.projectGraph() == nullptr || compilation.nameLookup() == nullptr ||
         compilation.memberModel() == nullptr || compilation.oopMirModel() == nullptr)
     {
@@ -1766,6 +1968,8 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         *manifest, false, linker::WindowsExecutableSubsystem::Console,
         extraLinkLibraries, selectedLinker);
     frontend::ProjectCompilation compilation;
+    compilation.setReceiverRequiresThinLtoSidecar(
+        llvm_backend::ProjectOopObjectGenerator::thinLtoRuns(linkTimeOptimization, optimizationLevel));
     bool restored = false;
     if (!prepareDynamicLibraryProject(
             inputPath, *manifest, compilation, restored, error))

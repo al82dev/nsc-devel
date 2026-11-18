@@ -53,7 +53,7 @@ Type* SemanticAnalyzer::resolveType(ast::TypeSyntax* syntax)
             report(
                 modifier.range,
                 diagnostics::DiagnosticId::InvalidArrayCount,
-                "fixed array element type must be complete and non-void in NativeSharp 2.0");
+                "fixed array element type must be complete and non-void in NativeSharp");
             type = types_.builtin(TypeKind::Error);
             continue;
         }
@@ -185,7 +185,7 @@ bool SemanticAnalyzer::validateExternCSignature(
         report(
             functionNode->range(),
             diagnostics::DiagnosticId::InvalidExternCSignature,
-            "extern C return type '" + returnType->displayName() + "' is not ABI-compatible in NativeSharp 2.0");
+            "extern C return type '" + returnType->displayName() + "' is not ABI-compatible in NativeSharp");
         valid = false;
     }
 
@@ -203,7 +203,7 @@ bool SemanticAnalyzer::validateExternCSignature(
                 range,
                 diagnostics::DiagnosticId::InvalidExternCSignature,
                 "extern C parameter type '" + parameterType->displayName() +
-                    "' is not ABI-compatible in NativeSharp 2.0");
+                    "' is not ABI-compatible in NativeSharp");
             valid = false;
         }
     }

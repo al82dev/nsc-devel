@@ -1,0 +1,1 @@
+namespace Middle { public class Mid : Alpha.Base { public int Same; public void SetMid() { Same=5; } public int ReadMid() { return Same; } } }

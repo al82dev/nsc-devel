@@ -1,0 +1,2 @@
+u128 Rem(u128 a, u128 b) { return a % b; }
+int Main() { return (int)Rem((u128)19, (u128)0); }

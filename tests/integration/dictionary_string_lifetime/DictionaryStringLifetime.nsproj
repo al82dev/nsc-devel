@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>DictionaryStringLifetime</Name><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+    <LibraryReference Include="NativeSharpCore.lib" Metadata="NativeSharpCore.nsmeta" />
+    <LibraryReference Include="NativeSharpCoreCollectionsGeneric.lib" Metadata="NativeSharpCoreCollectionsGeneric.nsmeta" />
+  </ItemGroup>
+</Project>

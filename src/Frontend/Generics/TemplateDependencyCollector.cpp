@@ -82,6 +82,43 @@ using internal::trailingPackIndex;
 using internal::valueParameterCount;
 using internal::CachePayloadReader;
 using internal::EnumConstResolver;
+
+namespace
+{
+GenericTemplateSourceImport sourceAliasImport(
+    const ProjectSyntaxUnit& unit, const ast::AstNode& node, const std::string& namespaceName)
+{
+    GenericTemplateSourceImport result{namespaceName, {}, {}};
+    bool afterUsing = false;
+    bool afterEqual = false;
+    const auto tokens = unit.tokens();
+    const auto begin = std::lower_bound(tokens.begin(), tokens.end(), node.range().begin().offset(),
+        [](const lexer::Token& token, auto offset) { return token.range().begin().offset() < offset; });
+    for (auto current = begin; current != tokens.end(); ++current)
+    {
+        const lexer::Token& token = *current;
+        const SourceRange range = token.range();
+        if (!range.isValid() || range.begin().fileId() != node.range().begin().fileId() ||
+            range.begin().offset() < node.range().begin().offset()) continue;
+        if (range.end().offset() > node.range().end().offset()) break;
+        if (!afterUsing)
+        {
+            if (token.kind() == lexer::TokenKind::KwUsing) afterUsing = true;
+            continue;
+        }
+        if (token.kind() == lexer::TokenKind::Semicolon) break;
+        if (!afterEqual && token.kind() == lexer::TokenKind::Equal)
+        {
+            afterEqual = true;
+            continue;
+        }
+        std::string& destination = afterEqual ? result.target : result.alias;
+        if (!destination.empty()) destination.push_back(' ');
+        destination += token.lexeme();
+    }
+    return result;
+}
+}
 using internal::MirCacheRecord;
 using internal::SpecializationWaveTimer;
 #if 0 // INSTRUMENTATION CODE
@@ -145,7 +182,7 @@ void ProjectGenericModel::discoverTemplateDependencies(
     // unchanged, only the recursion is removed.
     std::vector<DependencyFrame> stack;
     stack.push_back(DependencyFrame{node, std::move(namespaceName), std::move(ownerName),
-        std::move(scope)});
+        std::move(scope), {}});
     while (!stack.empty())
     {
         DependencyFrame frame = std::move(stack.back());
@@ -162,9 +199,88 @@ void ProjectGenericModel::discoverTemplateDependencies(
 
     GenericLookupScope currentScope = scope;
     collectDependencyImports(node, currentNamespace, currentScope);
+    if ((node->kind() == ast::AstNodeKind::FieldDeclaration && node->typeSyntax() != nullptr) ||
+        node->kind() == ast::AstNodeKind::ClassDeclaration ||
+        node->kind() == ast::AstNodeKind::StructDeclaration)
+        declaredFieldContexts_[node] = DeclaredFieldContext{
+            &unit, currentNamespace, currentScope.importedNamespaces.read(), currentScope.aliases.read()};
+    if (node->kind() == ast::AstNodeKind::CompilationUnit ||
+        node->kind() == ast::AstNodeKind::NamespaceDeclaration)
+    {
+        for (const ast::AstNode* child : node->children())
+        {
+            if (child == nullptr) continue;
+            const std::size_t importsBefore = frame.sourceImports.size();
+            if (child->kind() == ast::AstNodeKind::UsingNamespaceDirective && !child->text().empty())
+                frame.sourceImports.push_back({currentNamespace, {}, child->text()});
+            else if (child->kind() == ast::AstNodeKind::UsingAliasDirective)
+            {
+                if (!child->text().empty() && !child->auxiliaryText().empty())
+                    frame.sourceImports.push_back({currentNamespace, child->text(), child->auxiliaryText()});
+                else
+                    frame.sourceImports.push_back(sourceAliasImport(unit, *child, currentNamespace));
+            }
+            if (frame.sourceImports.size() != importsBefore)
+            {
+                frame.sourceImports.back().importKind = static_cast<std::uint8_t>(child->integerValue());
+                frame.sourceImports.back().reexport = child->flag();
+            }
+        }
+    }
+
+    // The impl is serialized separately from its owner. Collect its own
+    // constraint references in its lexical scope so publication can qualify
+    // them just as it qualifies the owner's constraints.
+    if (node->kind() == ast::AstNodeKind::ClassDeclaration &&
+        node->auxiliaryText() == "nsc-trait-impl" && !node->genericParameters().empty())
+    {
+        const std::string ownerKey = std::string(unit.moduleName()) + "::" +
+            qualifiedName(currentNamespace, node->text());
+        const auto candidates = typesByModuleQualified_.find(ownerKey);
+        if (candidates != typesByModuleQualified_.end())
+        {
+            for (TemplateState* candidate : candidates->second)
+            {
+                const auto extensions = traitImplExtensions_.find(candidate->syntax);
+                if (extensions == traitImplExtensions_.end() ||
+                    std::ranges::find(extensions->second, node) == extensions->second.end())
+                    continue;
+                // Resolve all impl markers in their own lexical scope when
+                // this owner has a deferred conditional marker. Coherence
+                // compares these identities after dependency discovery.
+                const bool hasDeferred = std::ranges::any_of(extensions->second,
+                    [&](const ast::AstNode* extension) {
+                        return extension != nullptr && extension->isUnsafe() &&
+                            std::ranges::find(candidate->syntax->typeSyntaxes(), extension->typeSyntax()) ==
+                                candidate->syntax->typeSyntaxes().end();
+                    });
+                if (hasDeferred)
+                    collectTypeDependency(*candidate, unit, node->typeSyntax(),
+                                          currentNamespace, currentScope);
+                for (const ast::GenericConstraintClause& clause : node->genericConstraints())
+                {
+                    for (const ast::TypeSyntax* constraint : clause.typeConstraints)
+                        collectTypeDependency(*candidate, unit, constraint, currentNamespace, currentScope);
+                    collectTypeDependency(*candidate, unit, clause.equalityConstraint,
+                                          currentNamespace, currentScope);
+                }
+                break;
+            }
+        }
+    }
 
     if (TemplateState* root = stateForSyntax(node); root != nullptr)
     {
+        root->record.declarationImports = currentScope.importedNamespaces.read();
+        root->record.declarationAliases.assign(
+            currentScope.aliases.read().begin(), currentScope.aliases.read().end());
+        std::ranges::sort(root->record.declarationAliases);
+        root->record.sourceImports = frame.sourceImports;
+        if (root->record.kind == GenericTemplateKind::Method)
+        {
+            root->declarationImports = currentScope.importedNamespaces.read();
+            root->declarationAliases = currentScope.aliases.read();
+        }
         const std::string templateOwner = root->record.kind == GenericTemplateKind::Method
             ? ownerName
             : appendOwner(ownerName, node->text());
@@ -184,7 +300,8 @@ void ProjectGenericModel::discoverTemplateDependencies(
     //     nada modifica la lista de hijos de `node`.
     const std::vector<ast::AstNode*>& children = node->children();
     for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
-        stack.push_back(DependencyFrame{*iterator, currentNamespace, childOwner, currentScope});
+        stack.push_back(DependencyFrame{*iterator, currentNamespace, childOwner, currentScope,
+            frame.sourceImports});
     }
 }
 
@@ -208,12 +325,22 @@ void ProjectGenericModel::collectTypeDependency(
         if (current == nullptr) continue;
         for (const ast::TypeSyntax* argument : current->typeArguments())
             stack.push_back(argument);
+        // EN: LKF-366: `fn*(T) -> Box<T>` names Box in its result; the parameters are its type arguments
+        //     already, the result and the error are not, so they are walked here.
+        // ES: LKF-366: `fn*(T) -> Box<T>` nombra Box en su resultado; los parámetros ya son sus argumentos de
+        //     tipo, el resultado y el error no, así que se recorren aquí.
         if (current->isFunction())
         {
             stack.push_back(current->functionReturnType());
             stack.push_back(current->functionErrorType());
+            // EN: A function type is a structural surface: its parameters, result and error are walked; the
+            //     surface itself (`$function`) has no template record for a reusable NSMETA closure.
+            // ES: Un tipo funcion es una superficie estructural: se recorren sus parametros, resultado y error; la
+            //     superficie (`$function`) no tiene registro de plantilla para un cierre NSMETA reutilizable.
             continue;
         }
+        // packtype<Ts, index> is resolved by the generic cloner, not a nominal template.
+        if (current->baseName() == "packtype" && current->typeArguments().size() == 2U) continue;
         // Future/Iterator/AsyncIterator, tuples, and portable SIMD are structural surfaces. Their
         // arguments may depend on nominal templates, but the surface itself has no template record
         // that a reusable NSMETA closure could or should include.
@@ -222,8 +349,7 @@ void ProjectGenericModel::collectTypeDependency(
         {
             if (const DeclaredTypeIdentity* declaration = resolveDeclaredTypeIdentity(
                     current, unit.projectOrdinal(), namespaceName, scope);
-                declaration != nullptr &&
-                !declaration->identityKey.starts_with(root.record.moduleName + "::"))
+                declaration != nullptr)
             {
                 root.record.externalTypeReferences.push_back(
                     {current->range(), "type:" + declaration->identityKey});
@@ -232,11 +358,11 @@ void ProjectGenericModel::collectTypeDependency(
         }
 
         TypeResolution resolution = resolveTypeTemplate(
-            unit, namespaceName, current->baseName(), current->typeArguments().size());
+            unit, namespaceName, current->baseName(), current->typeArguments().size(), scope);
         if (resolution.kind != TypeResolutionKind::Unique)
             resolution = resolveTypeTemplate(
                 unit, namespaceName, current->baseName(),
-                std::numeric_limits<std::size_t>::max());
+                std::numeric_limits<std::size_t>::max(), scope);
         TemplateState* target =
             resolution.kind == TypeResolutionKind::Unique ? resolution.state : nullptr;
         if (target == nullptr)
@@ -267,7 +393,85 @@ void ProjectGenericModel::collectCallDependency(
         call->typeSyntaxes().empty()) return;
 
     const ast::AstNode* callee = call->first();
+    if (callee != nullptr && callee->kind() == ast::AstNodeKind::IdentifierExpression &&
+        scope.genericLambdas.read().contains(callee->text()))
+        return;
     const std::string methodName = methodCalleeName(call);
+    if (callee != nullptr && callee->kind() == ast::AstNodeKind::MemberExpression &&
+        callee->first() != nullptr && callee->first()->kind() == ast::AstNodeKind::IndexExpression &&
+        callee->first()->first() != nullptr &&
+        callee->first()->first()->kind() == ast::AstNodeKind::ThisExpression &&
+        root.syntax != nullptr && root.record.kind != GenericTemplateKind::Method &&
+        ownerName == appendOwner(root.record.ownerName, root.record.name) && root.syntax->typeSyntaxes().empty())
+    {
+        std::vector<TemplateState*> returnOwners;
+        bool unknown = false;
+        bool complexGetter = false;
+        std::size_t indexerCount = 0;
+        for (const ast::AstNode* member : root.syntax->children())
+            if (member != nullptr && member->kind() == ast::AstNodeKind::IndexerDeclaration)
+            {
+                ++indexerCount;
+                bool getterMatches = false;
+                for (const ast::AstNode* accessor : member->children())
+                {
+                    if (accessor == nullptr || accessor->text() != "get_Item") continue;
+                    for (const ast::AstNode* parameter : accessor->children())
+                        if (parameter != nullptr && parameter->kind() == ast::AstNodeKind::ParameterDeclaration &&
+                            (parameter->isVariadic() || parameter->isReference() || parameter->first() != nullptr))
+                            complexGetter = true;
+                    if (valueParameterCount(accessor) == callee->first()->children().size()) getterMatches = true;
+                }
+                if (!getterMatches) continue;
+                if (member->typeSyntax() == nullptr || member->typeSyntax()->typeArguments().empty())
+                {
+                    unknown = true;
+                    break;
+                }
+                const TypeResolution candidate = resolveTypeTemplate(
+                    unit, namespaceName, member->typeSyntax()->baseName(),
+                    member->typeSyntax()->typeArguments().size(), scope);
+                if (candidate.kind != TypeResolutionKind::Unique || candidate.state == nullptr ||
+                    candidate.state->syntax == nullptr || !candidate.state->syntax->typeSyntaxes().empty())
+                {
+                    unknown = true;
+                    break;
+                }
+                if (std::ranges::find(returnOwners, candidate.state) == returnOwners.end())
+                    returnOwners.push_back(candidate.state);
+            }
+        if (!unknown && !(indexerCount > 1U && complexGetter) && !returnOwners.empty())
+        {
+            const auto methods = methodsByName_.find(methodName);
+            std::vector<std::string> dependencies;
+            bool complete = true;
+            for (const TemplateState* returnOwner : returnOwners)
+            {
+                bool found = false;
+                if (methods != methodsByName_.end())
+                    for (const TemplateState* candidate : methods->second)
+                        if (candidate != nullptr && candidate->parent == returnOwner->syntax &&
+                            templateVisible(unit.projectOrdinal(), candidate->record) &&
+                            genericArityAccepts(candidate->record, call->typeSyntaxes().size()) &&
+                            valueParameterCount(candidate->syntax) == call->children().size())
+                        {
+                            dependencies.push_back(candidate->record.canonicalKey);
+                            found = true;
+                        }
+                if (!found) { complete = false; break; }
+            }
+            if (complete)
+            {
+                root.record.dependencies.insert(root.record.dependencies.end(), dependencies.begin(), dependencies.end());
+                return;
+            }
+            if (returnOwners.size() == 1U)
+            {
+                root.record.unresolvedDependencies.push_back("missing generic method '" + methodName + "<...>'");
+                return;
+            }
+        }
+    }
     std::string requestedOwner = templateSourceSpelling(namespaceName, ownerName);
     if (callee != nullptr && callee->kind() == ast::AstNodeKind::MemberExpression)
     {
@@ -355,6 +559,10 @@ void ProjectGenericModel::collectTemplateDependencies(
 
     GenericLookupScope currentScope = scope;
     collectBodyDependencyImports(node, currentScope);
+    if (node->kind() == ast::AstNodeKind::LambdaExpression)
+        for (const ast::AstNode* child : node->children())
+            if (child != nullptr && child->kind() == ast::AstNodeKind::ParameterDeclaration)
+                currentScope.genericLambdas.write().erase(child->text());
 
     if (captureForeignReferenceCandidates_)
     {
@@ -403,6 +611,20 @@ void ProjectGenericModel::collectTemplateDependencies(
     }
     collectCallDependency(
         root, unit, node, currentNamespace, ownerName, currentScope);
+    if (node->kind() == ast::AstNodeKind::MemberExpression && node->first() != nullptr)
+    {
+        const std::string written = receiverSourceSpelling(node->first());
+        if (!written.empty())
+        {
+            const ast::TypeSyntax candidate(node->first()->range(), lexer::TokenKind::Identifier, written);
+            const DeclaredTypeIdentity* declaration = resolveDeclaredTypeIdentity(
+                &candidate, unit.projectOrdinal(), currentNamespace, currentScope);
+            // A value can shadow this spelling. Record only a potential dependency and leave the
+            // expression untouched, so the ordinary binding rules decide its meaning later.
+            if (declaration != nullptr && declaration->projectOrdinal == root.record.projectOrdinal)
+                root.record.candidateReceiverTypeKeys.push_back("type:" + declaration->identityKey);
+        }
+    }
 
     const std::string childOwner = node == rootSyntax
         ? ownerName
@@ -415,8 +637,35 @@ void ProjectGenericModel::collectTemplateDependencies(
     // ES: Los hijos se leen en su lugar: los frames de abajo solo guardan los punteros y aquí
     //     nada modifica la lista de hijos de `node`.
     const std::vector<ast::AstNode*>& children = node->children();
-    for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
-        stack.push_back(BodyFrame{*iterator, currentNamespace, childOwner, currentScope});
+    const bool hasLocalDeclaration = std::ranges::any_of(children, [](const ast::AstNode* child) {
+        return child != nullptr && child->kind() == ast::AstNodeKind::VariableDeclarationStatement;
+    });
+    if (!hasLocalDeclaration)
+    {
+        for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
+            stack.push_back(BodyFrame{*iterator, currentNamespace, childOwner, currentScope});
+    }
+    else
+    {
+        std::vector<GenericLookupScope> childScopes;
+        childScopes.reserve(children.size());
+        GenericLookupScope sequentialScope = currentScope;
+        for (ast::AstNode* child : children)
+        {
+            childScopes.push_back(sequentialScope);
+            if (child == nullptr || child->kind() != ast::AstNodeKind::VariableDeclarationStatement)
+                continue;
+            auto& lambdas = sequentialScope.genericLambdas.write();
+            lambdas.erase(child->text());
+            ast::AstNode* initializer = child->first();
+            if (initializer != nullptr && initializer->kind() == ast::AstNodeKind::LambdaExpression &&
+                !initializer->genericParameters().empty())
+                lambdas.emplace(child->text(), GenericLookupScope::GenericLambda{initializer, child, nullptr});
+        }
+        for (std::size_t index = children.size(); index > 0; --index)
+            stack.push_back(BodyFrame{children[index - 1U], currentNamespace, childOwner,
+                                      childScopes[index - 1U]});
+    }
     if (node->third() != nullptr)
         stack.push_back(BodyFrame{node->third(), currentNamespace, ownerName, currentScope});
     if (node->second() != nullptr)

@@ -104,8 +104,10 @@ bool decodeEscapeSummary(std::string_view encoded, EscapeSummary& summary, std::
     const char* nameLengthEnd = encoded.data() + colon;
     const auto parsed = std::from_chars(encoded.data(), nameLengthEnd, nameSize);
     encoded.remove_prefix(colon + 1);
+    // LKF-423: `nameSize + 1` wrapped to zero for SIZE_MAX and the next read went past the end.
+    // LKF-423: `nameSize + 1` daba cero con SIZE_MAX y la lectura siguiente salía del final.
     if (parsed.ec != std::errc{} || parsed.ptr != nameLengthEnd ||
-        encoded.size() < nameSize + 1 || encoded[nameSize] != '|')
+        nameSize >= encoded.size() || encoded[nameSize] != '|')
     { error = "corrupt escape summary length"; return false; }
     decoded.functionIdentity.assign(encoded.substr(0, nameSize));
     encoded.remove_prefix(nameSize + 1);
@@ -116,7 +118,7 @@ bool decodeEscapeSummary(std::string_view encoded, EscapeSummary& summary, std::
         int value = -1;
         const auto item = std::from_chars(encoded.data(), encoded.data() + comma, value);
         if (item.ec != std::errc{} || item.ptr != encoded.data() + comma ||
-            value < 0 || value > static_cast<int>(EscapeClass::Unknown))
+            value < 0 || value > static_cast<int>(EscapeClass::ObjectPointerGlobal))
         { error = "invalid escape class"; return false; }
         decoded.parameters.push_back(static_cast<EscapeClass>(value));
         encoded.remove_prefix(comma + 1);

@@ -1,0 +1,12 @@
+noinline decimal Divide(decimal a, decimal b) { return checked(a / b); }
+
+int Main()
+{
+    unsafe("test inexact checked decimal quotient")
+    {
+        i128 maximumBits = ((i128)1 << 96) - (i128)1;
+        decimal maximum = *((decimal*)&maximumBits);
+        decimal result = Divide(maximum, 2.0m);
+        return result == 0m ? 1 : 2;
+    }
+}

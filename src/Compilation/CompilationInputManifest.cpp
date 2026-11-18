@@ -420,6 +420,14 @@ void CompilationInputManifest::collectGraphInputs(const ProjectGraph& graph)
             //     regla de ruta que llvm_backend::ThinLtoLibrarySidecarCodec::pathFor.
             if (reference.runtimePath.empty() && !reference.libraryPath.empty())
             {
+                // Optional receiver contracts are inputs to any future
+                // semantic consumer. Their appearance, removal or change
+                // must alter the bundle key before lookup.
+                std::filesystem::path receiverSidecar = reference.libraryPath;
+                receiverSidecar += ".nsreceiver";
+                std::error_code receiverStatus;
+                if (std::filesystem::is_regular_file(receiverSidecar, receiverStatus))
+                    inputFiles_.push_back(std::move(receiverSidecar));
                 std::filesystem::path thinLtoSidecar = reference.libraryPath;
                 thinLtoSidecar.replace_extension(".nsthinlto");
                 std::error_code statusError;

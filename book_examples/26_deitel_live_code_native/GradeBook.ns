@@ -6,9 +6,8 @@ namespace NativeSharp.BookExamples.DeitelNative
     {
         private int[] grades;
 
-        public GradeBook(int[] source)
+        public GradeBook(int[] source) throws InvalidOperationException
         {
-            grades = new int[source.Length];
             int index = 0;
             while (index < source.Length)
             {
@@ -17,7 +16,13 @@ namespace NativeSharp.BookExamples.DeitelNative
                 {
                     throw new InvalidOperationException();
                 }
-                grades[index] = grade;
+                index = index + 1;
+            }
+            grades = new int[source.Length];
+            index = 0;
+            while (index < source.Length)
+            {
+                grades[index] = source[index];
                 index = index + 1;
             }
         }
@@ -92,7 +97,7 @@ namespace NativeSharp.BookExamples.DeitelNative
 
     public class GradeBookDemo
     {
-        public static int Run()
+        public static int Run() throws InvalidOperationException
         {
             int[] data = new int[] { 87, 68, 94, 100, 83, 78, 85, 91, 76, 87, 72, 88, 95, 63, 79 };
             raii GradeBook gradeBook = new GradeBook(data);

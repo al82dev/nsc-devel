@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # NS3-T02-F04 — Native records
 
 ## Estado
@@ -22,7 +24,7 @@ TERMINADA.
 
 ## Archivos nuevos
 
-- `tests/unit/NativeSharp3T02NativeRecordTests.cpp`: doce checks dirigidos de ejecución O0,
+- `tests/unit/NativeSharpT02NativeRecordTests.cpp`: doce checks dirigidos de ejecución O0,
   negativas semánticas, metadata malformada/downgrade y consumidor precompilado.
 - `tests/fixtures/nsmeta/historical-1.25.nsmeta`: último formato anterior, ahora histórico.
 - `docs/3.0/language/native-records.md`: contrato bilingüe de sintaxis, semántica y costos.

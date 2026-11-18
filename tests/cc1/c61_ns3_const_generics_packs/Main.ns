@@ -1,4 +1,4 @@
-// NativeSharp 3.0 / T04-F02 and F03 productive witness.
+// NativeSharp / T04-F02 and F03 productive witness.
 //
 // Values participate in specialization identity and array layout without a runtime dictionary.
 // A trailing type pack accepts zero, one or many types, can be counted in a specialized body,

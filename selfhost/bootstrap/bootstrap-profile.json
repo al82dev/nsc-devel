@@ -2,7 +2,7 @@
   "schema": "nativesharp-bootstrap-profile",
   "version": 1,
   "profile": "NativeSharp.BootstrapProfile/2.0",
-  "language": "NativeSharp 2.0",
+  "language": "NativeSharp",
   "target": "windows-x64-msvc",
   "known_reserved_keywords": [
     "void", "bool", "sbyte", "byte", "char", "short", "ushort", "int", "uint",

@@ -572,6 +572,7 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 node->children[0]->alignment != 0)
                 if (const auto alignment = fieldOrArrayAddressAlignment(node->children[0].get()))
                     LLVMSetAlignment(previous, static_cast<unsigned>(*alignment));
+            if (LLVMGetTypeKind(targetType) == LLVMVectorTypeKind) LLVMSetAlignment(previous, 1U);
             if (node->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
             if (const auto width = clangMsVolatileRecordFieldWidth(memberModel_, nameLookup_, node->children[0].get()))
             {
@@ -604,6 +605,7 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 LLVMSetOrdering(previous, LLVMAtomicOrderingAcquire);
                 LLVMSetAlignment(previous, static_cast<unsigned>(*node->children[0]->cppAtomicAlignmentBytes));
             }
+            clampAccessAlignment(previous, node->children[0].get());
         }
         if (previous == nullptr) return nullptr;
 
@@ -639,6 +641,7 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 node->children[0]->alignment != 0)
                 if (const auto alignment = fieldOrArrayAddressAlignment(node->children[0].get()))
                     LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
+            if (LLVMGetTypeKind(LLVMTypeOf(updated)) == LLVMVectorTypeKind) LLVMSetAlignment(store, 1U);
             if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
             if (const auto width = clangMsVolatileRecordFieldWidth(memberModel_, nameLookup_, node->children[0].get()))
             {
@@ -671,6 +674,7 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
                 LLVMSetAlignment(store, static_cast<unsigned>(*node->children[0]->cppAtomicAlignmentBytes));
             }
+            clampAccessAlignment(store, node->children[0].get());
         }
         if (storedValue == nullptr) return nullptr;
         return node->booleanValue ? previous : storedValue;
@@ -784,6 +788,15 @@ LLVMValueRef OopLlvmImplementation::stackAllocationFromParts(
         if (storage == nullptr)
             return failValue(error, "CC1 stackalloc failed to emit its array alloca");
         LLVMSetAlignment(storage, static_cast<unsigned>(node->alignment == 0 ? 1 : node->alignment));
+        // LKF-012: `stackalloc` and variable-length array storage start zeroed, like a fixed array
+        // local and a dynamic array. Without this a read before the first write returned whatever
+        // the frame held, and O0 and O2 disagreed.
+        LLVMValueRef memsetArguments[] = {
+            storage,
+            LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
+            bytes,
+            LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+        buildNoUnwindCall(memsetFunctionType_, memsetFunction_, memsetArguments, 4, "");
         return storage;
     }
 
@@ -804,9 +817,9 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             value = convert(value, node->children[1]->typeKey, node->typeKey, error);
             if (!value) return nullptr;
         }
-        // EN: Freeze 3.0 DEC-11: an element store of an array with live bits drops the old value
+        // EN: Freeze DEC-11: an element store of an array with live bits drops the old value
         //     only when it was alive, and leaves the slot alive.
-        // ES: Congelamiento 3.0 DEC-11: guardar un elemento de un arreglo con bits de vida destruye
+        // ES: Congelamiento DEC-11: guardar un elemento de un arreglo con bits de vida destruye
         //     el valor anterior solo si estaba vivo, y deja el slot vivo.
         const std::optional<OopLlvmArrayElementLiveness> liveness =
             takeArrayElementLiveness(node->children[0].get());
@@ -815,17 +828,81 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         {
             return storeBitFieldFromParts(node->children[0].get(), address, value, error);
         }
-        if (node->booleanValue && node->localOrdinal.has_value())
+        const auto* destination = node->children[0].get();
+        const auto parameterFlag = destination != nullptr &&
+            destination->kind == frontend::ProjectOopMirNodeKind::ParameterAddress &&
+            destination->parameterOrdinal.has_value()
+            ? parameterValueDropFlags_.find(*destination->parameterOrdinal)
+            : parameterValueDropFlags_.end();
+        const bool ownedValueParameter = node->booleanValue && memberModel_ != nullptr &&
+            memberModel_->typeRequiresValueDrop(node->typeKey) &&
+            parameterFlag != parameterValueDropFlags_.end();
+        const bool ownedArrayElement = node->booleanValue && memberModel_ != nullptr &&
+            memberModel_->typeRequiresValueDrop(node->typeKey) && liveness.has_value();
+        if (node->booleanValue && (node->localOrdinal.has_value() || ownedValueParameter || ownedArrayElement))
         {
-            const auto cleanup = std::find_if(
-                cleanupRegions_.begin(), cleanupRegions_.end(),
-                [&](const auto& entry)
-                {
-                    return entry.second != nullptr &&
-                        entry.second->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration &&
-                        entry.second->localOrdinal == node->localOrdinal;
-                });
-            if (cleanup == cleanupRegions_.end() || !emitRaiiDestroy(cleanup->second, error)) return nullptr;
+            // A call can return a value that already owns resources. Keep that result
+            // alive while the displaced local is destroyed, including on unwind.
+            const auto* source = node->children.size() > 1 ? node->children[1].get() : nullptr;
+            const bool ownedCallResult = memberModel_ != nullptr &&
+                memberModel_->typeRequiresValueDrop(node->typeKey) && source != nullptr &&
+                ((source->typeKey == node->typeKey &&
+                  (source->kind == frontend::ProjectOopMirNodeKind::DirectStaticCall ||
+                   source->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall ||
+                   source->kind == frontend::ProjectOopMirNodeKind::VirtualInstanceCall ||
+                   source->kind == frontend::ProjectOopMirNodeKind::InterfaceInstanceCall ||
+                   source->kind == frontend::ProjectOopMirNodeKind::DelegateInvoke ||
+                   source->kind == frontend::ProjectOopMirNodeKind::Conditional ||
+                   source->kind == frontend::ProjectOopMirNodeKind::ValueConstruct ||
+                   source->kind == frontend::ProjectOopMirNodeKind::MoveValue)) ||
+                 (node->kind == frontend::ProjectOopMirNodeKind::CompoundStore &&
+                  !node->calleeName.empty()));
+            std::size_t temporaryOrdinal = ~std::size_t{0};
+            std::unique_ptr<frontend::ProjectOopMirNode> temporary;
+            if (ownedCallResult)
+            {
+                while (cleanupRegions_.contains(temporaryOrdinal) || localStorage_.contains(temporaryOrdinal))
+                    --temporaryOrdinal;
+                LLVMValueRef slot = entryBlockAlloca(
+                    LLVMTypeOf(value), structAlignmentFor(node->typeKey), "value.replace.call.temporary");
+                if (slot == nullptr) return failValue(error, "value replacement has no temporary storage");
+                LLVMBuildStore(builder_, value, slot);
+                temporary = std::make_unique<frontend::ProjectOopMirNode>();
+                temporary->kind = frontend::ProjectOopMirNodeKind::LocalDeclaration;
+                temporary->typeKey = node->typeKey;
+                temporary->localOrdinal = temporaryOrdinal;
+                temporary->cleanupRegionOrdinal = temporaryOrdinal;
+                temporary->stringValue = "value.replacement.call.cleanup";
+                cleanupChainCache_.erase(temporaryOrdinal);
+                cleanupRegions_.emplace(temporaryOrdinal, temporary.get());
+                localStorage_.emplace(temporaryOrdinal, slot);
+                activeCleanupRegions_.push_back(temporaryOrdinal);
+            }
+            bool destroyed = false;
+            if (ownedValueParameter)
+                destroyed = emitValueDrop(node, address, parameterFlag->second, "value.param.replace", error);
+            else if (ownedArrayElement)
+                destroyed = dropReplacedArrayElement(address, node->typeKey, *liveness, error);
+            else
+            {
+                const auto cleanup = std::find_if(
+                    cleanupRegions_.begin(), cleanupRegions_.end(),
+                    [&](const auto& entry)
+                    {
+                        return entry.second != nullptr &&
+                            entry.second->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration &&
+                            entry.second->localOrdinal == node->localOrdinal;
+                    });
+                destroyed = cleanup != cleanupRegions_.end() && emitRaiiDestroy(cleanup->second, error);
+            }
+            if (ownedCallResult)
+            {
+                activeCleanupRegions_.pop_back();
+                cleanupRegions_.erase(temporaryOrdinal);
+                cleanupChainCache_.erase(temporaryOrdinal);
+                localStorage_.erase(temporaryOrdinal);
+            }
+            if (!destroyed) return nullptr;
         }
         else if (node->booleanValue && memberModel_ != nullptr &&
                  memberModel_->typeRequiresValueDrop(node->typeKey))
@@ -834,8 +911,90 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             {
                 if (!dropReplacedArrayElement(address, node->typeKey, *liveness, error)) return nullptr;
             }
-            else if (!emitValueDropAddress(address, node->typeKey, "value.replace", error))
-                return nullptr;
+            else
+            {
+                // Constructors keep a live bit for value fields that can need
+                // exceptional cleanup. A moved-from field is no longer alive and
+                // must not be destroyed when its slot is initialized again.
+                LLVMValueRef fieldFlag = nullptr;
+                const auto* field = node->children[0].get();
+                if (currentMirFunction_ != nullptr && currentMirFunction_->constructor &&
+                    field != nullptr && field->kind == frontend::ProjectOopMirNodeKind::FieldAddress &&
+                    field->memberOrdinal.has_value() && !field->children.empty() &&
+                    field->children.front() != nullptr &&
+                    field->children.front()->kind == frontend::ProjectOopMirNodeKind::ThisValue)
+                {
+                    for (const std::size_t ordinal : activeCleanupRegions_)
+                    {
+                        const auto action = cleanupRegions_.find(ordinal);
+                        const auto flag = localStorage_.find(ordinal);
+                        if (action != cleanupRegions_.end() && action->second != nullptr &&
+                            action->second->stringValue == "constructor.owned.field.cleanup" &&
+                            action->second->memberOrdinal == field->memberOrdinal && flag != localStorage_.end())
+                        {
+                            fieldFlag = flag->second;
+                            break;
+                        }
+                    }
+                }
+                if (fieldFlag == nullptr)
+                {
+                    if (!emitValueDropAddress(address, node->typeKey, "value.replace", error)) return nullptr;
+                }
+                else
+                {
+                    LLVMValueRef live = LLVMBuildLoad2(
+                        builder_, LLVMInt1TypeInContext(context_), fieldFlag, "value.replace.live");
+                    LLVMBasicBlockRef drop = appendBlock("value.replace.drop");
+                    LLVMBasicBlockRef ready = appendBlock("value.replace.ready");
+                    LLVMBuildCondBr(builder_, live, drop, ready);
+                    enterBlock(drop);
+                    const auto* source = node->children.size() > 1 ? node->children[1].get() : nullptr;
+                    const bool constructed = source != nullptr &&
+                        source->kind == frontend::ProjectOopMirNodeKind::ValueConstruct;
+                    const bool movedLocal = source != nullptr &&
+                        source->kind == frontend::ProjectOopMirNodeKind::MoveValue &&
+                        source->localOrdinal.has_value() && !source->parameterOrdinal.has_value() &&
+                        source->typeKey == node->typeKey && localValueDropFlags_.contains(*source->localOrdinal);
+                    const bool ownedTemporary = constructed || movedLocal;
+                    std::size_t temporaryOrdinal = ~std::size_t{0};
+                    std::unique_ptr<frontend::ProjectOopMirNode> temporary;
+                    if (ownedTemporary)
+                    {
+                        // The new value already owns its contents while the old destructor runs.
+                        // Give it an unwind cleanup until the store transfers that ownership.
+                        while (cleanupRegions_.contains(temporaryOrdinal) || localStorage_.contains(temporaryOrdinal))
+                            --temporaryOrdinal;
+                        LLVMValueRef slot = entryBlockAlloca(
+                            LLVMTypeOf(value), structAlignmentFor(node->typeKey), "value.replace.temporary");
+                        if (slot == nullptr) return failValue(error, "value replacement has no temporary storage");
+                        LLVMBuildStore(builder_, value, slot);
+                        temporary = std::make_unique<frontend::ProjectOopMirNode>();
+                        temporary->kind = frontend::ProjectOopMirNodeKind::LocalDeclaration;
+                        temporary->typeKey = node->typeKey;
+                        temporary->localOrdinal = temporaryOrdinal;
+                        temporary->cleanupRegionOrdinal = temporaryOrdinal;
+                        temporary->stringValue = "value.replacement.temporary.cleanup";
+                        cleanupChainCache_.erase(temporaryOrdinal);
+                        cleanupRegions_.emplace(temporaryOrdinal, temporary.get());
+                        localStorage_.emplace(temporaryOrdinal, slot);
+                        activeCleanupRegions_.push_back(temporaryOrdinal);
+                    }
+                    if (ownedTemporary)
+                        LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0), fieldFlag);
+                    const bool dropped = emitValueDropAddress(address, node->typeKey, "value.replace", error);
+                    if (ownedTemporary)
+                    {
+                        activeCleanupRegions_.pop_back();
+                        cleanupRegions_.erase(temporaryOrdinal);
+                        cleanupChainCache_.erase(temporaryOrdinal);
+                        localStorage_.erase(temporaryOrdinal);
+                    }
+                    if (!dropped) return nullptr;
+                    if (!terminated()) LLVMBuildBr(builder_, ready);
+                    enterBlock(ready);
+                }
+            }
         }
         else if (node->booleanValue && requiresOwnedDestruction(node->typeKey))
         {
@@ -947,6 +1106,9 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             node->children[0]->alignment != 0)
             if (const auto alignment = fieldOrArrayAddressAlignment(node->children[0].get()))
                 LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
+        if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::FutureFieldAddress ||
+            LLVMGetTypeKind(LLVMTypeOf(value)) == LLVMVectorTypeKind)
+            LLVMSetAlignment(store, 1U);
         if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
         if (const auto width = clangMsVolatileRecordFieldWidth(memberModel_, nameLookup_, node->children[0].get()))
         {
@@ -979,7 +1141,12 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
             LLVMSetAlignment(store, static_cast<unsigned>(*node->children[0]->cppAtomicAlignmentBytes));
         }
+        // LKF-436: a packed field is written with its real alignment. / LKF-436: un campo empaquetado
+        // se escribe con su alineación real.
+        clampAccessAlignment(store, node->children[0].get());
         if (liveness.has_value()) setArrayElementAlive(*liveness, true);
+        if (ownedValueParameter)
+            LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0), parameterFlag->second);
         if (node->localOrdinal.has_value())
         {
             const auto flag = localValueDropFlags_.find(*node->localOrdinal);
@@ -1054,6 +1221,8 @@ LLVMValueRef OopLlvmImplementation::tupleDeconstructFromParts(
                 findStructLayout(mirModel_, element->typeKey);
             if (targetStruct != nullptr && targetStruct->alignment > 1U)
                 LLVMSetAlignment(store, static_cast<unsigned>(targetStruct->alignment));
+            else if (LLVMGetTypeKind(LLVMTypeOf(value)) == LLVMVectorTypeKind)
+                LLVMSetAlignment(store, 1U);
         }
         return sourceValue;
     }
@@ -1075,6 +1244,14 @@ LLVMValueRef OopLlvmImplementation::collectArrayAllocationCount(
             {
                 LLVMValueRef value = lowerExpression(node->children[index].get(), error);
                 if (value == nullptr) return nullptr;
+                // LKF-096: a spread source is an array reference that may be null; its length is
+                // read from the array header, so a null source traps like any other null array
+                // access instead of reading address zero.
+                if (node->collectionSegments[index] == frontend::ProjectCollectionSegmentKind::Spread)
+                {
+                    value = checkedReceiver(value, error);
+                    if (value == nullptr) return nullptr;
+                }
                 segmentValues.push_back(value);
                 LLVMValueRef length = LLVMConstInt(LLVMInt64TypeInContext(context_), 1, 0);
                 if (node->collectionSegments[index] ==
@@ -1148,7 +1325,9 @@ bool OopLlvmImplementation::initializeArrayElements(
                 }
                 else
                 {
-                    LLVMBuildStore(builder_, segmentValues[index], destination);
+                    LLVMValueRef store = LLVMBuildStore(builder_, segmentValues[index], destination);
+                    if (LLVMGetTypeKind(LLVMTypeOf(segmentValues[index])) == LLVMVectorTypeKind)
+                        LLVMSetAlignment(store, 1U);
                 }
                 cursor = LLVMBuildAdd(
                     builder_, cursor, segmentLengths[index], "array.segment.cursor");
@@ -1159,9 +1338,13 @@ bool OopLlvmImplementation::initializeArrayElements(
         {
             LLVMValueRef value = lowerExpression(node->children[index].get(), error);
             if (value == nullptr) return false;
+            // LKF-440: an element that never completes ends the block; the caller sees it.
+            // LKF-440: un elemento que nunca termina cierra el bloque; el llamador lo ve.
+            if (terminated()) return true;
             const std::uint64_t bytePosition = dataOffset + (index - 1U) * node->immediate;
             LLVMValueRef address = byteOffset(memory, bytePosition, "array.init.element.addr");
-            LLVMBuildStore(builder_, value, address);
+            LLVMValueRef store = LLVMBuildStore(builder_, value, address);
+            if (LLVMGetTypeKind(LLVMTypeOf(value)) == LLVMVectorTypeKind) LLVMSetAlignment(store, 1U);
         }
         return true;
     }
@@ -1191,9 +1374,9 @@ LLVMValueRef OopLlvmImplementation::lowerArrayAllocate(const frontend::ProjectOo
             builder_, count, LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0), "array.data.bytes");
         LLVMValueRef total = LLVMBuildAdd(
             builder_, bytes, LLVMConstInt(LLVMInt64TypeInContext(context_), dataOffset, 0), "array.total.bytes");
-        // EN: Freeze 3.0 DEC-11: an array of structs with a destructor carries one live bit per
+        // EN: Freeze DEC-11: an array of structs with a destructor carries one live bit per
         //     element after its data. The block is zeroed below, so every slot starts dead.
-        // ES: Congelamiento 3.0 DEC-11: un arreglo de structs con destructor lleva un bit de vida por
+        // ES: Congelamiento DEC-11: un arreglo de structs con destructor lleva un bit de vida por
         //     elemento despues de sus datos. El bloque se pone en cero abajo: todo slot nace muerto.
         const bool tracked = arrayElementLivenessTracked(arrayAllocationElementType(node));
         LLVMValueRef livenessBytes = tracked ? arrayLivenessByteCount(count) : nullptr;
@@ -1224,10 +1407,22 @@ LLVMValueRef OopLlvmImplementation::lowerArrayAllocate(const frontend::ProjectOo
         // never dereferenced.
         if (!initializeArrayElements(
                 node, memory, dataOffset, segmentValues, segmentLengths, error)) return nullptr;
+        if (terminated())
+        {
+            // EN: LKF-440: an element never completed, so only a failed allocation reaches the merge.
+            // ES: LKF-440: un elemento nunca terminó, así que solo una reserva fallida llega a la unión.
+            enterBlock(mergeBlock);
+            LLVMValueRef onlyNull = LLVMBuildPhi(
+                builder_, LLVMPointerTypeInContext(context_, 0), "array.result");
+            LLVMValueRef nullValues[] = {LLVMConstNull(LLVMPointerTypeInContext(context_, 0))};
+            LLVMBasicBlockRef nullBlocks[] = {nullIncoming};
+            LLVMAddIncoming(onlyNull, nullValues, nullBlocks, 1);
+            return onlyNull;
+        }
         if (tracked && (node->booleanValue || hasCollectionSegments))
         {
-            // EN: Freeze 3.0 DEC-11: an initializer writes every element, so all start alive.
-            // ES: Congelamiento 3.0 DEC-11: un inicializador escribe cada elemento: todos nacen vivos.
+            // EN: Freeze DEC-11: an initializer writes every element, so all start alive.
+            // ES: Congelamiento DEC-11: un inicializador escribe cada elemento: todos nacen vivos.
             LLVMValueRef bitmapOffset = LLVMBuildAdd(
                 builder_, bytes, LLVMConstInt(LLVMInt64TypeInContext(context_), dataOffset, 0),
                 "array.live.offset");
@@ -1338,7 +1533,7 @@ LLVMValueRef OopLlvmImplementation::lowerRangeArrayAllocate(
         const std::size_t rank = node->nativeArrayRank;
         if (rank < 2 || node->children.size() != rank || node->immediate == 0 ||
             node->alignment == 0)
-            return failValue(error, "NativeSharp 3.0 rectangular allocation has invalid rank/layout");
+            return failValue(error, "NativeSharp rectangular allocation has invalid rank/layout");
         std::vector<LLVMValueRef> dimensions;
         if (!collectRangeArrayDimensions(node, dimensions, error)) return nullptr;
         const std::uint64_t rawHeader = 8U * (1U + 2U * rank);
@@ -1352,8 +1547,8 @@ LLVMValueRef OopLlvmImplementation::lowerRangeArrayAllocate(
             builder_, totalCount, LLVMConstInt(i64, node->immediate, 0), "range.data.bytes");
         LLVMValueRef totalBytes = LLVMBuildAdd(
             builder_, bytes, LLVMConstInt(i64, dataOffset, 0), "range.total.bytes");
-        // EN: Freeze 3.0 DEC-11: live bits after the data, zeroed with the block (all dead).
-        // ES: Congelamiento 3.0 DEC-11: bits de vida tras los datos, en cero con el bloque (muertos).
+        // EN: Freeze DEC-11: live bits after the data, zeroed with the block (all dead).
+        // ES: Congelamiento DEC-11: bits de vida tras los datos, en cero con el bloque (muertos).
         if (arrayElementLivenessTracked(arrayAllocationElementType(node)))
             totalBytes = LLVMBuildAdd(
                 builder_, totalBytes, arrayLivenessByteCount(totalCount), "range.total.live.bytes");
@@ -1391,7 +1586,7 @@ LLVMValueRef OopLlvmImplementation::lowerRangeArrayElementAddress(
 {
         const std::size_t rank = node->nativeArrayRank;
         if (rank < 2 || node->children.size() != rank + 1)
-            return failValue(error, "NativeSharp 3.0 rectangular index lost its rank");
+            return failValue(error, "NativeSharp rectangular index lost its rank");
         LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
         LLVMValueRef object = lowerExpression(node->children.front().get(), error);
         if (object == nullptr) return nullptr;
@@ -1444,9 +1639,9 @@ LLVMValueRef OopLlvmImplementation::lowerRangeArrayElementAddress(
         return address;
     }
 
-// EN: Freeze 3.0 DEC-11: whether arrays of `elementType` carry live bits: exactly the element
+// EN: Freeze DEC-11: whether arrays of `elementType` carry live bits: exactly the element
 //     types that need a value drop (a struct with a destructor or owned fields).
-// ES: Congelamiento 3.0 DEC-11: si los arreglos de `elementType` llevan bits de vida: justo los
+// ES: Congelamiento DEC-11: si los arreglos de `elementType` llevan bits de vida: justo los
 //     tipos de elemento que requieren drop de valor (un struct con destructor o campos owned).
 bool OopLlvmImplementation::arrayElementLivenessTracked(std::string_view elementType) const
 {
@@ -1541,6 +1736,8 @@ OopLlvmArrayElementAccess OopLlvmImplementation::arrayElementAccessFor(
         const bool firstChild = !user->children.empty() && user->children.front().get() == child;
         if (user->kind == frontend::ProjectOopMirNodeKind::Store && firstChild)
             return throughField ? OopLlvmArrayElementAccess::FieldStore : OopLlvmArrayElementAccess::WholeStore;
+        if (user->kind == frontend::ProjectOopMirNodeKind::CompoundStore && firstChild && !throughField)
+            return OopLlvmArrayElementAccess::ReadWrite;
         if (throughField) return OopLlvmArrayElementAccess::Read;
         if (user->kind == frontend::ProjectOopMirNodeKind::MoveArrayElement)
             return OopLlvmArrayElementAccess::Move;
@@ -1638,6 +1835,11 @@ bool OopLlvmImplementation::applyArrayElementAccess(
         {
             case OopLlvmArrayElementAccess::Read:
                 return emitGuard(arrayElementIsAlive(liveness), LlvmTrapReason::DeadElementRead, "array.dead", error);
+            case OopLlvmArrayElementAccess::ReadWrite:
+                if (!emitGuard(arrayElementIsAlive(liveness), LlvmTrapReason::DeadElementRead, "array.dead", error))
+                    return false;
+                arrayElementLiveness_[node] = liveness;
+                return true;
             case OopLlvmArrayElementAccess::Move:
                 if (!emitGuard(arrayElementIsAlive(liveness), LlvmTrapReason::DeadElementRead, "array.dead", error))
                     return false;
@@ -1702,6 +1904,7 @@ bool OopLlvmImplementation::dropReplacedArrayElement(
         LLVMBasicBlockRef readyBlock = appendBlock("value.replace.ready");
         LLVMBuildCondBr(builder_, arrayElementIsAlive(liveness), dropBlock, readyBlock);
         enterBlock(dropBlock);
+        setArrayElementAlive(liveness, false);
         if (!emitValueDropAddress(address, typeKey, "value.replace", error)) return false;
         if (!terminated()) LLVMBuildBr(builder_, readyBlock);
         enterBlock(readyBlock);

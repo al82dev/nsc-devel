@@ -4,6 +4,7 @@
 #include "Snapshot/PrecompiledSnapshotValidation.h"
 
 #include "nativesharp/Compilation/PrecompiledSemanticSnapshotCodec.h"
+#include "nativesharp/Frontend/ArrayReferenceLatePathProof.h"
 
 #include <string>
 #include <algorithm>
@@ -642,7 +643,31 @@ bool ProjectCompilation::buildDestructionModel()
 bool ProjectCompilation::buildConstructionModel()
 {
     constructionModel_ = std::make_unique<ProjectConstructionModel>();
+    constructionModel_->setVirtualDispatchModel(virtualDispatchModel_.get());
     constructionModel_->setPrecompiledSnapshots(precompiledSnapshots_);
+    std::vector<bool> guardedConstructors(nameLookup_->namedTypes().size(), false);
+    std::vector<bool> guardedDestructors(nameLookup_->namedTypes().size(), false);
+    for (std::size_t moduleIndex = 0; moduleIndex < precompiledModules_.size(); ++moduleIndex)
+    {
+        if (moduleIndex >= precompiledApiUnits_.size() || !precompiledApiUnits_[moduleIndex].has_value()) continue;
+        const std::size_t unitOrdinal = *precompiledApiUnits_[moduleIndex];
+        if (unitOrdinal >= units_.size() || units_[unitOrdinal] == nullptr) continue;
+        const FileId file = units_[unitOrdinal]->fileId();
+        for (const auto& record : precompiledModules_[moduleIndex].guardedReceiverContracts)
+        {
+            const auto ordinal = nameLookup_->typeOrdinalForIdentity(record.identity);
+            if (!ordinal.has_value() || *ordinal >= nameLookup_->namedTypes().size()) continue;
+            const auto& type = nameLookup_->namedTypes()[*ordinal];
+            if (!type.isPrecompiled || type.kind != NamedTypeDeclarationKind::Class || type.parts.empty()) continue;
+            bool sameUnit = true;
+            for (const auto& part : type.parts)
+                if (!part.isPrecompiled || part.fileId != file) { sameUnit = false; break; }
+            if (!sameUnit) continue;
+            if (record.kind == ReceiverContractKind::Constructor) guardedConstructors[*ordinal] = true;
+            if (record.kind == ReceiverContractKind::Destructor) guardedDestructors[*ordinal] = true;
+        }
+    }
+    constructionModel_->setGuardedReceiverContracts(std::move(guardedConstructors), std::move(guardedDestructors));
     if (precompiledSnapshotCapture_.has_value())
         constructionModel_->setPrecompiledSnapshotCaptureFile(precompiledSnapshotCapture_->fileId);
     const bool built = constructionModel_->build(
@@ -653,7 +678,9 @@ bool ProjectCompilation::buildConstructionModel()
         reportSink_("precompiled-snapshot-install: construction-classes=" +
             std::to_string(constructionModel_->installedSnapshotClassCount()));
     }
-    return built;
+    if (!built || diagnostics_.hasErrors()) return false;
+    reportArrayReferenceLatePaths(*this, methodBodyModel_->arrayReferenceReplayObservations(), diagnostics_);
+    return !diagnostics_.hasErrors();
 }
 
 // EN: Builds the object layout model with the accepted snapshots (plan 3.12) and, in the reference

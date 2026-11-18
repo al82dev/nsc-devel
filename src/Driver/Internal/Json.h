@@ -14,6 +14,8 @@ struct Json final
     using Array = std::vector<Json>;
     std::variant<std::nullptr_t, bool, double, std::string, Object, Array> value = nullptr;
 
+    std::string numberText;
+
     const Object *object() const;
     const Array *array() const;
     const std::string *string() const;

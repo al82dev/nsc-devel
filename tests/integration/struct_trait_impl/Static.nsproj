@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>StructImplStatic</Name></PropertyGroup><ItemGroup><Compile Include="Static.ns" /></ItemGroup></Project>

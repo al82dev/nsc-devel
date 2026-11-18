@@ -1,0 +1,1 @@
+namespace Alpha { public class Base { public int Same; public void SetBase() { Same=3; } public int ReadBase() { return Same; } } }

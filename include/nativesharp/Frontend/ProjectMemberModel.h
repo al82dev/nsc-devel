@@ -13,6 +13,7 @@
 #include "nativesharp/Frontend/CppImportedStaticField.h"
 #include "nativesharp/Frontend/ModuleInitializationRecord.h"
 #include "nativesharp/Frontend/PrecompiledMemberIdentity.h"
+#include <unordered_set>
 #include "nativesharp/Frontend/MemberBodyBindingKind.h"
 #include "nativesharp/Frontend/MemberBodyBinding.h"
 #include "nativesharp/AST/TypeSyntax.h"
@@ -88,6 +89,12 @@ public:
     std::span<const std::size_t> membersDeclaredByType(
         std::size_t typeOrdinal) const noexcept;
     bool hasMembersDeclaredByTypeIndex() const noexcept;
+    void addTrivialCleanupRootTypeKey(std::string key);
+    bool isTrivialCleanupRootTypeKey(const std::string& key) const noexcept;
+    void addNonEscapingLifecycleTypeKey(std::string key);
+    bool isNonEscapingLifecycleTypeKey(const std::string& key) const noexcept;
+    void addIdentitySafeLifecycleTypeKey(std::string key);
+    bool isIdentitySafeLifecycleTypeKey(const std::string& key) const noexcept;
     // EN: Ordinals of membersOfType(typeOrdinal) whose symbol is a user conversion, in the same
     //     order. Only meaningful when hasUserConversionIndex() is true (after build()).
     // ES: Ordinales de membersOfType(typeOrdinal) cuyo símbolo es una conversión de usuario, en
@@ -109,6 +116,11 @@ public:
     std::string canonicalTypeKey(
         const ast::TypeSyntax* syntax,
         const ProjectNameLookup& nameLookup) const;
+    // Returns the single argument of a deferred unsafe thread-marker impl only
+    // when its declaration and all three marker identities are exact.
+    std::optional<std::string> conditionalUnsafeThreadArgument(
+        const NamedTypeDeclaration& declaration, std::string_view markerTypeKey,
+        const ProjectNameLookup& nameLookup) const;
     static std::string canonicalGenericArgumentKey(
         std::string_view spelling,
         const ProjectNameLookup& nameLookup);
@@ -119,7 +131,7 @@ public:
     // `owned`, which callers check separately.
     bool typeTransitivelyOwnsStorage(std::string_view typeKey) const;
 
-    // NativeSharp 3.0 T06-F02. A custom value destructor is a semantic barrier for partial
+    // NativeSharp T06-F02. A custom value destructor is a semantic barrier for partial
     // moves: it is written against the complete value and cannot observe a fabricated mixture
     // of live and moved fields. The query is transitive through tuples, fixed arrays and struct
     // fields so one outer drop flag can guard an entire value tree.
@@ -131,10 +143,12 @@ public:
     // capability, so constraints, calls and method-body flow all ask one canonical service.
     bool typeIsImplicitlyCopyable(std::string_view typeKey) const;
     bool typeIsMoveOnly(std::string_view typeKey) const;
-    // EN: Freeze 3.0 (receiver temporaries): plain data -- scalars, enums, and tuples, fixed
+    // Whether shared static storage can transitively expose an Rc or WeakRc value.
+    bool typeContainsThreadLocalSharedPointer(std::string_view typeKey) const;
+    // EN: Freeze (receiver temporaries): plain data -- scalars, enums, and tuples, fixed
     //     arrays and structs built only of plain data, with nothing to destroy. A copy of plain
     //     data can never refer into the value it was read from.
-    // ES: Congelamiento 3.0 (temporales receptores): datos simples -- escalares, enums, y tuplas,
+    // ES: Congelamiento (temporales receptores): datos simples -- escalares, enums, y tuplas,
     //     arreglos fijos y structs hechos solo de datos simples, sin nada que destruir. Una copia
     //     de datos simples nunca puede apuntar dentro del valor del que se leyo.
     bool typeIsPlainData(std::string_view typeKey) const;
@@ -181,6 +195,9 @@ public:
         std::string& error) const;
 
 private:
+    std::unordered_set<std::string> trivialCleanupRootTypeKeys_;
+    std::unordered_set<std::string> nonEscapingLifecycleTypeKeys_;
+    std::unordered_set<std::string> identitySafeLifecycleTypeKeys_;
     friend struct ProjectOopHirModelTestAccess;
 
     const std::string* resolvedGenericTypeIdentity(
@@ -592,6 +609,8 @@ private:
     std::vector<ModuleInitializationRecord> moduleInitializers_;
     std::vector<MemberBodyBinding> bodyBindings_;
     std::vector<std::vector<std::size_t>> membersByType_;
+    // Reverse declared inheritance edges for the shared-static safety query.
+    std::vector<std::vector<std::size_t>> sharedStaticDerivedByType_;
     std::vector<std::vector<std::size_t>> membersDeclaredByType_;
     bool membersDeclaredByTypeIndexBuilt_ = false;
     std::vector<std::vector<std::size_t>> userConversionsByType_;

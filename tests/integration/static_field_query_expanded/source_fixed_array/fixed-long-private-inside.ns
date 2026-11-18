@@ -1,0 +1,1 @@
+class Record { private long[4] Hidden; public long[4] Visible; public int Count() { int n=0; static foreach(field in Fields(Record)) { if(field.Name=="Hidden") n=n+1; if(field.Name=="Visible") n=n+1; } return n; } } int Main() { owned Record value=new Record(); return value.Count()==2 ? 0 : 1; }

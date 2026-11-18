@@ -18,9 +18,9 @@ void addCase(TestRegistry& registry, std::string id, TestFunction function)
         "PR", {"language", "compatibility"}, std::move(function)});
 }
 
-BinaryModuleContract module(std::string fingerprint = "abi", int metadata = 2)
+BinaryModuleContract module(std::string fingerprint = "abi")
 {
-    return {metadata, "windows-x64", std::move(fingerprint), true};
+    return {"windows-x64", std::move(fingerprint), true};
 }
 
 CompilationUnitContract unit(
@@ -44,12 +44,9 @@ void registerRejectedCompatibilityCase(TestRegistry& registry)
         context.expect(classifyModuleCompatibility(changed, valid) == ModuleCompatibility::Rejected &&
                 classifyModuleCompatibility(valid, changed) == ModuleCompatibility::Rejected,
             "TL-LANG-040 either non-Windows-x64 target must reject compatibility");
-        context.expect(classifyModuleCompatibility(module("abi", 3), module("abi", 2)) ==
-                ModuleCompatibility::Rejected,
-            "TL-LANG-040 a newer producer metadata major must reject compatibility");
-        context.expect(classifyModuleCompatibility(module("abi", 2), module("other", 3)) ==
+        context.expect(classifyModuleCompatibility(module("abi"), module("other")) ==
                 ModuleCompatibility::ExplicitAdapterRequired,
-            "TL-LANG-040 an older producer must continue to fingerprint classification");
+            "TL-LANG-040 different fingerprints must require explicit adaptation");
         changed = valid; changed.structurallyValid = false; changed.abiFingerprint = "other";
         context.expect(classifyModuleCompatibility(changed, valid) == ModuleCompatibility::Rejected,
             "TL-LANG-040 structural rejection must have priority over fingerprint mismatch");
@@ -237,7 +234,7 @@ void registerMigrationGuideCase(TestRegistry& registry)
             "TL-LANG-049 order and identity uniqueness must be enforced exactly");
         for (const bool security : std::array{false, true})
             for (const bool deprecated : std::array{false, true})
-                context.expect(removalAllowedInThreeX(security, deprecated) ==
+                context.expect(removalAllowed(security, deprecated) ==
                         (security || deprecated),
                     "TL-LANG-049 removal must require either documented justification");
     });

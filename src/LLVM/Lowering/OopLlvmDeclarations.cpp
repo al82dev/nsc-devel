@@ -661,7 +661,7 @@ bool OopLlvmImplementation::declareFunction(
                      function.inliningPolicy == frontend::InliningPolicy::Required))
                 {
                     // A public inline body can be materialized by both its producer and any
-                    // NSMETA 1.13 consumer. They share one deterministic physical identity and
+                    // NSMETA consumer. They share one deterministic physical identity and
                     // therefore require symbol-scoped ODR/COMDAT linkage, never two strong defs.
                     applyOdrDefinition(llvmFunction);
                 }
@@ -832,7 +832,7 @@ bool OopLlvmImplementation::declareValueDropEntries(std::string& error)
         valueDropEntryFunctionType_ = LLVMFunctionType(
             LLVMVoidTypeInContext(context_), parameters, 1, 0);
         if (valueDropEntryFunctionType_ == nullptr)
-            return fail(error, "NativeSharp 3.0 could not create the value drop-glue ABI");
+            return fail(error, "NativeSharp could not create the value drop-glue ABI");
 
         for (const frontend::ProjectOopMirStructLayout& layout : mirModel_.structLayouts())
         {
@@ -840,7 +840,7 @@ bool OopLlvmImplementation::declareValueDropEntries(std::string& error)
             LLVMValueRef function = LLVMAddFunction(
                 module_, layout.dropGlueEntryName.c_str(), valueDropEntryFunctionType_);
             if (function == nullptr)
-                return fail(error, "NativeSharp 3.0 could not declare value drop glue '" +
+                return fail(error, "NativeSharp could not declare value drop glue '" +
                     layout.dropGlueEntryName + "'");
             applyUwtableAttribute(function);
             valueDropEntries_[layout.typeKey] = FunctionInfo{
@@ -1107,7 +1107,7 @@ bool OopLlvmImplementation::defineRttiHelpers(std::string& error)
         }
 
         if (!declareRttiHelpers(error)) return false;
-        // NativeSharp 1.0.1 / composable libraries. These helpers inspect an object's public
+        // Composable libraries: these helpers inspect an object's public
         // descriptor shape but are implementation details of the module that emits the test.
         // External linkage made every independently compiled .lib define the same two strong
         // COFF symbols; the first real producer/consumer link therefore failed before main.
@@ -1321,6 +1321,27 @@ bool OopLlvmImplementation::defineTypedCatchFilters(std::string& error)
                 continue;
             if (function.body == nullptr) continue; // imported C declarations carry no body
             collectTypedCatchTypeOrdinals(function.body.get(), typedCatchOrdinals);
+        }
+
+        // A poll can convert an escaping typed exception to its future even
+        // when the producer contains no source-level catch for that type.
+        // Only add types with an existing descriptor; otherwise the poll's
+        // bridge retains its conservative unwind fallback.
+        std::unordered_set<std::size_t> availableTypes;
+        for (const auto& table : mirModel_.dispatchTables()) availableTypes.insert(table.typeOrdinal);
+        std::unordered_set<std::size_t> includedTypes(typedCatchOrdinals.begin(), typedCatchOrdinals.end());
+        for (const frontend::ProjectOopMirFunction& function : mirModel_.functions())
+        {
+            const std::size_t ordinal = static_cast<std::size_t>(
+                &function - mirModel_.functions().data());
+            if (function.isTransportedInlineBody &&
+                (ordinal >= reachableDefinitions_.size() || reachableDefinitions_[ordinal] == 0U)) continue;
+            if (function.body == nullptr || !function.mangledName.ends_with("$poll") ||
+                function.errorTypeKey.empty() || memberModel_ == nullptr) continue;
+            const auto typeOrdinal = memberModel_->typeOrdinalForTypeKey(function.errorTypeKey);
+            if (typeOrdinal.has_value() && availableTypes.contains(*typeOrdinal) &&
+                isClassReferenceType(nameLookup_, function.errorTypeKey) && includedTypes.insert(*typeOrdinal).second)
+                typedCatchOrdinals.push_back(*typeOrdinal);
         }
 
         for (std::size_t typeOrdinal : typedCatchOrdinals)

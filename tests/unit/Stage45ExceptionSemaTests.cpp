@@ -196,9 +196,13 @@ class H
 }
 )NS", "previous catch-all handles every exception");
 
+    // EN: Since 519638b47 the parser rejects a try without a handler before semantic analysis, with
+    //     "expected 'catch' or 'finally' after try block"; the semantic message is no longer reached.
+    // ES: Desde 519638b47 el parser rechaza un try sin handler antes del análisis semántico, con
+    //     "expected 'catch' or 'finally' after try block"; el mensaje semántico ya no se alcanza.
     expectReject(tests, root, "BareTry", R"NS(
 class H { public static void F() { try { int x = 0; } } }
-)NS", "requires at least one catch clause or a finally block");
+)NS", "expected 'catch' or 'finally' after try block");
 }
 }
 

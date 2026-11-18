@@ -1,0 +1,101 @@
+public class CompoundIndexCounter
+{
+    public static int calls;
+    public static int Index() { calls = calls + 1; return 0; }
+    public static int IndexOther() { calls = calls + 1; return 1; }
+    public static PairIn MutateAndReturn(PairIn[] values)
+    {
+        values[0] = new PairIn(100.0, 200.0);
+        return new PairIn(3.0, 4.0);
+    }
+}
+
+int Main()
+{
+    PairIn a = new PairIn(1.0, 2.0);
+    PairIn b = new PairIn(3.0, 4.0);
+    if (PairIn.Read(in a) != 3.0 || PairIn.Read(in b) != 7.0) return 1;
+    if (PairIn.Named(second: in b, first: in a) != 1234.0) return 5;
+    if (PairIn.MutateCopy(a) != 92.0 || a.x != 1.0 || a.y != 2.0) return 6;
+    PairIn mutable = new PairIn(1.0, 2.0);
+    PairIn.Mutate(ref mutable);
+    if (mutable.x != 11.0 || mutable.y != 22.0) return 7;
+    PairIn filled = new PairIn(0.0, 0.0);
+    PairIn.Fill(out filled);
+    if (filled.x != 7.0 || filled.y != 8.0) return 8;
+    PairValue va = new PairValue(1.0, 2.0);
+    PairValue vb = new PairValue(3.0, 4.0);
+    PairValue vr = va + vb;
+    if (vr.x != 4.0 || vr.y != 6.0 || va.x != 1.0 || vb.y != 4.0) return 2;
+    va += vb;
+    if (va.x != 4.0 || va.y != 6.0 || vb.x != 3.0 || vb.y != 4.0) return 15;
+    SmallIn sa = new SmallIn(4);
+    SmallIn sb = new SmallIn(5);
+    SmallIn sr = sa + sb;
+    if (sr.x != 9) return 3;
+    PairIn result = a + b;
+    if (result.x != 4.0 || result.y != 6.0 || a.x != 1.0 || b.y != 4.0) return 4;
+    PairIn aliasResult = a + a;
+    if (aliasResult.x != 2.0 || aliasResult.y != 4.0 || a.x != 1.0 || a.y != 2.0) return 14;
+    PairIn equal = new PairIn(1.0, 2.0);
+    PairIn different = new PairIn(1.0, 3.0);
+    if (!(a == equal) || !(a != different) || a == different) return 13;
+    PairIn scaleLeft = a * 2.0;
+    PairIn scaleRight = 2.0 * a;
+    if (scaleLeft.x != 2.0 || scaleLeft.y != 4.0) return 11;
+    if (scaleRight.x != 2.0 || scaleRight.y != 4.0) return 12;
+    scaleLeft *= 2.0;
+    if (scaleLeft.x != 4.0 || scaleLeft.y != 8.0) return 18;
+    raii PairInHolder holder = new PairInHolder();
+    holder.left = new PairIn(1.0, 2.0);
+    holder.right = new PairIn(3.0, 4.0);
+    PairIn fieldResult = holder.left + holder.right;
+    if (fieldResult.x != 4.0 || fieldResult.y != 6.0) return 9;
+    PairIn[] values = new PairIn[2];
+    values[0] = new PairIn(1.0, 2.0);
+    values[1] = new PairIn(3.0, 4.0);
+    PairIn arrayResult = values[0] + values[1];
+    bool arrayOk = arrayResult.x == 4.0 && arrayResult.y == 6.0;
+    values[CompoundIndexCounter.Index()] += values[1];
+    if (CompoundIndexCounter.calls != 1 || values[0].x != 4.0 || values[0].y != 6.0) return 16;
+    values[0] += values[0];
+    if (values[0].x != 8.0 || values[0].y != 12.0) return 17;
+    values[0] = new PairIn(1.0, 2.0);
+    values[CompoundIndexCounter.Index()] += CompoundIndexCounter.MutateAndReturn(values);
+    if (CompoundIndexCounter.calls != 2 || values[0].x != 103.0 || values[0].y != 204.0) return 19;
+    RefAddition[] refs = new RefAddition[2];
+    refs[0] = new RefAddition(1);
+    refs[1] = new RefAddition(2);
+    refs[CompoundIndexCounter.Index()] += refs[CompoundIndexCounter.IndexOther()];
+    if (CompoundIndexCounter.calls != 4 || refs[0].value != 113 || refs[1].value != 102) return 20;
+    refs[0] = new RefAddition(1);
+    refs[0] += refs[0];
+    if (refs[0].value != 222) return 21;
+    delete[] refs;
+    InRefAddition inRef = new InRefAddition(1);
+    InRefAddition inRefExpected = inRef + inRef;
+    inRef = new InRefAddition(1);
+    inRef += inRef;
+    if (inRef.value != inRefExpected.value || inRef.value != 4) return 22;
+    RefInAddition refIn = new RefInAddition(1);
+    RefInAddition refInExpected = refIn + refIn;
+    refIn = new RefInAddition(1);
+    refIn += refIn;
+    if (refIn.value != refInExpected.value || refIn.value != 4) return 23;
+    ScalarConversion[] converted = new ScalarConversion[1];
+    converted[0] = new ScalarConversion(1);
+    converted[CompoundIndexCounter.Index()] += 2;
+    if (CompoundIndexCounter.calls != 5 || converted[0].value != 3 || ScalarConversion.conversions != 1) return 24;
+    delete[] converted;
+    TemporaryInLeft temporaryLeft = new TemporaryInLeft(1);
+    temporaryLeft += new DroppableRight(2);
+    if (temporaryLeft.value != 3 || DroppableRight.drops != 1) return 25;
+    int[] numbers = new int[1];
+    numbers[0] = 1;
+    numbers[0] += 2;
+    if (numbers[0] != 3) return 26;
+    delete[] numbers;
+    delete[] values;
+    if (!arrayOk) return 10;
+    return 0;
+}

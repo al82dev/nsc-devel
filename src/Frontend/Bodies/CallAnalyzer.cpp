@@ -235,6 +235,220 @@ constexpr const char* kStructRootFacadeTypeKey = "<struct-root-facade>";
 constexpr const char* kEnumRootFacadeTypeKey = "<enum-root-facade>";
 constexpr const char* kIteratorFacadeTypeKey = "<iterator-facade>";
 
+// Only summarize a source method whose entire body copies its value parameter
+// into its ref/out parameter. Other effects require a separate flow summary.
+std::optional<std::pair<std::size_t, std::size_t>> simpleDelegateReplacement(
+    const ClassMemberSymbol& member)
+{
+    using K = ast::AstNodeKind;
+    if (!member.isStatic || member.isVirtual || member.isOverride || member.isPrecompiled ||
+        member.effects.contains(sema::Effect::Async) || member.effects.contains(sema::Effect::Generator) ||
+        !member.declaredErrorTypeKey.empty() || member.declaredTypeKey != "builtin:void" || member.parameters.size() != 2 ||
+        member.syntax == nullptr || member.syntax->first() == nullptr) return std::nullopt;
+    const ast::AstNode* body = member.syntax->first();
+    if (body->kind() != K::BlockStatement || body->children().size() != 1) return std::nullopt;
+    const ast::AstNode* statement = body->children().front();
+    const ast::AstNode* assignment = statement != nullptr && statement->kind() == K::ExpressionStatement
+        ? statement->first() : nullptr;
+    if (assignment == nullptr || assignment->kind() != K::AssignmentExpression ||
+        assignment->tokenKind() != TokenKind::Equal || assignment->first() == nullptr ||
+        assignment->second() == nullptr || assignment->first()->kind() != K::IdentifierExpression ||
+        assignment->second()->kind() != K::IdentifierExpression) return std::nullopt;
+    for (std::size_t target = 0; target < member.parameters.size(); ++target)
+    {
+        const std::size_t source = 1U - target;
+        if (member.parameters[target].name != assignment->first()->text() ||
+            member.parameters[source].name != assignment->second()->text() ||
+            (member.parameters[target].passKind != ParameterPassKind::Ref &&
+             member.parameters[target].passKind != ParameterPassKind::Out) ||
+            member.parameters[source].passKind != ParameterPassKind::Value ||
+            member.parameters[target].pointeeTypeKey != member.parameters[source].typeKey) continue;
+        return std::pair{target, source};
+    }
+    return std::nullopt;
+}
+
+// Recognize only a source body whose callable parameter is used directly and
+// linearly. Unknown uses are deliberately left for a future effect summary.
+std::optional<unsigned> directCallableParameterInvocations(
+    const ClassMemberSymbol& member, std::size_t parameterOrdinal)
+{
+    if (!member.isStatic || member.isVirtual || member.isOverride || member.isPrecompiled ||
+        member.effects.contains(sema::Effect::Async) || member.effects.contains(sema::Effect::Generator) ||
+        member.syntax == nullptr || member.syntax->first() == nullptr ||
+        parameterOrdinal >= member.parameters.size()) return std::nullopt;
+    const std::string& parameter = member.parameters[parameterOrdinal].name;
+    using K = ast::AstNodeKind;
+    std::vector<std::pair<const ast::AstNode*, const ast::AstNode*>> pending{{member.syntax->first(), nullptr}};
+    std::unordered_set<const ast::AstNode*> visited;
+    unsigned count = 0;
+    unsigned returns = 0;
+    while (!pending.empty())
+    {
+        const auto [node, parent] = pending.back();
+        pending.pop_back();
+        if (node == nullptr || !visited.insert(node).second) continue;
+        const K kind = node->kind();
+        if (kind == K::IfStatement || kind == K::WhileStatement || kind == K::DoWhileStatement ||
+            kind == K::ForStatement || kind == K::ForeachStatement || kind == K::SwitchStatement ||
+            kind == K::TryStatement || kind == K::LambdaExpression || kind == K::ConditionalExpression ||
+            kind == K::LoopExpression || kind == K::MatchExpression || kind == K::NullCoalescingExpression ||
+            (kind == K::BinaryExpression && (node->tokenKind() == TokenKind::AmpAmp ||
+                                             node->tokenKind() == TokenKind::PipePipe))) return std::nullopt;
+        if (kind == K::ReturnStatement && ++returns > 1) return std::nullopt;
+        if (kind == K::VariableDeclarationStatement && node->text() == parameter) return std::nullopt;
+        if (kind == K::IdentifierExpression && node->text() == parameter)
+        {
+            if (parent == nullptr || parent->kind() != K::CallExpression || parent->first() != node)
+                return std::nullopt;
+            ++count;
+        }
+        pending.emplace_back(node->first(), node);
+        pending.emplace_back(node->second(), node);
+        pending.emplace_back(node->third(), node);
+        for (const ast::AstNode* child : node->children()) pending.emplace_back(child, node);
+    }
+    return count;
+}
+
+struct IndirectViewArguments final
+{
+    ClassMemberSymbol callable;
+    MethodCallCandidate candidate;
+    std::vector<const ast::AstNode*> syntaxes;
+};
+
+template <typename Arguments, typename LocalTypeLookup, typename ExpressionTypeLookup>
+IndirectViewArguments prepareIndirectViewArguments(
+    const ast::AstNode* expression, const Arguments& arguments, LocalTypeLookup&& localType,
+    ExpressionTypeLookup&& expressionType)
+{
+    IndirectViewArguments result;
+    for (std::size_t i = 0; i < arguments.size() && i < expression->children().size(); ++i)
+    {
+        MethodParameterSymbol parameter;
+        parameter.passKind = arguments[i].argumentPassKind;
+        parameter.typeKey = arguments[i].typeKey;
+        parameter.pointeeTypeKey = arguments[i].typeKey;
+        const ast::AstNode* syntax = expression->children()[i];
+        if (syntax != nullptr && syntax->kind() == ast::AstNodeKind::UnaryExpression &&
+            (syntax->auxiliaryText() == "pass:ref" || syntax->auxiliaryText() == "pass:out"))
+        {
+            parameter.passKind = syntax->auxiliaryText() == "pass:ref"
+                ? ParameterPassKind::Ref : ParameterPassKind::Out;
+            if (syntax->first() != nullptr && syntax->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                if (const auto type = localType(syntax->first()->text()); type.has_value())
+                    parameter.pointeeTypeKey = *type;
+            }
+            else if (syntax->first() != nullptr && syntax->first()->kind() == ast::AstNodeKind::MemberExpression)
+            {
+                if (const auto type = expressionType(syntax->first()); type.has_value())
+                    parameter.pointeeTypeKey = *type;
+            }
+        }
+        result.callable.parameters.push_back(std::move(parameter));
+        result.candidate.argumentParameterOrdinals.push_back(i);
+        result.syntaxes.push_back(syntax);
+    }
+    return result;
+}
+
+// Add every owner recorded for an identifier alias; a reassignment may have
+// made any of these owners the source of a field borrowed by the expression.
+void appendAliasBorrowOwners(const ProjectMethodBodyModel& model, const ast::AstNode* root,
+                             std::size_t callableOrdinal, std::vector<std::size_t>& owners)
+{
+    if (root == nullptr || root->kind() != ast::AstNodeKind::IdentifierExpression) return;
+    const MethodNameBinding* binding = model.nameBinding(root, callableOrdinal);
+    if (binding == nullptr || !binding->localOrdinal.has_value() ||
+        *binding->localOrdinal >= model.locals().size()) return;
+    const MethodLocalSymbol& local = model.locals()[*binding->localOrdinal];
+    if (!local.localBorrowBindingOrdinal.has_value() ||
+        *local.localBorrowBindingOrdinal >= model.localBorrowBindings().size()) return;
+    const MethodLocalBorrowBinding& borrow = model.localBorrowBindings()[*local.localBorrowBindingOrdinal];
+    if (borrow.sourceOwnerLocalOrdinal.has_value()) owners.push_back(*borrow.sourceOwnerLocalOrdinal);
+    owners.insert(owners.end(), borrow.possibleSourceOwnerLocalOrdinals.begin(),
+                  borrow.possibleSourceOwnerLocalOrdinals.end());
+}
+
+void retainNestedPrefixBorrowOwners(
+    const ProjectMethodBodyModel& model,
+    const ast::AstNode* argument,
+    std::size_t callableOrdinal,
+    std::vector<std::size_t>& activeOwners)
+{
+    std::vector<const ast::AstNode*> pending{argument};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+        if (node->kind() == ast::AstNodeKind::UnaryExpression &&
+            (node->tokenKind() == TokenKind::PlusPlus || node->tokenKind() == TokenKind::MinusMinus))
+        {
+            const MethodExpressionTypeBinding* binding = model.expressionTypeBinding(node, callableOrdinal);
+            if (binding != nullptr && binding->ownership == sema::OwnershipKind::Borrowed &&
+                binding->ownershipSourceLocalOrdinal.has_value())
+            {
+                activeOwners.push_back(*binding->ownershipSourceLocalOrdinal);
+                if (binding->ownsStorageDestination && node->first() != nullptr &&
+                    node->first()->kind() == ast::AstNodeKind::MemberExpression)
+                    appendAliasBorrowOwners(model, node->first()->first(), callableOrdinal, activeOwners);
+            }
+        }
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+}
+
+void retainNestedPrefixBorrowFields(
+    const ProjectMethodBodyModel& model,
+    const ast::AstNode* expression,
+    std::size_t callableOrdinal,
+    std::vector<std::pair<std::size_t, std::size_t>>& activeFields,
+    std::vector<std::pair<std::size_t, std::size_t>>& activeParameterFields)
+{
+    std::vector<const ast::AstNode*> pending{expression};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+        if (node->kind() == ast::AstNodeKind::UnaryExpression &&
+            (node->tokenKind() == TokenKind::PlusPlus || node->tokenKind() == TokenKind::MinusMinus) &&
+            node->first() != nullptr && node->first()->kind() == ast::AstNodeKind::MemberExpression &&
+            node->first()->first() != nullptr &&
+            node->first()->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const MethodExpressionTypeBinding* value = model.expressionTypeBinding(node, callableOrdinal);
+            const MethodNameBinding* field = model.nameBinding(node->first(), callableOrdinal);
+            if (value != nullptr && value->ownership == sema::OwnershipKind::Borrowed &&
+                value->ownsStorageDestination && field != nullptr &&
+                field->kind == MethodNameBindingKind::ExplicitObjectField &&
+                field->candidateMemberOrdinals.size() == 1)
+            {
+                if (value->ownershipSourceLocalOrdinal.has_value())
+                {
+                    std::vector<std::size_t> owners{*value->ownershipSourceLocalOrdinal};
+                    appendAliasBorrowOwners(model, node->first()->first(), callableOrdinal, owners);
+                    for (const std::size_t owner : owners)
+                        activeFields.emplace_back(owner, field->candidateMemberOrdinals[0]);
+                }
+                if (value->ownershipSourceParameterOrdinal.has_value())
+                    activeParameterFields.emplace_back(*value->ownershipSourceParameterOrdinal,
+                                                       field->candidateMemberOrdinals[0]);
+            }
+        }
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+}
+
 NamedArgumentMap mapPositionalArguments(
     std::span<ast::AstNode* const> arguments,
     const ClassMemberSymbol& candidate,
@@ -603,6 +817,70 @@ ProjectMethodBodyModel::bindNamespaceFunctionMethodGroupArgument(
     return analyzed;
 }
 
+void ProjectMethodBodyModel::rememberDirectOwnedFieldArgument(
+    const ast::AstNode* expression, const ExpressionResult& argument,
+    std::size_t methodMemberOrdinal, std::size_t scopeOrdinal)
+{
+    if (!argument.valid || expression == nullptr ||
+        expression->kind() != ast::AstNodeKind::MemberExpression ||
+        expression->first() == nullptr ||
+        expression->first()->kind() != ast::AstNodeKind::IdentifierExpression ||
+        !argument.assignmentMemberOrdinal.has_value() || memberModel_ == nullptr ||
+        *argument.assignmentMemberOrdinal >= memberModel_->members().size() ||
+        !isReferenceTypeKey(argument.typeKey))
+        return;
+    const ClassMemberSymbol& field = memberModel_->members()[*argument.assignmentMemberOrdinal];
+    if (field.kind != ClassMemberKind::Field || field.isStatic ||
+        field.declaredOwnership != sema::OwnershipKind::Owned)
+        return;
+    const auto root = lookupScopeName(scopeOrdinal, expression->first()->text());
+    const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+    if (root.has_value() && root->kind == ScopeNameKind::Parameter && caller != nullptr &&
+        root->semanticOrdinal < caller->parameters.size() &&
+        caller->parameters[root->semanticOrdinal].ownership == sema::OwnershipKind::Borrowed)
+    {
+        activeArgumentParameterOwnedFields_.emplace_back(root->semanticOrdinal, *argument.assignmentMemberOrdinal);
+        return;
+    }
+    if (root.has_value() && root->kind == ScopeNameKind::Local && root->semanticOrdinal < locals_.size() &&
+        caller != nullptr)
+    {
+        const MethodLocalSymbol& local = locals_[root->semanticOrdinal];
+        if (local.localBorrowBindingOrdinal.has_value() &&
+            *local.localBorrowBindingOrdinal < localBorrowBindings_.size())
+        {
+            const MethodLocalBorrowBinding& borrow = localBorrowBindings_[*local.localBorrowBindingOrdinal];
+            const auto parameter = borrow.sourceOwnerParameterOrdinal.has_value()
+                ? borrow.sourceOwnerParameterOrdinal
+                : (borrow.possibleSourceOwnerParameterOrdinals.empty() ? std::nullopt
+                    : std::optional<std::size_t>(borrow.possibleSourceOwnerParameterOrdinals.front()));
+            const bool validLocals = (!borrow.sourceOwnerLocalOrdinal.has_value() ||
+                (*borrow.sourceOwnerLocalOrdinal < locals_.size() && locals_[*borrow.sourceOwnerLocalOrdinal].isRaii)) &&
+                std::ranges::all_of(borrow.possibleSourceOwnerLocalOrdinals,
+                    [&](std::size_t candidate) { return candidate < locals_.size() && locals_[candidate].isRaii; });
+            if (parameter.has_value() && validLocals && *parameter < caller->parameters.size() &&
+                caller->parameters[*parameter].ownership == sema::OwnershipKind::Borrowed &&
+                std::ranges::all_of(borrow.possibleSourceOwnerParameterOrdinals,
+                    [&](std::size_t candidate)
+                    { return candidate < caller->parameters.size() &&
+                        caller->parameters[candidate].ownership == sema::OwnershipKind::Borrowed; }))
+            {
+                activeArgumentParameterOwnedFields_.emplace_back(*parameter, *argument.assignmentMemberOrdinal);
+                if (borrow.sourceOwnerLocalOrdinal.has_value())
+                    activeArgumentOwnedFields_.emplace_back(*borrow.sourceOwnerLocalOrdinal,
+                                                            *argument.assignmentMemberOrdinal);
+                for (const std::size_t possible : borrow.possibleSourceOwnerLocalOrdinals)
+                    activeArgumentOwnedFields_.emplace_back(possible, *argument.assignmentMemberOrdinal);
+                return;
+            }
+        }
+    }
+    if (!root.has_value() || root->kind != ScopeNameKind::Local ||
+        root->semanticOrdinal >= locals_.size() || !locals_[root->semanticOrdinal].isRaii)
+        return;
+    activeArgumentOwnedFields_.emplace_back(root->semanticOrdinal, *argument.assignmentMemberOrdinal);
+}
+
 std::vector<ProjectMethodBodyModel::ExpressionResult>
 ProjectMethodBodyModel::analyzeNamespaceFunctionArguments(
     const ast::AstNode* expression,
@@ -618,6 +896,10 @@ ProjectMethodBodyModel::analyzeNamespaceFunctionArguments(
 {
     std::vector<ExpressionResult> arguments;
     arguments.reserve(argumentSyntaxes.size());
+    const std::size_t prefixBorrowBase = activePrefixArgumentOwnerLocals_.size();
+    bool arrayArgumentEscapes = false;
+    const std::size_t fieldBorrowBase = activeArgumentOwnedFields_.size();
+    const std::size_t parameterFieldBorrowBase = activeArgumentParameterOwnedFields_.size();
     if (forwardedReceiver != nullptr)
     {
         ExpressionResult receiverArgument = *forwardedReceiver;
@@ -625,6 +907,26 @@ ProjectMethodBodyModel::analyzeNamespaceFunctionArguments(
         receiverArgument.methodGroup = false;
         receiverArgument.extensionMethodGroup = false;
         receiverArgument.valid = true;
+        const MethodExpressionTypeBinding* receiverType = reference.receiverSyntax != nullptr
+            ? expressionTypeBinding(reference.receiverSyntax, callerCallableOrdinal) : nullptr;
+        if (receiverType != nullptr && receiverType->ownershipSourceLocalOrdinal.has_value() &&
+            (receiverType->ownership == sema::OwnershipKind::Borrowed ||
+             (receiverType->ownership == sema::OwnershipKind::Owned && !receiverType->ownershipTransfer)))
+            activePrefixArgumentOwnerLocals_.push_back(*receiverType->ownershipSourceLocalOrdinal);
+        else if (receiverType != nullptr && receiverType->ownership == sema::OwnershipKind::Borrowed)
+            retainNestedPrefixBorrowOwners(*this, reference.receiverSyntax, callerCallableOrdinal,
+                                          activePrefixArgumentOwnerLocals_);
+        if (receiverType != nullptr && receiverType->ownership == sema::OwnershipKind::Borrowed)
+            retainNestedPrefixBorrowFields(*this, reference.receiverSyntax, callerCallableOrdinal,
+                                          activeArgumentOwnedFields_, activeArgumentParameterOwnedFields_);
+        if (receiverArgument.readonlyBorrowedObject)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "borrowed argument requires a readonly-safe parameter; readonly borrowed object "
+                "cannot be passed to an unchecked function");
+            argumentsValid = false;
+        }
         arguments.push_back(std::move(receiverArgument));
     }
     for (std::size_t argumentOrdinal = 0;
@@ -644,9 +946,88 @@ ProjectMethodBodyModel::analyzeNamespaceFunctionArguments(
                 argument, std::move(analyzed), reference, argumentSyntaxes, argumentOrdinal,
                 callerCallableOrdinal, scopeOrdinal, forwardedReceiver != nullptr, diagnostics);
         }
+        if (analyzed.readonlyBorrowedObject)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, argument->range(),
+                "borrowed argument requires a readonly-safe parameter; readonly borrowed object "
+                "cannot be passed to an unchecked function");
+            argumentsValid = false;
+        }
         argumentsValid = argumentsValid && analyzed.valid && !analyzed.methodGroup;
+        if (analyzed.valid && analyzed.ownershipSourceLocalOrdinal.has_value() &&
+            (analyzed.ownership == sema::OwnershipKind::Borrowed ||
+             (analyzed.ownership == sema::OwnershipKind::Owned && !analyzed.ownershipTransfer)))
+            activePrefixArgumentOwnerLocals_.push_back(*analyzed.ownershipSourceLocalOrdinal);
+        if (analyzed.valid && analyzed.ownership == sema::OwnershipKind::Borrowed)
+            retainNestedPrefixBorrowOwners(*this, argument, callerCallableOrdinal, activePrefixArgumentOwnerLocals_);
+        const std::size_t fieldsBefore = activeArgumentOwnedFields_.size();
+        const std::size_t parameterFieldsBefore = activeArgumentParameterOwnedFields_.size();
+        rememberDirectOwnedFieldArgument(argument, analyzed, callerCallableOrdinal, scopeOrdinal);
+        if (activeArgumentOwnedFields_.size() != fieldsBefore ||
+            activeArgumentParameterOwnedFields_.size() != parameterFieldsBefore)
+        {
+            analyzed.ownership = sema::OwnershipKind::Borrowed;
+            analyzed.objectLifetimeOwnership = sema::OwnershipKind::Borrowed;
+            analyzed.storageOwnership = sema::OwnershipKind::Borrowed;
+            if (activeArgumentOwnedFields_.size() != fieldsBefore)
+                analyzed.ownershipSourceLocalOrdinal = activeArgumentOwnedFields_.back().first;
+            if (activeArgumentParameterOwnedFields_.size() != parameterFieldsBefore)
+                analyzed.ownershipSourceParameterOrdinal = activeArgumentParameterOwnedFields_.back().first;
+            recordExpressionType(argument, callerCallableOrdinal, scopeOrdinal, analyzed);
+        }
+        if (analyzed.valid && analyzed.ownership == sema::OwnershipKind::Borrowed)
+            retainNestedPrefixBorrowFields(*this, argument, callerCallableOrdinal, activeArgumentOwnedFields_,
+                                          activeArgumentParameterOwnedFields_);
+        // EN: Applied after this call's view checks: the array escapes during the call, not before it.
+        // ES: Se aplica tras las comprobaciones de vistas de esta llamada: escapa durante ella.
+        if (analyzed.valid && ProjectTypeConversion::isNativeArray(analyzed.typeKey))
+            arrayArgumentEscapes = true;
         arguments.push_back(std::move(analyzed));
     }
+    for (const ast::AstNode* argument : argumentSyntaxes)
+    {
+        if (argument == nullptr || argument->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+        if (forwardedReceiver != nullptr && argument == reference.receiverSyntax) continue;
+        if ((activeArgumentOwnedFields_.empty() && activeArgumentParameterOwnedFields_.empty()) ||
+            !hasActiveViewOfStorage(argument, callerCallableOrdinal, scopeOrdinal, true)) continue;
+        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error, argument->range(),
+            "cannot pass object with a borrowed field view to a potentially mutating call");
+        argumentsValid = false;
+    }
+    if (forwardedReceiver != nullptr &&
+        (!activeArgumentOwnedFields_.empty() || !activeArgumentParameterOwnedFields_.empty()) &&
+        reference.receiverSyntax != nullptr &&
+        reference.receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression &&
+        hasActiveViewOfStorage(reference.receiverSyntax, callerCallableOrdinal, scopeOrdinal, true))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error, reference.receiverSyntax->range(),
+            "cannot call potentially mutating method while a borrowed field view is alive");
+        argumentsValid = false;
+    }
+    // EN: Marking every array local before the checks made a freshly allocated array, passed for
+    //     the first time, conflict with an older view of unknown root (NSC-NEW-018).
+    // ES: Marcar cada local arreglo antes de las comprobaciones hacía que un arreglo recién creado,
+    //     pasado por primera vez, chocara con una vista anterior de raíz desconocida (NSC-NEW-018).
+    for (const ast::AstNode* argument : argumentSyntaxes)
+    {
+        const ast::AstNode* named = argument != nullptr && argument->kind() == ast::AstNodeKind::MoveExpression
+            ? argument->first() : argument;
+        if (named == nullptr || named->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+        const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, named->text());
+        if (name.has_value() && name->kind == ScopeNameKind::Local && name->semanticOrdinal < locals_.size())
+            locals_[name->semanticOrdinal].passedToCall = true;
+    }
+    if (arrayArgumentEscapes)
+        for (MethodLocalSymbol& local : locals_)
+            if (local.methodMemberOrdinal == callerCallableOrdinal &&
+                ProjectTypeConversion::isNativeArray(local.typeKey))
+                local.mayAliasUnknownReference = true;
+    activePrefixArgumentOwnerLocals_.resize(prefixBorrowBase);
+    activeArgumentOwnedFields_.resize(fieldBorrowBase);
+    activeArgumentParameterOwnedFields_.resize(parameterFieldBorrowBase);
     return arguments;
 }
 
@@ -735,7 +1116,11 @@ void ProjectMethodBodyModel::validateNamespaceFunctionCandidateArgumentOwnership
         arguments[argumentOrdinal].ownership == sema::OwnershipKind::Owned &&
         arguments[argumentOrdinal].ownershipTransfer &&
         arguments[argumentOrdinal].ownershipFreshOwner;
-    if (freshStringBorrow)
+    const bool postfixBorrow = !packElement && parameter.ownership == sema::OwnershipKind::Borrowed &&
+        arguments[argumentOrdinal].ownedPostfixTemporary &&
+        arguments[argumentOrdinal].ownership == sema::OwnershipKind::Owned &&
+        arguments[argumentOrdinal].ownershipTransfer && arguments[argumentOrdinal].ownershipFreshOwner;
+    if (freshStringBorrow || postfixBorrow)
     {
         evaluated.fullExpressionBorrowArgumentOrdinals.push_back(argumentOrdinal);
     }
@@ -789,9 +1174,9 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
     }
     ProjectImplicitConversion conversion =
         classifyImportedFlexibleConversion(arguments[argumentOrdinal], conversionTarget);
-    // EN: Freeze 3.0 P3: an `in` parameter only reads its argument, so a readonly place (another
+    // EN: Freeze P3: an `in` parameter only reads its argument, so a readonly place (another
     //     `in` parameter, a readonly field, a `ref readonly` result) may be lent to it.
-    // ES: Congelamiento 3.0 P3: un parametro `in` solo lee su argumento, asi que se le puede prestar
+    // ES: Congelamiento P3: un parametro `in` solo lee su argumento, asi que se le puede prestar
     //     un lugar readonly (otro parametro `in`, un campo readonly, un resultado `ref readonly`).
     const bool parameterPointeeReadonly =
         parameter.pointerPointeeReadonly || parameter.passKind == ParameterPassKind::In;
@@ -847,6 +1232,7 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
         // The temporary span owns no elements and cannot extend an owner lifetime.
         // Move-only and ownership-qualified values must be passed in a prebuilt span.
         evaluated.viable = false;
+        evaluated.invalidPackOwnershipArgumentOrdinal = argumentOrdinal;
     }
     else if (!implicitExtensionReceiverPass && conversion.exists() &&
         parameter.passKind == ParameterPassKind::Value &&
@@ -921,6 +1307,24 @@ void ProjectMethodBodyModel::reportNoViableNamespaceFunctionCall(
     const NamespaceFunctionCallBinding& call,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
+    const auto packOwnership = std::ranges::find_if(call.evaluatedCandidates,
+        [](const MethodCallCandidate& candidate)
+        {
+            return candidate.invalidPackOwnershipArgumentOrdinal.has_value();
+        });
+    if (packOwnership != call.evaluatedCandidates.end())
+    {
+        const std::size_t ordinal = *packOwnership->invalidPackOwnershipArgumentOrdinal;
+        const ast::AstNode* argument = ordinal < argumentSyntaxes.size()
+            ? argumentSyntaxes[ordinal] : expression;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            argument != nullptr ? argument->range() : expression->range(),
+            "an expanded params span only borrows its elements for the call; pass a non-owning reference, "
+            "or build a Span/ReadOnlySpan over the owners and pass it as the params argument");
+        return;
+    }
     for (const MethodCallCandidate& candidate : call.evaluatedCandidates)
     {
         if (!candidate.invalidMoveOnlyArgumentOrdinal.has_value()) continue;
@@ -1185,9 +1589,9 @@ void ProjectMethodBodyModel::recordNamespaceFunctionBorrows(
     }
 }
 
-// EN: Freeze 3.0 C-01 (plan item 115): `F(new T())` where the parameter of F is not `owned` gives the object
+// EN: Freeze C-01 (plan item 115): `F(new T())` where the parameter of F is not `owned` gives the object
 //     no owner: F only observes it, and destroying it after the call would free what F may have kept.
-// ES: Congelamiento 3.0 C-01 (elemento 115 del plan): `F(new T())` con un parámetro de F sin `owned` deja al
+// ES: Congelamiento C-01 (elemento 115 del plan): `F(new T())` con un parámetro de F sin `owned` deja al
 //     objeto sin dueño: F sólo lo observa, y destruirlo después de la llamada liberaría lo que F pudo guardar.
 void ProjectMethodBodyModel::rejectNamespaceNewToOrdinaryParameters(
     const ClassMemberSymbol& callable,
@@ -1224,6 +1628,441 @@ void ProjectMethodBodyModel::recordNamespaceFunctionDefaults(
     }
 }
 
+void ProjectMethodBodyModel::recordViewOutputOrigins(
+    std::span<const ast::AstNode* const> argumentSyntaxes,
+    std::span<const ExpressionResult> resolvedArguments,
+    const MethodCallCandidate& selected,
+    const ClassMemberSymbol& selectedMember,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics,
+    const ast::AstNode* receiverSyntax)
+{
+    // A mutable view argument may receive any view supplied by value in the
+    // same call. Preserve each known owner on the destination local; escape
+    // summaries currently do not encode a relation between two parameters.
+    MethodLocalSymbol viewInputs;
+    const ast::AstNode* receiverRoot = receiverSyntax;
+    while (receiverRoot != nullptr && (receiverRoot->kind() == ast::AstNodeKind::MemberExpression ||
+                                       receiverRoot->kind() == ast::AstNodeKind::IndexExpression))
+        receiverRoot = receiverRoot->first();
+    if (receiverRoot != nullptr && receiverRoot->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const auto root = lookupScopeName(scopeOrdinal, receiverRoot->text());
+        if (root.has_value() && (root->kind == ScopeNameKind::Local || root->kind == ScopeNameKind::Parameter))
+        {
+            viewInputs.viewSourceFields.push_back("@" + receiverRoot->text());
+            viewInputs.viewSourceIdentities.push_back({receiverRoot->text(), ViewSourceIdentityKind::Unknown, 0});
+        }
+    }
+    bool unknownViewOutputTarget = false;
+    for (std::size_t i = 0; i < resolvedArguments.size() &&
+         i < selected.argumentParameterOrdinals.size() && i < argumentSyntaxes.size(); ++i)
+    {
+        const std::size_t p = selected.argumentParameterOrdinals[i];
+        if (p >= selectedMember.parameters.size()) continue;
+        const MethodParameterSymbol& parameter = selectedMember.parameters[p];
+        // A reference argument can be the owner of a view written to an
+        // out/ref parameter, whether the parameter is explicitly borrowed or
+        // unqualified. Without a parameter-to-output summary, keep every such
+        // owner as a possible source instead of letting the view outlive it.
+        if (parameter.passKind == ParameterPassKind::Value &&
+            parameter.ownership != sema::OwnershipKind::Owned &&
+            isReferenceTypeKey(resolvedArguments[i].typeKey))
+        {
+            collectViewSourceFields(viewInputs, argumentSyntaxes[i], scopeOrdinal);
+            const auto addOwner = [&](std::string_view name)
+            {
+                const auto root = lookupScopeName(scopeOrdinal, name);
+                if (root.has_value() && (root->kind == ScopeNameKind::Local || root->kind == ScopeNameKind::Parameter))
+                {
+                    const std::string source = "@" + std::string(name);
+                    if (std::ranges::find(viewInputs.viewSourceFields, source) == viewInputs.viewSourceFields.end())
+                        viewInputs.viewSourceFields.push_back(source);
+                    const ViewSourceIdentity identity{std::string(name), ViewSourceIdentityKind::Unknown, 0};
+                    if (std::ranges::find(viewInputs.viewSourceIdentities, identity) == viewInputs.viewSourceIdentities.end())
+                        viewInputs.viewSourceIdentities.push_back(identity);
+                }
+            };
+            if (resolvedArguments[i].ownershipSourceLocalOrdinal.has_value() &&
+                *resolvedArguments[i].ownershipSourceLocalOrdinal < locals_.size())
+                addOwner(locals_[*resolvedArguments[i].ownershipSourceLocalOrdinal].name);
+            const std::size_t callerOrdinal = scopeOrdinal < scopes_.size()
+                ? scopes_[scopeOrdinal].methodMemberOrdinal : std::numeric_limits<std::size_t>::max();
+            if (const ClassMemberSymbol* caller = methodSymbol(callerOrdinal);
+                caller != nullptr && resolvedArguments[i].ownershipSourceParameterOrdinal.has_value() &&
+                *resolvedArguments[i].ownershipSourceParameterOrdinal < caller->parameters.size())
+                addOwner(caller->parameters[*resolvedArguments[i].ownershipSourceParameterOrdinal].name);
+            std::vector<const ast::AstNode*> pending{argumentSyntaxes[i]};
+            while (!pending.empty())
+            {
+                const ast::AstNode* node = pending.back(); pending.pop_back();
+                if (node == nullptr) continue;
+                if (node->kind() == ast::AstNodeKind::IdentifierExpression)
+                {
+                    const MethodNameBinding* binding = nameBinding(node, callerOrdinal);
+                    if (binding != nullptr &&
+                        (binding->kind == MethodNameBindingKind::Local || binding->kind == MethodNameBindingKind::Parameter) &&
+                        isReferenceTypeKey(binding->typeKey)) addOwner(node->text());
+                    continue;
+                }
+                if (node->kind() == ast::AstNodeKind::MemberExpression ||
+                    node->kind() == ast::AstNodeKind::IndexExpression ||
+                    node->kind() == ast::AstNodeKind::UnaryExpression)
+                    pending.push_back(node->first());
+                else if (node->kind() == ast::AstNodeKind::ConditionalExpression)
+                {
+                    pending.push_back(node->second());
+                    pending.push_back(node->third());
+                }
+                else if (node->kind() == ast::AstNodeKind::CallExpression)
+                {
+                    if (const MethodCallBinding* call = callBinding(node, callerOrdinal);
+                        call != nullptr && !call->staticCall) pending.push_back(call->receiverSyntax);
+                    for (const ast::AstNode* child : node->children()) pending.push_back(child);
+                }
+            }
+        }
+        if ((parameter.passKind == ParameterPassKind::Ref || parameter.passKind == ParameterPassKind::In) &&
+            (typeKeyIsViewLike(parameter.pointeeTypeKey) || tupleTypeKeyContainsView(parameter.pointeeTypeKey)))
+        {
+            const ast::AstNode* argument = argumentSyntaxes[i];
+            if (argument != nullptr && argument->kind() == ast::AstNodeKind::UnaryExpression)
+                collectViewSourceFields(viewInputs, argument->first(), scopeOrdinal);
+        }
+        if ((parameter.passKind == ParameterPassKind::Ref || parameter.passKind == ParameterPassKind::In) &&
+            memberModel_ != nullptr && memberModel_->typeIsMoveOnly(parameter.pointeeTypeKey))
+        {
+            const ast::AstNode* argument = argumentSyntaxes[i];
+            const ast::AstNode* owner = argument != nullptr &&
+                argument->kind() == ast::AstNodeKind::UnaryExpression ? argument->first() : nullptr;
+            while (owner != nullptr && (owner->kind() == ast::AstNodeKind::MemberExpression ||
+                                        owner->kind() == ast::AstNodeKind::IndexExpression))
+                owner = owner->first();
+            if (owner != nullptr && owner->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const auto root = lookupScopeName(scopeOrdinal, owner->text());
+                if (root.has_value() && (root->kind == ScopeNameKind::Local || root->kind == ScopeNameKind::Parameter))
+                {
+                    const std::string source = "@" + owner->text();
+                    viewInputs.viewSourceIdentities.push_back({owner->text(), ViewSourceIdentityKind::Unknown, 0});
+                    if (std::ranges::find(viewInputs.viewSourceFields, source) == viewInputs.viewSourceFields.end())
+                        viewInputs.viewSourceFields.push_back(source);
+                }
+            }
+        }
+        if (parameter.passKind != ParameterPassKind::Value ||
+            (!typeKeyIsViewLike(resolvedArguments[i].typeKey) &&
+             !tupleTypeKeyContainsView(resolvedArguments[i].typeKey))) continue;
+        collectViewSourceFields(viewInputs,
+            argumentSyntaxes[i], scopeOrdinal);
+    }
+    // Record uncertain call outputs without changing the existing diagnostics.
+    const auto recordUnknownOutput = [&](MethodLocalSymbol& target, bool exactDestination)
+    {
+        // Preserve possible local roots with semantic ordinals. Never recover
+        // an ordinal from an Unknown name or replace the Unknown observation.
+        const std::size_t callable = scopeOrdinal < scopes_.size()
+            ? scopes_[scopeOrdinal].methodMemberOrdinal : std::numeric_limits<std::size_t>::max();
+        if (exactDestination && target.methodMemberOrdinal == callable)
+            for (const ViewSourceIdentity& source : viewInputs.viewSourceIdentities)
+                if (source.kind == ViewSourceIdentityKind::Local && source.ordinal < locals_.size() &&
+                    locals_[source.ordinal].methodMemberOrdinal == callable &&
+                    std::ranges::find(target.viewSourceIdentities, source) == target.viewSourceIdentities.end())
+                    target.viewSourceIdentities.push_back(source);
+        for (const ViewUnknownOrigin& source : viewInputs.viewUnknownOrigins)
+            appendViewUnknownOrigin(target.viewUnknownOrigins, source);
+        const ViewUnknownOrigin callOrigin{
+            scopeOrdinal < scopes_.size() ? std::optional<std::size_t>(scopeOrdinal) : std::nullopt,
+            locals_.size()};
+        appendViewUnknownOrigin(target.viewUnknownOrigins, callOrigin);
+    };
+    for (std::size_t i = 0; i < resolvedArguments.size() &&
+         i < selected.argumentParameterOrdinals.size() && i < argumentSyntaxes.size(); ++i)
+    {
+        const std::size_t p = selected.argumentParameterOrdinals[i];
+        if (p >= selectedMember.parameters.size()) continue;
+        const MethodParameterSymbol& parameter = selectedMember.parameters[p];
+        if ((parameter.passKind != ParameterPassKind::Ref && parameter.passKind != ParameterPassKind::Out) ||
+            (!typeKeyIsViewLike(parameter.pointeeTypeKey) &&
+             !tupleTypeKeyContainsView(parameter.pointeeTypeKey))) continue;
+        const ast::AstNode* argument = argumentSyntaxes[i];
+        const ast::AstNode* destination = argument != nullptr &&
+            argument->kind() == ast::AstNodeKind::UnaryExpression ? argument->first() : nullptr;
+        if (destination == nullptr || destination->kind() != ast::AstNodeKind::IdentifierExpression)
+        {
+            unknownViewOutputTarget = true;
+            continue;
+        }
+        const auto name = lookupScopeName(scopeOrdinal, destination->text());
+        if (!name.has_value() || name->kind != ScopeNameKind::Local || name->semanticOrdinal >= locals_.size())
+        {
+            unknownViewOutputTarget = true;
+            continue;
+        }
+        MethodLocalSymbol& target = locals_[name->semanticOrdinal];
+        recordUnknownOutput(target, true);
+        if (!target.isReference) continue;
+        const auto& origin = target.referenceEscapeOrigin;
+        if (origin.kind == MethodEscapeOriginKind::CurrentFrameLocal && origin.ordinal.has_value() &&
+            *origin.ordinal < locals_.size() &&
+            target.referencePlaceKey == "L" + std::to_string(*origin.ordinal))
+        {
+            recordUnknownOutput(locals_[*origin.ordinal], true);
+            continue;
+        }
+        unknownViewOutputTarget = true;
+    }
+    if (unknownViewOutputTarget)
+    {
+        const std::size_t callable = scopeOrdinal < scopes_.size()
+            ? scopes_[scopeOrdinal].methodMemberOrdinal : std::numeric_limits<std::size_t>::max();
+        for (MethodLocalSymbol& possible : locals_)
+            if (possible.methodMemberOrdinal == callable && scopeContains(possible.scopeOrdinal, scopeOrdinal) &&
+                (typeKeyIsViewLike(possible.typeKey) || tupleTypeKeyContainsView(possible.typeKey)))
+                recordUnknownOutput(possible, false);
+    }
+    for (std::size_t i = 0; i < resolvedArguments.size() &&
+         i < selected.argumentParameterOrdinals.size() && i < argumentSyntaxes.size(); ++i)
+    {
+        const std::size_t p = selected.argumentParameterOrdinals[i];
+        if (p >= selectedMember.parameters.size() ||
+            (selectedMember.parameters[p].passKind != ParameterPassKind::Ref &&
+             selectedMember.parameters[p].passKind != ParameterPassKind::Out) ||
+            !typeKeyIsViewLike(selectedMember.parameters[p].pointeeTypeKey)) continue;
+        const ast::AstNode* argument = argumentSyntaxes[i];
+        const ast::AstNode* destination = argument != nullptr &&
+            argument->kind() == ast::AstNodeKind::UnaryExpression &&
+            (argument->auxiliaryText() == "pass:ref" || argument->auxiliaryText() == "pass:out")
+            ? argument->first() : nullptr;
+        if (destination == nullptr) continue;
+        const std::size_t callerOrdinal = scopeOrdinal < scopes_.size()
+            ? scopes_[scopeOrdinal].methodMemberOrdinal : std::numeric_limits<std::size_t>::max();
+        const auto isStructType = [&](std::string_view typeKey)
+        {
+            if (nameLookup_ == nullptr) return false;
+            const auto type = namedTypeOrdinalForTypeKey(typeKey);
+            return type.has_value() && *type < nameLookup_->namedTypes().size() &&
+                nameLookup_->namedTypes()[*type].kind == NamedTypeDeclarationKind::Struct;
+        };
+        const auto valueFieldRoot = [&](const ast::AstNode* field) -> std::optional<std::size_t>
+        {
+            bool sawField = false;
+            while (field != nullptr && field->kind() == ast::AstNodeKind::MemberExpression)
+            {
+                const MethodNameBinding* binding = nameBinding(field, callerOrdinal);
+                if (binding == nullptr || binding->kind != MethodNameBindingKind::ExplicitObjectField ||
+                    memberModel_ == nullptr || binding->candidateMemberOrdinals.size() != 1U ||
+                    binding->candidateMemberOrdinals.front() >= memberModel_->members().size() ||
+                    memberModel_->members()[binding->candidateMemberOrdinals.front()].kind != ClassMemberKind::Field ||
+                    memberModel_->members()[binding->candidateMemberOrdinals.front()].isReferenceReturn ||
+                    field->first() == nullptr ||
+                    !isStructType(recordedExpressionTypeKey(field->first(), callerOrdinal))) return std::nullopt;
+                sawField = true;
+                field = field->first();
+            }
+            if (!sawField || field == nullptr || field->kind() != ast::AstNodeKind::IdentifierExpression)
+                return std::nullopt;
+            const MethodNameBinding* root = nameBinding(field, callerOrdinal);
+            if (root == nullptr || root->kind != MethodNameBindingKind::Local || !root->localOrdinal.has_value() ||
+                *root->localOrdinal >= locals_.size()) return std::nullopt;
+            const MethodLocalSymbol& local = locals_[*root->localOrdinal];
+            if (local.isReference || local.isStatic || local.methodMemberOrdinal != callerOrdinal ||
+                !isStructType(local.typeKey)) return std::nullopt;
+            return *root->localOrdinal;
+        };
+        const ast::AstNode* targetSyntax = destination;
+        std::optional<std::size_t> projectedRoot;
+        const auto hasReferenceField = [&](const ast::AstNode* field)
+        {
+            for (; field != nullptr && field->kind() == ast::AstNodeKind::MemberExpression;
+                 field = field->first())
+            {
+                const MethodNameBinding* binding = nameBinding(field, callerOrdinal);
+                if (binding != nullptr && binding->kind == MethodNameBindingKind::ExplicitObjectField &&
+                    memberModel_ != nullptr && binding->candidateMemberOrdinals.size() == 1U &&
+                    binding->candidateMemberOrdinals.front() < memberModel_->members().size() &&
+                    memberModel_->members()[binding->candidateMemberOrdinals.front()].isReferenceReturn)
+                    return true;
+            }
+            return false;
+        };
+        const auto rejectUnknownReferenceFieldOutput = [&]()
+        {
+            const ClassMemberSymbol* callable = methodSymbol(callerOrdinal);
+            for (const std::string& source : viewInputs.viewSourceFields)
+            {
+                if (source.size() <= 1 || source.front() != '@') continue;
+                const auto owner = lookupScopeName(scopeOrdinal, std::string_view(source).substr(1));
+                if (!owner.has_value()) continue;
+                const bool localOwner = owner->kind == ScopeNameKind::Local &&
+                    owner->semanticOrdinal < locals_.size() && !locals_[owner->semanticOrdinal].isStatic;
+                const bool consumedParameter = owner->kind == ScopeNameKind::Parameter && callable != nullptr &&
+                    owner->semanticOrdinal < callable->parameters.size() &&
+                    callable->parameters[owner->semanticOrdinal].passKind == ParameterPassKind::Value &&
+                    (callable->parameters[owner->semanticOrdinal].ownership == sema::OwnershipKind::Owned ||
+                     (memberModel_ != nullptr &&
+                      memberModel_->typeIsMoveOnly(callable->parameters[owner->semanticOrdinal].typeKey)));
+                if (!localOwner && !consumedParameter) continue;
+                diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                    diagnostics::DiagnosticSeverity::Error, destination->range(),
+                    "view output cannot outlive its possible owner '" + source.substr(1) +
+                        "': ref field destination lifetime is unknown");
+            }
+        };
+        if (destination->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const auto name = lookupScopeName(scopeOrdinal, destination->text());
+            const MethodLocalSymbol* alias = name.has_value() && name->kind == ScopeNameKind::Local &&
+                name->semanticOrdinal < locals_.size() ? &locals_[name->semanticOrdinal] : nullptr;
+            std::size_t remaining = locals_.size();
+            while (alias != nullptr && alias->isReference &&
+                   alias->referenceReborrowSourceLocalOrdinal.has_value() && remaining != 0U)
+            {
+                --remaining;
+                const auto parent = *alias->referenceReborrowSourceLocalOrdinal;
+                alias = parent < locals_.size() ? &locals_[parent] : nullptr;
+            }
+            if (alias != nullptr && alias->isReference && !alias->referenceReborrowSourceLocalOrdinal.has_value() &&
+                alias->syntax != nullptr && hasReferenceField(alias->syntax->first()))
+            {
+                rejectUnknownReferenceFieldOutput();
+                continue;
+            }
+        }
+        if (destination->kind() == ast::AstNodeKind::MemberExpression)
+        {
+            projectedRoot = valueFieldRoot(destination);
+            bool precise = true;
+            if (!projectedRoot.has_value() || !storagePlaceKey(destination, scopeOrdinal, &precise).has_value() ||
+                !precise)
+            {
+                // A ref field's receiver does not identify the lifetime of the
+                // storage it points at. A per-member origin is not an instance
+                // identity, so local owners cannot safely be written through it.
+                if (hasReferenceField(destination)) rejectUnknownReferenceFieldOutput();
+                continue;
+            }
+            while (targetSyntax->kind() == ast::AstNodeKind::MemberExpression) targetSyntax = targetSyntax->first();
+        }
+        if (targetSyntax->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+        const auto targetName = lookupScopeName(scopeOrdinal, targetSyntax->text());
+        if (projectedRoot.has_value() && (!targetName.has_value() || targetName->kind != ScopeNameKind::Local ||
+            targetName->semanticOrdinal != *projectedRoot)) continue;
+        const ClassMemberSymbol* caller = scopeOrdinal < scopes_.size()
+            ? methodSymbol(scopes_[scopeOrdinal].methodMemberOrdinal) : nullptr;
+        std::optional<std::size_t> outputParameter;
+        if (targetName.has_value() && targetName->kind == ScopeNameKind::Parameter)
+            outputParameter = targetName->semanticOrdinal;
+        else if (targetName.has_value() && targetName->kind == ScopeNameKind::Local &&
+                 targetName->semanticOrdinal < locals_.size())
+        {
+            const MethodLocalSymbol& alias = locals_[targetName->semanticOrdinal];
+            const auto& origin = alias.referenceEscapeOrigin;
+            if (alias.isReference && origin.kind == MethodEscapeOriginKind::ExternalStorage &&
+                origin.ordinal.has_value() && alias.referencePlaceKey == "P" + std::to_string(*origin.ordinal) &&
+                caller != nullptr && *origin.ordinal < caller->parameters.size() &&
+                (caller->parameters[*origin.ordinal].passKind == ParameterPassKind::Ref ||
+                 caller->parameters[*origin.ordinal].passKind == ParameterPassKind::Out) &&
+                caller->parameters[*origin.ordinal].pointeeTypeKey == alias.typeKey)
+                outputParameter = *origin.ordinal;
+        }
+        if (outputParameter.has_value())
+        {
+            if (caller != nullptr && *outputParameter < caller->parameters.size() &&
+                (caller->parameters[*outputParameter].passKind == ParameterPassKind::Ref ||
+                 caller->parameters[*outputParameter].passKind == ParameterPassKind::Out))
+            {
+                for (const std::string& source : viewInputs.viewSourceFields)
+                {
+                    if (source.size() <= 1 || source.front() != '@') continue;
+                    const std::string_view rootName = std::string_view(source).substr(1);
+                    const auto root = lookupScopeName(scopeOrdinal, rootName);
+                    if (!root.has_value()) continue;
+                    const bool localOwner = root->kind == ScopeNameKind::Local &&
+                        root->semanticOrdinal < locals_.size() && !locals_[root->semanticOrdinal].isStatic;
+                    const bool consumedParameter = root->kind == ScopeNameKind::Parameter &&
+                        root->semanticOrdinal < caller->parameters.size() &&
+                        caller->parameters[root->semanticOrdinal].passKind == ParameterPassKind::Value &&
+                        (caller->parameters[root->semanticOrdinal].ownership == sema::OwnershipKind::Owned ||
+                         (memberModel_ != nullptr &&
+                          memberModel_->typeIsMoveOnly(caller->parameters[root->semanticOrdinal].typeKey)));
+                    if (!localOwner && !consumedParameter) continue;
+                    diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error, destination->range(),
+                        "view output cannot outlive its possible owner '" + std::string(rootName) + "'");
+                }
+            }
+            continue;
+        }
+        if (!targetName.has_value() || targetName->kind != ScopeNameKind::Local ||
+            targetName->semanticOrdinal >= locals_.size()) continue;
+        MethodLocalSymbol& alias = locals_[targetName->semanticOrdinal];
+        MethodLocalSymbol* target = &alias;
+        const auto& origin = alias.referenceEscapeOrigin;
+        if (alias.isReference && origin.kind == MethodEscapeOriginKind::CurrentFrameLocal &&
+            origin.ordinal.has_value() && *origin.ordinal < locals_.size() &&
+            locals_[*origin.ordinal].methodMemberOrdinal == alias.methodMemberOrdinal)
+        {
+            const std::string localPlace = "L" + std::to_string(*origin.ordinal);
+            bool exactField = false;
+            const MethodLocalSymbol* source = &alias;
+            std::size_t remaining = locals_.size();
+            while (source->referenceReborrowSourceLocalOrdinal.has_value() && remaining != 0U)
+            {
+                --remaining;
+                const std::size_t parent = *source->referenceReborrowSourceLocalOrdinal;
+                if (parent >= locals_.size()) break;
+                source = &locals_[parent];
+            }
+            if (!source->referenceReborrowSourceLocalOrdinal.has_value() &&
+                source->syntax != nullptr && source->syntax->first() != nullptr)
+            {
+                const ast::AstNode* field = source->syntax->first();
+                const auto root = valueFieldRoot(field);
+                bool precise = true;
+                const auto place = storagePlaceKey(field, source->scopeOrdinal, &precise);
+                exactField = root.has_value() && *root == *origin.ordinal && precise && place.has_value() &&
+                    *place == alias.referencePlaceKey;
+            }
+            if (alias.referencePlaceKey == localPlace || exactField) target = &locals_[*origin.ordinal];
+        }
+        for (const std::string& source : viewInputs.viewSourceFields)
+        {
+            if (source.size() <= 1 || source.front() != '@') continue;
+            const std::string_view rootName = std::string_view(source).substr(1);
+            const auto root = lookupScopeName(scopeOrdinal, rootName);
+            const auto visibleRoot = lookupScopeName(target->scopeOrdinal, rootName);
+            if (target->isStatic || !root.has_value() || !visibleRoot.has_value() || root->kind != visibleRoot->kind ||
+                root->semanticOrdinal != visibleRoot->semanticOrdinal ||
+                (root->kind == ScopeNameKind::Local && root->semanticOrdinal < locals_.size() &&
+                 !scopeContains(locals_[root->semanticOrdinal].scopeOrdinal, target->scopeOrdinal)))
+            {
+                diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                    diagnostics::DiagnosticSeverity::Error, destination->range(),
+                    "view output cannot outlive its possible owner '" + std::string(rootName) + "'");
+                continue;
+            }
+            const auto recordRoot = [&](MethodLocalSymbol& output)
+            {
+                if (std::ranges::find(output.viewSourceFields, source) == output.viewSourceFields.end())
+                    output.viewSourceFields.push_back(source);
+                for (const ViewSourceIdentity& identity : viewInputs.viewSourceIdentities)
+                    if (identity.kind == ViewSourceIdentityKind::Local && identity.ordinal < locals_.size() &&
+                        locals_[identity.ordinal].methodMemberOrdinal == output.methodMemberOrdinal &&
+                        std::ranges::find(output.viewSourceIdentities, identity) == output.viewSourceIdentities.end())
+                        output.viewSourceIdentities.push_back(identity);
+                // The legacy output path resolves by name; retain Unknown.
+                const ViewSourceIdentity unknown{std::string(rootName), ViewSourceIdentityKind::Unknown, 0};
+                if (std::ranges::find(output.viewSourceIdentities, unknown) == output.viewSourceIdentities.end())
+                    output.viewSourceIdentities.push_back(unknown);
+                if (output.viewRootLocalName.empty()) output.viewRootLocalName = rootName;
+            };
+            recordRoot(*target);
+            if (target != &alias) recordRoot(alias);
+        }
+    }
+}
+
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespaceFunctionCall(
     const ast::AstNode* expression,
     std::size_t callerCallableOrdinal,
@@ -1237,6 +2076,40 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
     diagnostics::DiagnosticEngine& diagnostics)
 {
     const ClassMemberSymbol& callable = namespaceCallableAdapters()[functionOrdinal];
+    if (!hasForwardedReceiver && namespaceFunctionModel_ != nullptr &&
+        functionOrdinal < namespaceFunctionModel_->functions().size())
+    {
+        const NamespaceFunctionSymbol& function = namespaceFunctionModel_->functions()[functionOrdinal];
+        if (!function.isExternC && !function.isPrecompiled && function.definitionSyntax != nullptr)
+        {
+            for (std::size_t index = 0; index < argumentSyntaxes.size() &&
+                 index < selected.argumentParameterOrdinals.size(); ++index)
+            {
+                const ast::AstNode* argument = argumentSyntaxes[index];
+                const MethodNameBinding* name = argument != nullptr
+                    ? nameBinding(argument, callerCallableOrdinal) : nullptr;
+                if (name == nullptr || name->kind != MethodNameBindingKind::Local ||
+                    !name->localOrdinal.has_value()) continue;
+                const auto environments = fnOnceEnvironments_.find(*name->localOrdinal);
+                if (environments == fnOnceEnvironments_.end()) continue;
+                const auto count = directCallableParameterInvocations(
+                    callable, selected.argumentParameterOrdinals[index]);
+                if (!count.has_value() || *count == 0) continue;
+                bool consumed = *count > 1;
+                for (const ast::AstNode* environment : environments->second)
+                    consumed |= consumedFnOnceEnvironments_.contains(environment);
+                if (consumed)
+                {
+                    diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error, argument->range(),
+                        "FnOnce closure may be invoked more than once through a namespace function parameter");
+                    call.resolution = MethodCallResolutionKind::NoViableCandidate;
+                    return {};
+                }
+                consumedFnOnceEnvironments_.insert(environments->second.begin(), environments->second.end());
+            }
+        }
+    }
     checkNamespaceFunctionArgumentPassKinds(
         expression, callable, functionOrdinal, arguments,
         selected, hasForwardedReceiver, diagnostics);
@@ -1252,6 +2125,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
     recordNamespaceFunctionBorrows(
         expression, callerCallableOrdinal, scopeOrdinal, functionOrdinal,
         argumentSyntaxes, arguments, selected);
+    recordViewOutputOrigins(call.selectedArgumentSyntaxes, arguments,
+        selected, callable, scopeOrdinal, diagnostics);
     rejectNamespaceNewToOrdinaryParameters(callable, argumentSyntaxes, arguments, selected, diagnostics);
     recordNamespaceFunctionDefaults(callable, selected, call);
     call.resultTypeKey = callable.declaredTypeKey;
@@ -1298,8 +2173,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
         result.objectLifetimeOwnership = result.ownership;
         result.storageOwnership = result.ownership;
     }
-    // EN: Freeze 3.0 (plan item 135a): a forwarded extension receiver is one of the arguments.
-    // ES: Congelamiento 3.0 (elemento 135a del plan): un receptor de extension reenviado es uno de los argumentos.
+    // EN: Freeze (plan item 135a): a forwarded extension receiver is one of the arguments.
+    // ES: Congelamiento (elemento 135a del plan): un receptor de extension reenviado es uno de los argumentos.
     markCallTemporaryBorrow(
         result, false, arguments, ownedArgumentParameters(selected.argumentParameterOrdinals, callable));
     return result;
@@ -2341,8 +3216,13 @@ void ProjectMethodBodyModel::recognizeCoreAtomicValueOperations(
         atomicDeclaringType == "NativeSharp.Core.Threading.AtomicInt32" ||
         atomicDeclaringType == "NativeSharp.Core.Threading.AtomicInt64" ||
         atomicDeclaringType == "NativeSharp.Core.Threading.AtomicPointer";
+    const bool internalSharedAtomic =
+        atomicDeclaringType == "NativeSharp.Core.Internal.SharedAtomic" &&
+        !selectedMember.parameters.empty() &&
+        selectedMember.parameters[0].pointeeTypeKey == "builtin:long" &&
+        (selectedMember.name == "Load" || selectedMember.name == "CompareExchange");
     const bool publicInterlocked =
-        atomicDeclaringType == "NativeSharp.Core.Threading.Interlocked" &&
+        (atomicDeclaringType == "NativeSharp.Core.Threading.Interlocked" || internalSharedAtomic) &&
         selectedMember.isStatic && !selectedMember.parameters.empty() &&
         selectedMember.parameters[0].passKind == ParameterPassKind::Ref &&
         (selectedMember.parameters[0].pointeeTypeKey == "builtin:int" ||
@@ -2369,6 +3249,23 @@ void ProjectMethodBodyModel::recognizeCoreAtomicValueOperations(
     std::optional<MethodCoreOperationKind> atomicKind = atomicOperationKind(
         selectedMember, parameterOffset, valueTypeKey, isInt32, isPointer,
         orderedLoad, orderedStore, orderedRmw, orderedCompareExchange);
+    // EN: The order checks and the lowering of atomic operations read arguments by position, so a
+    //     named or reordered argument list validated and executed the wrong operands (LKF-283).
+    // ES: Las comprobaciones de orden y el lowering atómico leen los argumentos por posición; una
+    //     lista con nombres o reordenada validaba y ejecutaba operandos equivocados (LKF-283).
+    if (atomicKind.has_value() && std::ranges::any_of(expression->children(), [](const ast::AstNode* argument)
+        {
+            return argument != nullptr && !argument->argumentName().empty();
+        }))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "atomic operations take positional arguments; write the arguments in parameter order "
+            "without names");
+        return;
+    }
     std::optional<std::uint8_t> atomicMemoryOrder;
     std::optional<std::uint8_t> atomicFailureMemoryOrder;
     if (atomicKind.has_value() && orderedCompareExchange)
@@ -2666,6 +3563,52 @@ void ProjectMethodBodyModel::recognizeCoreAtomicOperations(
     recognizeCoreAtomicValueOperations(
         expression, declaringType, selectedMember,
         methodMemberOrdinal, scopeOrdinal, result, diagnostics);
+    const auto isSharedGeneric = [&](std::string_view name) {
+        return selectedMember.name == name ||
+            (selectedMember.genericTemplateOrdinal.has_value() &&
+             selectedMember.name.starts_with(std::string(name) + "__g"));
+    };
+    if (declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Internal.SharedStorage" &&
+        (isSharedGeneric("InstanceSize") || isSharedGeneric("InstanceAlignment")) &&
+        selectedMember.isStatic && selectedMember.declaredTypeKey == "builtin:long" &&
+        selectedMember.parameters.size() == 1)
+    {
+        const auto targetType = referenceTypeOrdinalForTypeKey(selectedMember.parameters[0].typeKey);
+        if (!targetType.has_value() || inheritanceModel_ == nullptr || !inheritanceModel_->isClass(*targetType) ||
+            expression->children().size() != 1 ||
+            expression->children()[0]->kind() != ast::AstNodeKind::NullLiteralExpression)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "shared instance layout requires a class type and a null witness");
+            result.valid = false;
+            return;
+        }
+        coreBindings_.push_back(MethodCoreBinding{
+            isSharedGeneric("InstanceSize") ? MethodCoreOperationKind::SharedInstanceSize
+                                             : MethodCoreOperationKind::SharedInstanceAlignment,
+            expression, methodMemberOrdinal, scopeOrdinal, "builtin:long",
+            selectedMember.parameters[0].typeKey, false, std::nullopt, std::nullopt});
+    }
+    if (declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Internal.SharedStorage" &&
+        (selectedMember.name == "DestroyObject" ||
+         (selectedMember.genericTemplateOrdinal.has_value() && selectedMember.name.starts_with("DestroyObject__g"))) &&
+        selectedMember.isStatic && selectedMember.declaredTypeKey == "builtin:void" &&
+        selectedMember.parameters.size() == 1)
+    {
+        const auto targetType = referenceTypeOrdinalForTypeKey(selectedMember.parameters[0].typeKey);
+        if (!targetType.has_value() || inheritanceModel_ == nullptr || !inheritanceModel_->isClass(*targetType))
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "shared object destruction requires a class with a NativeSharp object descriptor");
+            result.valid = false;
+            return;
+        }
+        coreBindings_.push_back(MethodCoreBinding{
+            MethodCoreOperationKind::SharedDestroyObject, expression, methodMemberOrdinal, scopeOrdinal,
+            "builtin:void", selectedMember.parameters[0].typeKey, false, std::nullopt, std::nullopt});
+    }
     // Item 307: static fences consume MemoryOrder during semantic analysis. The source
     // argument never becomes a runtime integer; HIR carries only the validated ABI value.
     if (declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Threading.AtomicFence" &&
@@ -3706,7 +4649,8 @@ ProjectMethodBodyModel::analyzeArrayPatternRestCall(
         diagnostics::DiagnosticId::InvalidOperand,
         diagnostics::DiagnosticSeverity::Error,
         expression->range(),
-        "array/inline rest capture requires a materialized Span<T>/ReadOnlySpan<T>");
+        "array/inline rest capture requires a materialized Span<T>/ReadOnlySpan<T>; "
+        "reference NativeSharp.Core, which declares the views a rest binding uses");
     return ExpressionResult{};
 }
 
@@ -3813,6 +4757,18 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                     expression->range(),
                     "cannot advance or drop the iterator while a reference to its Current item is still live");
                 return ExpressionResult{};
+            }
+            // EN: LKF-310: advancing yields a new item, so a move(it.Current) made in this scope or a
+            //     nested one no longer blocks moving it. A MoveNext in a branch that does not enclose
+            //     the move keeps the mark, because that branch may not run.
+            // ES: LKF-310: avanzar entrega un elemento nuevo, así que un move(it.Current) hecho en este
+            //     scope o en uno anidado ya no impide moverlo. Un MoveNext en una rama que no contiene
+            //     al movimiento conserva la marca, porque esa rama puede no ejecutarse.
+            if ((isMoveNext || isMoveNextAsync) && receiverPlace.has_value())
+            {
+                const auto moved = movedIteratorItems_.find(*receiverPlace);
+                if (moved != movedIteratorItems_.end() && scopeIsWithin(moved->second, scopeOrdinal))
+                    movedIteratorItems_.erase(moved);
             }
         }
         coreBindings_.push_back(MethodCoreBinding{
@@ -4023,6 +4979,22 @@ void ProjectMethodBodyModel::analyzeCallArguments(
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    const std::size_t prefixBorrowBase = activePrefixArgumentOwnerLocals_.size();
+    bool arrayArgumentEscapes = false;
+    const std::size_t fieldBorrowBase = activeArgumentOwnedFields_.size();
+    const std::size_t parameterFieldBorrowBase = activeArgumentParameterOwnedFields_.size();
+    const MethodExpressionTypeBinding* receiverType = callee.receiverSyntax != nullptr
+        ? expressionTypeBinding(callee.receiverSyntax, methodMemberOrdinal) : nullptr;
+    if (receiverType != nullptr && receiverType->ownershipSourceLocalOrdinal.has_value() &&
+        (receiverType->ownership == sema::OwnershipKind::Borrowed ||
+         (receiverType->ownership == sema::OwnershipKind::Owned && !receiverType->ownershipTransfer)))
+        activePrefixArgumentOwnerLocals_.push_back(*receiverType->ownershipSourceLocalOrdinal);
+    else if (receiverType != nullptr && receiverType->ownership == sema::OwnershipKind::Borrowed)
+        retainNestedPrefixBorrowOwners(*this, callee.receiverSyntax, methodMemberOrdinal,
+                                      activePrefixArgumentOwnerLocals_);
+    if (receiverType != nullptr && receiverType->ownership == sema::OwnershipKind::Borrowed)
+        retainNestedPrefixBorrowFields(*this, callee.receiverSyntax, methodMemberOrdinal,
+                                      activeArgumentOwnedFields_, activeArgumentParameterOwnedFields_);
     for (std::size_t argumentOrdinal = 0;
          argumentOrdinal < expression->children().size(); ++argumentOrdinal)
     {
@@ -4079,9 +5051,92 @@ void ProjectMethodBodyModel::analyzeCallArguments(
                 }
             }
         }
+        if (argumentResult.readonlyBorrowedObject)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, argument->range(),
+                "borrowed argument requires a readonly-safe parameter; readonly borrowed object "
+                "cannot be passed to an unchecked function");
+            allArgumentsValid = false;
+        }
         if (!argumentResult.valid || argumentResult.methodGroup) allArgumentsValid = false;
+        if (argumentResult.valid && argumentResult.ownershipSourceLocalOrdinal.has_value() &&
+            (argumentResult.ownership == sema::OwnershipKind::Borrowed ||
+             (argumentResult.ownership == sema::OwnershipKind::Owned && !argumentResult.ownershipTransfer)))
+            activePrefixArgumentOwnerLocals_.push_back(*argumentResult.ownershipSourceLocalOrdinal);
+        if (argumentResult.valid && argumentResult.ownership == sema::OwnershipKind::Borrowed)
+            retainNestedPrefixBorrowOwners(*this, argument, methodMemberOrdinal, activePrefixArgumentOwnerLocals_);
+        const std::size_t fieldsBefore = activeArgumentOwnedFields_.size();
+        const std::size_t parameterFieldsBefore = activeArgumentParameterOwnedFields_.size();
+        rememberDirectOwnedFieldArgument(argument, argumentResult, methodMemberOrdinal, scopeOrdinal);
+        if (activeArgumentOwnedFields_.size() != fieldsBefore ||
+            activeArgumentParameterOwnedFields_.size() != parameterFieldsBefore)
+        {
+            argumentResult.ownership = sema::OwnershipKind::Borrowed;
+            argumentResult.objectLifetimeOwnership = sema::OwnershipKind::Borrowed;
+            argumentResult.storageOwnership = sema::OwnershipKind::Borrowed;
+            if (activeArgumentOwnedFields_.size() != fieldsBefore)
+                argumentResult.ownershipSourceLocalOrdinal = activeArgumentOwnedFields_.back().first;
+            if (activeArgumentParameterOwnedFields_.size() != parameterFieldsBefore)
+                argumentResult.ownershipSourceParameterOrdinal = activeArgumentParameterOwnedFields_.back().first;
+            recordExpressionType(argument, methodMemberOrdinal, scopeOrdinal, argumentResult);
+        }
+        if (argumentResult.valid && argumentResult.ownership == sema::OwnershipKind::Borrowed)
+            retainNestedPrefixBorrowFields(*this, argument, methodMemberOrdinal, activeArgumentOwnedFields_,
+                                          activeArgumentParameterOwnedFields_);
+        // EN: Applied after this call's view checks: the array escapes during the call, not before it.
+        // ES: Se aplica tras las comprobaciones de vistas de esta llamada: escapa durante ella.
+        if (argumentResult.valid && ProjectTypeConversion::isNativeArray(argumentResult.typeKey))
+            arrayArgumentEscapes = true;
         arguments.push_back(std::move(argumentResult));
     }
+    for (const ast::AstNode* argument : expression->children())
+    {
+        if (argument == nullptr || argument->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+        if ((activeArgumentOwnedFields_.empty() && activeArgumentParameterOwnedFields_.empty()) ||
+            !hasActiveViewOfStorage(argument, methodMemberOrdinal, scopeOrdinal, true)) continue;
+        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error, argument->range(),
+            "cannot pass object with a borrowed field view to a potentially mutating call");
+        allArgumentsValid = false;
+    }
+    if ((!activeArgumentOwnedFields_.empty() || !activeArgumentParameterOwnedFields_.empty()) &&
+        callee.receiverSyntax != nullptr &&
+        callee.receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression &&
+        hasActiveViewOfStorage(callee.receiverSyntax, methodMemberOrdinal, scopeOrdinal, true))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error, callee.receiverSyntax->range(),
+            "cannot call potentially mutating method while a borrowed field view is alive");
+        allArgumentsValid = false;
+    }
+    // EN: Marking every array local before the checks made a freshly allocated array, passed for
+    //     the first time, conflict with an older view of unknown root (NSC-NEW-018).
+    // ES: Marcar cada local arreglo antes de las comprobaciones hacía que un arreglo recién creado,
+    //     pasado por primera vez, chocara con una vista anterior de raíz desconocida (NSC-NEW-018).
+    lastCallNewlyEscapedLocals_.clear();
+    for (const ast::AstNode* argument : expression->children())
+    {
+        const ast::AstNode* named = argument != nullptr && argument->kind() == ast::AstNodeKind::MoveExpression
+            ? argument->first() : argument;
+        if (named == nullptr || named->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+        const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, named->text());
+        if (!name.has_value() || name->kind != ScopeNameKind::Local || name->semanticOrdinal >= locals_.size())
+            continue;
+        MethodLocalSymbol& local = locals_[name->semanticOrdinal];
+        if (ProjectTypeConversion::isNativeArray(local.typeKey) && !local.passedToCall &&
+            !local.mayAliasUnknownReference)
+            lastCallNewlyEscapedLocals_.push_back(name->semanticOrdinal);
+        local.passedToCall = true;
+    }
+    if (arrayArgumentEscapes)
+        for (MethodLocalSymbol& local : locals_)
+            if (local.methodMemberOrdinal == methodMemberOrdinal &&
+                ProjectTypeConversion::isNativeArray(local.typeKey))
+                local.mayAliasUnknownReference = true;
+    activePrefixArgumentOwnerLocals_.resize(prefixBorrowBase);
+    activeArgumentOwnedFields_.resize(fieldBorrowBase);
+    activeArgumentParameterOwnedFields_.resize(parameterFieldBorrowBase);
 }
 
 const ast::AstNode* ProjectMethodBodyModel::resolvedCallArgumentSyntax(
@@ -4105,11 +5160,14 @@ bool ProjectMethodBodyModel::callIsFullExpressionBorrow(
 {
     if (!argument.valid || !argument.ownershipFreshOwner || !argument.ownershipTransfer ||
         argument.ownership != sema::OwnershipKind::Owned ||
-        argumentOrdinal >= candidate.parameters.size() ||
-        candidate.parameters[argumentOrdinal].typeKey != "builtin:string")
+        argumentOrdinal >= candidate.parameters.size())
     {
         return false;
     }
+    if (argument.ownedPostfixTemporary &&
+        candidate.parameters[argumentOrdinal].ownership == sema::OwnershipKind::Borrowed)
+        return true;
+    if (candidate.parameters[argumentOrdinal].typeKey != "builtin:string") return false;
     if (candidate.parameters[argumentOrdinal].ownership == sema::OwnershipKind::Borrowed)
         return true;
     return candidate.parameters[argumentOrdinal].ownership == sema::OwnershipKind::None;
@@ -4206,8 +5264,8 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         delegateBindings_.push_back(std::move(binding));
         result.typeKey = returnType;
         result.valid = true;
-        // EN: Freeze 3.0 (plan item 135a): the delegate result may alias a lent argument temporary.
-        // ES: Congelamiento 3.0 (elemento 135a del plan): el resultado del delegate puede ser alias de un temporal
+        // EN: Freeze (plan item 135a): the delegate result may alias a lent argument temporary.
+        // ES: Congelamiento (elemento 135a del plan): el resultado del delegate puede ser alias de un temporal
         //     argumento prestado.
         markDelegateCallTemporaryBorrow(result, arguments, delegateOrdinal);
         return result;
@@ -4280,6 +5338,34 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         binding.resultTypeKey = returnType;
         if (!bindEventInvocationArguments(
                 expression, arguments, parameterTypes, binding, diagnostics)) return result;
+        const auto viewArguments = prepareIndirectViewArguments(expression, arguments,
+            [&](std::string_view name) -> std::optional<std::string>
+            {
+                const auto target = lookupScopeName(scopeOrdinal, name);
+                if (!target.has_value() || target->kind != ScopeNameKind::Local ||
+                    target->semanticOrdinal >= locals_.size()) return std::nullopt;
+                return locals_[target->semanticOrdinal].typeKey;
+            },
+            [&](const ast::AstNode* target) -> std::optional<std::string>
+            {
+                const std::string_view type = recordedExpressionTypeKey(target, methodMemberOrdinal);
+                return !type.empty() && type != "<error>" ? std::optional<std::string>(type) : std::nullopt;
+            });
+        recordViewOutputOrigins(viewArguments.syntaxes, arguments, viewArguments.candidate,
+            viewArguments.callable, scopeOrdinal, diagnostics);
+        for (std::size_t index = 0;
+             index < arguments.size() && index < expression->children().size(); ++index)
+        {
+            if (!isReferenceTypeKey(arguments[index].typeKey) &&
+                !arguments[index].typeKey.ends_with("[]")) continue;
+            const ast::AstNode* argument = expression->children()[index];
+            if (argument == nullptr ||
+                !hasActiveViewOfStorage(argument, methodMemberOrdinal, scopeOrdinal, true)) continue;
+            diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+                diagnostics::DiagnosticSeverity::Error, argument->range(),
+                "cannot pass object with a borrowed field view to a potentially mutating event");
+            return result;
+        }
         eventBindings_.push_back(std::move(binding));
         result.typeKey = returnType;
         result.valid = true;
@@ -4369,13 +5455,253 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         binding.resultTypeKey = returnType;
         if (!bindDelegateInvocationArguments(
                 expression, arguments, parameterTypes, binding, diagnostics)) return result;
+        std::vector<const ast::AstNode*> possibleViewReceivers;
+        if (!structuralFunction.has_value() && !isExternCDelegateTypeKey(callee.typeKey))
+        {
+            if (expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const auto local = lookupScopeName(scopeOrdinal, expression->first()->text());
+                if (local.has_value() && local->kind == ScopeNameKind::Local &&
+                    local->semanticOrdinal < locals_.size() && locals_[local->semanticOrdinal].syntax != nullptr)
+                {
+                    std::vector<std::size_t> pendingLocals{local->semanticOrdinal};
+                    std::unordered_set<std::size_t> visitedLocals;
+                    std::vector<const ast::AstNode*> possibleSources;
+                    while (!pendingLocals.empty())
+                    {
+                        const std::size_t ordinal = pendingLocals.back();
+                        pendingLocals.pop_back();
+                        if (ordinal >= locals_.size() || !visitedLocals.insert(ordinal).second) continue;
+                        const MethodLocalSymbol& delegateLocal = locals_[ordinal];
+                        std::vector<const ast::AstNode*> sources = delegateLocal.possibleDelegateSources;
+                        if (delegateLocal.syntax != nullptr) sources.push_back(delegateLocal.syntax->first());
+                        while (!sources.empty())
+                        {
+                            const ast::AstNode* source = sources.back();
+                            sources.pop_back();
+                            if (source == nullptr) continue;
+                            if (source->kind() == ast::AstNodeKind::ConditionalExpression)
+                            {
+                                sources.push_back(source->second());
+                                sources.push_back(source->third());
+                                continue;
+                            }
+                            possibleSources.push_back(source);
+                            if (source->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+                            const MethodNameBinding* sourceBinding = nameBinding(source, methodMemberOrdinal);
+                            if (sourceBinding != nullptr && sourceBinding->kind == MethodNameBindingKind::Local &&
+                                sourceBinding->localOrdinal.has_value())
+                                pendingLocals.push_back(*sourceBinding->localOrdinal);
+                        }
+                    }
+                    for (const MethodLambdaBinding& lambda : lambdaBindings_)
+                    {
+                        if (lambda.ownerMemberOrdinal != methodMemberOrdinal ||
+                            std::ranges::find(possibleSources, lambda.syntax) == possibleSources.end()) continue;
+                        if (std::ranges::any_of(lambda.captures, [](const MethodLambdaCapture& capture)
+                            { return capture.ownsCapturedValue; }))
+                        {
+                            for (const std::size_t ordinal : visitedLocals)
+                            {
+                                if (!hasActiveBorrowOfOwnerLocal(ordinal, scopeOrdinal)) continue;
+                                diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+                                    diagnostics::DiagnosticSeverity::Error, expression->range(),
+                                    "cannot invoke delegate while a borrowed local is alive");
+                                return result;
+                            }
+                            possibleViewReceivers.push_back(expression->first());
+                        }
+                    }
+                    for (const MethodDelegateBinding& created : delegateBindings_)
+                    {
+                        if (created.kind != MethodDelegateOperationKind::Create ||
+                            created.methodMemberOrdinal != methodMemberOrdinal ||
+                            std::ranges::find(possibleSources, created.syntax) == possibleSources.end() ||
+                            created.staticTarget || created.receiverSyntax == nullptr)
+                            continue;
+                        possibleViewReceivers.push_back(created.receiverSyntax);
+                        bool activeView = hasActiveViewOfStorage(
+                            created.receiverSyntax, methodMemberOrdinal, scopeOrdinal, true);
+                        const ast::AstNode* root = created.receiverSyntax;
+                        while (root != nullptr && (root->kind() == ast::AstNodeKind::MemberExpression ||
+                                                   root->kind() == ast::AstNodeKind::IndexExpression))
+                            root = root->first();
+                        const MethodNameBinding* original = root != nullptr &&
+                            root->kind() == ast::AstNodeKind::IdentifierExpression
+                            ? nameBinding(root, methodMemberOrdinal) : nullptr;
+                        if (original != nullptr && (original->localOrdinal.has_value() ||
+                                                    original->parameterOrdinal.has_value()))
+                        {
+                            for (const MethodLocalSymbol& view : locals_)
+                            {
+                                if (view.methodMemberOrdinal != methodMemberOrdinal ||
+                                    !scopeContains(view.scopeOrdinal, scopeOrdinal)) continue;
+                                for (const std::string& field : view.viewSourceFields)
+                                {
+                                    if (field.size() <= 1 || field.front() != '@') continue;
+                                    const auto source = lookupScopeName(view.scopeOrdinal, std::string_view(field).substr(1));
+                                    if (!source.has_value()) continue;
+                                    if ((source->kind == ScopeNameKind::Local && original->localOrdinal.has_value() &&
+                                         source->semanticOrdinal == *original->localOrdinal) ||
+                                        (source->kind == ScopeNameKind::Parameter && original->parameterOrdinal.has_value() &&
+                                         source->semanticOrdinal == *original->parameterOrdinal)) activeView = true;
+                                }
+                            }
+                        }
+                        if (!activeView) continue;
+                        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+                            diagnostics::DiagnosticSeverity::Error, expression->range(),
+                            "cannot invoke delegate on an object with a borrowed field view");
+                        return result;
+                    }
+                }
+            }
+            for (std::size_t index = 0;
+                 index < arguments.size() && index < expression->children().size(); ++index)
+            {
+                if (!isReferenceTypeKey(arguments[index].typeKey) &&
+                    !arguments[index].typeKey.ends_with("[]")) continue;
+                const ast::AstNode* argument = expression->children()[index];
+                if (argument == nullptr ||
+                    !hasActiveViewOfStorage(argument, methodMemberOrdinal, scopeOrdinal, true)) continue;
+                diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+                    diagnostics::DiagnosticSeverity::Error, argument->range(),
+                    "cannot pass object with a borrowed field view to a potentially mutating delegate");
+                return result;
+            }
+        }
+        // Delegate targets may write an input view to a mutable output just as
+        // ordinary calls do. The invocation arguments already carry pass kind
+        // and resolved type, including for structural callable signatures.
+        const auto viewArguments = prepareIndirectViewArguments(expression, arguments,
+            [&](std::string_view name) -> std::optional<std::string>
+            {
+                const auto target = lookupScopeName(scopeOrdinal, name);
+                if (!target.has_value() || target->kind != ScopeNameKind::Local ||
+                    target->semanticOrdinal >= locals_.size()) return std::nullopt;
+                return locals_[target->semanticOrdinal].typeKey;
+            },
+            [&](const ast::AstNode* target) -> std::optional<std::string>
+            {
+                const std::string_view type = recordedExpressionTypeKey(target, methodMemberOrdinal);
+                return !type.empty() && type != "<error>" ? std::optional<std::string>(type) : std::nullopt;
+            });
+        recordViewOutputOrigins(viewArguments.syntaxes, arguments, viewArguments.candidate,
+            viewArguments.callable, scopeOrdinal, diagnostics);
+        for (const ast::AstNode* receiver : possibleViewReceivers)
+            recordViewOutputOrigins(viewArguments.syntaxes, arguments, viewArguments.candidate,
+                viewArguments.callable, scopeOrdinal, diagnostics, receiver);
         rejectDelegateNewToOrdinaryParameters(expression, arguments, delegateOrdinal, diagnostics);
+        // EN: LKF-286: a function type lends every parameter, so a fresh object passed to it reached no
+        //     owner and leaked; the declared-delegate check above did not see structural types.
+        // ES: LKF-286: un tipo función presta todos sus parámetros, así que un objeto nuevo pasado a él
+        //     no llegaba a ningún dueño y se perdía; la comprobación de delegates declarados no veía los
+        //     tipos estructurales.
+        if (structuralFunction.has_value() || language::parseAnonymousLambdaTypeIdentity(callee.typeKey))
+        {
+            for (std::size_t index = 0; index < arguments.size() && index < expression->children().size(); ++index)
+            {
+                const ast::AstNode* argumentSyntax = expression->children()[index];
+                if (arguments[index].argumentPassKind != ParameterPassKind::Value ||
+                    !isFreshObjectCreation(argumentSyntax, arguments[index])) continue;
+                reportLostOwnership(argumentSyntax,
+                    "a parameter of a function type, which lends every parameter", diagnostics);
+            }
+        }
+        if (expression->first() != nullptr &&
+            expression->first()->kind() == ast::AstNodeKind::ConditionalExpression)
+        {
+            std::vector<const ast::AstNode*> pending{expression->first()};
+            const ast::AstNode* sharedEnvironment = nullptr;
+            bool knownSameEnvironment = true;
+            bool allAlternativesKnown = true;
+            bool allAlternativesConst = true;
+            std::unordered_set<const ast::AstNode*> alternatives;
+            while (!pending.empty())
+            {
+                const ast::AstNode* alternative = pending.back();
+                pending.pop_back();
+                if (alternative == nullptr) continue;
+                if (alternative->kind() == ast::AstNodeKind::ConditionalExpression)
+                {
+                    const ast::AstNode* condition = alternative->first();
+                    const MethodExpressionTypeBinding* conditionType = condition != nullptr
+                        ? expressionTypeBinding(condition, methodMemberOrdinal) : nullptr;
+                    if (conditionType != nullptr && conditionType->integerConstant.has_value())
+                        pending.push_back(conditionType->integerConstant->value != 0
+                            ? alternative->second() : alternative->third());
+                    else if (condition != nullptr && condition->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+                        (condition->tokenKind() == TokenKind::KwTrue || condition->tokenKind() == TokenKind::KwFalse))
+                        pending.push_back(condition->tokenKind() == TokenKind::KwTrue
+                            ? alternative->second() : alternative->third());
+                    else
+                    {
+                        pending.push_back(alternative->second());
+                        pending.push_back(alternative->third());
+                    }
+                    continue;
+                }
+                const MethodNameBinding* name = nameBinding(alternative, methodMemberOrdinal);
+                if (name == nullptr || name->kind != MethodNameBindingKind::Local ||
+                    !name->localOrdinal.has_value())
+                {
+                    knownSameEnvironment = false;
+                    allAlternativesKnown = false;
+                    break;
+                }
+                const auto found = fnOnceEnvironments_.find(*name->localOrdinal);
+                if (*name->localOrdinal >= locals_.size() || !locals_[*name->localOrdinal].isConst)
+                    allAlternativesConst = false;
+                if (found == fnOnceEnvironments_.end() || found->second.size() != 1)
+                {
+                    knownSameEnvironment = false;
+                    allAlternativesKnown = false;
+                    break;
+                }
+                const ast::AstNode* environment = *found->second.begin();
+                if (sharedEnvironment != nullptr && sharedEnvironment != environment)
+                    knownSameEnvironment = false;
+                sharedEnvironment = environment;
+                alternatives.insert(environment);
+            }
+            if (knownSameEnvironment && sharedEnvironment != nullptr)
+            {
+                if (consumedFnOnceEnvironments_.contains(sharedEnvironment))
+                {
+                    diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error, expression->range(),
+                        "FnOnce closure selected by a conditional was already invoked or may have been invoked");
+                    return result;
+                }
+                consumedFnOnceEnvironments_.insert(sharedEnvironment);
+            }
+            else if (allAlternativesKnown && allAlternativesConst && !alternatives.empty())
+            {
+                std::unordered_set<const ast::AstNode*> definitelyInvoked;
+                for (const std::size_t ordinal : invokedFnOnceLocals_)
+                {
+                    if (ordinal >= locals_.size() || !locals_[ordinal].isConst) continue;
+                    const auto found = fnOnceEnvironments_.find(ordinal);
+                    if (found != fnOnceEnvironments_.end() && found->second.size() == 1)
+                        definitelyInvoked.insert(*found->second.begin());
+                }
+                if (std::ranges::all_of(alternatives, [&](const ast::AstNode* environment)
+                    { return definitelyInvoked.contains(environment); }))
+                {
+                    diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error, expression->range(),
+                        "every FnOnce closure selected by this conditional was already invoked");
+                    return result;
+                }
+            }
+        }
         if (!validateCallableTraitInvocation(
                 expression, callee, scopeOrdinal, diagnostics)) return result;
         binding.selectedDefaultArguments = std::move(defaultedSyntaxes);
         binding.selectedDefaultArgumentTypeKeys = std::move(defaultedTypeKeys);
-        // EN: Freeze 3.0 C-13: invoking a `throws E` delegate is a call to a `throws E` callable.
-        // ES: Congelamiento 3.0 C-13: invocar un delegate `throws E` es llamar a un callable `throws E`.
+        // EN: Freeze C-13: invoking a `throws E` delegate is a call to a `throws E` callable.
+        // ES: Congelamiento C-13: invocar un delegate `throws E` es llamar a un callable `throws E`.
         requireDeclaredErrorHandled(
             expression, delegateErrorTypeKey(callee.typeKey),
             expression->first() != nullptr ? expression->first()->text() : std::string_view("delegate"),
@@ -4394,8 +5720,8 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         result.cppPointerPointeeAtomic =
             qualifiedFunction.has_value() && qualifiedFunction->resultPointeeAtomic;
         result.valid = true;
-        // EN: Freeze 3.0 (plan item 135a): the delegate result may alias a lent argument temporary.
-        // ES: Congelamiento 3.0 (elemento 135a del plan): el resultado del delegate puede ser alias de un temporal
+        // EN: Freeze (plan item 135a): the delegate result may alias a lent argument temporary.
+        // ES: Congelamiento (elemento 135a del plan): el resultado del delegate puede ser alias de un temporal
         //     argumento prestado.
         markDelegateCallTemporaryBorrow(result, arguments, delegateOrdinal);
         return result;
@@ -4465,9 +5791,9 @@ bool ProjectMethodBodyModel::collectDelegateDefaultArguments(
     return true;
 }
 
-// EN: Freeze 3.0 C-01 (plan item 115): a delegate parameter declared without `owned` takes no ownership, as a
+// EN: Freeze C-01 (plan item 115): a delegate parameter declared without `owned` takes no ownership, as a
 //     method parameter does. A structural function type has no declaration and is not checked here.
-// ES: Congelamiento 3.0 C-01 (elemento 115 del plan): un parámetro de delegate declarado sin `owned` no recibe
+// ES: Congelamiento C-01 (elemento 115 del plan): un parámetro de delegate declarado sin `owned` no recibe
 //     ownership, como el de un método. Un tipo función estructural no tiene declaración y no se revisa aquí.
 void ProjectMethodBodyModel::rejectDelegateNewToOrdinaryParameters(
     const ast::AstNode* expression,
@@ -4634,13 +5960,44 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
     return true;
 }
 
+void ProjectMethodBodyModel::assignFnOnceEnvironments(
+    std::size_t localOrdinal, const ast::AstNode* source,
+    std::size_t scopeOrdinal, bool sourceIsFnOnce)
+{
+    std::unordered_set<const ast::AstNode*> environments;
+    std::vector<const ast::AstNode*> pending{source};
+    while (!pending.empty())
+    {
+        const ast::AstNode* current = pending.back();
+        pending.pop_back();
+        if (current == nullptr) continue;
+        if (current->kind() == ast::AstNodeKind::ConditionalExpression)
+        {
+            pending.push_back(current->second());
+            pending.push_back(current->third());
+        }
+        else if (current->kind() == ast::AstNodeKind::LambdaExpression && sourceIsFnOnce)
+            environments.insert(current);
+        else if (current->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const auto name = lookupScopeName(scopeOrdinal, current->text());
+            if (!name.has_value() || name->kind != ScopeNameKind::Local) continue;
+            const auto found = fnOnceEnvironments_.find(name->semanticOrdinal);
+            if (found != fnOnceEnvironments_.end())
+                environments.insert(found->second.begin(), found->second.end());
+        }
+    }
+    if (environments.empty()) fnOnceEnvironments_.erase(localOrdinal);
+    else fnOnceEnvironments_[localOrdinal] = std::move(environments);
+}
+
 bool ProjectMethodBodyModel::validateCallableTraitInvocation(
     const ast::AstNode* expression,
     const ExpressionResult& callee,
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (!callee.callableTrait.has_value() || expression->first() == nullptr ||
+    if (expression->first() == nullptr ||
         expression->first()->kind() != ast::AstNodeKind::IdentifierExpression) return true;
     const std::optional<ScopeName> callableName = lookupScopeName(
         scopeOrdinal, expression->first()->text());
@@ -4648,7 +6005,7 @@ bool ProjectMethodBodyModel::validateCallableTraitInvocation(
         callableName->semanticOrdinal >= locals_.size()) return true;
     const std::size_t localOrdinal = callableName->semanticOrdinal;
     const MethodLocalSymbol& callableLocal = locals_[localOrdinal];
-    if (*callee.callableTrait == language::CallableTrait::FnMut && callableLocal.isConst)
+    if (callee.callableTrait == language::CallableTrait::FnMut && callableLocal.isConst)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidCall,
@@ -4658,8 +6015,14 @@ bool ProjectMethodBodyModel::validateCallableTraitInvocation(
                 "' cannot be invoked through a const binding");
         return false;
     }
-    if (*callee.callableTrait != language::CallableTrait::FnOnce) return true;
-    if (invokedFnOnceLocals_.contains(localOrdinal) ||
+    const auto environments = fnOnceEnvironments_.find(localOrdinal);
+    if (callee.callableTrait != language::CallableTrait::FnOnce &&
+        environments == fnOnceEnvironments_.end()) return true;
+    bool consumedEnvironment = false;
+    if (environments != fnOnceEnvironments_.end())
+        for (const ast::AstNode* environment : environments->second)
+            consumedEnvironment |= consumedFnOnceEnvironments_.contains(environment);
+    if (consumedEnvironment || invokedFnOnceLocals_.contains(localOrdinal) ||
         maybeInvokedFnOnceLocals_.contains(localOrdinal))
     {
         diagnostics.report(
@@ -4671,6 +6034,8 @@ bool ProjectMethodBodyModel::validateCallableTraitInvocation(
         return false;
     }
     invokedFnOnceLocals_.insert(localOrdinal);
+    if (environments != fnOnceEnvironments_.end())
+        consumedFnOnceEnvironments_.insert(environments->second.begin(), environments->second.end());
     return true;
 }
 
@@ -4832,8 +6197,8 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     const MethodParameterSymbol& parameter = candidate.parameters[parameterOrdinal];
     const bool boundLvalue = rvalueArgument && conversion.exists() &&
         conversion.kind == ProjectConversionKind::Identity && argument.addressable;
-    // EN: Freeze 3.0 P3: as above, an `in` parameter accepts a readonly place.
-    // ES: Congelamiento 3.0 P3: como arriba, un parametro `in` acepta un lugar readonly.
+    // EN: Freeze P3: as above, an `in` parameter accepts a readonly place.
+    // ES: Congelamiento P3: como arriba, un parametro `in` acepta un lugar readonly.
     const bool parameterPointeeReadonly =
         parameter.pointerPointeeReadonly || parameter.passKind == ParameterPassKind::In;
     const bool discardsPointeeConst = !packElement &&
@@ -4852,8 +6217,17 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
                 parameter.pointerNullable, parameterPointeeReadonly,
                 parameter.pointerHasProvenance, parameter.pointerKnownAlignment,
                 parameter.pointerAddressSpace));
+    // LKF-061: a `ref`/`out`/`in` written at the call site selects only parameters declared with that
+    // same keyword. All three are represented as a pointer to the referent, so without this check
+    // overloads that differ only in the keyword were all viable with identical conversions and the
+    // call was reported as ambiguous. An argument written without a keyword is unaffected (it does
+    // not convert to the pointer); a sole candidate with the wrong keyword still gets the precise
+    // pass-kind diagnostic from reportTerminalCallCandidateDiagnostic.
+    const bool writtenPassKindMismatch = !packElement &&
+        argument.argumentPassKind != ParameterPassKind::Value &&
+        parameter.passKind != argument.argumentPassKind;
     if (!conversion.exists() || (!rvalueArgument && (discardsPointeeConst || violatesPointerContract)) ||
-        boundLvalue ||
+        boundLvalue || writtenPassKindMismatch ||
         (argument.pointerPointeeVolatile &&
          (packElement || !parameter.pointerPointeeVolatile)) ||
         // T19-002: as for a namespace function. / Como en una funcion de namespace.
@@ -4864,7 +6238,10 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     else if (packElement &&
         (argument.ownership != sema::OwnershipKind::None || argument.ownershipTransfer ||
          argument.ownershipFreshOwner || argument.argumentPassKind != ParameterPassKind::Value))
+    {
         candidateBinding.viable = false;
+        candidateBinding.invalidPackOwnershipArgumentOrdinal = argumentOrdinal;
+    }
     else
     {
         const sema::OwnershipKind parameterOwnership = parameter.ownership;
@@ -5032,6 +6409,26 @@ bool ProjectMethodBodyModel::reportTerminalCallCandidateDiagnostic(
         recordCallBinding(std::move(call));
         return true;
     }
+    const auto packOwnership = std::ranges::find_if(call.evaluatedCandidates,
+        [](const MethodCallCandidate& candidate)
+        {
+            return candidate.invalidPackOwnershipArgumentOrdinal.has_value();
+        });
+    if (packOwnership != call.evaluatedCandidates.end())
+    {
+        const std::size_t ordinal = *packOwnership->invalidPackOwnershipArgumentOrdinal;
+        const ast::AstNode* argument = resolvedCallArgumentSyntax(
+            expression, callee, ordinal, coreStringForwarding);
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            argument != nullptr ? argument->range() : expression->range(),
+            "an expanded params span only borrows its elements for the call; pass a non-owning reference, "
+            "or build a Span/ReadOnlySpan over the owners and pass it as the params argument");
+        call.resolution = MethodCallResolutionKind::NoViableCandidate;
+        recordCallBinding(std::move(call));
+        return true;
+    }
     for (const MethodCallCandidate& candidate : call.evaluatedCandidates)
     {
         if (candidate.invalidMoveOnlyArgumentOrdinal.has_value())
@@ -5077,16 +6474,7 @@ bool ProjectMethodBodyModel::reportCallOwnershipDiagnostic(
     {
         if (candidateOrdinal >= memberModel_->members().size()) continue;
         const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
-        if (candidate.kind != ClassMemberKind::Method ||
-            candidate.parameters.size() < resolvedArguments.size() ||
-            !std::ranges::all_of(
-                candidate.parameters.begin() +
-                    static_cast<std::ptrdiff_t>(resolvedArguments.size()),
-                candidate.parameters.end(),
-                [](const MethodParameterSymbol& parameter)
-                {
-                    return parameter.defaultValueSyntax != nullptr;
-                })) continue;
+        if (candidate.kind != ClassMemberKind::Method) continue;
         if (reportCandidateOwnershipDiagnostic(
                 expression, callee, candidate, resolvedArguments,
                 coreStringForwarding, diagnostics)) return true;
@@ -5102,18 +6490,23 @@ bool ProjectMethodBodyModel::reportCandidateOwnershipDiagnostic(
     bool coreStringForwarding,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
+    const NamedArgumentMap mapping = mapArgumentsToParameters(
+        expression->children(), candidate, coreStringForwarding ? 1U : 0U);
+    if (!mapping.valid || mapping.explicitParameterOrdinals.size() != resolvedArguments.size()) return false;
     for (std::size_t argumentOrdinal = 0;
          argumentOrdinal < resolvedArguments.size(); ++argumentOrdinal)
     {
+        const std::size_t parameterOrdinal = mapping.explicitParameterOrdinals[argumentOrdinal];
+        if (parameterOrdinal >= candidate.parameters.size()) continue;
         const ProjectImplicitConversion physical = classifyImplicit(
             resolvedArguments[argumentOrdinal].typeKey,
-            candidate.parameters[argumentOrdinal].typeKey,
+            candidate.parameters[parameterOrdinal].typeKey,
             resolvedArguments[argumentOrdinal].integerConstant);
         if (!physical.exists()) continue;
         const ast::AstNode* argumentSyntax = resolvedCallArgumentSyntax(
             expression, callee, argumentOrdinal, coreStringForwarding);
         if (reportArgumentOwnershipDiagnostic(
-                expression, argumentSyntax, candidate.parameters[argumentOrdinal],
+                expression, argumentSyntax, candidate.parameters[parameterOrdinal],
                 resolvedArguments[argumentOrdinal], diagnostics)) return true;
     }
     return false;
@@ -5205,20 +6598,25 @@ bool ProjectMethodBodyModel::reportCallPassKindDiagnostic(
 {
     if (memberModel_ == nullptr) return false;
     std::size_t arityMatches = 0;
-    std::size_t soleCandidate = 0;
+    const MethodCallCandidate* soleCandidate = nullptr;
     for (const MethodCallCandidate& candidate : call.evaluatedCandidates)
     {
         if (candidate.conversions.size() != arguments.size()) continue;
         ++arityMatches;
-        soleCandidate = candidate.memberOrdinal;
+        soleCandidate = &candidate;
     }
-    if (arityMatches != 1 || soleCandidate >= memberModel_->members().size()) return false;
-    const ClassMemberSymbol& only = memberModel_->members()[soleCandidate];
+    if (arityMatches != 1 || soleCandidate == nullptr ||
+        soleCandidate->memberOrdinal >= memberModel_->members().size()) return false;
+    const ClassMemberSymbol& only = memberModel_->members()[soleCandidate->memberOrdinal];
+    const auto& parameterOrdinals = soleCandidate->argumentParameterOrdinals;
+    if (!parameterOrdinals.empty() && parameterOrdinals.size() != arguments.size()) return false;
     bool mismatch = false;
     for (std::size_t index = 0;
          index < arguments.size() && index < only.parameters.size(); ++index)
     {
-        if (only.parameters[index].passKind != arguments[index].argumentPassKind)
+        const std::size_t parameterOrdinal = parameterOrdinals.empty() ? index : parameterOrdinals[index];
+        if (parameterOrdinal < only.parameters.size() &&
+            only.parameters[parameterOrdinal].passKind != arguments[index].argumentPassKind)
         {
             mismatch = true;
             break;
@@ -5227,7 +6625,7 @@ bool ProjectMethodBodyModel::reportCallPassKindDiagnostic(
     if (!mismatch) return false;
     const std::vector<ExpressionResult> argumentValues(arguments.begin(), arguments.end());
     checkArgumentPassKinds(
-        expression, call.methodName, soleCandidate, argumentValues, diagnostics);
+        expression, call.methodName, soleCandidate->memberOrdinal, argumentValues, diagnostics, parameterOrdinals);
     return true;
 }
 
@@ -5403,6 +6801,75 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
     if (!validateSelectedCallReceiver(
             provenVariantCase, expression, callee, selected,
             call, scopeOrdinal, diagnostics)) return result;
+    const ClassMemberSymbol* directMember = methodSymbol(selected.memberOrdinal);
+    if (!coreStringForwarding && directMember != nullptr)
+    {
+        for (std::size_t index = 0; index < resolvedArguments.size() &&
+             index < selected.argumentParameterOrdinals.size(); ++index)
+        {
+            const ast::AstNode* argument = resolvedCallArgumentSyntax(expression, callee, index, false);
+            if (argument == nullptr || argument->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+            const auto name = lookupScopeName(scopeOrdinal, argument->text());
+            if (!name.has_value() || name->kind != ScopeNameKind::Local) continue;
+            const auto environments = fnOnceEnvironments_.find(name->semanticOrdinal);
+            if (environments == fnOnceEnvironments_.end()) continue;
+            const auto count = directCallableParameterInvocations(
+                *directMember, selected.argumentParameterOrdinals[index]);
+            if (!count.has_value() || *count == 0) continue;
+            bool consumed = *count > 1;
+            for (const ast::AstNode* environment : environments->second)
+                consumed |= consumedFnOnceEnvironments_.contains(environment);
+            if (consumed)
+            {
+                diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                    diagnostics::DiagnosticSeverity::Error, argument->range(),
+                    "FnOnce closure may be invoked more than once through a parameter");
+                call.resolution = MethodCallResolutionKind::NoViableCandidate;
+                recordCallBinding(std::move(call));
+                return result;
+            }
+            consumedFnOnceEnvironments_.insert(environments->second.begin(), environments->second.end());
+        }
+    }
+    // EN: Escape marks this call's own argument list set describe what happens during the call, not
+    //     before it; lift them for this check (NSC-NEW-018).
+    // ES: Las marcas de escape que fijó la lista de argumentos de esta llamada describen lo que ocurre
+    //     durante ella, no antes; se retiran para esta comprobación (NSC-NEW-018).
+    const std::vector<std::size_t> newlyEscaped = std::move(lastCallNewlyEscapedLocals_);
+    lastCallNewlyEscapedLocals_.clear();
+    const auto activeViewBeforeThisCall = [&](const ast::AstNode* argument)
+    {
+        for (const std::size_t ordinal : newlyEscaped)
+        {
+            locals_[ordinal].passedToCall = false;
+            locals_[ordinal].mayAliasUnknownReference = false;
+        }
+        const bool active = hasActiveViewOfStorage(argument, methodMemberOrdinal, scopeOrdinal, true);
+        for (const std::size_t ordinal : newlyEscaped)
+        {
+            locals_[ordinal].passedToCall = true;
+            locals_[ordinal].mayAliasUnknownReference = true;
+        }
+        return active;
+    };
+    for (std::size_t index = 0;
+         index < resolvedArguments.size() && index < selected.argumentParameterOrdinals.size(); ++index)
+    {
+        if (!isReferenceTypeKey(resolvedArguments[index].typeKey) &&
+            !resolvedArguments[index].typeKey.ends_with("[]")) continue;
+        const ast::AstNode* argument = resolvedCallArgumentSyntax(expression, callee, index, coreStringForwarding);
+        if (argument == nullptr || !activeViewBeforeThisCall(argument)) continue;
+        // EN: A source callee is judged after every body is analyzed (finalizeStorageViewCalls).
+        // ES: Un callee de fuente se juzga al terminar todos los cuerpos (finalizeStorageViewCalls).
+        if (deferStorageViewCall(selected.memberOrdinal, argument->range(),
+                "cannot pass object with a borrowed field view to a potentially mutating call")) continue;
+        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error, argument->range(),
+            "cannot pass object with a borrowed field view to a potentially mutating call");
+        call.resolution = MethodCallResolutionKind::NoViableCandidate;
+        recordCallBinding(std::move(call));
+        return result;
+    }
     const std::vector<ExpressionResult> argumentValues(arguments.begin(), arguments.end());
     checkArgumentPassKinds(
         expression, call.methodName, selected.memberOrdinal, argumentValues, diagnostics,
@@ -5414,11 +6881,28 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
     call.selectedMemberOrdinal = selected.memberOrdinal;
     updateScopedChildBorrowsForCall(
         expression, selected, call, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    // EN: LKF-310: MoveNext advances the iterator to a new item. A move(it.Current) made in this scope
+    //     or a nested one no longer blocks moving the new item; a MoveNext inside a branch the move
+    //     does not enclose leaves the mark, because that branch may not run.
+    // ES: LKF-310: MoveNext avanza el iterador a un elemento nuevo. Un move(it.Current) hecho en este
+    //     scope o en uno anidado ya no impide mover el elemento nuevo; un MoveNext dentro de una rama
+    //     que no contiene al movimiento conserva la marca, porque esa rama puede no ejecutarse.
+    if ((call.methodName == "MoveNext" || call.methodName == "MoveNextAsync") &&
+        callee.receiverSyntax != nullptr && !movedIteratorItems_.empty())
+    {
+        const std::optional<std::string> place = storagePlaceKey(callee.receiverSyntax, scopeOrdinal);
+        const auto moved = place.has_value() ? movedIteratorItems_.find(*place) : movedIteratorItems_.end();
+        if (moved != movedIteratorItems_.end() && scopeIsWithin(moved->second, scopeOrdinal))
+            movedIteratorItems_.erase(moved);
+    }
     configureSelectedCallBinding(
         result, expression, callee, selected, coreStringForwarding, call);
     if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
     {
         const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
+        recordViewOutputOrigins(call.selectedArgumentSyntaxes, resolvedArguments,
+            selected, selectedMember, scopeOrdinal, diagnostics,
+            !selectedMember.isStatic && !coreStringForwarding ? callee.receiverSyntax : nullptr);
         recordSelectedOutArguments(
             expression, callee, resolvedArguments, selected, selectedMember,
             coreStringForwarding, methodMemberOrdinal, scopeOrdinal);
@@ -5435,8 +6919,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
         rejectNewCallReceiver(callee, selectedMember, coreStringForwarding, diagnostics);
         applySelectedCoreOperations(
             expression, selectedMember, methodMemberOrdinal, scopeOrdinal, call, result, diagnostics);
-        // EN: Freeze 3.0 C-13: an async callee reports its error at the await, not at the call.
-        // ES: Congelamiento 3.0 C-13: un callee async reporta su error en el await, no en la llamada.
+        // EN: Freeze C-13: an async callee reports its error at the await, not at the call.
+        // ES: Congelamiento C-13: un callee async reporta su error en el await, no en la llamada.
         if (!selectedMember.effects.contains(sema::Effect::Async))
             requireDeclaredErrorHandled(
                 expression, selectedMember.declaredErrorTypeKey, selectedMember.name,
@@ -5444,8 +6928,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
     }
     finalizeSelectedCallResult(
         result, expression, call, nullConditionalCall, provenVariantCase, diagnostics);
-    // EN: Freeze 3.0 (plan item 135a): the parameters that take ownership do not lend their argument.
-    // ES: Congelamiento 3.0 (elemento 135a del plan): los parametros que toman ownership no prestan su argumento.
+    // EN: Freeze (plan item 135a): the parameters that take ownership do not lend their argument.
+    // ES: Congelamiento (elemento 135a del plan): los parametros que toman ownership no prestan su argumento.
     if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
     {
         const ClassMemberSymbol& selectedCallable = memberModel_->members()[selected.memberOrdinal];
@@ -5457,18 +6941,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
     return result;
 }
 
-// EN: Freeze 3.0 (plan item 135). A reference or string result that is not a new owner may point into the
+// EN: Freeze (plan item 135). A reference or string result that is not a new owner may point into the
 //     receiver or into an argument, so it keeps their borrow of an owned temporary (`Make().GetName()`,
 //     `Id(Make().Name)`). The rule is conservative: the analysis does not know which input the result came from.
-// ES: Congelamiento 3.0 (elemento 135 del plan). Un resultado referencia o string que no es un owner nuevo puede
+// ES: Congelamiento (elemento 135 del plan). Un resultado referencia o string que no es un owner nuevo puede
 //     apuntar dentro del receptor o de un argumento, asi que conserva su prestamo de un temporal owned
 //     (`Make().GetName()`, `Id(Make().Name)`). La regla es conservadora: el analisis no sabe de que entrada vino
 //     el resultado.
 //
-// EN: Freeze 3.0 (plan item 135a): an argument also lends when it is itself an owned temporary of any reference
+// EN: Freeze (plan item 135a): an argument also lends when it is itself an owned temporary of any reference
 //     type handed to a parameter that does not take ownership (`Id(MakeText())`); the call keeps it only until
 //     the end of the full expression. The same rule covers method, namespace function and delegate calls.
-// ES: Congelamiento 3.0 (elemento 135a del plan): un argumento tambien presta cuando es el propio temporal owned,
+// ES: Congelamiento (elemento 135a del plan): un argumento tambien presta cuando es el propio temporal owned,
 //     de cualquier tipo referencia, entregado a un parametro que no toma ownership (`Id(MakeText())`); la llamada
 //     lo conserva solo hasta el final de la expresion completa. La misma regla cubre llamadas a metodos, a
 //     funciones de namespace y a delegates.
@@ -5491,9 +6975,9 @@ void ProjectMethodBodyModel::markCallTemporaryBorrow(
     result.borrowsOwnedTemporary = borrows;
 }
 
-// EN: Freeze 3.0 (plan item 135a): the result of an owned-returning call or a `new` of a class, as a value of a
+// EN: Freeze (plan item 135a): the result of an owned-returning call or a `new` of a class, as a value of a
 //     reference type that is not a delegate (a delegate cannot be what a reference result aliases).
-// ES: Congelamiento 3.0 (elemento 135a del plan): el resultado de una llamada con retorno owned o un `new` de una
+// ES: Congelamiento (elemento 135a del plan): el resultado de una llamada con retorno owned o un `new` de una
 //     clase, como valor de un tipo referencia que no es delegate (un delegate no puede ser aquello de lo que un
 //     resultado referencia es alias).
 bool ProjectMethodBodyModel::isOwnedTemporaryValue(const ExpressionResult& value) const
@@ -5522,9 +7006,9 @@ std::vector<bool> ProjectMethodBodyModel::ownedArgumentParameters(
     return owned;
 }
 
-// EN: Freeze 3.0 (plan item 135a): the parameters of a declared delegate that take ownership, and whether it
+// EN: Freeze (plan item 135a): the parameters of a declared delegate that take ownership, and whether it
 //     returns an owner. A structural function type declares neither, so every parameter lends.
-// ES: Congelamiento 3.0 (elemento 135a del plan): los parametros de un delegate declarado que toman ownership, y
+// ES: Congelamiento (elemento 135a del plan): los parametros de un delegate declarado que toman ownership, y
 //     si devuelve un owner. Un tipo de funcion estructural no declara ninguno, asi que todo parametro presta.
 std::vector<bool> ProjectMethodBodyModel::ownedDelegateArgumentParameters(
     std::size_t delegateOrdinal,
@@ -5560,6 +7044,15 @@ void ProjectMethodBodyModel::markDelegateCallTemporaryBorrow(
     const std::vector<bool> ownedParameters =
         ownedDelegateArgumentParameters(delegateOrdinal, arguments.size(), returnsOwned);
     if (!returnsOwned) markCallTemporaryBorrow(result, false, arguments, ownedParameters);
+    // EN: LKF-286: a delegate declared with an owned return hands its result to the caller, as an
+    //     owned-returning method does; the result carried no ownership and `raii T x = d();` was refused.
+    // ES: LKF-286: un delegate declarado con retorno owned entrega su resultado al llamador, como un
+    //     método con retorno owned; el resultado no llevaba propiedad y `raii T x = d();` se rechazaba.
+    if (returnsOwned && result.valid)
+    {
+        result.ownership = sema::OwnershipKind::Owned;
+        result.ownershipTransfer = true;
+    }
 }
 
 bool ProjectMethodBodyModel::validateSelectedCallReceiver(
@@ -5576,9 +7069,33 @@ bool ProjectMethodBodyModel::validateSelectedCallReceiver(
     const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
     if (!validateActiveIterationCallReceiver(
             expression, callee, selectedMember, call, scopeOrdinal, diagnostics)) return false;
+    if (!selectedMember.isStatic &&
+        (!selectedMember.declaringTypeIsStruct || !selectedMember.isReadonly) &&
+        ((callee.receiverSyntax == nullptr && call.implicitThis) ||
+         (callee.receiverSyntax != nullptr &&
+          (callee.receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression ||
+           callee.receiverSyntax->kind() == ast::AstNodeKind::MemberExpression ||
+           callee.receiverSyntax->kind() == ast::AstNodeKind::IndexExpression ||
+           callee.receiverSyntax->kind() == ast::AstNodeKind::ThisExpression))) &&
+         hasActiveViewOfStorage(callee.receiverSyntax, call.callerMethodMemberOrdinal, scopeOrdinal, true) &&
+         // EN: A source class or static callee is judged after every body is analyzed
+         //     (finalizeStorageViewCalls); a struct instance method keeps its `readonly` contract.
+         // ES: Un callee de fuente de clase o estatico se juzga al terminar todos los cuerpos
+         //     (finalizeStorageViewCalls); un metodo de instancia de struct conserva su contrato `readonly`.
+         (selectedMember.declaringTypeIsStruct ||
+          !deferStorageViewCall(selected.memberOrdinal, expression->range(),
+              "cannot call potentially mutating method while a borrowed field view is alive")))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "cannot call potentially mutating method while a borrowed field view is alive");
+        call.resolution = MethodCallResolutionKind::NoViableCandidate;
+        recordCallBinding(std::move(call));
+        return false;
+    }
     updateSelectedVariantFlow(
         provenVariantCase, expression, callee, selectedMember, scopeOrdinal);
-    // NativeSharp 3.0 T03. Variant payload extractors have to be public so a match in a
+    // NativeSharp T03. Variant payload extractors have to be public so a match in a
     // LibraryReference consumer can call code transported through NSMETA, but they are not a
     // user-callable API: reading an inactive union alternative would be undefined. The parser
     // marks only the extractor call it generates after the corresponding IsCase branch.
@@ -5604,6 +7121,21 @@ bool ProjectMethodBodyModel::validateSelectedCallReceiver(
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
             "readonly receiver cannot invoke mutating struct member '" +
+                selectedMember.name + "'");
+        call.resolution = MethodCallResolutionKind::NoViableCandidate;
+        recordCallBinding(std::move(call));
+        return false;
+    }
+    // Class methods do not yet have a checked readonly receiver contract. Do not
+    // let a readonly borrowed object enter a potentially mutating method.
+    if (callee.readonlyBorrowedObject && !selectedMember.declaringTypeIsStruct &&
+        !selectedMember.isStatic)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "readonly borrowed object cannot invoke an unchecked class member '" +
                 selectedMember.name + "'");
         call.resolution = MethodCallResolutionKind::NoViableCandidate;
         recordCallBinding(std::move(call));
@@ -5728,6 +7260,31 @@ void ProjectMethodBodyModel::invalidateCallArgumentFlow(
         integerRanges_.erase(*storage);
         activeVariantCases_.erase(*storage);
     }
+    const auto replacement = simpleDelegateReplacement(selectedMemberForFlow);
+    if (!replacement.has_value()) return;
+    const ast::AstNode* target = nullptr;
+    const ast::AstNode* source = nullptr;
+    for (std::size_t index = 0; index < selected.argumentParameterOrdinals.size(); ++index)
+    {
+        const ast::AstNode* argument = resolvedCallArgumentSyntax(expression, callee, index, coreStringForwarding);
+        if (argument == nullptr) continue;
+        if (selected.argumentParameterOrdinals[index] == replacement->first) target = argument->first();
+        if (selected.argumentParameterOrdinals[index] == replacement->second) source = argument;
+    }
+    if (target == nullptr || source == nullptr || target->kind() != ast::AstNodeKind::IdentifierExpression ||
+        source->kind() != ast::AstNodeKind::IdentifierExpression) return;
+    const auto targetName = lookupScopeName(scopeOrdinal, target->text());
+    const auto sourceName = lookupScopeName(scopeOrdinal, source->text());
+    if (!targetName.has_value() || !sourceName.has_value() || targetName->kind != ScopeNameKind::Local ||
+        sourceName->kind != ScopeNameKind::Local || targetName->semanticOrdinal >= locals_.size() ||
+        sourceName->semanticOrdinal >= locals_.size() ||
+        !isAnyDelegateTypeKey(locals_[targetName->semanticOrdinal].typeKey)) return;
+    const auto sourceEnvironment = fnOnceEnvironments_.find(sourceName->semanticOrdinal);
+    if (sourceEnvironment == fnOnceEnvironments_.end() || sourceEnvironment->second.size() != 1) return;
+    const auto origins = sourceEnvironment->second;
+    fnOnceEnvironments_[targetName->semanticOrdinal] = origins;
+    invokedFnOnceLocals_.erase(targetName->semanticOrdinal);
+    maybeInvokedFnOnceLocals_.erase(targetName->semanticOrdinal);
 }
 
 void ProjectMethodBodyModel::updateScopedChildBorrowsForCall(
@@ -5741,13 +7298,25 @@ void ProjectMethodBodyModel::updateScopedChildBorrowsForCall(
     // NS304-T07-F06: TaskScope.Join discharges the scoped child borrows; TaskScope.Spawn of an
     // async child that captures a `ref value` registers the borrow of that source local. Block exit
     // while a borrow is still registered rejects the dangling Future.
+    // EN: Only NativeSharp.Core TaskScope<T> calls take part. A Join used to clear every borrow,
+    //     whichever scope or type it belonged to, and Spawn saw only a direct child call matched by
+    //     argument position (LKF-289).
+    // ES: Solo participan las llamadas de TaskScope<T> de NativeSharp.Core. Un Join limpiaba todos
+    //     los préstamos, fuera cual fuera su scope o su tipo, y Spawn solo veía una llamada hija
+    //     directa emparejada por posición (LKF-289).
+    if ((call.methodName == "Join" || call.methodName == "Spawn") && !selectedCallIsCoreTaskScope(selected))
+        return;
+    const std::size_t scopeKey = scopedChildReceiverKey(expression, scopeOrdinal);
     if (call.methodName == "Join")
     {
+        scopedChildBorrowsByScope_.erase(scopeKey);
         scopedChildBorrows_.clear();
+        for (const auto& [key, borrows] : scopedChildBorrowsByScope_)
+            scopedChildBorrows_.insert(borrows.begin(), borrows.end());
     }
     else if (call.methodName == "Spawn")
     {
-        registerScopedChildBorrows(expression, methodMemberOrdinal, scopeOrdinal);
+        registerScopedChildBorrows(expression, methodMemberOrdinal, scopeOrdinal, scopeKey);
         // NS304-T07-F07: a thread executor may move the Future to another thread, so every `ref`
         // capture must be Send (a raw pointer, or a type containing one, does not derive Send).
         if (selectedCallUsesThreadExecutor(selected))
@@ -5759,30 +7328,87 @@ void ProjectMethodBodyModel::updateScopedChildBorrowsForCall(
 void ProjectMethodBodyModel::registerScopedChildBorrows(
     const ast::AstNode* expression,
     std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal)
+    std::size_t scopeOrdinal,
+    std::size_t scopeKey)
 {
     for (const ast::AstNode* argument : expression->children())
     {
-        if (argument == nullptr || argument->kind() != ast::AstNodeKind::CallExpression)
-            continue;
-        const MethodCallBinding* childCall = callBinding(argument, methodMemberOrdinal);
-        if (childCall == nullptr || !childCall->selectedMemberOrdinal.has_value()) continue;
-        if (*childCall->selectedMemberOrdinal >= memberModel_->members().size()) continue;
-        const ClassMemberSymbol& child =
-            memberModel_->members()[*childCall->selectedMemberOrdinal];
-        for (std::size_t childArgOrdinal = 0;
-             childArgOrdinal < argument->children().size(); ++childArgOrdinal)
+        if (argument == nullptr) continue;
+        // EN: `Spawn(move(f))` / `Spawn(f)` spawns a Future local; its initializer is the child call.
+        // ES: `Spawn(move(f))` / `Spawn(f)` lanza un local Future; su inicializador es la llamada hija.
+        const ast::AstNode* source = argument;
+        if (source->kind() == ast::AstNodeKind::MoveExpression && source->first() != nullptr)
+            source = source->first();
+        if (source->kind() == ast::AstNodeKind::IdentifierExpression)
         {
-            if (childArgOrdinal >= child.parameters.size() ||
-                child.parameters[childArgOrdinal].passKind != ParameterPassKind::Ref)
-                continue;
-            const MethodEscapeOrigin origin = referenceEscapeOriginOfExpression(
-                argument->children()[childArgOrdinal], scopeOrdinal);
-            if (origin.kind == MethodEscapeOriginKind::CurrentFrameLocal &&
-                origin.ordinal.has_value())
-                scopedChildBorrows_.insert(*origin.ordinal);
+            const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, source->text());
+            if (name.has_value() && name->kind == ScopeNameKind::Local && name->semanticOrdinal < locals_.size() &&
+                locals_[name->semanticOrdinal].syntax != nullptr)
+                source = locals_[name->semanticOrdinal].syntax->first();
+        }
+        if (source == nullptr || source->kind() != ast::AstNodeKind::CallExpression) continue;
+        registerScopedChildCallBorrows(source, methodMemberOrdinal, scopeOrdinal, scopeKey);
+    }
+}
+
+void ProjectMethodBodyModel::registerScopedChildCallBorrows(
+    const ast::AstNode* childCallSyntax,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    std::size_t scopeKey)
+{
+    const MethodCallBinding* childCall = callBinding(childCallSyntax, methodMemberOrdinal);
+    if (childCall == nullptr || !childCall->selectedMemberOrdinal.has_value()) return;
+    if (*childCall->selectedMemberOrdinal >= memberModel_->members().size()) return;
+    const ClassMemberSymbol& child = memberModel_->members()[*childCall->selectedMemberOrdinal];
+    // EN: Map arguments through the selected binding so named arguments reach their parameter.
+    // ES: Emparejar por el binding elegido para que los argumentos con nombre lleguen a su parámetro.
+    const bool bound = !childCall->selectedArgumentSyntaxes.empty() &&
+        childCall->selectedArgumentSyntaxes.size() == childCall->selectedArgumentParameterOrdinals.size();
+    const std::size_t count = bound ? childCall->selectedArgumentSyntaxes.size() : childCallSyntax->children().size();
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        const std::size_t parameterOrdinal = bound ? childCall->selectedArgumentParameterOrdinals[index] : index;
+        const ast::AstNode* argumentSyntax = bound
+            ? childCall->selectedArgumentSyntaxes[index] : childCallSyntax->children()[index];
+        if (argumentSyntax == nullptr || parameterOrdinal >= child.parameters.size() ||
+            child.parameters[parameterOrdinal].passKind != ParameterPassKind::Ref)
+            continue;
+        const MethodEscapeOrigin origin = referenceEscapeOriginOfExpression(argumentSyntax, scopeOrdinal);
+        if (origin.kind == MethodEscapeOriginKind::CurrentFrameLocal && origin.ordinal.has_value())
+        {
+            scopedChildBorrows_.insert(*origin.ordinal);
+            scopedChildBorrowsByScope_[scopeKey].insert(*origin.ordinal);
         }
     }
+}
+
+std::size_t ProjectMethodBodyModel::scopedChildReceiverKey(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal) const
+{
+    const ast::AstNode* callee = expression != nullptr ? expression->first() : nullptr;
+    const ast::AstNode* receiver = callee != nullptr && callee->kind() == ast::AstNodeKind::MemberExpression
+        ? callee->first() : nullptr;
+    if (receiver == nullptr || receiver->kind() != ast::AstNodeKind::IdentifierExpression)
+        return std::numeric_limits<std::size_t>::max();
+    const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, receiver->text());
+    if (!name.has_value() || name->kind != ScopeNameKind::Local) return std::numeric_limits<std::size_t>::max();
+    return name->semanticOrdinal;
+}
+
+bool ProjectMethodBodyModel::selectedCallIsCoreTaskScope(const MethodCallCandidate& selected) const
+{
+    if (genericModel_ == nullptr || memberModel_ == nullptr || nameLookup_ == nullptr ||
+        selected.memberOrdinal >= memberModel_->members().size()) return false;
+    const std::size_t declaringOrdinal = memberModel_->members()[selected.memberOrdinal].declaringTypeOrdinal;
+    if (declaringOrdinal >= nameLookup_->namedTypes().size()) return false;
+    const GenericSpecializationRecord* specialization =
+        genericModel_->specializationForTypeKey(nameLookup_->namedTypes()[declaringOrdinal].identity.key());
+    if (specialization == nullptr) return false;
+    const GenericTemplateRecord* source = genericModel_->templateForCanonicalKey(specialization->templateKey);
+    return source != nullptr && source->namespaceName == "NativeSharp.Core" && source->ownerName.empty() &&
+        source->name == "TaskScope";
 }
 
 bool ProjectMethodBodyModel::selectedCallUsesThreadExecutor(
@@ -5856,6 +7482,124 @@ void ProjectMethodBodyModel::validateThreadExecutorCaptures(
     }
 }
 
+namespace
+{
+// The ordinary capture walk remains unchanged. This context is only used for
+// an explicit conditional unsafe impl and checks both payload guarantees with
+// a bounded worklist, including nested wrappers and cyclic named types.
+class ConditionalCaptureThreadSafety final
+{
+public:
+    ConditionalCaptureThreadSafety(const ProjectNameLookup* lookup, const ProjectMemberModel* members,
+                                   const ProjectInheritanceModel* inheritance)
+        : lookup_(lookup), members_(members), inheritance_(inheritance)
+    {
+        if (lookup_ == nullptr) return;
+        bool ambiguous = false;
+        for (const NamedTypeDeclaration& declaration : lookup_->namedTypes())
+        {
+            if (declaration.kind != NamedTypeDeclarationKind::Interface) continue;
+            const std::string_view name = declaration.identity.fullyQualifiedNameView();
+            std::string* key = name == "NativeSharp.Core.Send" ? &sendKey_
+                : name == "NativeSharp.Core.Sync" ? &syncKey_ : nullptr;
+            if (key == nullptr) continue;
+            if (!key->empty()) { ambiguous = true; break; }
+            *key = "type:" + declaration.identity.key();
+        }
+        if (ambiguous || sendKey_.size() < 4U || syncKey_.size() < 4U ||
+            sendKey_.substr(0, sendKey_.size() - 4U) != syncKey_.substr(0, syncKey_.size() - 4U))
+        {
+            sendKey_.clear();
+            syncKey_.clear();
+        }
+    }
+
+    std::optional<std::string> payload(std::size_t ordinal, bool send) const
+    {
+        if (lookup_ == nullptr || members_ == nullptr || sendKey_.empty() || syncKey_.empty())
+            return std::nullopt;
+        const NamedTypeDeclaration* declaration = lookup_->typeForOrdinal(ordinal);
+        return declaration == nullptr ? std::nullopt : members_->conditionalUnsafeThreadArgument(
+            *declaration, send ? sendKey_ : syncKey_, *lookup_);
+    }
+
+    bool payloadIsSafe(const std::string& typeKey) const
+    {
+        if (inheritance_ == nullptr || members_ == nullptr) return false;
+        struct Item { std::string key; bool send; };
+        std::vector<Item> pending{{typeKey, true}, {typeKey, false}};
+        std::array<std::unordered_set<std::size_t>, 2> visited;
+        std::vector<std::size_t> fallback;
+        while (!pending.empty())
+        {
+            Item item = std::move(pending.back());
+            pending.pop_back();
+            while (true)
+            {
+                if (item.key.ends_with("*")) return false;
+                if (item.key.starts_with("refmut:"))
+                {
+                    if (!item.send) return false;
+                    item.key = item.key.substr(7);
+                }
+                else if (item.key.starts_with("ref:"))
+                {
+                    item.send = false;
+                    item.key = item.key.substr(4);
+                }
+                else break;
+            }
+            auto element = ProjectMemberModel::fixedArrayElementTypeKey(item.key);
+            if (!element.has_value()) element = ProjectTypeConversion::nativeArrayElementType(item.key);
+            if (element.has_value())
+            {
+                pending.push_back({std::move(*element), item.send});
+                continue;
+            }
+            if (auto elements = ProjectTypeConversion::tupleElementTypeKeys(item.key); elements.has_value())
+            {
+                for (std::string& part : *elements) pending.push_back({std::move(part), item.send});
+                continue;
+            }
+            const auto ordinal = inheritance_->typeOrdinalForTypeKey(item.key);
+            if (!ordinal.has_value())
+            {
+                if (!item.key.starts_with("builtin:")) return false;
+                continue;
+            }
+            if (!visited[item.send ? 1U : 0U].insert(*ordinal).second) continue;
+            if (const auto nested = payload(*ordinal, item.send); nested.has_value())
+            {
+                pending.push_back({*nested, true});
+                pending.push_back({*nested, false});
+                continue;
+            }
+            if (const auto base = inheritance_->baseTypeOrdinal(*ordinal); base.has_value())
+                pending.push_back({inheritance_->typeKeyForOrdinal(*base), item.send});
+            std::span<const std::size_t> ordinals = members_->membersDeclaredByType(*ordinal);
+            if (!members_->hasMembersDeclaredByTypeIndex())
+            {
+                fallback.clear();
+                for (std::size_t index = 0; index < members_->members().size(); ++index)
+                    if (members_->members()[index].declaringTypeOrdinal == *ordinal) fallback.push_back(index);
+                ordinals = fallback;
+            }
+            for (const std::size_t index : ordinals)
+                if (index < members_->members().size() && members_->members()[index].kind == ClassMemberKind::Field)
+                    pending.push_back({members_->members()[index].declaredTypeKey, item.send});
+        }
+        return true;
+    }
+
+private:
+    const ProjectNameLookup* lookup_;
+    const ProjectMemberModel* members_;
+    const ProjectInheritanceModel* inheritance_;
+    std::string sendKey_;
+    std::string syncKey_;
+};
+}
+
 bool ProjectMethodBodyModel::callTypeIsSend(const std::string& typeKey) const
 {
     // Depth-first walk over the field types with an explicit stack instead of recursion. The
@@ -5865,6 +7609,7 @@ bool ProjectMethodBodyModel::callTypeIsSend(const std::string& typeKey) const
     std::vector<std::string> pending{typeKey};
     std::unordered_set<std::size_t> walkedTypes;
     std::vector<std::size_t> fallbackMemberOrdinals;
+    const ConditionalCaptureThreadSafety conditional(nameLookup_, memberModel_, inheritanceModel_);
     while (!pending.empty())
     {
         std::string current = std::move(pending.back());
@@ -5877,8 +7622,38 @@ bool ProjectMethodBodyModel::callTypeIsSend(const std::string& typeKey) const
             if (!current.starts_with("ref:") && !current.starts_with("refmut:")) break;
             current = current.substr(current.find(':') + 1);
         }
+        // EN: LKF-290: a delegate or lambda value carries a captured environment that its type does not
+        //     describe, so the walk found no fields and took it as Send. It is not provably Send.
+        // ES: LKF-290: un delegate o una lambda lleva un entorno capturado que su tipo no describe, así
+        //     que el recorrido no hallaba campos y lo daba por Send. No es demostrablemente Send.
+        if (language::isAnonymousLambdaTypeIdentity(current) ||
+            (delegateTypeOrdinalForTypeKey(current).has_value() && !isExternCDelegateTypeKey(current)))
+            return false;
+        if (auto element = ProjectMemberModel::fixedArrayElementTypeKey(current); element.has_value())
+        {
+            pending.push_back(std::move(*element));
+            continue;
+        }
+        if (auto element = ProjectTypeConversion::nativeArrayElementType(current); element.has_value())
+        {
+            pending.push_back(std::move(*element));
+            continue;
+        }
+        if (auto elements = ProjectTypeConversion::tupleElementTypeKeys(current); elements.has_value())
+        {
+            pending.insert(pending.end(), elements->begin(), elements->end());
+            continue;
+        }
         const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(current);
         if (!typeOrdinal.has_value() || !walkedTypes.insert(*typeOrdinal).second) continue;
+        if (const auto payload = conditional.payload(*typeOrdinal, true); payload.has_value())
+        {
+            if (!conditional.payloadIsSafe(*payload)) return false;
+            continue;
+        }
+        if (inheritanceModel_ != nullptr)
+            if (const auto base = inheritanceModel_->baseTypeOrdinal(*typeOrdinal); base.has_value())
+                pending.push_back(inheritanceModel_->typeKeyForOrdinal(*base));
         std::span<const std::size_t> memberOrdinals =
             memberModel_->membersDeclaredByType(*typeOrdinal);
         if (!memberModel_->hasMembersDeclaredByTypeIndex())
@@ -5913,6 +7688,7 @@ bool ProjectMethodBodyModel::callTypeIsSync(const std::string& typeKey) const
     std::vector<std::string> pending{typeKey};
     std::unordered_set<std::size_t> walkedTypes;
     std::vector<std::size_t> fallbackMemberOrdinals;
+    const ConditionalCaptureThreadSafety conditional(nameLookup_, memberModel_, inheritanceModel_);
     while (!pending.empty())
     {
         std::string current = std::move(pending.back());
@@ -5926,8 +7702,38 @@ bool ProjectMethodBodyModel::callTypeIsSync(const std::string& typeKey) const
             if (!current.starts_with("ref:")) break;
             current = current.substr(current.find(':') + 1);
         }
+        // EN: LKF-290: a delegate or lambda value carries a captured environment that its type does not
+        //     describe, so the walk found no fields and took it as Send. It is not provably Send or Sync.
+        // ES: LKF-290: un delegate o una lambda lleva un entorno capturado que su tipo no describe, así
+        //     que el recorrido no hallaba campos y lo daba por Send. No es demostrablemente Send ni Sync.
+        if (language::isAnonymousLambdaTypeIdentity(current) ||
+            (delegateTypeOrdinalForTypeKey(current).has_value() && !isExternCDelegateTypeKey(current)))
+            return false;
+        if (auto element = ProjectMemberModel::fixedArrayElementTypeKey(current); element.has_value())
+        {
+            pending.push_back(std::move(*element));
+            continue;
+        }
+        if (auto element = ProjectTypeConversion::nativeArrayElementType(current); element.has_value())
+        {
+            pending.push_back(std::move(*element));
+            continue;
+        }
+        if (auto elements = ProjectTypeConversion::tupleElementTypeKeys(current); elements.has_value())
+        {
+            pending.insert(pending.end(), elements->begin(), elements->end());
+            continue;
+        }
         const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(current);
         if (!typeOrdinal.has_value() || !walkedTypes.insert(*typeOrdinal).second) continue;
+        if (const auto payload = conditional.payload(*typeOrdinal, false); payload.has_value())
+        {
+            if (!conditional.payloadIsSafe(*payload)) return false;
+            continue;
+        }
+        if (inheritanceModel_ != nullptr)
+            if (const auto base = inheritanceModel_->baseTypeOrdinal(*typeOrdinal); base.has_value())
+                pending.push_back(inheritanceModel_->typeKeyForOrdinal(*base));
         std::span<const std::size_t> memberOrdinals =
             memberModel_->membersDeclaredByType(*typeOrdinal);
         if (!memberModel_->hasMembersDeclaredByTypeIndex())
@@ -5994,14 +7800,123 @@ void ProjectMethodBodyModel::configureSelectedCallBinding(
         result.objectLifetimeOwnership = selectedMember.declaredOwnership;
         result.storageOwnership = selectedMember.declaredOwnership;
     }
-    // EN: Freeze 3.0 P3: a `ref readonly` result is an addressable place that cannot be written;
+    // EN: Freeze P3: a `ref readonly` result is an addressable place that cannot be written;
     //     like an `in` parameter it admits reads and readonly members only.
-    // ES: Congelamiento 3.0 P3: un resultado `ref readonly` es un lugar direccionable que no se
+    // ES: Congelamiento P3: un resultado `ref readonly` es un lugar direccionable que no se
     //     puede escribir; como un parametro `in` solo admite lecturas y miembros readonly.
     const bool readonlyReference = isReadonlyReferenceReturn(selectedMember);
     result.assignable = selectedMember.isReferenceReturn && !readonlyReference;
     result.addressable = selectedMember.isReferenceReturn;
     result.readonlyReceiver = result.readonlyReceiver || readonlyReference;
+    // Reading a class reference through a borrowed view or a non-static reference
+    // return must preserve the loan rather than create an escaping class alias.
+    const auto resultClass = referenceTypeOrdinalForTypeKey(selectedMember.declaredTypeKey);
+    if (((!selectedMember.isStatic && typeKeyIsViewLike(call.receiverTypeKey)) ||
+         (selectedMember.isReferenceReturn &&
+          (readonlyReference || (!selectedMember.isStatic && selectedMember.returnLifetimeName != "static")))) &&
+        resultClass.has_value() && inheritanceModel_ != nullptr && inheritanceModel_->isClass(*resultClass))
+    {
+        result.ownership = sema::OwnershipKind::Borrowed;
+        result.objectLifetimeOwnership = sema::OwnershipKind::Borrowed;
+        result.storageOwnership = sema::OwnershipKind::Borrowed;
+        result.readonlyBorrowedObject = readonlyReference;
+    }
+    const NamedTypeDeclaration* returnedType = readonlyReference && selectedMember.isReferenceReturn
+        ? namedTypeForTypeKey(selectedMember.declaredTypeKey) : nullptr;
+    bool aggregateMayCarryReferences = false;
+    if (returnedType != nullptr && returnedType->kind == NamedTypeDeclarationKind::Struct)
+    {
+        std::vector<std::string> pending{selectedMember.declaredTypeKey};
+        std::unordered_set<std::size_t> visited;
+        while (!pending.empty() && !aggregateMayCarryReferences)
+        {
+            const std::string current = std::move(pending.back());
+            pending.pop_back();
+            if (ProjectTypeConversion::isNumeric(current) || current == "builtin:bool" ||
+                current == "builtin:char" || isEnumTypeKey(current)) continue;
+            const NamedTypeDeclaration* type = namedTypeForTypeKey(current);
+            const auto ordinal = namedTypeOrdinalForTypeKey(current);
+            if (type == nullptr || type->kind != NamedTypeDeclarationKind::Struct ||
+                !ordinal.has_value() || memberModel_ == nullptr ||
+                (type->isPrecompiled && !selectedMember.isStatic && selectedMember.returnLifetimeName != "static"))
+            {
+                aggregateMayCarryReferences = true;
+                break;
+            }
+            if (!visited.insert(*ordinal).second) continue;
+            for (const std::size_t memberOrdinal : memberModel_->membersOfType(*ordinal))
+            {
+                if (memberOrdinal >= memberModel_->members().size())
+                {
+                    aggregateMayCarryReferences = true;
+                    break;
+                }
+                const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+                if (member.kind == ClassMemberKind::Field && !member.isStatic)
+                {
+                    if (member.isReferenceReturn || member.declaredTypeKey.starts_with("refmut:") || member.isImportedC)
+                    {
+                        aggregateMayCarryReferences = true;
+                        break;
+                    }
+                    pending.push_back(member.declaredTypeKey);
+                }
+            }
+        }
+    }
+    if (aggregateMayCarryReferences)
+    {
+        result.ownership = sema::OwnershipKind::Borrowed;
+        result.objectLifetimeOwnership = sema::OwnershipKind::Borrowed;
+        result.storageOwnership = sema::OwnershipKind::Borrowed;
+        result.readonlyBorrowedObject = true;
+    }
+    // A reference-returning instance method with lifetime `this` lends its
+    // named move-only receiver. Preserve that owner for derived field borrows.
+    if (result.readonlyBorrowedObject && selectedMember.isReferenceReturn &&
+        !selectedMember.isStatic && selectedMember.returnLifetimeName == "this" &&
+        callee.receiverSyntax != nullptr &&
+        callee.receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const auto owner = lookupScopeName(call.scopeOrdinal, callee.receiverSyntax->text());
+        if (owner.has_value() && owner->kind == ScopeNameKind::Local &&
+            owner->semanticOrdinal < locals_.size() && locals_[owner->semanticOrdinal].isMoveOnly)
+            result.ownershipSourceLocalOrdinal = owner->semanticOrdinal;
+        const ClassMemberSymbol* caller = call.scopeOrdinal < scopes_.size()
+            ? methodSymbol(scopes_[call.scopeOrdinal].methodMemberOrdinal) : nullptr;
+        if (owner.has_value() && owner->kind == ScopeNameKind::Parameter && caller != nullptr &&
+            owner->semanticOrdinal < caller->parameters.size() && memberModel_ != nullptr &&
+            caller->parameters[owner->semanticOrdinal].passKind == ParameterPassKind::Value &&
+            memberModel_->typeIsMoveOnly(caller->parameters[owner->semanticOrdinal].typeKey))
+            result.ownershipSourceParameterOrdinal = owner->semanticOrdinal;
+    }
+    if (result.readonlyBorrowedObject && selectedMember.isReferenceReturn &&
+        !selectedMember.isStatic && selectedMember.returnLifetimeName == "this" &&
+        typeKeyIsViewLike(callee.receiverTypeKey) && callee.receiverSyntax != nullptr)
+    {
+        const auto root = viewRootLocalOfExpression(callee.receiverSyntax, call.scopeOrdinal);
+        std::size_t rootScope = call.scopeOrdinal;
+        if (callee.receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const auto receiver = lookupScopeName(call.scopeOrdinal, callee.receiverSyntax->text());
+            if (receiver.has_value() && receiver->kind == ScopeNameKind::Local &&
+                receiver->semanticOrdinal < locals_.size() && root.has_value() &&
+                locals_[receiver->semanticOrdinal].viewRootLocalName == *root)
+                rootScope = locals_[receiver->semanticOrdinal].scopeOrdinal;
+        }
+        const auto owner = root.has_value() ? lookupScopeName(rootScope, *root) : std::nullopt;
+        if (owner.has_value() && owner->kind == ScopeNameKind::Local &&
+            owner->semanticOrdinal < locals_.size() && locals_[owner->semanticOrdinal].isMoveOnly &&
+            !typeKeyIsViewLike(locals_[owner->semanticOrdinal].typeKey))
+            result.ownershipSourceLocalOrdinal = owner->semanticOrdinal;
+        const ClassMemberSymbol* caller = call.scopeOrdinal < scopes_.size()
+            ? methodSymbol(scopes_[call.scopeOrdinal].methodMemberOrdinal) : nullptr;
+        if (owner.has_value() && owner->kind == ScopeNameKind::Parameter && caller != nullptr &&
+            owner->semanticOrdinal < caller->parameters.size() && memberModel_ != nullptr &&
+            caller->parameters[owner->semanticOrdinal].passKind == ParameterPassKind::Value &&
+            memberModel_->typeIsMoveOnly(caller->parameters[owner->semanticOrdinal].typeKey))
+            result.ownershipSourceParameterOrdinal = owner->semanticOrdinal;
+    }
     result.ownershipTransfer = selectedMember.declaredOwnership == sema::OwnershipKind::Owned;
     // An owned return crosses the call boundary without a named owner. It is therefore a
     // fresh owner in the caller, just like `new T(...)`, and may participate in the
@@ -6060,6 +7975,7 @@ void ProjectMethodBodyModel::recordSelectedOutArguments(
             callerMember->parameters[target->semanticOrdinal].passKind != ParameterPassKind::Out)
             continue;
         assignedOutParameters_.insert({methodMemberOrdinal, target->semanticOrdinal});
+        activeOutParameterAssignments_.insert(target->semanticOrdinal);
     }
 }
 
@@ -6104,10 +8020,10 @@ void ProjectMethodBodyModel::recordSelectedOwnershipTransfers(
     }
 }
 
-// EN: Freeze 3.0 (item 130b). A by-value parameter of an `extern C` import must be ABI-trivial: native code
+// EN: Freeze (item 130b). A by-value parameter of an `extern C` import must be ABI-trivial: native code
 //     cannot run a destructor or release owned fields, so a struct that has either is rejected at the
 //     call. Trivial structs, pointers and handles keep compiling.
-// ES: Congelamiento 3.0 (elemento 130b). Un parametro por valor de un import `extern C` debe ser
+// ES: Congelamiento (elemento 130b). Un parametro por valor de un import `extern C` debe ser
 //     ABI-trivial: el codigo nativo no puede correr un destructor ni liberar campos owned, asi que un
 //     struct que tiene alguno se rechaza en la llamada. Los structs triviales, punteros y handles siguen
 //     compilando.
@@ -6142,10 +8058,10 @@ void ProjectMethodBodyModel::rejectNonTrivialImportedCArguments(
     }
 }
 
-// EN: Freeze 3.0 C-01 (plan item 131b). `(new T(...)).Method()` calls an instance method on an object that no
+// EN: Freeze C-01 (plan item 131b). `(new T(...)).Method()` calls an instance method on an object that no
 //     owner holds: the method receives a borrowed `this` and may let it escape, and nothing destroys the object
 //     afterwards. The owner comes first (`raii T x = new T(...); x.Method();`).
-// ES: Congelamiento 3.0 C-01 (elemento 131b del plan). `(new T(...)).Metodo()` llama un metodo de instancia
+// ES: Congelamiento C-01 (elemento 131b del plan). `(new T(...)).Metodo()` llama un metodo de instancia
 //     sobre un objeto que ningun dueno tiene: el metodo recibe un `this` prestado y puede hacerlo escapar, y nada
 //     destruye el objeto despues. Primero va el dueno (`raii T x = new T(...); x.Metodo();`).
 void ProjectMethodBodyModel::rejectNewCallReceiver(
@@ -6259,6 +8175,28 @@ void ProjectMethodBodyModel::finalizeSelectedCallResult(
     result.typeKey = call.resultTypeKey;
     result.valid = !isErrorType(result.typeKey);
     result.flowActiveVariantCase = provenVariantCase;
+    bool defaultValueReceiver = false;
+    if (call.receiverSyntax != nullptr &&
+        call.receiverSyntax->kind() == ast::AstNodeKind::DefaultValueExpression)
+    {
+        const auto ordinal = namedTypeOrdinalForTypeKey(call.receiverTypeKey);
+        const NamedTypeDeclaration* receiver = ordinal.has_value() && nameLookup_ != nullptr
+            ? nameLookup_->typeForOrdinal(*ordinal) : nullptr;
+        defaultValueReceiver = receiver != nullptr && receiver->kind == NamedTypeDeclarationKind::Struct;
+    }
+    if (result.valid && !call.staticCall && call.receiverSyntax != nullptr &&
+        (typeKeyIsViewLike(result.typeKey) || tupleTypeKeyContainsView(result.typeKey)) &&
+        (defaultValueReceiver || call.receiverSyntax->kind() == ast::AstNodeKind::NewExpression ||
+         call.receiverSyntax->kind() == ast::AstNodeKind::ObjectCreationExpression ||
+         (call.receiverSyntax->kind() == ast::AstNodeKind::CallExpression &&
+          !typeKeyIsViewLike(call.receiverTypeKey))))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "a view cannot borrow from a temporary receiver; bind its owner to a local first");
+        result.valid = false;
+        return;
+    }
     if (!result.valid || !nullConditionalCall) return;
     if (callResultIsNullable(result.typeKey)) return;
     diagnostics.report(
@@ -6276,6 +8214,11 @@ bool ProjectMethodBodyModel::callResultIsNullable(std::string_view typeKey) cons
         ProjectTypeConversion::isNativeArray(typeKey) ||
         typeKey == "builtin:string" || isAnyDelegateTypeKey(typeKey))
         return true;
+    // EN: The diagnostic below recommends Optional<T>; accept it. A skipped call yields the zeroed
+    //     carrier, which is the empty Optional (LKF-291).
+    // ES: El diagnóstico de abajo recomienda Optional<T>; se acepta. Una llamada omitida produce el
+    //     carrier en ceros, que es el Optional vacío (LKF-291).
+    if (resolveOptionalCarrier(typeKey).has_value()) return true;
     const std::optional<std::size_t> ordinal = referenceTypeOrdinalForTypeKey(typeKey);
     return ordinal.has_value() && inheritanceModel_ != nullptr &&
         (inheritanceModel_->isClass(*ordinal) ||
@@ -6615,6 +8558,34 @@ bool ProjectMethodBodyModel::evaluateSyntheticCandidates(
 {
     bool hasMatchingArity = false;
     if (memberModel_ == nullptr) return hasMatchingArity;
+    const auto resultCarriesReference = [&](std::string_view resultType) {
+        std::vector<std::string> pending{std::string(resultType)};
+        std::unordered_set<std::string> visited;
+        while (!pending.empty())
+        {
+            std::string key = std::move(pending.back());
+            pending.pop_back();
+            if (!visited.insert(key).second) continue;
+            if (typeKeyCarriesLifetime(key)) return true;
+            if (auto elements = ProjectTypeConversion::tupleElementTypeKeys(key))
+            {
+                for (std::string& element : *elements) pending.push_back(std::move(element));
+                continue;
+            }
+            const auto ordinal = namedTypeOrdinalForTypeKey(key);
+            const NamedTypeDeclaration* declaration = ordinal.has_value() && nameLookup_ != nullptr
+                ? nameLookup_->typeForOrdinal(*ordinal) : nullptr;
+            if (declaration == nullptr || declaration->kind != NamedTypeDeclarationKind::Struct) continue;
+            for (const std::size_t memberOrdinal : memberModel_->membersOfType(*ordinal))
+            {
+                if (memberOrdinal >= memberModel_->members().size()) continue;
+                const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+                if (member.kind == ClassMemberKind::Field && !member.isStatic)
+                    pending.push_back(member.declaredTypeKey);
+            }
+        }
+        return false;
+    };
     for (const std::size_t candidateOrdinal : call.candidateMemberOrdinals)
     {
         const ClassMemberSymbol* candidatePtr = methodSymbol(candidateOrdinal);
@@ -6655,8 +8626,23 @@ bool ProjectMethodBodyModel::evaluateSyntheticCandidates(
                 conversionTarget,
                 arguments[argumentOrdinal].integerConstant);
             if (!conversion.exists() ||
+                (arguments[argumentOrdinal].readonlyBorrowedObject &&
+                 !(implicitOperatorReference && parameter.passKind == ParameterPassKind::In)) ||
                 (implicitOperatorReference && conversion.kind != ProjectConversionKind::Identity) ||
-                (implicitOperatorReference && !arguments[argumentOrdinal].addressable && !cppTemporaryOperand) ||
+                (candidate.isUserOperator && parameter.passKind == ParameterPassKind::In &&
+                 !arguments[argumentOrdinal].addressable &&
+                 (typeKeyIsViewLike(candidate.declaredTypeKey) ||
+                  tupleTypeKeyContainsView(candidate.declaredTypeKey))) ||
+                (candidate.isUserOperator && parameter.passKind == ParameterPassKind::In &&
+                 !arguments[argumentOrdinal].addressable && memberModel_ != nullptr &&
+                 candidate.declaredOwnership != sema::OwnershipKind::Owned &&
+                 resultCarriesReference(candidate.declaredTypeKey) &&
+                 memberModel_->typeTransitivelyOwnsStorage(arguments[argumentOrdinal].typeKey)) ||
+                (candidate.isUserOperator && candidate.isPrecompiled && !candidate.operatorInOperandsNoEscape &&
+                 parameter.passKind == ParameterPassKind::In && !arguments[argumentOrdinal].addressable &&
+                 memberModel_->typeTransitivelyOwnsStorage(arguments[argumentOrdinal].typeKey)) ||
+                (implicitOperatorReference && parameter.passKind != ParameterPassKind::In &&
+                 !arguments[argumentOrdinal].addressable && !cppTemporaryOperand) ||
                 // T19-007: a `T&&` operand binds only a temporary. / Un operando `T&&` solo enlaza un temporal.
                 (parameter.cppRvalueReference && arguments[argumentOrdinal].addressable) ||
                 // T19-007: a temporary binds the object operand of a non-const member operator; a const place
@@ -6793,12 +8779,12 @@ bool ProjectMethodBodyModel::validateSyntheticReadonlyReceiver(
     return false;
 }
 
-// EN: Freeze 3.0 P3: an indexer accessor of a closed generic type may carry a member `where`
+// EN: Freeze P3: an indexer accessor of a closed generic type may carry a member `where`
 //     (`get where T : copy`). The synthetic call that selects it reports the deferred constraint
 //     failure at the access, exactly as an ordinary call does. The getter bound only for the
 //     target of a plain `=` (activeUnionWriteTarget_, see analyzeAssignmentLeft) is exempt: that
 //     store runs the setter, unless the getter returns a reference and the store writes through it.
-// ES: Congelamiento 3.0 P3: un accesor de indexador de un tipo generico cerrado puede llevar un
+// ES: Congelamiento P3: un accesor de indexador de un tipo generico cerrado puede llevar un
 //     `where` de miembro (`get where T : copy`). La llamada sintetica que lo elige reporta en el
 //     acceso el constraint aplazado que falla, igual que una llamada ordinaria. El getter ligado
 //     solo para el destino de un `=` simple (activeUnionWriteTarget_, ver analyzeAssignmentLeft)
@@ -6850,17 +8836,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishSynthetic
     {
         call.resultTypeKey = memberPtr->declaredTypeKey;
         call.staticCall = memberPtr->isStatic;
-        // EN: Freeze 3.0 P3: an accessor declared `ref readonly` (see configureSelectedCallBinding).
-        // ES: Congelamiento 3.0 P3: un accesor declarado `ref readonly` (ver
+        // EN: Freeze P3: an accessor declared `ref readonly` (see configureSelectedCallBinding).
+        // ES: Congelamiento P3: un accesor declarado `ref readonly` (ver
         //     configureSelectedCallBinding).
         const bool readonlyReference = isReadonlyReferenceReturn(*memberPtr);
         result.assignable = memberPtr->isReferenceReturn && !readonlyReference;
         result.addressable = memberPtr->isReferenceReturn;
         result.readonlyReceiver = readonlyReference;
-        // EN: Freeze 3.0 C-01: a user operator or conversion that declares an `owned` return
+        // EN: Freeze C-01: a user operator or conversion that declares an `owned` return
         //     transfers ownership exactly like an ordinary owned-returning call, so
         //     `raii T sum = a + b;` takes ownership of the operator's new object.
-        // ES: Congelamiento 3.0 C-01: un operador o conversion de usuario con retorno `owned`
+        // ES: Congelamiento C-01: un operador o conversion de usuario con retorno `owned`
         //     transfiere la propiedad igual que una llamada ordinaria, asi que
         //     `raii T sum = a + b;` toma la propiedad del objeto nuevo del operador.
         if (memberPtr->declaredOwnership == sema::OwnershipKind::Owned)
@@ -6869,8 +8855,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishSynthetic
             result.ownershipTransfer = true;
             result.ownershipFreshOwner = true;
         }
-        // EN: Freeze 3.0 C-13: an accessor or a user operator is a call to its `throws E` member.
-        // ES: Congelamiento 3.0 C-13: un accesor o un operador de usuario es una llamada a su miembro
+        // EN: Freeze C-13: an accessor or a user operator is a call to its `throws E` member.
+        // ES: Congelamiento C-13: un accesor o un operador de usuario es una llamada a su miembro
         //     `throws E`.
         if (diagnoseFailure)
             requireDeclaredErrorHandled(

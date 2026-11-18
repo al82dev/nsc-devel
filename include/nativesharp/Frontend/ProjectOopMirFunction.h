@@ -6,6 +6,7 @@
 #include "nativesharp/Frontend/ProjectOopMirFunctionAbi.h"
 #include "nativesharp/Frontend/ProjectOopMirCleanupRegion.h"
 #include "nativesharp/Frontend/ProjectOopMirExceptionFlow.h"
+#include "nativesharp/Frontend/ProjectOopMirYieldFact.h"
 
 #include "nativesharp/Language/ErrorSemantics.h"
 
@@ -28,10 +29,19 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <limits>
 
 
 namespace nativesharp::frontend
 {
+// EN: NSC-NEW-029: the asyncFrameParameters slot that holds the receiver of an async or generator
+//     instance method. The poll and MoveNext are static, so `this` reaches them through the frame,
+//     stored there by the constructor like a parameter.
+// ES: NSC-NEW-029: la ranura de asyncFrameParameters que guarda el receptor de un método async o
+//     generador de instancia. El poll y MoveNext son estáticos, así que `this` les llega por el
+//     frame, donde el constructor lo guarda como un parámetro.
+inline constexpr std::size_t kAsyncFrameThisOrdinal = std::numeric_limits<std::size_t>::max();
+
 struct ProjectOopMirFunction final
 {
     std::size_t memberOrdinal = 0;
@@ -98,6 +108,11 @@ struct ProjectOopMirFunction final
     // NS304-T06-F04: generator parameters that must survive a yield (captured into the frame),
     // with their byte offset and type key. parameterOrdinal refers to the ORIGINAL callable.
     std::vector<std::tuple<std::size_t, std::uint64_t, std::string>> asyncFrameParameters;
+    // EN: Frame objects (`T value;`) of a coroutine: local ordinal, byte offset of the object storage in the
+    //     coroutine frame and the class type key (docs/3.0/main-fixes/18).
+    // ES: Objetos de marco (`T value;`) de una corrutina: ordinal del local, desplazamiento del almacenamiento
+    //     del objeto en el frame de la corrutina y la clave de tipo de la clase (docs/3.0/main-fixes/18).
+    std::vector<std::tuple<std::size_t, std::uint64_t, std::string>> asyncFrameObjects;
     // NS304-T06-F04: true for the generator CONSTRUCTOR (the original callable) — it must allocate
     // the frame and store the parameters so $moveNext/$poll can read them.
     bool isGeneratorConstructor = false;
@@ -111,6 +126,8 @@ struct ProjectOopMirFunction final
     std::vector<std::size_t> localOrdinals;
     std::vector<ProjectOopMirCleanupRegion> cleanupRegions;
     ProjectOopMirExceptionFlow exceptionFlow;
+    // Rebuilt from current semantic bindings, including after MIR cache restore.
+    std::vector<ProjectOopMirYieldFact> asyncYieldFacts;
     std::unique_ptr<ProjectOopMirNode> body;
 };
 }

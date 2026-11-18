@@ -62,6 +62,18 @@ std::optional<StaticLocalGuard> OopLlvmImplementation::beginStaticLocalInitializ
         LLVMBuildCondBr(builder_, sameThread, done, spin);
 
         enterBlock(spin);
+        // EN: LKF-448: the wait for another thread's initializer is a busy loop of atomic loads. A
+        //     pause hint lets the sibling hyperthread run and saves power while waiting, as the
+        //     MSVC and libc++ guards do.
+        // ES: LKF-448: la espera del inicializador de otro hilo es un bucle de cargas atómicas. Una
+        //     pausa deja correr al hilo hermano y ahorra energía durante la espera, como hacen las
+        //     guardas de MSVC y libc++.
+        {
+            static constexpr std::string_view pauseName = "llvm.x86.sse2.pause";
+            LLVMValueRef pause = LLVMGetIntrinsicDeclaration(
+                module_, LLVMLookupIntrinsicID(pauseName.data(), pauseName.size()), nullptr, 0U);
+            LLVMBuildCall2(builder_, LLVMGlobalGetValueType(pause), pause, nullptr, 0U, "");
+        }
         LLVMValueRef spinState = LLVMBuildLoad2(builder_, i8, storage->state, "static.local.state.spin");
         LLVMSetOrdering(spinState, LLVMAtomicOrderingSequentiallyConsistent);
         LLVMValueRef pending = LLVMBuildICmp(builder_, LLVMIntEQ, spinState, one, "static.local.pending");

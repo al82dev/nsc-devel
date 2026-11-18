@@ -1,0 +1,1 @@
+namespace Beta { public class Base { public int Value; public int Other; public void Set(int value) { Value=value; } public int Read() { return Value; } } }

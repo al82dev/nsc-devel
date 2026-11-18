@@ -117,7 +117,7 @@ public class Caja<T>
     public static int Cuenta;
     public Caja() { }
     public Caja(T value) { Item = value; }
-    // Congelamiento 3.0 (C-01): el `new` va directo al retorno owned (elemento 115a); quien llama es el dueno.
+    // Congelamiento (C-01): el `new` va directo al retorno owned (elemento 115a); quien llama es el dueno.
     public static owned Caja<T> Make(T value)
     {
         return new Caja<T>(value);

@@ -31,8 +31,8 @@ en una llamada eager.
   lookup, overloads, referencias y diagnósticos.
 - `src/Frontend/ProjectOopHirModel.cpp`: lowering físico de operandos por referencia.
 - `src/Parser/Parser.cpp`: nombres canónicos, restricciones y políticas inline.
-- `Language3Surface`: contrato mecánico de disponibilidad.
-- `tests/unit/NativeSharp3T05OperatorTraitTests.cpp`: batería focalizada.
+- `LanguageSurface`: contrato mecánico de disponibilidad.
+- `tests/unit/NativeSharpT05OperatorTraitTests.cpp`: batería focalizada.
 - `tests/cc1/c70_ns3_operator_traits/`: fixture permanente O0/NSLink, exit 42.
 - `docs/3.0/language/operator-traits.md`: contrato bilingüe y tabla normativa.
 

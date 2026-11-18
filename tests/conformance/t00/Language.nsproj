@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>LanguageConformance</Name>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+  </ItemGroup>
+</Project>

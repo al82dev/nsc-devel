@@ -11,8 +11,7 @@ ModuleCompatibility classifyModuleCompatibility(
     const BinaryModuleContract& consumer) noexcept
 {
     if (!producer.structurallyValid || !consumer.structurallyValid ||
-        producer.target != "windows-x64" || consumer.target != "windows-x64" ||
-        producer.metadataMajor > consumer.metadataMajor)
+        producer.target != "windows-x64" || consumer.target != "windows-x64")
         return ModuleCompatibility::Rejected;
     if (producer.abiFingerprint == consumer.abiFingerprint)
         return ModuleCompatibility::Direct;
@@ -144,7 +143,7 @@ bool validateMigrationGuide(
     return true;
 }
 
-bool removalAllowedInThreeX(
+bool removalAllowed(
     bool securityOrUndefinedBehaviorFix,
     bool previouslyDeprecated) noexcept
 {

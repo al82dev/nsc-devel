@@ -31,11 +31,16 @@ namespace NativeSharp.BookExamples.Deque
             Console.WriteLine("");
             Console.WriteLine("Work scheduling: urgent items enter at the front.");
             raii ArrayDeque<WorkItem> work = new ArrayDeque<WorkItem>(3);
-            work.AddBack(new WorkItem(101, "texture import", false));
-            work.AddBack(new WorkItem(102, "mesh conversion", false));
-            work.AddFront(new WorkItem(900, "shader compile failure", true));
-            work.AddBack(new WorkItem(103, "audio bank build", false));
-            work.AddFront(new WorkItem(901, "missing game executable", true));
+            raii WorkItem texture = new WorkItem(101, "texture import", false);
+            raii WorkItem mesh = new WorkItem(102, "mesh conversion", false);
+            raii WorkItem shader = new WorkItem(900, "shader compile failure", true);
+            raii WorkItem audio = new WorkItem(103, "audio bank build", false);
+            raii WorkItem missing = new WorkItem(901, "missing game executable", true);
+            work.AddBack(texture);
+            work.AddBack(mesh);
+            work.AddFront(shader);
+            work.AddBack(audio);
+            work.AddFront(missing);
 
             WorkItem[] slot = new WorkItem[1];
             while (!work.IsEmpty)
@@ -47,7 +52,6 @@ namespace NativeSharp.BookExamples.Deque
                 raii string b = String.Concat(a, " - ");
                 raii string line = String.Concat(b, item.Name);
                 Console.WriteLine(line);
-                delete item;
             }
             delete[] slot;
             return 0;

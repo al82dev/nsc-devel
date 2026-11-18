@@ -369,6 +369,76 @@ class H
     }
 
     {
+        const auto directory = root / "TemplateDeclarationScope";
+        writeProject(directory, "TemplateDeclarationScope");
+        writeFile(directory / "Main.ns", R"NS(
+namespace Provider { public class Item { } }
+namespace Alternative { public class Item { } }
+using Provider;
+using Pick = Provider.Item;
+namespace Demo { public class Api { public static int F<T>() { return 42; } } }
+namespace ScopedA { using Local = Provider.Item; public class One { public static int G<T>() { return 1; } } }
+namespace ScopedB { using Local = Alternative.Item; public class Two { public static int H<T>() { return 2; } } }
+namespace Outer { using Provider; namespace Inner { using Local = Alternative.Item;
+ public class Three { public static int J<T>() { return 3; } } } }
+)NS");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectGenerics(directory / "TemplateDeclarationScope.nsproj", error);
+        tests.expect(ok && error.empty(), "generic declaration scope fixture builds");
+        if (ok && compilation.genericModel() != nullptr)
+        {
+            const auto records = compilation.genericModel()->templates();
+            const auto found = std::ranges::find_if(records, [](const auto& item) { return item.name == "F"; });
+            tests.expect(found != records.end(), "generic method declaration is present");
+            if (found != records.end())
+            {
+                tests.expect(std::ranges::find(found->declarationImports, "Provider") != found->declarationImports.end(),
+                    "generic record retains its declaration import");
+                tests.expect(std::ranges::find(found->declarationAliases,
+                    std::pair<std::string, std::string>{"Pick", "Provider.Item"}) != found->declarationAliases.end(),
+                    "generic record retains its declaration alias");
+                tests.expect(found->sourceImports.size() == 2 &&
+                    found->sourceImports[0].namespaceName.empty() &&
+                    found->sourceImports[0].alias.empty() && found->sourceImports[0].target == "Provider" &&
+                    found->sourceImports[1].namespaceName.empty() &&
+                    found->sourceImports[1].alias == "Pick" && found->sourceImports[1].target == "Provider.Item",
+                    "generic record retains exact file-level directives without synthetic imports");
+            }
+            const auto first = std::ranges::find_if(records, [](const auto& item) { return item.name == "G"; });
+            const auto second = std::ranges::find_if(records, [](const auto& item) { return item.name == "H"; });
+            tests.expect(first != records.end() && second != records.end(), "both scoped generic methods are present");
+            if (first != records.end() && second != records.end())
+            {
+                tests.expect(std::ranges::find(first->declarationAliases,
+                    std::pair<std::string, std::string>{"Local", "Provider.Item"}) != first->declarationAliases.end(),
+                    "first generic record retains its own scoped alias");
+                tests.expect(std::ranges::find(second->declarationAliases,
+                    std::pair<std::string, std::string>{"Local", "Alternative.Item"}) != second->declarationAliases.end(),
+                    "second generic record retains its distinct scoped alias");
+                tests.expect(first->sourceImports.size() == 3 &&
+                    first->sourceImports.back().namespaceName == "ScopedA" &&
+                    first->sourceImports.back().alias == "Local" &&
+                    first->sourceImports.back().target == "Provider.Item",
+                    "first record retains its exact scoped alias");
+                tests.expect(second->sourceImports.size() == 3 &&
+                    second->sourceImports.back().namespaceName == "ScopedB" &&
+                    second->sourceImports.back().alias == "Local" &&
+                    second->sourceImports.back().target == "Alternative.Item",
+                    "second record retains its exact scoped alias without leaking the first");
+            }
+            const auto nested = std::ranges::find_if(records, [](const auto& item) { return item.name == "J"; });
+            tests.expect(nested != records.end() && nested->sourceImports.size() == 4 &&
+                nested->sourceImports[2].namespaceName == "Outer" &&
+                nested->sourceImports[2].alias.empty() && nested->sourceImports[2].target == "Provider" &&
+                nested->sourceImports[3].namespaceName == "Outer.Inner" &&
+                nested->sourceImports[3].alias == "Local" &&
+                nested->sourceImports[3].target == "Alternative.Item",
+                "nested record retains both authored lexical scopes in order");
+        }
+    }
+
+    {
         const auto core = root / "Reference" / "Core";
         const auto app = root / "Reference" / "App";
         writeProject(core, "GenericCore");
@@ -459,10 +529,18 @@ class H { public static int Run() { return C.F<int>(1); } }
 partial class Box<T> { public T Value; }
 )NS", "partial generic types are deferred beyond Stage 44");
 
-    expectGenericReject("GenericMethodInsideGenericType", R"NS(
+    {
+        const auto directory = root / "GenericMethodInsideGenericType";
+        writeProject(directory, "GenericMethodInsideGenericType");
+        writeFile(directory / "Main.ns", R"NS(
 class Box<T> { public U Convert<U>(U value) { return value; } }
 class H { public static void F() { Box<int> value = null; } }
-)NS", "generic methods declared inside generic types are deliberately deferred beyond Stage 44");
+)NS");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectGenerics(directory / "GenericMethodInsideGenericType.nsproj", error);
+        tests.expect(ok && error.empty(), "a generic owner may declare a generic method");
+    }
 
     expectGenericReject("DuplicateGenericIdentity", R"NS(
 class Box<T> { public T A; }

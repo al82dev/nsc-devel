@@ -2,6 +2,7 @@
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/MetadataHeaderControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -307,7 +308,7 @@ namespace CrossPromotion
     error.clear();
     const bool producerEmitted = runDriver(producerArguments, output, error) == ExitCode::Success;
     tests.expect(producerEmitted,
-        "anonymous promotion producer emits its static library and NSMETA 1.17 (" + error + ")");
+        "anonymous promotion producer emits its static library and NSMETA (" + error + ")");
     std::ifstream headerStream(producer / "PromotionProducer.h", std::ios::binary);
     const std::string headerText(
         (std::istreambuf_iterator<char>(headerStream)), std::istreambuf_iterator<char>());
@@ -333,13 +334,11 @@ namespace CrossPromotion
                 carrierFlag = carrierFlag ||
                     (field.flags & nativesharp::interop::kMetadataFieldAnonymousCarrier) != 0U;
     }
-    tests.expect(metadataRead &&
-                     metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor && carrierFlag,
-        "NSMETA 1.17 preserves the anonymous physical-carrier marker (" + metadataError + ")");
+    tests.expect(metadataRead && carrierFlag,
+        "NSMETA preserves the anonymous physical-carrier marker (" + metadataError + ")");
 
-    const auto historicalMetadataPath = root / "historical-1.16.nsmeta";
+    const auto historicalMetadataPath = root / "historical-sample-16.nsmeta";
     nativesharp::interop::LibraryMetadata historicalMetadata = metadata;
-    historicalMetadata.formatMinor = 16U;
     metadataError.clear();
     const bool historicalWritten = metadataRead &&
         metadataCodec.writeModel(historicalMetadata, historicalMetadataPath, metadataError);
@@ -354,8 +353,14 @@ namespace CrossPromotion
                 historicalCarrierFlag = historicalCarrierFlag ||
                     (field.flags & nativesharp::interop::kMetadataFieldAnonymousCarrier) != 0U;
     }
-    tests.expect(historicalRead && historicalDecoded.formatMinor == 16U && !historicalCarrierFlag,
-        "NSMETA 1.16 downlevel output removes the item-326 marker (" + metadataError + ")");
+    // NSC-META-001: the reserved header bytes used to remove the anonymous-carrier marker and was expected to be
+    // kept on decode. The label is not content; the marker must survive and the file must equal the
+    // unlabelled one.
+    tests.expect(historicalRead && historicalCarrierFlag,
+        "a reserved header bytes keeps the item-326 anonymous-carrier marker (" + metadataError + ")");
+    tests.expect(nativesharp::tests::metadataReservedBytesPreserveContent(
+            metadataCodec, historicalMetadata, historicalMetadataPath, metadataError),
+        "the reserved header bytes alone changes no written byte (" + metadataError + ")");
 
     const auto consumer = root / "consumer";
     writeFile(consumer / "PromotionConsumer.nsproj",

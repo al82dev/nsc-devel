@@ -1,3 +1,5 @@
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
 # NS3-T05-F02 — Implementations and coherence
 
 ## Estado
@@ -7,7 +9,7 @@ interfaces, genéricos, monomorfización, NSMETA y backend productivos.
 
 ## Qué se hizo
 
-- Se añadió `impl Trait for Type { ... }` como sintaxis contextual exclusiva de edition 3.
+- Se añadió `impl Trait for Type { ... }` como sintaxis contextual exclusiva de NativeSharp.
 - Un bloque se integra como parte del tipo concreto: sus witnesses entran al modelo de miembros y
   su trait a las tablas existentes. No existe un runtime, ABI ni layout paralelo.
 - Los witnesses sin accesibilidad escrita se vuelven públicos; accesibilidad no pública y miembros
@@ -39,7 +41,7 @@ interfaces, genéricos, monomorfización, NSMETA y backend productivos.
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T05ImplCoherenceTests.cpp`: prueba productiva O0/NSLink con positivos,
+- `tests/unit/NativeSharpT05ImplCoherenceTests.cpp`: prueba productiva O0/NSLink con positivos,
   negativos, módulos separados, privacidad, condicionales y round-trip NSMETA.
 - `docs/3.0/language/trait-implementations.md`: contrato de usuario ES/EN.
 - Este documento: alcance, archivos, mejora y evidencia del commit atómico.

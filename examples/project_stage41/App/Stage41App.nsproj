@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup><Name>Stage41App</Name></PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+    <LibraryReference Include="NativeSharpCore.lib" Metadata="NativeSharpCore.nsmeta" />
     <Compile Include="**/*.ns" />
   </ItemGroup>
 </Project>

@@ -168,8 +168,18 @@ void registerObjectRegistrationCase(TestRegistry& registry)
         }
         const auto found = registry.modules_.find("Producer");
         context.expect(found != registry.modules_.end() &&
-                found->second.contractFingerprint == "dcb5c8234fafc747" && found->second.liveObjects == 3,
+                found->second.contractFingerprint == moduleLifetimeFingerprint(contract) &&
+                found->second.liveObjects == 3,
             "TL-LANG-082 the first registration must freeze the producer fingerprint");
+        // LKF-416: a second type of the same producer and allocator shares the module contract.
+        CrossModuleLifetimeContract otherType = contract;
+        otherType.typeIdentity += ".Other";
+        otherType.createThunk += "_other";
+        otherType.destroyThunk += "_other";
+        otherType.deallocateThunk += "_other";
+        context.expect(registry.registerObject(otherType, error) && registry.liveObjects("Producer") == 4 &&
+                registry.unregisterObject(otherType, error) && registry.liveObjects("Producer") == 3,
+            "TL-LANG-082 a module exports several types under one module contract");
     });
 }
 
@@ -202,7 +212,7 @@ void registerCounterOverflowCase(TestRegistry& registry)
         const CrossModuleLifetimeContract contract = exampleContract();
         ModuleLifetimeRegistry registry;
         registry.modules_.emplace("Producer", ModuleLifetimeRegistry::ModuleState{
-            crossModuleLifetimeFingerprint(contract), std::numeric_limits<std::size_t>::max(), false});
+            moduleLifetimeFingerprint(contract), std::numeric_limits<std::size_t>::max(), false});
         std::string error;
         context.expect(!registry.registerObject(contract, error) &&
                 error == "producer module live-object counter overflow" &&

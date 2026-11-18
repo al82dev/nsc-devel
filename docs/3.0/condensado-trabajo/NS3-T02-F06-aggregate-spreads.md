@@ -61,7 +61,7 @@ rejects move-spread because it may observe the complete partially moved value.
 
 ## Archivos / Files
 
-- Nuevo: `tests/unit/NativeSharp3T02AggregateSpreadTests.cpp`.
+- Nuevo: `tests/unit/NativeSharpT02AggregateSpreadTests.cpp`.
 - Nuevo: `docs/3.0/language/aggregate-spreads.md`.
 - Modificado: `src/Frontend/ProjectMethodBodyModel.cpp`.
 - Modificado: `include/nativesharp/Frontend/ProjectMethodBodyModel.h` para transportar la identidad

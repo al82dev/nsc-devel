@@ -1,0 +1,7 @@
+/// <summary>Exercises the existing division-by-zero trap for i128.</summary>
+int Main()
+{
+    i128 value = (i128)3;
+    i128 zero = (i128)0;
+    return (int)(value / zero);
+}

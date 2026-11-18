@@ -19,6 +19,22 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
+# EN: The standard Core is consumed as the library built by the external SDK (compiler first, then libraries),
+#     one package per optimization level, under NSC_STDLIB_PACKAGE_ROOT (default: build-clang/packages, where
+#     NSC Builder installs them).
+# ES: El Core estandar se consume como la biblioteca construida por el SDK externo (primero el compilador, despues
+#     las bibliotecas), un paquete por nivel de optimizacion, bajo NSC_STDLIB_PACKAGE_ROOT (por defecto:
+#     build-clang/packages, donde los instala NSC Builder).
+STDLIB_PACKAGE_ROOT = Path(os.environ.get('NSC_STDLIB_PACKAGE_ROOT',
+                                          Path(__file__).resolve().parents[2] / 'build-clang' / 'packages'))
+
+
+def core_reference(opt):
+    found = sorted(STDLIB_PACKAGE_ROOT.glob(f'NativeSharp.Core/*/windows-x64/O{opt}/NativeSharpCore.lib'))
+    if not found:
+        raise SystemExit(f'NativeSharp.Core O{opt} package not found under {STDLIB_PACKAGE_ROOT}; build the external '
+                         'libraries first or set NSC_STDLIB_PACKAGE_ROOT')
+    return '<LibraryReference Include="' + found[-1].as_posix() + '" />'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
@@ -32,7 +48,7 @@ env['TEMP'] = env['TMP'] = str(root)
 print('Evidencia:', root, flush=True)
 CC = ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c11'] + (['-march=x86-64-v3'] if args.avx else [])
 CPU = '<CpuLevel>x86-64-v3</CpuLevel>' if args.avx else ''
-CORE = '<ProjectReference Include="A:/nsc-devel/lib/NativeSharp.Core/NativeSharp.Core.nsproj" />'
+CORE = core_reference(0)
 HEADER = '''#if defined(T19_EXPORT)
 #define API __declspec(dllexport)
 #elif defined(T19_IMPORT)
@@ -225,6 +241,7 @@ else:
     run('api-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], library)
     header = HEADER
 for opt in range(4):
+    CORE = core_reference(opt)
     folder = root / f'O{opt}'
     folder.mkdir()
     (folder / 'api.h').write_text(header, encoding='utf-8')

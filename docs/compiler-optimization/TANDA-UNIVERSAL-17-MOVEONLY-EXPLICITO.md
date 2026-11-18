@@ -12,11 +12,11 @@ explícito en la representación, sin depender de una edición del lenguaje.
 - `copy struct` sigue publicando una capacidad explícita y verificable en NSMETA.
 - Se mantienen los rechazos por copia, uso después de move, joins, parámetros,
   constructores, retornos, arrays y `where T : copy` para tipos move-only explícitos.
-- Los proyectos ya no emiten `<Language>2</Language>` ni `<Language>3</Language>`.
+- Los proyectos ya no emiten la propiedad histórica `<Language>`.
 
 ## Archivo
 
-- `tests/unit/NativeSharp3T06MoveOnlyTests.cpp`
+- `tests/unit/NativeSharpT06MoveOnlyTests.cpp`
 
 El nombre histórico del CTest no cambia. La cobertura deja de depender de un default
 oculto y pasa a probar directamente las dos representaciones del lenguaje.

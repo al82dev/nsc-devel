@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>NegativeInner1Sub</Name><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><Compile Include="NegativeInner1Sub.ns"/></ItemGroup></Project>

@@ -1137,6 +1137,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                             + configure_commands_for_compiler
                             + compiler_build_commands(config, modes)
                             + compiler_post_build_sibling_commands(config, modes)
+                            + compiler_library_build_commands(config, modes)
                         )
                     receipt: dict[str, Any] = {
                         "captured_at": utc_now(),
@@ -3319,7 +3320,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             "PASS",
             "smoke baseline",
             0.25,
-            "A:/nsc-devel/_nscbuilder3/smoke",
+            str(SOURCE_ROOT / "_nscbuilder3" / "smoke"),
         )
         smoke_status = window.baseline_status_items[smoke_baseline_key]
         if (

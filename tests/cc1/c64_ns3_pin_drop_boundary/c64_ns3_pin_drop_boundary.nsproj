@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <Name>c64_ns3_pin_drop_boundary</Name>
-    <Language>3</Language>
+
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="**/*.ns" />

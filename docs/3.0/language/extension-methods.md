@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Extensiones estáticas / Static extension methods
 
 ## Contrato / Contract
@@ -78,7 +80,7 @@ metadata, the linker, and the debugger.
 
 ## Módulos y NSMETA / Modules and NSMETA
 
-NSMETA 1.32 marks public namespace functions that are extensions. Parameter zero stores the
+NSMeta marks public namespace functions that are extensions. Parameter zero stores the
 receiver type and its value/ref/in contract. A consumer reconstructs the `extension` block, omits
 the synthetic receiver from the written parameter list, validates the producer's physical symbol,
 and links the ordinary native function. Metadata 1.31 cannot encode this lookup identity and must

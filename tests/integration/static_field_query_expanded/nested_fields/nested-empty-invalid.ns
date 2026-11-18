@@ -1,0 +1,1 @@
+struct Empty { } struct B { public int P; } int Main() { static foreach (outer in Fields(Empty)) { static foreach (inner in Fields(B)) { inner.Missing; } } return 0; }

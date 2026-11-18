@@ -1,4 +1,6 @@
-# Tanda 47 — SH45: paridad low-level NativeSharp 2.0
+# Tanda 47 — SH45: paridad low-level NativeSharp
+
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
 
 | Campo | Valor |
 |---|---|
@@ -11,7 +13,7 @@
 
 ## Objetivo
 
-Cerrar en el compilador autocontenido la superficie low-level exigida por NativeSharp 2.0:
+Cerrar en el compilador autocontenido la superficie low-level exigida por NativeSharp:
 `volatile`, atomics, unions, bitfields, layout explícito, placement construction, destrucción sin
 liberar almacenamiento, `noheap` y rechazo contractual de referencias que escapan de su región.
 El cierre exige código máquina observable en O0–O3, enlace por LLD y NSLink y un nuevo punto fijo
@@ -151,5 +153,5 @@ No se consideran evidencia los objetos, ejecutables, `.lib`, `.rsp`, logs ni dir
 - [x] nuevo punto fijo SH41 posterior a los cambios;
 - [ ] integración lineal después de SH44;
 - [x] baseline completo aislado LLD/NSLink, 0 fallos y Gate 0 aprobado;
-- [x] commit aislado `selfhost(tanda-47): close NativeSharp 2.0 low-level parity`;
+- [x] commit aislado `selfhost(tanda-47): close NativeSharp low-level parity`;
 - [ ] baseline acumulado definitivo e integración en `development-claude`.

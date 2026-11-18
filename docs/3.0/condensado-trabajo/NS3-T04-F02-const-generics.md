@@ -2,7 +2,7 @@
 
 ## Estado
 
-`TERMINADA`. NativeSharp 3 materializa parámetros const enteros, booleanos, enum y tuplas
+`TERMINADA`. NativeSharp materializa parámetros const enteros, booleanos, enum y tuplas
 estructurales aprobadas con evaluación determinista, identidad normalizada e inferencia exacta.
 
 ## Qué se hizo
@@ -40,7 +40,7 @@ estructurales aprobadas con evaluación determinista, identidad normalizada e in
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T04ConstGenericTests.cpp`: prueba productiva aislada de expresiones,
+- `tests/unit/NativeSharpT04ConstGenericTests.cpp`: prueba productiva aislada de expresiones,
   vectores, matrices, signo, enums, tuplas, inferencia, overflow, determinismo, caché, mangling y
   regresión de desambiguación.
 - `docs/3.0/language/const-generics.md`: contrato bilingüe de usuario.

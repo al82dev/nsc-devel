@@ -185,6 +185,14 @@ void testTypeIdentity(TestContext& tests)
         "the prefix helper carries the opening quote, because every identity key holds '::'");
     tests.expect(symbolNeedsIrTextQuotes("0leading"),
         "a name starting with a digit needs quotes too, like LLVM's own rule");
+    // LKF-242: the quoted form escapes like LLVM's printEscapedString; a raw copy of a quote, a
+    // backslash or a byte outside printable ASCII would not match the printed module.
+    tests.expect(irTextSymbolReference("a\"b") == "@\"a\\22b\"",
+        "a quote inside a quoted IR name is escaped as \\22");
+    tests.expect(irTextSymbolReference("a\\b") == "@\"a\\5Cb\"",
+        "a backslash inside a quoted IR name is escaped as \\5C");
+    tests.expect(irTextSymbolReference(std::string("a\x01\xC3\xA9", 4)) == "@\"a\\01\\C3\\A9\"",
+        "control and non-ASCII bytes inside a quoted IR name are escaped as \\HH");
 
     // Y la aridad, que tambien viaja en la clave y tambien tiene que quedar separada.
     tests.expect(

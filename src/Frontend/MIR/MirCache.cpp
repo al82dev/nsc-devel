@@ -803,8 +803,10 @@ std::size_t nodePreorderIndex(const ProjectOopMirNode* body, const ProjectOopMir
         work.pop_back();
         if (node == target) return index;
         ++index;
+        // LKF-389: a null child is not a node; both walks skip it, so their numbering agrees.
+        // LKF-389: un hijo nulo no es un nodo; ambos recorridos lo omiten, así su numeración coincide.
         for (auto it = node->children.rbegin(); it != node->children.rend(); ++it)
-            work.push_back(it->get());
+            if (*it != nullptr) work.push_back(it->get());
     }
     return std::numeric_limits<std::size_t>::max();
 }
@@ -822,7 +824,7 @@ ProjectOopMirNode* nodeByPreorderIndex(ProjectOopMirNode* body, std::size_t targ
         if (index == targetIndex) return node;
         ++index;
         for (auto it = node->children.rbegin(); it != node->children.rend(); ++it)
-            work.push_back(it->get());
+            if (*it != nullptr) work.push_back(it->get());
     }
     return nullptr;
 }
@@ -941,6 +943,7 @@ void appendMirFunctionCaptures(std::string& out, const ProjectOopMirFunction& fu
 {
     appendMirAsyncTuples(out, function.asyncFrameLocals);
     appendMirAsyncTuples(out, function.asyncFrameParameters);
+    appendMirAsyncTuples(out, function.asyncFrameObjects);
     {
         std::vector<std::uint32_t> kinds;
         kinds.reserve(function.captureSourceKinds.size());
@@ -1222,7 +1225,8 @@ bool readMirFunctionCaptures(
     ProjectOopMirFunction& function)
 {
     if (!readMirAsyncTuples(reader, function.asyncFrameLocals) ||
-        !readMirAsyncTuples(reader, function.asyncFrameParameters))
+        !readMirAsyncTuples(reader, function.asyncFrameParameters) ||
+        !readMirAsyncTuples(reader, function.asyncFrameObjects))
         return false;
     std::uint32_t count = 0;
     if (!reader.u32(count)) return false;

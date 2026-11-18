@@ -242,7 +242,7 @@ def run_identity(
         if empty_template:
             template = case_root / "empty.in.h"
             write_text(template, "")
-        command = [str(cmake), f"-DNSC_TEMPLATE={template}", "-DNSC_VERSION_BASE=3.0.0"]
+        command = [str(cmake), f"-DNSC_TEMPLATE={template}", "-DNSC_VERSION_BASE=1.0.0"]
         if not omit_output:
             command.append(f"-DNSC_OUTPUT={output}")
         if override is not None:
@@ -272,7 +272,7 @@ def run_identity(
         return output.read_bytes() == b"", "empty template must produce an empty file"
     text = output.read_text(encoding="utf-8")
     expected_id = override
-    expected_version = f"3.0.0+build.19700101T000000Z.{expected_id}"
+    expected_version = f"1.0.0+build.19700101T000000Z.{expected_id}"
     return expected_id in text and expected_version in text, "generated identity fields differ"
 
 

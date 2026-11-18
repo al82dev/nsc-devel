@@ -1,13 +1,17 @@
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # NS3-T05-F06 — Extensiones estáticas / Extension methods
 
 ## Estado
 
-`TERMINADA`. NativeSharp 3.0 admite extensiones estáticas sobre receptores por valor, `ref` e `in`,
+`TERMINADA`. NativeSharp admite extensiones estáticas sobre receptores por valor, `ref` e `in`,
 con lookup explícito, prioridad de miembros reales, lowering directo y transporte NSMETA 1.32.
 
 ## Qué se hizo
 
-- El parser acepta `extension T`, `extension ref T` y `extension in T` en edition 3. Cada miembro
+- El parser acepta `extension T`, `extension ref T` y `extension in T` en NativeSharp. Cada miembro
   se representa como una función de namespace con un primer parámetro receptor sintético; `this`
   se resuelve a ese parámetro.
 - Name lookup publica los miembros del bloque sin convertirlos en miembros del tipo receptor.
@@ -29,7 +33,7 @@ con lookup explícito, prioridad de miembros reales, lowering directo y transpor
 
 - `include/nativesharp/AST/AstNode.h`, `include/nativesharp/AST/AstNodeKind.h`,
   `src/AST/AstNode.cpp` y `src/AST/AstNodeKind.cpp`: contenedor AST y receptor sintético.
-- `include/nativesharp/Parser/Parser.h` y `src/Parser/Parser.cpp`: gramática edition 3, clonación
+- `include/nativesharp/Parser/Parser.h` y `src/Parser/Parser.cpp`: gramática NativeSharp, clonación
   del tipo receptor y significado de `this`.
 - `src/Frontend/ProjectNameLookup.cpp`,
   `include/nativesharp/Frontend/ProjectNamespaceFunctionModel.h` y
@@ -42,7 +46,7 @@ con lookup explícito, prioridad de miembros reales, lowering directo y transpor
   y ABI by-reference.
 - `include/nativesharp/Interop/LibraryMetadata.h`, `src/Interop/LibraryMetadata.cpp` y
   `src/Driver/Driver.cpp`: NSMETA 1.32, materialización y validación de símbolos.
-- `src/Language/Language3Surface.cpp`: la feature pasa de diferida a implementada.
+- `src/Language/LanguageSurface.cpp`: la feature pasa de diferida a implementada.
 - Contratos de producto y sus pruebas: ledger, freeze, compatibility matrix y migration baseline
   declaran NSMETA 1.32.
 - `CMakeLists.txt` y pruebas existentes: registro de la batería, fixture CC1 y expectativas del
@@ -50,7 +54,7 @@ con lookup explícito, prioridad de miembros reales, lowering directo y transpor
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T05ExtensionMethodTests.cpp`: doce checks dirigidos de lookup,
+- `tests/unit/NativeSharpT05ExtensionMethodTests.cpp`: doce checks dirigidos de lookup,
   prioridad, generic receivers, no-ADL, ambigüedad, visibilidad completa, seguridad `ref`, NSMETA
   y productor/consumidor.
 - `tests/cc1/c69_ns3_extension_methods/`: fixture permanente O0/NSLink que ejecuta receptores por

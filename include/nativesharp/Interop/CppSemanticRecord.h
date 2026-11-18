@@ -98,7 +98,7 @@ struct CppSemanticRecordEntry
     CppRecordDeclaration declaration;
     std::optional<compilation::TypeIdentity> identity;
     // Effective option reported by the owning Clang session, if available.
-    std::optional<bool> microsoftVolatileSemantics;
+    std::optional<bool> microsoftVolatileSemantics{};
 };
 
 struct CppRecordValueObservation
@@ -193,7 +193,7 @@ struct CppCRecordSnapshot
     std::optional<std::string> clangUsr{};
     // Present in the versioned provenance catalogue when the source was observed.
     std::optional<CppRecordDeclaration::SourceProvenance> sourceProvenance;
-    std::optional<bool> microsoftVolatileSemantics;
+    std::optional<bool> microsoftVolatileSemantics{};
     CppRecordKind kind = CppRecordKind::Struct;
     // EN: T19-005. Private or Protected for a non-public C++ record nested in another one; Public otherwise.
     // ES: T19-005. Private o Protected para un record C++ no publico anidado en otro; Public en otro caso.

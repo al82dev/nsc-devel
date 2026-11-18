@@ -198,7 +198,7 @@ void ProjectNameLookup::predeclareNode(
     }
     if ((node->kind() == ast::AstNodeKind::FunctionDeclaration ||
          (node->kind() == ast::AstNodeKind::MethodDeclaration &&
-          node->auxiliaryText().find("ns3-extension-static") != std::string::npos)) &&
+          node->auxiliaryText().find("nsc-extension-static") != std::string::npos)) &&
         node->genericParameters().empty())
     {
         predeclareNamespaceFunction(unit, node, namespaceSegments, sourcePath, index);

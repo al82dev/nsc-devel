@@ -57,16 +57,6 @@ bool verifyMetadataEnvelope(
     const LibraryMetadata& metadata,
     std::string& error)
 {
-    if ((metadata.formatMajor != kFormatMajor || metadata.formatMinor > kFormatMinor) &&
-        !metadata.payloadDecodedByCurrentReader)
-    {
-        error = "metadata format expected NSMETA " + std::to_string(kFormatMajor) +
-            ".0 through " + std::to_string(kFormatMajor) + "." +
-            std::to_string(kFormatMinor) + ", found " +
-            std::to_string(metadata.formatMajor) + "." +
-            std::to_string(metadata.formatMinor);
-        return false;
-    }
     if (metadata.targetId != kWindowsX64Target)
     {
         error = "metadata target ABI mismatch: target id expected " +
@@ -90,8 +80,8 @@ bool verifyMetadataEnvelope(
             std::string(kTargetTriple) + "', found '" + metadata.targetTriple + "'";
         return false;
     }
-    if (metadata.formatMinor >= 8 && !verifyFrozenAbiContract(metadata, error)) return false;
-    if (metadata.formatMinor >= 8 && metadata.moduleName.empty())
+    if (!verifyFrozenAbiContract(metadata, error)) return false;
+    if (metadata.moduleName.empty())
     {
         error = "metadata module identity is empty";
         return false;
@@ -106,18 +96,12 @@ bool typeDirectlyOwnsStorage(const LibraryMetadataType& type)
 }
 
 bool verifyMetadataTypeValueContract(
-    const LibraryMetadata& metadata,
+    [[maybe_unused]] const LibraryMetadata& metadata,
     const LibraryMetadataType& type,
     std::string& error)
 {
     const std::uint16_t recordFlags =
         type.flags & (kMetadataTypeRecord | kMetadataTypeRecordDeriveMask);
-    if (metadata.formatMinor < 26 && recordFlags != 0U)
-    {
-        error = "metadata before NSMETA 1.26 contains record derive flags on type '" +
-            type.fullyQualifiedName + "'";
-        return false;
-    }
     if ((recordFlags & kMetadataTypeRecordDeriveMask) != 0U &&
         (recordFlags & kMetadataTypeRecord) == 0U)
     {
@@ -132,12 +116,6 @@ bool verifyMetadataTypeValueContract(
             "' must be a non-union struct";
         return false;
     }
-    if (metadata.formatMinor < 36 && !type.dropGlueEntryName.empty())
-    {
-        error = "metadata before NSMETA 1.36 contains value drop glue on type '" +
-            type.fullyQualifiedName + "'";
-        return false;
-    }
     const std::string expectedDropGlue = "__nsc_drop_value_" +
         compilation::symbolFragmentForIdentityKey("type:" + type.identityKey);
     if (!type.dropGlueEntryName.empty() &&
@@ -148,8 +126,7 @@ bool verifyMetadataTypeValueContract(
             "' has an invalid value drop-glue contract";
         return false;
     }
-    if (metadata.formatMinor >= 36 &&
-        type.kind == LibraryMetadataTypeKind::Struct &&
+    if (type.kind == LibraryMetadataTypeKind::Struct &&
         typeDirectlyOwnsStorage(type) && type.dropGlueEntryName.empty())
     {
         error = "metadata owning value type '" + type.fullyQualifiedName +
@@ -160,17 +137,11 @@ bool verifyMetadataTypeValueContract(
 }
 
 bool verifyMetadataTypeCopyAndOpaqueContract(
-    const LibraryMetadata& metadata,
+    [[maybe_unused]] const LibraryMetadata& metadata,
     const LibraryMetadataType& type,
     std::string& error)
 {
     const bool isCopy = (type.flags & kMetadataTypeCopy) != 0U;
-    if (metadata.formatMinor < 33 && isCopy)
-    {
-        error = "metadata before NSMETA 1.33 contains a Copy flag on type '" +
-            type.fullyQualifiedName + "'";
-        return false;
-    }
     if (isCopy && type.kind != LibraryMetadataTypeKind::Struct)
     {
         error = "metadata Copy capability on '" + type.fullyQualifiedName +
@@ -178,12 +149,6 @@ bool verifyMetadataTypeCopyAndOpaqueContract(
         return false;
     }
     const bool isOpaqueResult = (type.flags & kMetadataTypeOpaqueResult) != 0U;
-    if (metadata.formatMinor < 30 && isOpaqueResult)
-    {
-        error = "metadata before NSMETA 1.30 contains an opaque-result flag on type '" +
-            type.fullyQualifiedName + "'";
-        return false;
-    }
     if (isOpaqueResult &&
         (type.kind != LibraryMetadataTypeKind::Struct ||
          type.fields.size() != 1U || type.interfaceTypeKeys.empty()))
@@ -229,17 +194,11 @@ bool verifyMetadataTraitMethodContract(
 }
 
 bool verifyMetadataAssociatedItemContracts(
-    const LibraryMetadata& metadata,
+    [[maybe_unused]] const LibraryMetadata& metadata,
     const LibraryMetadataType& type,
     bool isTrait,
     std::string& error)
 {
-    if (metadata.formatMinor < 29 && !type.associatedItems.empty())
-    {
-        error = "metadata before NSMETA 1.29 contains associated items on type '" +
-            type.fullyQualifiedName + "'";
-        return false;
-    }
     if (!type.associatedItems.empty() &&
         type.kind != LibraryMetadataTypeKind::Class &&
         type.kind != LibraryMetadataTypeKind::Struct && !isTrait)
@@ -288,12 +247,6 @@ bool verifyMetadataTypeTraitContract(
     std::string& error)
 {
     const bool isTrait = (type.flags & kMetadataTypeTrait) != 0U;
-    if (metadata.formatMinor < 28 && isTrait)
-    {
-        error = "metadata before NSMETA 1.28 contains a trait flag on type '" +
-            type.fullyQualifiedName + "'";
-        return false;
-    }
     if (isTrait && type.kind != LibraryMetadataTypeKind::Interface)
     {
         error = "metadata trait '" + type.fullyQualifiedName +
@@ -305,20 +258,13 @@ bool verifyMetadataTypeTraitContract(
         kMetadataTraitObjectDescriptorMap |
         kMetadataTraitObjectNullIsZero |
         kMetadataTraitObjectNoConversionAllocation;
-    if (metadata.formatMinor < 31 &&
-        (type.traitObjectFlags != 0U || type.traitObjectWordCount != 0U))
-    {
-        error = "metadata before NSMETA 1.31 contains a trait-object ABI contract on type '" +
-            type.fullyQualifiedName + "'";
-        return false;
-    }
     if (!isTrait && (type.traitObjectFlags != 0U || type.traitObjectWordCount != 0U))
     {
         error = "metadata non-trait '" + type.fullyQualifiedName +
             "' publishes a trait-object ABI contract";
         return false;
     }
-    if (isTrait && metadata.formatMinor >= 31 &&
+    if (isTrait &&
         ((type.traitObjectFlags & ~kKnownTraitObjectFlags) != 0U ||
          (type.traitObjectFlags & (kMetadataTraitObjectDescriptorMap |
                                    kMetadataTraitObjectNullIsZero |
@@ -337,18 +283,12 @@ bool verifyMetadataTypeTraitContract(
 }
 
 bool verifyMetadataTypeVariantAndIdentity(
-    const LibraryMetadata& metadata,
+    [[maybe_unused]] const LibraryMetadata& metadata,
     const LibraryMetadataType& type,
     std::unordered_set<std::string>& typeIdentities,
     std::string& error)
 {
     const bool isVariant = (type.flags & kMetadataTypeVariant) != 0U;
-    if (metadata.formatMinor < 27 && (isVariant || !type.variantCases.empty()))
-    {
-        error = "metadata before NSMETA 1.27 contains tagged-variant data on type '" +
-            type.fullyQualifiedName + "'";
-        return false;
-    }
     if (isVariant &&
         (type.kind != LibraryMetadataTypeKind::Struct ||
          (type.flags & (1U << 5U)) != 0U ||
@@ -414,6 +354,52 @@ bool verifyMetadataTypeDeclarations(
             return false;
         }
     }
+    if (metadata.trivialCleanupRootTypeKeys.empty() && metadata.nonEscapingLifecycleTypeKeys.empty() &&
+        metadata.identitySafeLifecycleTypeKeys.empty()) return true;
+    std::unordered_map<std::string, const LibraryMetadataType*> rootTypes;
+    for (const LibraryMetadataType& type : metadata.types)
+        rootTypes.emplace("type:" + type.identityKey, &type);
+    std::unordered_set<std::string> trivialRoots;
+    for (const std::string& key : metadata.trivialCleanupRootTypeKeys)
+    {
+        const auto found = rootTypes.find(key);
+        if (!trivialRoots.insert(key).second || found == rootTypes.end() ||
+            found->second->kind != LibraryMetadataTypeKind::Class ||
+            (found->second->flags & (1U << 3U)) != 0U ||
+            !found->second->baseTypeKey.empty() || !found->second->fields.empty())
+        {
+            error = "invalid metadata trivial root cleanup contract '" + key + "'";
+            return false;
+        }
+    }
+    for (const auto& member : metadata.members)
+        if (member.kind == 4U && trivialRoots.contains(member.declaringTypeKey))
+        {
+            error = "metadata trivial root cleanup contract has a destructor";
+            return false;
+        }
+    std::unordered_set<std::string> lifecycleTypes;
+    for (const std::string& key : metadata.nonEscapingLifecycleTypeKeys)
+    {
+        const auto found = rootTypes.find(key);
+        if (!lifecycleTypes.insert(key).second || found == rootTypes.end() ||
+            found->second->kind != LibraryMetadataTypeKind::Class || (found->second->flags & (1U << 3U)) != 0U)
+        {
+            error = "invalid metadata lifecycle non-escape contract '" + key + "'";
+            return false;
+        }
+    }
+    std::unordered_set<std::string> identityTypes;
+    for (const std::string& key : metadata.identitySafeLifecycleTypeKeys)
+    {
+        const auto found = rootTypes.find(key);
+        if (!identityTypes.insert(key).second || found == rootTypes.end() ||
+            found->second->kind != LibraryMetadataTypeKind::Class || (found->second->flags & (1U << 3U)) != 0U)
+        {
+            error = "invalid metadata receiver-identity lifecycle contract '" + key + "'";
+            return false;
+        }
+    }
     return true;
 }
 
@@ -425,8 +411,7 @@ bool verifyMetadataReferenceAndDelegateContracts(
     {
         if ((type.kind == LibraryMetadataTypeKind::Class ||
              type.kind == LibraryMetadataTypeKind::Interface ||
-             (metadata.formatMinor >= 8 &&
-              type.kind == LibraryMetadataTypeKind::Delegate)) &&
+             type.kind == LibraryMetadataTypeKind::Delegate) &&
             (type.referenceSize != metadata.pointerSize ||
              type.referenceAlignment != metadata.pointerAlignment))
         {
@@ -438,15 +423,13 @@ bool verifyMetadataReferenceAndDelegateContracts(
                 std::to_string(metadata.pointerAlignment);
             return false;
         }
-        if (metadata.formatMinor >= 5 &&
-            type.kind == LibraryMetadataTypeKind::Delegate &&
+        if (type.kind == LibraryMetadataTypeKind::Delegate &&
             type.delegateReturnTypeKey.empty())
         {
             error = "metadata delegate '" + type.fullyQualifiedName +
                 "' does not provide its callable signature";
             return false;
         }
-        if (metadata.formatMinor < 31) continue;
         const bool isDelegate = type.kind == LibraryMetadataTypeKind::Delegate;
         const bool dynSignaturePresent = type.delegateReturnDynamicTrait ||
             !type.delegateParameterDynamicTraits.empty();
@@ -707,7 +690,6 @@ bool verifyMetadataDispatchContracts(
     const LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 6) return true;
     std::unordered_map<std::string, const LibraryMetadataType*> typesByKey;
     for (const LibraryMetadataType& type : metadata.types)
         typesByKey.emplace("type:" + type.identityKey, &type);
@@ -864,6 +846,7 @@ bool verifyGenericTemplateDependencies(
 bool verifyGenericTemplateRecord(
     const LibraryMetadata& metadata,
     const LibraryMetadataGenericTemplate& generic,
+    const std::unordered_set<std::string>& declaredTypeKeys,
     std::unordered_set<std::string>& templateKeys,
     std::unordered_map<std::string, const LibraryMetadataGenericTemplate*>& templateByKey,
     std::string& error)
@@ -882,15 +865,38 @@ bool verifyGenericTemplateRecord(
             "' does not provide a valid materializable declaration";
         return false;
     }
-    if (metadata.formatMinor >= 38 &&
-        (!verifyGenericParameterContracts(generic, error) ||
-         !verifyGenericLifetimeContracts(generic, error)))
+    if (!verifyGenericParameterContracts(generic, error) ||
+        !verifyGenericLifetimeContracts(generic, error))
     {
         return false;
     }
+    for (const auto& directive : generic.sourceImports)
+    {
+        const bool enclosingScope = directive.namespaceName.empty() ||
+            directive.namespaceName == generic.namespaceName ||
+            (generic.namespaceName.starts_with(directive.namespaceName) &&
+             generic.namespaceName.size() > directive.namespaceName.size() &&
+             generic.namespaceName[directive.namespaceName.size()] == '.');
+        if (directive.target.empty() || !enclosingScope ||
+            directive.importKind > 5U || (directive.importKind == 0U && directive.reexport))
+        {
+            error = "metadata generic template '" + generic.canonicalKey +
+                "' has an invalid source import or lexical scope";
+            return false;
+        }
+    }
+    for (const std::string& candidate : generic.candidateReceiverTypeKeys)
+    {
+        if (!candidate.starts_with("type:" + metadata.moduleName + "::") ||
+            !declaredTypeKeys.contains(candidate))
+        {
+            error = "metadata generic template '" + generic.canonicalKey +
+                "' has an invalid or missing receiver type candidate";
+            return false;
+        }
+    }
     templateByKey.emplace(generic.canonicalKey, &generic);
-    return metadata.formatMinor < 11 ||
-        verifyGenericTemplateDependencies(generic, error);
+    return verifyGenericTemplateDependencies(generic, error);
 }
 
 bool verifyGenericTemplateClosure(
@@ -947,19 +953,20 @@ bool verifyGenericTemplates(
     const LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 7) return true;
     constexpr std::uint8_t kPublicAccessibility = 3U;
     std::unordered_set<std::string> templateKeys;
     std::unordered_map<std::string, const LibraryMetadataGenericTemplate*> templateByKey;
+    std::unordered_set<std::string> declaredTypeKeys;
+    declaredTypeKeys.reserve(metadata.types.size());
+    for (const auto& type : metadata.types) declaredTypeKeys.insert("type:" + type.identityKey);
     for (const LibraryMetadataGenericTemplate& generic : metadata.genericTemplates)
     {
         if (!verifyGenericTemplateRecord(
-                metadata, generic, templateKeys, templateByKey, error))
+                metadata, generic, declaredTypeKeys, templateKeys, templateByKey, error))
         {
             return false;
         }
     }
-    if (metadata.formatMinor < 11) return true;
     const std::string sameModulePrefix = metadata.moduleName + "::";
     // Shared by every public root: a closure verified from one root is not walked again.
     std::unordered_set<std::string> verifiedTemplates;
@@ -1025,7 +1032,6 @@ bool collectVerifiedExternalTypes(
     std::unordered_set<std::string>& externalTypeKeys,
     std::string& error)
 {
-    if (metadata.formatMinor < 12) return true;
     for (const std::string& typeKey : metadata.externalTypeKeys)
     {
         const std::string base = metadataBaseTypeKey(typeKey);
@@ -1068,7 +1074,7 @@ bool verifyGenericAndExternalTypeCatalogues(
     if (!verifyBinaryClosureMetadata(metadata, error)) return false;
     std::vector<CppCRecordSnapshot> records;
     std::vector<CppCEnumSnapshot> enums;
-    if (!decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error, metadata.formatMinor)) return false;
+    if (!decodeCTypeCatalogByContent(metadata.cppCRecordCatalog, records, enums, error)) return false;
     const auto includeCType = [&](const std::string& identity) {
         const std::string key = "type:" + identity;
         const auto module = metadataTypeModule(key);
@@ -1151,7 +1157,6 @@ bool verifyMetadataTypeReference(
     {
         return true;
     }
-    if (metadata.formatMinor >= 12)
     {
         const std::optional<std::string> module = metadataTypeModule(typeKey);
         if (looksLikeCompilerSpecializedType(typeKey))
@@ -1172,10 +1177,6 @@ bool verifyMetadataTypeReference(
         }
         return false;
     }
-    if (!looksLikeCompilerSpecializedType(typeKey)) return true;
-    error = "metadata " + std::string(owner) + " refers to closed generic type '" +
-        typeKey + "' but no generic specialization declares how to materialize it";
-    return false;
 }
 
 bool verifyMetadataTypeReferences(
@@ -1336,7 +1337,6 @@ bool verifyAllMetadataTypeReferences(
     const std::unordered_set<std::string>& externalTypeKeys,
     std::string& error)
 {
-    if (metadata.formatMinor < 7) return true;
     if (!verifyMetadataTypeReferences(
             metadata, declaredTypeKeys, specializedTypeKeys, externalTypeKeys, error))
         return false;
@@ -1417,24 +1417,19 @@ bool verifyBinaryClosureMetadata(
     const LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 42 && !metadata.cppCRecordCatalog.empty())
-    {
-        error = "metadata format cannot represent C record catalogue";
-        return false;
-    }
     if (!metadata.cppCRecordCatalog.empty())
     {
         std::vector<CppCRecordSnapshot> records;
         std::vector<CppCEnumSnapshot> enums;
         std::vector<std::uint8_t> canonical;
         std::string detail;
-        const bool hasDependencies = metadata.formatMinor >= 46 && metadata.cppCRecordCatalog.size() >= 4 &&
+        const bool hasDependencies = metadata.cppCRecordCatalog.size() >= 4 &&
             metadata.cppCRecordCatalog[0] == 5 && metadata.cppCRecordCatalog[1] == 0 &&
             metadata.cppCRecordCatalog[2] == 0 && metadata.cppCRecordCatalog[3] == 0;
-        const bool hasCarriers = metadata.formatMinor >= 48 && metadata.cppCRecordCatalog.size() >= 4 &&
+        const bool hasCarriers = metadata.cppCRecordCatalog.size() >= 4 &&
             metadata.cppCRecordCatalog[0] == 6 && metadata.cppCRecordCatalog[1] == 0 &&
             metadata.cppCRecordCatalog[2] == 0 && metadata.cppCRecordCatalog[3] == 0;
-        const bool hasEnumProvenance = metadata.formatMinor >= 49 && metadata.cppCRecordCatalog.size() >= 4 &&
+        const bool hasEnumProvenance = metadata.cppCRecordCatalog.size() >= 4 &&
             metadata.cppCRecordCatalog[0] == 7 && metadata.cppCRecordCatalog[1] == 0 &&
             metadata.cppCRecordCatalog[2] == 0 && metadata.cppCRecordCatalog[3] == 0;
         if (hasDependencies || hasCarriers || hasEnumProvenance)
@@ -1445,7 +1440,6 @@ bool verifyBinaryClosureMetadata(
                 decodeCTypeCatalogWithAnonymousCarriers(metadata.cppCRecordCatalog, records, enums, dependencies, detail) :
                 decodeCTypeCatalogWithDependencies(metadata.cppCRecordCatalog, records, enums, dependencies, detail);
             if (!decoded ||
-                (metadata.formatMinor < 47 && !dependencies.enumerators.empty()) ||
                 !(hasEnumProvenance ? encodeCTypeCatalogWithEnumProvenance(records, enums, dependencies, canonical, detail) :
                   hasCarriers ? encodeCTypeCatalogWithAnonymousCarriers(records, enums, dependencies, canonical, detail) :
                   encodeCTypeCatalogWithDependencies(records, enums, dependencies, canonical, detail)) ||
@@ -1500,23 +1494,8 @@ bool verifyBinaryClosureMetadata(
         }
         else
         {
-        const bool hasProvenance = metadata.formatMinor >= 43 && isCTypeCatalogWithProvenance(metadata.cppCRecordCatalog);
-        if (hasProvenance && metadata.formatMinor < 43)
-        {
-            error = "metadata before 1.43 cannot represent C source provenance";
-            return false;
-        }
-        if (hasProvenance && metadata.cppCRecordCatalog[0] == 2 && metadata.formatMinor < 44)
-        {
-            error = "metadata before 1.44 cannot represent C floating format";
-            return false;
-        }
-        if (hasProvenance && metadata.cppCRecordCatalog[0] >= 3 && metadata.formatMinor < 45)
-        {
-            error = "metadata before 1.45 cannot represent incomplete C source provenance";
-            return false;
-        }
-        if (!decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, detail, metadata.formatMinor) ||
+        const bool hasProvenance = isCTypeCatalogWithProvenance(metadata.cppCRecordCatalog);
+        if (!decodeCTypeCatalogByContent(metadata.cppCRecordCatalog, records, enums, detail) ||
             (records.empty() && enums.empty()) ||
             !(hasProvenance ? encodeCTypeCatalogWithProvenance(records, enums, canonical, detail) :
                               encodeCTypeCatalog(records, enums, canonical, detail)) ||
@@ -1539,12 +1518,6 @@ bool verifyBinaryClosureMetadata(
                 return false;
             }
     }
-    if (metadata.formatMinor < 41 && !metadata.cppBinaryDependencies.empty())
-    {
-        error = "metadata format cannot represent C/C++ binary dependencies";
-        return false;
-    }
-    if (metadata.formatMinor < 25) return true;
     for (const auto& dependency : metadata.cppBinaryDependencies)
     {
         if (dependency.libraryFileName.find('\0') != std::string::npos ||
@@ -1597,12 +1570,64 @@ bool verifyInlineAndVolatileMemberMetadata(
     const LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor >= 13)
     {
         constexpr std::uint8_t kMethodKind = 2U;
         constexpr std::uint32_t kImportedC = 1U << 20U;
         for (const LibraryMetadataMember& member : metadata.members)
         {
+            if (!member.pointerOutputObjectOrigins.empty())
+            {
+                if (member.pointerOutputObjectOrigins.size() != member.parameters.size())
+                { error = "invalid metadata pointer-output origin parameter count"; return false; }
+                for (std::size_t output = 0; output < member.parameters.size(); ++output)
+                {
+                    const auto& origins = member.pointerOutputObjectOrigins[output];
+                    if (origins.empty()) continue;
+                    const auto& parameter = member.parameters[output];
+                    if ((parameter.passKind != LibraryMetadataParameterPassKind::Ref &&
+                         parameter.passKind != LibraryMetadataParameterPassKind::Out) ||
+                        !parameter.typeKey.ends_with("**"))
+                    { error = "invalid metadata pointer-output origin destination"; return false; }
+                    std::unordered_set<std::uint32_t> seen;
+                    for (const std::uint32_t origin : origins)
+                        if (origin >= member.parameters.size() || !seen.insert(origin).second ||
+                            member.parameters[origin].passKind != LibraryMetadataParameterPassKind::Value ||
+                            !member.parameters[origin].typeKey.starts_with("type:") ||
+                            member.parameters[origin].typeKey.find_first_of("*[") != std::string::npos)
+                        { error = "invalid metadata pointer-output origin source"; return false; }
+                }
+            }
+            for (std::size_t parameter = 0; parameter < member.parameterEscapeSummary.size(); ++parameter)
+            {
+                if (member.parameterEscapeSummary[parameter] == LibraryMetadataEscapeClass::ObjectPointerGlobal)
+                {
+                    constexpr std::uint32_t kStatic = 1U << 0U;
+                    constexpr std::uint32_t kDisallowed = (1U << 3U) | (1U << 4U) | (1U << 5U) |
+                        (1U << 8U) | (1U << 16U) | (1U << 17U) | (1U << 20U) | kMetadataMemberReferenceReturn;
+                    if (member.kind != kMethodKind || (member.flags & kStatic) == 0U ||
+                        (member.flags & kDisallowed) != 0U || parameter >= member.parameters.size() ||
+                        member.parameters[parameter].passKind != LibraryMetadataParameterPassKind::Value ||
+                        !member.parameters[parameter].typeKey.starts_with("type:") ||
+                        member.parameters[parameter].typeKey.find_first_of("*[") != std::string::npos)
+                    {
+                        error = "metadata object-pointer escape contract has an invalid signature";
+                        return false;
+                    }
+                }
+                if (member.parameterEscapeSummary[parameter] != LibraryMetadataEscapeClass::RefSlotNoEscape)
+                    continue;
+                constexpr std::uint32_t kStatic = 1U << 0U;
+                constexpr std::uint32_t kDisallowed = (1U << 3U) | (1U << 4U) | (1U << 5U) |
+                    (1U << 8U) | (1U << 16U) | (1U << 17U) | (1U << 20U) | kMetadataMemberReferenceReturn;
+                if (member.kind != kMethodKind || (member.flags & kStatic) == 0U ||
+                    (member.flags & kDisallowed) != 0U || parameter >= member.parameters.size() ||
+                    member.parameters[parameter].passKind != LibraryMetadataParameterPassKind::Ref ||
+                    !member.parameters[parameter].typeKey.ends_with("**"))
+                {
+                    error = "metadata ref-slot non-escape contract has an invalid signature";
+                    return false;
+                }
+            }
             const std::uint32_t policy =
                 (member.flags & kMetadataMemberInliningMask) >>
                 kMetadataMemberInliningShift;
@@ -1618,11 +1643,59 @@ bool verifyInlineAndVolatileMemberMetadata(
             }
         }
     }
-    if (metadata.formatMinor >= 14)
     {
         constexpr std::uint8_t kFieldKind = 0U;
         for (const LibraryMetadataMember& member : metadata.members)
         {
+            if ((member.flags & kMetadataOperatorInOperandsNoEscape) != 0U && member.kind != kFieldKind)
+            {
+                constexpr std::uint8_t kMethodKind = 2U;
+                constexpr std::uint32_t kStatic = 1U << 0U;
+                constexpr std::uint32_t kUserOperator = 1U << 16U;
+                bool valid = member.kind == kMethodKind && (member.flags & kStatic) != 0U &&
+                    (member.flags & kUserOperator) != 0U && !member.parameters.empty() &&
+                    (member.declaredTypeKey == "builtin:int" || member.declaredTypeKey == "builtin:bool");
+                bool hasIn = false;
+                for (const auto& parameter : member.parameters)
+                {
+                    if (parameter.passKind == LibraryMetadataParameterPassKind::In) hasIn = true;
+                    else valid = valid && parameter.passKind == LibraryMetadataParameterPassKind::Value &&
+                        (parameter.typeKey == "builtin:int" || parameter.typeKey == "builtin:bool");
+                }
+                valid = valid && hasIn;
+                if (!valid)
+                {
+                    error = "metadata operator in-operand non-escape contract has an invalid signature";
+                    return false;
+                }
+            }
+            if ((member.flags & kMetadataMemberReceiverNoReferenceFieldEffects) != 0U && member.kind != kFieldKind)
+            {
+                constexpr std::uint8_t kMethodKind = 2U;
+                constexpr std::uint32_t kDisallowed = (1U << 0U) | (1U << 3U) | (1U << 4U) |
+                    (1U << 5U) | (1U << 8U) | (1U << 20U);
+                if (member.kind != kMethodKind || (member.flags & kDisallowed) != 0U)
+                {
+                    error = "metadata receiver non-escape contract requires a concrete non-virtual instance method";
+                    return false;
+                }
+            }
+            if ((member.flags & kMetadataMemberVerifiedNoEscapeOut) != 0U && member.kind != kFieldKind)
+            {
+                constexpr std::uint8_t kMethodKind = 2U;
+                constexpr std::uint32_t kDisallowed = (1U << 5U) | (1U << 8U) | (1U << 20U);
+                bool hasVerifiedOut = false;
+                if (member.parameterEscapeSummary.size() == member.parameters.size())
+                    for (std::size_t parameter = 0; parameter < member.parameters.size(); ++parameter)
+                        if (member.parameters[parameter].passKind == LibraryMetadataParameterPassKind::Out &&
+                            member.parameterEscapeSummary[parameter] == LibraryMetadataEscapeClass::NoEscape)
+                            hasVerifiedOut = true;
+                if (member.kind != kMethodKind || (member.flags & kDisallowed) != 0U || !hasVerifiedOut)
+                {
+                    error = "metadata verified no-escape out contract has an invalid signature";
+                    return false;
+                }
+            }
             if ((member.flags & kMetadataMemberVolatile) != 0U &&
                 member.kind != kFieldKind)
             {
@@ -1632,6 +1705,15 @@ bool verifyInlineAndVolatileMemberMetadata(
             }
         }
     }
+    for (const auto& function : metadata.namespaceFunctions)
+        if (std::ranges::find(function.parameterEscapeSummary, LibraryMetadataEscapeClass::RefSlotNoEscape) !=
+                function.parameterEscapeSummary.end() ||
+            std::ranges::find(function.parameterEscapeSummary, LibraryMetadataEscapeClass::ObjectPointerGlobal) !=
+                function.parameterEscapeSummary.end())
+        {
+            error = "metadata ref-slot non-escape contract is not supported for namespace functions";
+            return false;
+        }
     return true;
 }
 
@@ -1639,7 +1721,7 @@ bool verifyReferenceReturnMemberMetadata(
     const LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 15) return true;
+    constexpr std::uint8_t kFieldKind = 0U;
     constexpr std::uint8_t kMethodKind = 2U;
     constexpr std::uint32_t kPropertyAccessor = 1U << 12U;
     constexpr std::uint32_t kIndexerAccessor = 1U << 13U;
@@ -1647,14 +1729,14 @@ bool verifyReferenceReturnMemberMetadata(
     constexpr std::uint32_t kSetter = 1U << 15U;
     for (const LibraryMetadataMember& member : metadata.members)
     {
-        // EN: Freeze 3.0 (item 140): a property getter may return by reference too (the `ref T Current` of the P3
+        // EN: Freeze (item 140): a property getter may return by reference too (the `ref T Current` of the P3
         //     enumerators); the public surface already declares it as `ref T Name { get; }`.
-        // ES: Congelamiento 3.0 (elemento 140): un getter de propiedad tambien puede devolver por referencia (el
+        // ES: Congelamiento (elemento 140): un getter de propiedad tambien puede devolver por referencia (el
         //     `ref T Current` de los enumeradores de P3); la superficie publica ya lo declara como
         //     `ref T Name { get; }`.
         const bool accessor = (member.flags & (kPropertyAccessor | kIndexerAccessor)) != 0U;
         if ((member.flags & kMetadataMemberReferenceReturn) != 0U &&
-            (member.kind != kMethodKind ||
+            ((member.kind != kMethodKind && member.kind != kFieldKind) ||
              (member.flags & kSetter) != 0U ||
              (accessor && (member.flags & kGetter) == 0U)))
         {
@@ -1663,8 +1745,8 @@ bool verifyReferenceReturnMemberMetadata(
                 "' carries ref-return outside an ordinary method or a property or indexer getter";
             return false;
         }
-        // EN: Freeze 3.0 P3: `ref readonly` qualifies a ref return and nothing else.
-        // ES: Congelamiento 3.0 P3: `ref readonly` califica un retorno ref y nada mas.
+        // EN: Freeze P3: `ref readonly` qualifies a ref return and nothing else.
+        // ES: Congelamiento P3: `ref readonly` califica un retorno ref y nada mas.
         if ((member.flags & kMetadataMemberReadonlyReferenceReturn) != 0U &&
             (member.flags & kMetadataMemberReferenceReturn) == 0U)
         {
@@ -1682,7 +1764,6 @@ bool verifyNoHeapAndVariadicMemberMetadata(
 {
     constexpr std::uint8_t kMethodKind = 2U;
     constexpr std::uint8_t kConstructorKind = 3U;
-    if (metadata.formatMinor >= 16)
     {
         for (const LibraryMetadataMember& member : metadata.members)
         {
@@ -1696,7 +1777,6 @@ bool verifyNoHeapAndVariadicMemberMetadata(
             }
         }
     }
-    if (metadata.formatMinor < 19) return true;
     constexpr std::uint32_t kExternC = 1U << 8U;
     constexpr std::uint32_t kImportedC = 1U << 20U;
     for (const LibraryMetadataMember& member : metadata.members)
@@ -1744,7 +1824,6 @@ bool verifyParameterPackContracts(
     const LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 24) return true;
     for (const LibraryMetadataMember& member : metadata.members)
     {
         if (!verifyParameterPackMetadata(
@@ -1775,7 +1854,7 @@ bool verifyParameterPackContracts(
     return true;
 }
 
-bool verifyVersionedMemberContracts(
+bool verifyMemberContracts(
     const LibraryMetadata& metadata,
     std::string& error)
 {
@@ -1819,7 +1898,6 @@ bool verifyLifetimeMetadataContracts(
     const LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 34) return true;
     for (const LibraryMetadataType& type : metadata.types)
     {
         if (!verifyLifetimeMetadata(

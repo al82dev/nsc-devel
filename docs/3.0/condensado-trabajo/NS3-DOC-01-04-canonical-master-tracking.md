@@ -1,8 +1,10 @@
 # NS3-DOC-01–04 — Catálogo maestro y tracking canónico
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Objetivo
 
-Eliminar los tableros incompatibles de NativeSharp 3.0 y conservar una sola autoridad verificable de estado.
+Eliminar los tableros incompatibles de NativeSharp y conservar una sola autoridad verificable de estado.
 
 ## Cambios
 
@@ -16,12 +18,12 @@ Eliminar los tableros incompatibles de NativeSharp 3.0 y conservar una sola auto
 
 ## Archivos
 
-- Nuevo: `tools/native_sharp_3_catalog.py`.
-- Nuevo: `tools/verify_native_sharp_3_catalog.py`.
-- Nuevo: `tests/unit/test_native_sharp_3_catalog.py`.
-- Modificado: `tools/generate_native_sharp_3_tracking.py`.
-- Modificado: `tools/verify_native_sharp_3_plan.py`.
-- Modificado: `mkdown/NativeSharp-Language-3.0-Roadmap.md`.
+- Nuevo: `tools/native_sharp_catalog.py`.
+- Nuevo: `tools/verify_native_sharp_catalog.py`.
+- Nuevo: `tests/unit/test_native_sharp_catalog.py`.
+- Modificado: `tools/generate_native_sharp_tracking.py`.
+- Modificado: `tools/verify_native_sharp_plan.py`.
+- Modificado: `mkdown/NativeSharp-Language-Roadmap.md`.
 - Modificados fuera del repositorio, en `A:\`: documento maestro, tracking, ledger de limitaciones y pendientes por componente.
 
 ## Mejora obtenida
@@ -32,7 +34,7 @@ byte a byte entre el maestro y el tracking visible.
 
 ## Validación dirigida
 
-- `tests/unit/test_native_sharp_3_catalog.py`: 5/5.
-- `tests/unit/test_verify_native_sharp_3_plan.py`: 6/6.
-- `tools/verify_native_sharp_3_plan.py`: 308 ítems, 16 componentes, correcto.
+- `tests/unit/test_native_sharp_catalog.py`: 5/5.
+- `tests/unit/test_verify_native_sharp_plan.py`: 6/6.
+- `tools/verify_native_sharp_plan.py`: 308 ítems, 16 componentes, correcto.
 - No se ejecutó baseline ni suite general.

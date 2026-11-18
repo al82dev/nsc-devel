@@ -32,18 +32,17 @@ void verifyBuildIdentity(TestContext& context)
             }),
         "build id is lowercase hexadecimal");
     context.expect(
-        nativesharp::kCompilerReleaseVersion == "3.0.0",
-        "compiler compatibility identity is the 3.0.0 development line");
+        nativesharp::kCompilerReleaseVersion == "1.0.0",
+        "compiler product identity is 1.0.0");
     context.expect(
-        nativesharp::kCompilerVersion.starts_with("3.0.0+build."),
+        nativesharp::kCompilerVersion.starts_with("1.0.0+build."),
         "visible compiler version identifies the development line and build metadata");
     context.expect(
         nativesharp::kCompilerVersion.ends_with(buildId),
         "visible compiler version contains the exact build id");
-    context.expect(nativesharp::kLanguageVersion == "3.0.0", "language version is 3.0.0");
     context.expect(
         nativesharp::kCompilerStage == "70",
-        "compiler stage remains traceable during 3.0 development");
+        "compiler stage remains traceable during development");
 }
 }
 

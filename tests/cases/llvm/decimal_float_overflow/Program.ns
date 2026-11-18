@@ -1,0 +1,5 @@
+public class Program
+{
+    public static double Input() { return 1000000000000000000000000000000.0; }
+    public static int Main() { decimal d = (decimal)Input(); return (int)d; }
+}

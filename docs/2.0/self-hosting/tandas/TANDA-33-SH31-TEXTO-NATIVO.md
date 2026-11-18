@@ -1,4 +1,6 @@
-# NativeSharp 2.0 self-hosting — tanda 33: texto nativo
+# NativeSharp self-hosting — tanda 33: texto nativo
+
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
 
 ## Identidad
 

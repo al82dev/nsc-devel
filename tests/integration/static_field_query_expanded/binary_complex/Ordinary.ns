@@ -1,0 +1,6 @@
+int Main()
+{
+    BinaryComplex.Box<int> value = default(BinaryComplex.Box<int>);
+    value.Value = 7;
+    return value.Value == 7 ? 0 : 1;
+}

@@ -1,3 +1,7 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Tanda 51 — SH49: toolchain avanzado
 
 | Campo | Valor |
@@ -9,7 +13,7 @@
 
 ## Objetivo
 
-Cerrar el toolchain avanzado de NativeSharp 2.0 alrededor del compilador autoalojado: comptime
+Cerrar el toolchain avanzado de NativeSharp alrededor del compilador autoalojado: comptime
 aislado, caché reproducible, sanitizer nativo, SDK declarativo, metadata N−1/N, paquetes y bindings
 precompilados. El cierre combina artefactos emitidos por `nsc2` con la matriz contractual heredada;
 no atribuye esas superficies únicamente al compilador semilla.

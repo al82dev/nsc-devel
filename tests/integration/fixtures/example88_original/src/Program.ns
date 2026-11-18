@@ -1,0 +1,51 @@
+using NativeSharp.Core;
+
+namespace DeterministicFutureCancellation
+{
+    /// <summary>
+    /// Entry point verifying deterministic LIFO RAII destruction when coroutines are cancelled early.
+    /// </summary>
+    public class Program
+    {
+        /// <summary>
+        /// Cancels both a synchronous coroutine and an async stream at intermediate states and audits LIFO drops.
+        /// </summary>
+        public static int Main()
+        {
+            CleanupTraceLog.Reset();
+
+            Iterator<int> session = CancellableSessionWork.RunTwoStageSession();
+            if (!session.MoveNext() || session.Current != 10)
+            {
+                return 1;
+            }
+            if (!session.MoveNext() || session.Current != 20)
+            {
+                return 2;
+            }
+            session.Drop();
+
+            if (CleanupTraceLog.Value() != 21)
+            {
+                return 3;
+            }
+
+            CleanupTraceLog.Reset();
+            AsyncIterator<int, int> asyncStream = CancellableSessionWork.StreamWithTimeoutBudgetAsync();
+            if (!await asyncStream.MoveNextAsync() || asyncStream.Current != 700)
+            {
+                return 4;
+            }
+            asyncStream.Cancel();
+            Console.WriteLine($"Cleanup trace after cancellation: {CleanupTraceLog.Value()}");
+
+            Console.WriteLine("Deterministic coroutine cancellation verified LIFO RAII cleanup.");
+            if (CleanupTraceLog.Value() != 7)
+            {
+                return 5;
+            }
+
+            return 0;
+        }
+    }
+}

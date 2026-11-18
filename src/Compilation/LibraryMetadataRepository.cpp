@@ -13,12 +13,8 @@ namespace
 {
 std::string verifiedCacheContract()
 {
-    std::string material = "nsc-verified-nsmeta-verification-contract-v1\n";
+    std::string material = "nsc-verified-library-metadata\n";
     material += kCompilerBuildId;
-    material.push_back('\n');
-    material += std::to_string(interop::kMetadataFormatMajor);
-    material.push_back('.');
-    material += std::to_string(interop::kMetadataFormatMinor);
     const std::span<const std::uint8_t> bytes{
         reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
     return basic::sha256Hex(basic::sha256(bytes));

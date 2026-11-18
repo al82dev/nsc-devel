@@ -1,4 +1,9 @@
-# Estado actual de NativeSharp 1.0.1
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
+# Estado histórico de NativeSharp
+
+Este documento describe un corte histórico. El producto actual es 1.0 y el lenguaje es
+único y acumulativo; sus antiguas etiquetas de versión no definen compatibilidad.
 
 ## Modelo de programación
 

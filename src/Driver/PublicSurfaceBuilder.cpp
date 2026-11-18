@@ -2,6 +2,8 @@
 #include "PublicSurfaceEmitterSupport.h"
 #include "../Frontend/Internal/IndexShadowCheckSwitch.h"
 #include "../Frontend/Internal/IndexShadowMismatch.h"
+#include "nativesharp/Basic/Sha256.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
 
 #include <algorithm>
 #include <array>
@@ -9,6 +11,7 @@
 #include <limits>
 #include <ranges>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace nativesharp::driver
@@ -39,6 +42,18 @@ void spellPointeeQualifiers(std::string &sourceType, std::uint8_t qualifiers)
     sourceType.insert(star, spelling);
 }
 } // namespace
+
+namespace
+{
+// By-reference tuple syntax needs a simple type name. Derive the same private
+// alias at declaration and use sites without relying on metadata traversal order.
+std::string tupleReferenceAlias(std::string_view typeKey)
+{
+    const auto bytes = std::span<const std::uint8_t>(
+        reinterpret_cast<const std::uint8_t*>(typeKey.data()), typeKey.size());
+    return "__NscMetadataTuple" + basic::sha256Hex(basic::sha256(bytes));
+}
+}
 
 constexpr std::uint8_t kPublicAccessibility = 3U;
 constexpr std::uint8_t kGenericMethodKind = 3U;
@@ -140,6 +155,9 @@ bool PublicSurfaceBuilder::emitParameter(const interop::LibraryMetadataParameter
     if (!sourceTypeForMetadataKey(metadata, sourceTypeKey, parameterType, error))
         return false;
     spellPointeeQualifiers(parameterType, parameter.pointeeQualifiers);
+    if (parameter.passKind != interop::LibraryMetadataParameterPassKind::Value &&
+        frontend::ProjectTypeConversion::isTuple(sourceTypeKey))
+        parameterType = tupleReferenceAlias(sourceTypeKey);
     (*generated) << (parameter.isParameterPack ? "params " : "")
                  << parameterPassPrefix(parameter.passKind, parameter.lifetimeName)
                  << ownershipPrefix(parameter.ownership) << (parameter.isDynamicTrait ? "dyn " : "") << parameterType
@@ -620,7 +638,7 @@ bool PublicSurfaceBuilder::emitInterfaceType(const interop::LibraryMetadataType 
                                              std::string_view typeAccessibility, std::string_view typeName,
                                              bool topLevel, const std::string &namespaceName)
 {
-    const bool isTrait = metadata.formatMinor >= 28 && (type.flags & interop::kMetadataTypeTrait) != 0U;
+    const bool isTrait = (type.flags & interop::kMetadataTypeTrait) != 0U;
     (*generated) << typeAccessibility << (isTrait ? " trait " : " interface ") << typeName;
     emitLifetimeParameters(type.lifetimeParameters);
     if (!type.interfaceTypeKeys.empty())
@@ -658,7 +676,7 @@ bool PublicSurfaceBuilder::emitVariantType(const interop::LibraryMetadataType &t
     // the observable CaseTag value; the ordinary public member table is signature-sorted
     // and cannot reconstruct that order safely.
     (*generated) << typeAccessibility << ' ';
-    if (metadata.formatMinor >= 33 && (type.flags & interop::kMetadataTypeCopy) != 0U)
+    if ((type.flags & interop::kMetadataTypeCopy) != 0U)
         (*generated) << "copy ";
     (*generated) << "variant " << typeName << "\n{\n";
     for (std::size_t caseIndex = 0; caseIndex < type.variantCases.size(); ++caseIndex)
@@ -691,9 +709,9 @@ void PublicSurfaceBuilder::emitNominalKindPrefix(const interop::LibraryMetadataT
             (*generated) << "readonly ";
         if ((type.flags & (1U << 4U)) != 0U)
             (*generated) << "borrowed ";
-        if (metadata.formatMinor >= 33 && (type.flags & interop::kMetadataTypeCopy) != 0U)
+        if ((type.flags & interop::kMetadataTypeCopy) != 0U)
             (*generated) << "copy ";
-        if (metadata.formatMinor >= 26 && (type.flags & interop::kMetadataTypeRecord) != 0U)
+        if ((type.flags & interop::kMetadataTypeRecord) != 0U)
             (*generated) << "record ";
         (*generated) << ((type.flags & (1U << 5U)) != 0U ? "union " : "struct ");
         return;
@@ -711,7 +729,7 @@ void PublicSurfaceBuilder::emitNominalKindPrefix(const interop::LibraryMetadataT
 
 void PublicSurfaceBuilder::emitRecordDerives(const interop::LibraryMetadataType &type)
 {
-    if (type.kind != interop::LibraryMetadataTypeKind::Struct || metadata.formatMinor < 26 ||
+    if (type.kind != interop::LibraryMetadataTypeKind::Struct ||
         (type.flags & interop::kMetadataTypeRecord) == 0U)
         return;
     const std::array<std::pair<std::uint16_t, std::string_view>, 4> derives = {
@@ -734,10 +752,9 @@ void PublicSurfaceBuilder::emitRecordDerives(const interop::LibraryMetadataType 
 bool PublicSurfaceBuilder::emitNominalBases(const interop::LibraryMetadataType &type)
 {
     const bool opaqueResultStruct = type.kind == interop::LibraryMetadataTypeKind::Struct &&
-                                    metadata.formatMinor >= 30 &&
                                     (type.flags & interop::kMetadataTypeOpaqueResult) != 0U;
     if (!((type.kind == interop::LibraryMetadataTypeKind::Class && (type.flags & (1U << 3U)) == 0U) ||
-          opaqueResultStruct) ||
+          type.kind == interop::LibraryMetadataTypeKind::Struct) ||
         (type.baseTypeKey.empty() && type.interfaceTypeKeys.empty()))
         return true;
     (*generated) << " : ";
@@ -840,11 +857,29 @@ bool PublicSurfaceBuilder::emitAnonymousCarrier(const interop::LibraryMetadataTy
                                                 std::string_view indentation)
 {
     std::vector<AnonymousCarrierFrame> pending = {{&owner, &carrier, nullptr, std::string(indentation), 0U}};
+    // EN: LKF-273: a carrier that contains itself (directly or through another carrier) would never finish,
+    //     so the walk keeps the active carriers and stops at a repeated one or past a fixed depth.
+    // ES: LKF-273: un carrier que se contiene a sí mismo (directamente o por otro carrier) nunca terminaría,
+    //     así que el recorrido conserva los carriers activos y se detiene ante uno repetido o tras una
+    //     profundidad fija.
+    constexpr std::size_t kMaximumAnonymousCarrierDepth = 256;
     while (!pending.empty())
     {
         AnonymousCarrierFrame &frame = pending.back();
-        if (frame.nested == nullptr && !openAnonymousCarrier(frame))
-            return false;
+        if (frame.nested == nullptr)
+        {
+            if (!openAnonymousCarrier(frame))
+                return false;
+            const bool repeated = std::any_of(pending.begin(), pending.end() - 1,
+                                              [&](const AnonymousCarrierFrame &active)
+                                              { return active.nested == frame.nested; });
+            if (repeated || pending.size() > kMaximumAnonymousCarrierDepth)
+            {
+                error = "metadata anonymous carrier of '" + owner.fullyQualifiedName +
+                        (repeated ? "' contains itself" : "' is nested too deeply");
+                return false;
+            }
+        }
         if (frame.nextChild == frame.nested->fields.size())
         {
             (*generated) << frame.indentation << "};\n";
@@ -871,9 +906,14 @@ bool PublicSurfaceBuilder::emitNominalField(const interop::LibraryMetadataType &
     if ((field.flags & interop::kMetadataFieldAnonymousCarrier) != 0U)
         return emitAnonymousCarrier(owner, field, "    ");
     std::string fieldType;
-    if (!sourceTypeForMetadataKey(metadata, field.typeKey, fieldType, error))
+    const bool mutableReference = field.typeKey.starts_with("refmut:");
+    const std::string fieldValueKey = mutableReference ? field.typeKey.substr(7) : field.typeKey;
+    if (!sourceTypeForMetadataKey(metadata, fieldValueKey, fieldType, error))
         return false;
     spellPointeeQualifiers(fieldType, field.pointeeQualifiers);
+    if (mutableReference) fieldType.insert(0, "ref mut ");
+    else if ((field.flags & interop::kMetadataMemberReferenceReturn) != 0U)
+        fieldType.insert(0, "ref ");
     if (const interop::LibraryMetadataMember *event = metadataEventForBacking(metadata, owner, field); event != nullptr)
     {
         (*generated) << "    " << sourceAccessibility(event->accessibility) << ' ';
@@ -970,6 +1010,8 @@ bool PublicSurfaceBuilder::emitConstructorMember(const interop::LibraryMetadataM
     if (!emitParameters(member))
         return false;
     (*generated) << ')';
+    if (!emitThrowsContract(member.declaredErrorTypeKey))
+        return false;
     emitLifetimeConstraints(member.lifetimeOutlivesConstraints);
     (*generated) << " { }\n";
     return true;
@@ -1146,7 +1188,7 @@ bool PublicSurfaceBuilder::emitNominalType(const interop::LibraryMetadataType &t
                 type.fullyQualifiedName + "'";
         return false;
     }
-    const bool isVariant = type.kind == interop::LibraryMetadataTypeKind::Struct && metadata.formatMinor >= 27 &&
+    const bool isVariant = type.kind == interop::LibraryMetadataTypeKind::Struct &&
                            (type.flags & interop::kMetadataTypeVariant) != 0U;
     if (isVariant)
         return emitVariantType(type, typeAccessibility, typeName, topLevel, namespaceName);
@@ -1160,6 +1202,15 @@ bool PublicSurfaceBuilder::emitNominalType(const interop::LibraryMetadataType &t
         if (!emitNominalField(type, type.fields[fieldIndex], fieldIndex, materializedEvents))
             return false;
     }
+
+    // A producer-owned value drop entry is the lifetime contract even when the
+    // private destructor itself is not part of the published member surface.
+    // Reconstruct its marker so consumers schedule the producer's drop glue.
+    constexpr std::uint8_t destructorKind = 4U;
+    if (type.kind == interop::LibraryMetadataTypeKind::Struct && !type.dropGlueEntryName.empty() &&
+        std::ranges::none_of(orderedMethods, [](const auto *member)
+                             { return member != nullptr && member->kind == destructorKind; }))
+        (*generated) << "    ~" << typeName << "() { }\n";
 
     if (!emitAccessorContracts(orderedMethods, false, false, materializedAccessors))
         return false;
@@ -1343,9 +1394,20 @@ bool PublicSurfaceBuilder::collectPublishedMembers()
     typesByKey.reserve(metadata.types.size());
     for (const interop::LibraryMetadataType &candidate : metadata.types)
         typesByKey.emplace("type:" + candidate.identityKey, &candidate);
+    // EN: LKF-274: a member of a type that becomes a contract dependency only through a later member was
+    //     skipped by the single pass. The walk now repeats until no new contract type appears; each member
+    //     is published once and every group keeps declaration order.
+    // ES: LKF-274: un miembro de un tipo que pasa a ser dependencia de contrato solo por un miembro posterior
+    //     se omitía en la pasada única. El recorrido se repite hasta que no aparece un tipo de contrato
+    //     nuevo; cada miembro se publica una vez y cada grupo conserva el orden de declaración.
+    std::unordered_set<const interop::LibraryMetadataMember *> publishedMembers;
+    for (std::size_t knownContractTypes = std::numeric_limits<std::size_t>::max();
+         knownContractTypes != contractTypeIdentities.size();)
+    {
+    knownContractTypes = contractTypeIdentities.size();
     for (const interop::LibraryMetadataMember &member : metadata.members)
     {
-        if (!canMaterializePrecompiledDeclaration(metadata, member))
+        if (publishedMembers.contains(&member) || !canMaterializePrecompiledDeclaration(metadata, member))
         {
             continue;
         }
@@ -1380,11 +1442,17 @@ bool PublicSurfaceBuilder::collectPublishedMembers()
         PublishedType &group = published[type->identityKey];
         group.type = type;
         group.methods.push_back(&member);
+        publishedMembers.insert(&member);
         collectMaterializedContractTypes(metadata, member.declaredTypeKey, contractTypeIdentities);
         collectMaterializedContractTypes(metadata, member.declaredErrorTypeKey, contractTypeIdentities);
         for (const interop::LibraryMetadataParameter &parameter : member.parameters)
             collectMaterializedContractTypes(metadata, parameter.typeKey, contractTypeIdentities);
     }
+    }
+    // Members live in one vector, so address order is declaration order.
+    // Los miembros viven en un vector, así que el orden de direcciones es el de declaración.
+    for (auto &[identity, group] : published)
+        std::sort(group.methods.begin(), group.methods.end(), std::less<>());
     return true;
 }
 
@@ -1432,6 +1500,31 @@ bool PublicSurfaceBuilder::publishContractTypes()
 
 bool PublicSurfaceBuilder::emitAliases()
 {
+    std::unordered_set<std::string> tupleAliases;
+    const auto emitTupleAlias = [&](const interop::LibraryMetadataParameter &parameter)
+    {
+        if (parameter.passKind == interop::LibraryMetadataParameterPassKind::Value ||
+            !parameter.typeKey.ends_with('*')) return true;
+        const std::string key = parameter.typeKey.substr(0, parameter.typeKey.size() - 1U);
+        if (!frontend::ProjectTypeConversion::isTuple(key) || !tupleAliases.insert(key).second) return true;
+        std::string typeSource;
+        if (!sourceTypeForMetadataKey(metadata, key, typeSource, error)) return false;
+        (*generated) << "using " << tupleReferenceAlias(key) << " = " << typeSource << ";\n";
+        return true;
+    };
+    for (const auto &member : metadata.members)
+    {
+        if (!canMaterializePrecompiledDeclaration(metadata, member)) continue;
+        for (const auto &parameter : member.parameters)
+            if (!emitTupleAlias(parameter)) return false;
+    }
+    for (const auto &function : metadata.namespaceFunctions)
+        for (const auto &parameter : function.parameters)
+            if (!emitTupleAlias(parameter)) return false;
+    for (const auto &implementation : metadata.traitImpls)
+        for (const auto &method : implementation.methods)
+            for (const auto &parameter : method.parameters)
+                if (!emitTupleAlias(parameter)) return false;
     // Every named type spelling below already comes from its canonical NSMETA key and therefore
     // carries the complete namespace. Do not synthesize namespace imports here. In NativeSharp a
     // `using` name deliberately has precedence over a type in the producer's global namespace;
@@ -1787,9 +1880,56 @@ bool PublicSurfaceBuilder::run()
 {
     collectGenericMethodOwners();
     collectPublishedTypes();
+    for (const auto &generic : metadata.genericTemplates)
+        for (const std::string &candidate : generic.candidateReceiverTypeKeys)
+            collectMaterializedContractTypes(metadata, candidate, contractTypeIdentities);
+    // Same-module nominal references in template bodies are emitted with their
+    // complete module-qualified spelling. Materialize matching type records
+    // with their original accessibility so those bodies can be analyzed.
+    for (const auto &type : metadata.types)
+    {
+        if (type.accessibility == kPublicAccessibility) continue;
+        if (genericMethodOwners.contains(type.fullyQualifiedName))
+            collectMaterializedContractTypes(metadata, "type:" + type.identityKey, contractTypeIdentities);
+        std::string spelling = type.identityKey;
+        std::ranges::replace(spelling, '+', '.');
+        for (const auto &generic : metadata.genericTemplates)
+        {
+            const auto nameByte = [](char c) {
+                return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                    (c >= '0' && c <= '9') || c == '_';
+            };
+            std::size_t pos = 0;
+            while ((pos = generic.sourceText.find(spelling, pos)) != std::string::npos)
+            {
+                const std::size_t end = pos + spelling.size();
+                if ((pos == 0 || !nameByte(generic.sourceText[pos - 1])) &&
+                    (end == generic.sourceText.size() || !nameByte(generic.sourceText[end])))
+                {
+                    collectMaterializedContractTypes(metadata, "type:" + type.identityKey, contractTypeIdentities);
+                    break;
+                }
+                pos = end;
+            }
+            if (pos != std::string::npos) break;
+        }
+    }
+    // Seed field value types before walking members: the type's own members may precede the
+    // generic owner in metadata order, so discovering this edge during that walk is too late.
+    for (const auto &member : metadata.members)
+    {
+        constexpr std::uint8_t kFieldKind = 0U;
+        constexpr std::uint32_t kStatic = 1U << 0U;
+        if (member.kind != kFieldKind || (member.flags & kStatic) == 0U) continue;
+        const auto *owner = metadataTypeForKey(metadata, member.declaringTypeKey);
+        if (owner != nullptr && genericMethodOwners.contains(owner->fullyQualifiedName))
+            collectMaterializedContractTypes(metadata, member.declaredTypeKey, contractTypeIdentities);
+    }
+    // LKF-274: namespace signatures add contract types before members are collected.
+    // LKF-274: las firmas de namespace añaden tipos de contrato antes de recoger miembros.
+    collectNamespaceContractTypes();
     if (!collectPublishedMembers())
         return false;
-    collectNamespaceContractTypes();
     if (!publishContractTypes() || !emitAliases())
         return false;
     collectNestedChildren();

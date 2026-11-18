@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <Name>NativeSharpCore</Name>
-    <Language>3</Language>
+
     <OutputType>Library</OutputType>
   </PropertyGroup>
   <!-- A copy of the installed C:\native-sharp-3.0\lib\NativeSharp.Core sources, with the one thing

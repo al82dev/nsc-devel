@@ -1,5 +1,7 @@
 # Tanda 17 — Congelamiento y promoción / Freeze and promotion
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Reclasificación 2026-09-29:** `DESIGNED`. El helper fail-closed no congela ni promueve el
 > producto; faltan suite candidata, RC, baseline de Alberto y evidencia real. Véase
 > [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
@@ -19,7 +21,7 @@ revisions, conformance tiers, bilingual parity, RC policy, and exhaustive promot
 
 ## Mejora / Improvement
 
-NativeSharp 3.0 no puede declararse estable por accidente: un baseline ausente, P0/P1, falta de una
+NativeSharp no puede declararse estable por accidente: un baseline ausente, P0/P1, falta de una
 configuración de conformidad, docs disparejas, migración no validada, artefactos no reproducibles o
 hashes ausentes bloquean promoción y enumeran evidencia faltante. Promotion is evidence-driven and
 the normative target is explicitly Windows x64.

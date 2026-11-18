@@ -1,0 +1,9 @@
+<Project>
+<PropertyGroup>
+<Name>DivWideDividend</Name>
+<OutputType>Exe</OutputType>
+</PropertyGroup>
+<ItemGroup>
+<Compile Include="DivWideDividend.ns"/>
+</ItemGroup>
+</Project>

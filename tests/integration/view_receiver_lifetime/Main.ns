@@ -1,0 +1,80 @@
+namespace Probe
+{
+    public class Payload
+    {
+        public int Value;
+        ~Payload() { Program.Destroyed = Program.Destroyed + 1; }
+    }
+    public class Control<T> where T : class
+    {
+        public owned T item;
+        public int strong;
+        public int weak;
+        public Control(owned T value) { item = move(value); strong = 1; weak = 1; }
+        public void DropPayload() { owned T removed = move(item); }
+    }
+    public borrowed struct View<T> where T : class
+    {
+        private T target;
+        public View(T value) { target = value; }
+        public T Get() { return target; }
+    }
+    public struct Rc<T> where T : class
+    {
+        private Control<T> control;
+        public Rc(owned T value) { control = new Control<T>(move(value)); }
+        public Rc(Control<T> existing) { control = existing; }
+        ~Rc()
+        {
+            if (control != null)
+            {
+                control.strong = control.strong - 1;
+                if (control.strong == 0)
+                {
+                    control.DropPayload();
+                    control.weak = control.weak - 1;
+                    if (control.weak == 0) delete control;
+                }
+            }
+        }
+        public Rc<T> Clone()
+        {
+            control.strong = control.strong + 1;
+            return new Rc<T>(control);
+        }
+        public WeakRc<T> Downgrade()
+        {
+            control.weak = control.weak + 1;
+            return new WeakRc<T>(control);
+        }
+        public View<T> Borrow() { return new View<T>(control.item); }
+    }
+    public struct WeakRc<T> where T : class
+    {
+        private Control<T> control;
+        public WeakRc(Control<T> existing) { control = existing; }
+        ~WeakRc()
+        {
+            if (control != null)
+            {
+                control.weak = control.weak - 1;
+                if (control.weak == 0) delete control;
+            }
+        }
+        public bool Expired() { return control == null || control.strong == 0; }
+    }
+    public class Program
+    {
+        public static int Destroyed;
+        public static int Main()
+        {
+            View<Payload> view;
+            {
+                raii Payload p = new Payload();
+                Rc<Payload> strong = new Rc<Payload>(move(p));
+                view = strong.Borrow();
+            }
+            return view.Get().Value;
+        }
+    }
+}

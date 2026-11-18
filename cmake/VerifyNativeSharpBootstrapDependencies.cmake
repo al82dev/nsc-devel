@@ -1,5 +1,5 @@
-if(NOT DEFINED NSC_EXECUTABLE OR NOT DEFINED PYTHON_EXECUTABLE OR NOT DEFINED SOURCE_ROOT OR NOT DEFINED OUTPUT_DIR)
- message(FATAL_ERROR "SH40 requires compiler, Python and roots")
+if(NOT DEFINED NSC_EXECUTABLE OR NOT DEFINED PYTHON_EXECUTABLE OR NOT DEFINED SOURCE_ROOT OR NOT DEFINED OUTPUT_DIR OR NOT DEFINED LIBRARIES_SOURCE_ROOT)
+ message(FATAL_ERROR "SH40 requires compiler, Python, compiler root and libraries root")
 endif()
 include("${CMAKE_CURRENT_LIST_DIR}/NativeSharpSelfHostProfiles.cmake")
 nsc_select_selfhost_profiles(selected_profiles)
@@ -7,9 +7,9 @@ file(MAKE_DIRECTORY "${OUTPUT_DIR}")
 set(project "${SOURCE_ROOT}/selfhost/nsc/NativeSharp.Compiler.nsproj")
 set(check_names core collections io llvm-c)
 set(check_projects
- "${SOURCE_ROOT}/lib/NativeSharp.Core/NativeSharp.Core.nsproj"
- "${SOURCE_ROOT}/lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj"
- "${SOURCE_ROOT}/lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj"
+ "${LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/NativeSharp.Core.nsproj"
+ "${LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.Sources.nsproj"
+ "${LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core.IO/NativeSharp.Core.IO.Sources.nsproj"
  "${SOURCE_ROOT}/lib/NativeSharp.LLVM.C/NativeSharp.LLVM.C.nsproj")
 foreach(profile IN LISTS selected_profiles)
  string(TOLOWER "${profile}" lower)

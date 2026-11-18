@@ -82,7 +82,7 @@
 #include "nativesharp/Interop/LibraryCapabilityAudit.h"
 #include "nativesharp/Language/SmartPointerSemantics.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
-#include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Language/LanguageSurface.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
 #include "nativesharp/LLVM/CodegenIdentity.h"

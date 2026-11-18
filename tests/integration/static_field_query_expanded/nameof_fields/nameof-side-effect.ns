@@ -1,0 +1,1 @@
+struct A { public int X; } class State { public static int Calls=0; public static A Bump() { Calls=Calls+1; return default(A); } } int Main() { static foreach (field in Fields(A)) { string n=nameof(field.Get(State.Bump())); } return State.Calls==0 ? 0 : 1; }

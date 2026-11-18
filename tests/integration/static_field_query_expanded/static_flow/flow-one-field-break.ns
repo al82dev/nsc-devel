@@ -1,0 +1,1 @@
+struct One { public int X; } int Main() { One a=default(One); a.X=3; int sum=0; static foreach (field in Fields(One)) { sum=sum+field.Get(a); break; } return sum==3 ? 0 : 1; }

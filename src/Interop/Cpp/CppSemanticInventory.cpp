@@ -1757,7 +1757,7 @@ bool provideCppTypeAliasesWithPrecompiledCatalogs(const compilation::ProjectGrap
         std::vector<CppCEnumSnapshot> enums;
         metadata_detail::CDependencyCatalog dependencies;
         if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
-                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+                records, enums, dependencies, error)) return false;
         catalogRecords.insert(catalogRecords.end(), records.begin(), records.end());
         catalogEnums.insert(catalogEnums.end(), enums.begin(), enums.end());
         for (const auto& alias : dependencies.aliases)

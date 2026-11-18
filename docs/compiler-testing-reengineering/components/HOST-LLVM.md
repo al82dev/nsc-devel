@@ -1,5 +1,7 @@
 # Host.LLVM — Lowering, optimización, objetos y frontera LLVM 23
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## 1. Estado y procedencia
 
 - **Clasificación:** `IMPLEMENTACIÓN VIGENTE`, salvo inferencias y riesgos marcados.
@@ -40,7 +42,7 @@ externas. Sus valores de enum, firmas, calling convention y disponibilidad perte
 La prueba futura debe contrastarlos contra headers oficiales de la misma instalación, no duplicar otra tabla
 manual dentro del test.
 
-`verifyLoadedLlvmVersion` exige major 23. El diagnóstico vigente todavía dice `NativeSharp 2.0`; se conserva como
+`verifyLoadedLlvmVersion` exige major 23. El diagnóstico vigente todavía dice `NativeSharp`; se conserva como
 hallazgo estático y no se corrigió en esta fase.
 
 ## 5. Módulo, target y emisión

@@ -20,7 +20,7 @@ void addCase(TestRegistry& registry, std::string id, TestFunction function)
 
 ReleaseCandidateEvidence completeReleaseCandidate()
 {
-    return {ReleaseCandidateStage::RC2, "native-sharp-3.0-rc2", "features-sha", "issues-sha",
+    return {ReleaseCandidateStage::RC2, "native-sharp-1.0-rc2", "features-sha", "issues-sha",
         {ChangeSeverity::Fix}, true, true, true, true, true, true};
 }
 
@@ -31,7 +31,7 @@ PromotionEvidence completePromotionEvidence()
 
 OfficialPromotionManifest completeOfficialManifest()
 {
-    return {completePromotionEvidence(), "features-sha", "specification-sha", "suite-sha", "v.3.0",
+    return {completePromotionEvidence(), "features-sha", "specification-sha", "suite-sha", "development",
         true, true, true, true, true};
 }
 
@@ -163,7 +163,7 @@ void registerOfficialMissingCase(TestRegistry& registry)
         auto feature = completeOfficialManifest(); feature.stableFeatureSetHash.clear();
         auto specification = completeOfficialManifest(); specification.specificationHash.clear();
         auto suite = completeOfficialManifest(); suite.conformanceSuiteHash.clear();
-        auto branch = completeOfficialManifest(); branch.maintenanceBranch = "development";
+        auto branch = completeOfficialManifest(); branch.maintenanceBranch.clear();
         auto boundary = completeOfficialManifest(); boundary.experimentalFeaturesNamedAndFlagged = false;
         auto install = completeOfficialManifest(); install.referenceWin64InstallPassed = false;
         auto smoke = completeOfficialManifest(); smoke.smokeInteropPassed = false;
@@ -203,8 +203,8 @@ void registerOfficialMissingCase(TestRegistry& registry)
 void registerStableIdentityCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-246", [](TestContext& context) {
-        context.expect(stableLanguageVersion() == "3.0.0" && normativeTarget() == "windows-x64",
-            "TL-LANG-246 stable language version and normative target must remain exact");
+        context.expect(normativeTarget() == "windows-x64",
+            "TL-LANG-246 normative target must remain exact");
     });
 }
 
@@ -224,7 +224,7 @@ void registerDeterminismCase(TestRegistry& registry)
                     validateReleaseCandidate(validCandidate, error) && error.empty(),
                 "TL-LANG-247 alternating candidate validation must be deterministic and stateless");
             auto invalidOfficial = completeOfficialManifest();
-            invalidOfficial.maintenanceBranch = "development";
+            invalidOfficial.maintenanceBranch.clear();
             context.expect(officialPromotionStatus(completeOfficialManifest(), missing) ==
                         PromotionStatus::Ready && missing.empty() &&
                     officialPromotionStatus(invalidOfficial, missing) == PromotionStatus::NotReady &&
@@ -242,12 +242,11 @@ void registerHistoricalPolicyCase(TestRegistry& registry)
         std::vector<std::string> missing;
         auto historical = completeOfficialManifest();
         auto later = historical;
-        later.maintenanceBranch = "v.3.0.4";
-        context.expect(stableLanguageVersion() == "3.0.0" && historical.maintenanceBranch == "v.3.0" &&
+        later.maintenanceBranch = "release";
+        context.expect(historical.maintenanceBranch == "development" &&
                 officialPromotionStatus(historical, missing) == PromotionStatus::Ready && missing.empty() &&
-                officialPromotionStatus(later, missing) == PromotionStatus::NotReady &&
-                missing == std::vector<std::string>{"maintenance-branch"},
-            "TL-LANG-248 historical version and branch values remain the exact current contract");
+                officialPromotionStatus(later, missing) == PromotionStatus::Ready && missing.empty(),
+            "TL-LANG-248 maintenance branches are accepted without a version policy");
     });
 }
 }

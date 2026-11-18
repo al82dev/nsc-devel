@@ -1,0 +1,6 @@
+int Main()
+{
+    owned GenericInheritance.Box<int> value = new GenericInheritance.Box<int>();
+    value.BaseValue = 3; value.Value = 7;
+    return value.BaseValue + value.Value == 10 ? 0 : 1;
+}

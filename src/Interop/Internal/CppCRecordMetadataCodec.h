@@ -35,7 +35,7 @@ struct CDependencyFunctionSnapshot
     //     `volatile T*` in the consumer.
     // ES: T08-D13b. Modo volatile de la referencia del productor; ordena en el consumidor los accesos por un
     //     `volatile T*` devuelto.
-    std::optional<bool> microsoftVolatileSemantics;
+    std::optional<bool> microsoftVolatileSemantics{};
 };
 bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     std::vector<std::uint8_t>& output, std::string& error);
@@ -51,7 +51,7 @@ struct CDependencyGlobalSnapshot
     std::string moduleName;
     std::string referenceIdentity;
     std::string linkSymbol;
-    std::optional<bool> microsoftVolatileSemantics;
+    std::optional<bool> microsoftVolatileSemantics{};
     // Includes a DLL TLS origin supplied by the project reference, even when
     // the C declaration itself has no dllimport attribute.
     bool effectiveDllImport = false;
@@ -173,7 +173,7 @@ bool decodeCTypeCatalogWithDependencies(std::span<const std::uint8_t> bytes,
     CDependencyCatalog& dependencies, std::string& error);
 // Explicit-version dispatch, prepared for a future metadata revision. Existing
 // readers remain unchanged until verification and ABI projection are connected.
-bool decodeCTypeCatalogAndDependencies(std::span<const std::uint8_t> bytes, std::uint16_t formatMinor,
+bool decodeCTypeCatalogAndDependencies(std::span<const std::uint8_t> bytes,
     std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums,
     CDependencyCatalog& dependencies, std::string& error);
 // Internal catalogue codec. It does not by itself publish an NSMETA section.
@@ -210,9 +210,10 @@ bool encodeCTypeCatalogWithProvenance(std::span<const CppCRecordSnapshot> record
 bool decodeCTypeCatalogWithProvenance(std::span<const std::uint8_t> bytes,
     std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums, std::string& error);
 bool isCTypeCatalogWithProvenance(std::span<const std::uint8_t> bytes) noexcept;
-bool decodeVersionedCTypeCatalog(std::span<const std::uint8_t> bytes,
-    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums, std::string& error,
-    std::uint16_t formatMinor);
+// EN: Decodes any C type catalogue by its envelope tag. / ES: Decodifica cualquier catalogo de tipos C por la
+//     etiqueta de su sobre.
+bool decodeCTypeCatalogByContent(std::span<const std::uint8_t> bytes,
+    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums, std::string& error);
 // When the enclosing metadata is unavailable, validate the complete input and
 // refuse ambiguous interpretations instead of guessing from the first byte.
 bool decodeVersionedCTypeCatalog(std::span<const std::uint8_t> bytes,

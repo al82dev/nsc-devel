@@ -1,5 +1,6 @@
 #include "HirLoweringSupport.h"
 
+#include <algorithm>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -52,13 +53,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapFullExpressionCleanup
     return fullExpression;
 }
 
-// EN: Freeze 3.0 C-11 (found while probing value lifetimes): the result of a call that hands its
+// EN: Freeze C-11 (found while probing value lifetimes): the result of a call that hands its
 //     caller a value to destroy (an owned object or string, or a struct with a destructor or
 //     owned fields) leaked when it was discarded (`Make();`) or only used as a receiver
 //     (`Make().Count`, `Make().Id()`). Such a temporary now gets a hidden owner that the full
 //     expression destroys. A receiver is owned only when its consumer yields a plain scalar,
 //     because a reference or a string taken from the temporary could outlive it.
-// ES: Congelamiento 3.0 C-11 (hallazgo al sondear lifetimes de valores): el resultado de una
+// ES: Congelamiento C-11 (hallazgo al sondear lifetimes de valores): el resultado de una
 //     llamada que entrega al llamador un valor que destruir (un objeto o string owned, o un
 //     struct con destructor o campos owned) se fugaba cuando se descartaba (`Make();`) o solo se
 //     usaba como receptor (`Make().Count`, `Make().Id()`). Ese temporal recibe ahora un dueno
@@ -85,10 +86,10 @@ bool consumesReceiver(const ProjectOopHirNode& node)
          node.kind == ProjectOopHirNodeKind::StringElementValue);
 }
 
-// EN: Freeze 3.0 (plan item 131a): helpers of ownReceiversUntilFullExpression. A statement node ends a full
+// EN: Freeze (plan item 131a): helpers of ownReceiversUntilFullExpression. A statement node ends a full
 //     expression; so does a node that evaluates an operand only on some paths or suspends, because a cleanup
 //     closed past it would destroy a temporary that one path never made (or keep it across a suspension).
-// ES: Congelamiento 3.0 (elemento 131a del plan): auxiliares de ownReceiversUntilFullExpression. Un nodo de
+// ES: Congelamiento (elemento 131a del plan): auxiliares de ownReceiversUntilFullExpression. Un nodo de
 //     sentencia termina una expresion completa; tambien un nodo que evalua un operando solo en algunos caminos o
 //     que suspende, porque una limpieza cerrada despues de el destruiria un temporal que un camino nunca creo (o
 //     lo mantendria a traves de una suspension).
@@ -202,9 +203,9 @@ std::unique_ptr<ProjectOopHirNode>* hirReceiverSlot(ProjectOopHirNode& consumer)
     return *receiver != nullptr ? receiver : nullptr;
 }
 
-// EN: Freeze 3.0 (plan item 135): `borrowed` is a value operand of a `?:` (not its condition) or an operand of a
+// EN: Freeze (plan item 135): `borrowed` is a value operand of a `?:` (not its condition) or an operand of a
 //     `??`, so the borrow reaches the result on some path.
-// ES: Congelamiento 3.0 (elemento 135 del plan): `borrowed` es un operando de valor de un `?:` (no su condicion)
+// ES: Congelamiento (elemento 135 del plan): `borrowed` es un operando de valor de un `?:` (no su condicion)
 //     o un operando de un `??`, asi que el prestamo llega al resultado en algun camino.
 bool hirBranchJoin(const ProjectOopHirNode& consumer, const ProjectOopHirNode& borrowed) noexcept
 {
@@ -242,9 +243,9 @@ ProjectOopHirNode* hirFieldStoreThrough(
     return parent->second;
 }
 
-// EN: Freeze 3.0 (plan item 135a): `argument` is an owned temporary lent to a parameter that does not take
+// EN: Freeze (plan item 135a): `argument` is an owned temporary lent to a parameter that does not take
 //     ownership (its hidden owner destroys it at the end of the full expression).
-// ES: Congelamiento 3.0 (elemento 135a del plan): `argument` es un temporal owned prestado a un parametro que no
+// ES: Congelamiento (elemento 135a del plan): `argument` es un temporal owned prestado a un parametro que no
 //     toma ownership (su dueno oculto lo destruye al final de la expresion completa).
 bool hirLentTemporaryArgument(const ProjectOopHirNode& argument) noexcept
 {
@@ -263,6 +264,8 @@ bool ProjectOopHirModel::isFreshDroppableTemporary(const ProjectOopHirNode* node
     const bool producer = node->kind == ProjectOopHirNodeKind::InstanceCall ||
         node->kind == ProjectOopHirNodeKind::StaticCall ||
         node->kind == ProjectOopHirNodeKind::DelegateInvoke ||
+        (node->kind == ProjectOopHirNodeKind::CompoundStore && node->booleanValue &&
+         node->memberOrdinal.has_value() && isReferenceType(node->typeKey)) ||
         node->kind == ProjectOopHirNodeKind::StringConcat ||
         node->kind == ProjectOopHirNodeKind::StringSubstring;
     if (!producer) return false;
@@ -286,10 +289,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::ownTemporary(
 
 bool ProjectOopHirModel::ownReceiverTemporary(std::unique_ptr<ProjectOopHirNode>& consumer)
 {
-    // EN: Freeze 3.0 (receiver temporaries): a consumer whose result is plain data (a struct of
+    // EN: Freeze (receiver temporaries): a consumer whose result is plain data (a struct of
     //     scalars, say) copies it out of the temporary, so the temporary is owned and destroyed
     //     too; before, only a scalar result was, and `Make().Inner` leaked the temporary.
-    // ES: Congelamiento 3.0 (temporales receptores): un consumidor cuyo resultado son datos
+    // ES: Congelamiento (temporales receptores): un consumidor cuyo resultado son datos
     //     simples (un struct de escalares, por ejemplo) los copia fuera del temporal, asi que el
     //     temporal tambien se posee y se destruye; antes solo con un resultado escalar, y
     //     `Make().Inner` perdia el temporal.
@@ -309,6 +312,17 @@ bool ProjectOopHirModel::ownReceiverTemporary(std::unique_ptr<ProjectOopHirNode>
 
 void ProjectOopHirModel::ownDroppableTemporaries(ProjectOopHirNode* root)
 {
+    // A discarded owned tuple value lives until the end of its statement.
+    const auto discardedTupleNeedsDrop = [this](const ProjectOopHirNode* value)
+    {
+        if (value == nullptr || value->syntax == nullptr || memberModel_ == nullptr ||
+            !memberModel_->typeRequiresValueDrop(value->typeKey)) return false;
+        if (value->kind == ProjectOopHirNodeKind::AggregateInitializer &&
+            value->syntax->kind() == ast::AstNodeKind::TupleExpression) return true;
+        return value->kind == ProjectOopHirNodeKind::Conditional &&
+            ProjectTypeConversion::tupleElementTypeKeys(value->typeKey).has_value() &&
+            memberModel_->typeIsMoveOnly(value->typeKey);
+    };
     std::vector<ProjectOopHirNode*> pending{root};
     while (!pending.empty())
     {
@@ -326,7 +340,7 @@ void ProjectOopHirModel::ownDroppableTemporaries(ProjectOopHirNode* root)
             if (child->kind == ProjectOopHirNodeKind::FullExpressionCleanup && child->children.size() == 1U)
                 inner = &child->children.front();
             if (inner != &child && node->kind == ProjectOopHirNodeKind::ExpressionStatement &&
-                isFreshDroppableTemporary(inner->get()))
+                (isFreshDroppableTemporary(inner->get()) || discardedTupleNeedsDrop(inner->get())))
             {
                 ProjectOopHirNode* producer = inner->get();
                 *inner = ownTemporary(std::move(*inner));
@@ -334,7 +348,7 @@ void ProjectOopHirModel::ownDroppableTemporaries(ProjectOopHirNode* root)
                 continue;
             }
             if (node->kind == ProjectOopHirNodeKind::ExpressionStatement &&
-                isFreshDroppableTemporary(child.get()))
+                (isFreshDroppableTemporary(child.get()) || discardedTupleNeedsDrop(child.get())))
             {
                 ProjectOopHirNode* producer = child.get();
                 const ast::AstNode* syntax = producer->syntax;
@@ -349,14 +363,67 @@ void ProjectOopHirModel::ownDroppableTemporaries(ProjectOopHirNode* root)
     }
     extendLentArgumentCleanups(root);
     ownReceiversUntilFullExpression(root);
+
+    // Operator `in` operands materialized in hidden value slots must remain alive
+    // until the enclosing expression completes, including the other side of &&/||.
+    HirParentIndex parents;
+    std::vector<ProjectOopHirNode*> order;
+    indexHirParents(root, parents, order);
+    for (ProjectOopHirNode* wrapper : order)
+    {
+        if (wrapper->kind != ProjectOopHirNodeKind::FullExpressionCleanup ||
+            wrapper->children.size() != 1U || wrapper->children.front() == nullptr)
+            continue;
+        ProjectOopHirNode* call = wrapper->children.front().get();
+        if (call->kind != ProjectOopHirNodeKind::StaticCall) continue;
+        const bool hasValueOperand = std::ranges::any_of(call->children, [](const auto& child) {
+            return child != nullptr && child->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow &&
+                child->referenceResult && child->automaticDestruction;
+        });
+        if (!hasValueOperand) continue;
+        const auto holderIt = parents.find(wrapper);
+        if (holderIt == parents.end()) continue;
+        ProjectOopHirNode* holder = holderIt->second;
+        std::unique_ptr<ProjectOopHirNode>* slot = hirChildSlot(*holder, wrapper);
+        if (slot == nullptr) continue;
+        ProjectOopHirNode* closingRoot = call;
+        ProjectOopHirNode* enclosing = nullptr;
+        bool crossesBranch = false;
+        for (ProjectOopHirNode* above = holder; above != nullptr; )
+        {
+            if (above->kind == ProjectOopHirNodeKind::FullExpressionCleanup)
+            {
+                enclosing = above;
+                break;
+            }
+            if (hirStatementKind(above->kind)) break;
+            if (hirConditionalEvaluation(*above))
+            {
+                const bool shortCircuit = above->kind == ProjectOopHirNodeKind::Binary &&
+                    (above->operation == lexer::TokenKind::AmpAmp || above->operation == lexer::TokenKind::PipePipe);
+                if (!shortCircuit && above->kind != ProjectOopHirNodeKind::Conditional &&
+                    above->kind != ProjectOopHirNodeKind::NullCoalescing)
+                    break;
+                crossesBranch = true;
+            }
+            if (hirSubtreeSuspends(*above)) break;
+            closingRoot = above;
+            const auto parent = parents.find(above);
+            above = parent == parents.end() ? nullptr : parent->second;
+        }
+        *slot = std::move(wrapper->children.front());
+        parents.erase(wrapper);
+        parents[call] = holder;
+        closeAtFullExpression(closingRoot, enclosing, crossesBranch, parents);
+    }
 }
 
-// EN: Freeze 3.0 (plan item 135a). A call that lends an owned temporary argument (`Id(MakeText())`) came wrapped
+// EN: Freeze (plan item 135a). A call that lends an owned temporary argument (`Id(MakeText())`) came wrapped
 //     in its own FullExpressionCleanup, so the temporary died right after the call even when the call returned it
 //     and an enclosing expression still read it (`Id(MakeText()).Length`). When the result is a non-owned
 //     reference, the wrapper is removed and the full expression is closed instead, as for a receiver temporary.
 //     Storing that result is rejected by the analysis, so the borrow never outlives the expression.
-// ES: Congelamiento 3.0 (elemento 135a del plan). Una llamada que presta un temporal owned argumento
+// ES: Congelamiento (elemento 135a del plan). Una llamada que presta un temporal owned argumento
 //     (`Id(MakeText())`) venia envuelta en su propio FullExpressionCleanup, asi que el temporal moria justo despues
 //     de la llamada aunque la llamada lo devolviera y una expresion exterior lo siguiera leyendo
 //     (`Id(MakeText()).Length`). Cuando el resultado es una referencia no owned, se quita la envoltura y se cierra
@@ -401,25 +468,25 @@ bool ProjectOopHirModel::resultMayAliasLentArgument(const ProjectOopHirNode& ful
     return false;
 }
 
-// EN: Freeze 3.0 (plan item 131a). Three receiver temporaries leaked: a field read that is not plain data
+// EN: Freeze (plan item 131a). Three receiver temporaries leaked: a field read that is not plain data
 //     (`Make().Name.Length`), a call that returns a new owner (`Make().Next().V`) and a field store target
 //     (`Make().V = 12;`). Each one now gets a hidden owner that the full expression destroys, after every other
 //     use and in reverse order of creation. A borrowed read is owned only when its value ends in a plain value
 //     (or is discarded): storing it is rejected by the analysis, and any other flow keeps the old behavior, so
 //     no reference outlives the temporary.
-// ES: Congelamiento 3.0 (elemento 131a del plan). Tres temporales receptores se fugaban: una lectura de campo que
+// ES: Congelamiento (elemento 131a del plan). Tres temporales receptores se fugaban: una lectura de campo que
 //     no son datos simples (`Make().Name.Length`), una llamada que devuelve un owner nuevo (`Make().Next().V`) y
 //     el destino de una escritura de campo (`Make().V = 12;`). Cada uno recibe un dueno oculto que la expresion
 //     completa destruye, despues de todo otro uso y en orden inverso de creacion. Una lectura prestada se posee
 //     solo cuando su valor termina en un valor simple (o se descarta): guardarla lo rechaza el analisis, y otro
 //     flujo conserva la conducta anterior, asi que ninguna referencia sobrevive al temporal.
 //
-// EN: Freeze 3.0 (plan item 135). The same hidden owner now covers every form the analysis tracks with the
+// EN: Freeze (plan item 135). The same hidden owner now covers every form the analysis tracks with the
 //     temporary's provenance: a borrow that goes on through a non-owned call or getter result, a `?:` or a `??`,
 //     and `(new T()).Field`. A borrow that crosses a `?:` or `??` comes from a temporary made on one path only, so
 //     its full expression clears the owner slot when it starts and the cleanup skips a temporary never made.
 //     That needs a pointer owner and no suspension inside the full expression; otherwise the old behavior stays.
-// ES: Congelamiento 3.0 (elemento 135 del plan). El mismo dueno oculto cubre ahora toda forma que el analisis
+// ES: Congelamiento (elemento 135 del plan). El mismo dueno oculto cubre ahora toda forma que el analisis
 //     sigue con la procedencia del temporal: un prestamo que continua por el resultado no owned de una llamada o
 //     de un getter, por un `?:` o un `??`, y `(new T()).Campo`. Un prestamo que cruza un `?:` o `??` viene de un
 //     temporal creado en un solo camino, asi que su expresion completa limpia el slot del dueno al empezar y la
@@ -455,10 +522,10 @@ void ProjectOopHirModel::ownReceiversUntilFullExpression(ProjectOopHirNode* root
 // ES: El nodo cuya evaluacion debe sobrevivir el temporal receptor de `consumer`, o null cuando `consumer` no es
 //     una de las tres formas o su valor puede escapar.
 //
-// EN: Freeze 3.0 (plan item 135): a `new` of a class is a temporary like an owned-returning call; an instance call
+// EN: Freeze (plan item 135): a `new` of a class is a temporary like an owned-returning call; an instance call
 //     on one is rejected by the analysis (131b) and never reaches here. A non-owned call result follows the same
 //     borrow path as a field read; `crossesBranch` reports a `?:` or `??` on that path.
-// ES: Congelamiento 3.0 (elemento 135 del plan): un `new` de una clase es un temporal como una llamada con
+// ES: Congelamiento (elemento 135 del plan): un `new` de una clase es un temporal como una llamada con
 //     retorno owned; una llamada de instancia sobre el lo rechaza el analisis (131b) y nunca llega aqui. Un
 //     resultado no owned de llamada sigue el mismo camino de prestamo que una lectura de campo; `crossesBranch`
 //     avisa de un `?:` o `??` en ese camino.
@@ -496,10 +563,10 @@ ProjectOopHirNode* ProjectOopHirModel::fullExpressionTemporaryStart(
 // ES: Sigue una lectura de campo prestada hacia arriba por mas lecturas de campo hasta el nodo que la convierte
 //     en un valor simple (o la descarta); null cuando el prestamo podria llegar a algo que lo guarde.
 //
-// EN: Freeze 3.0 (plan item 135): the walk goes on through every node the analysis carries the provenance
+// EN: Freeze (plan item 135): the walk goes on through every node the analysis carries the provenance
 //     through (passesBorrowThrough, `?:`, `??`) and also ends at a field store through the borrow or at a node
 //     that makes a new owner from it (endsInNewOwner).
-// ES: Congelamiento 3.0 (elemento 135 del plan): el recorrido sigue por todo nodo por el que el analisis lleva la
+// ES: Congelamiento (elemento 135 del plan): el recorrido sigue por todo nodo por el que el analisis lleva la
 //     procedencia (passesBorrowThrough, `?:`, `??`) y tambien termina en una escritura de campo a traves del
 //     prestamo o en un nodo que hace de el un owner nuevo (endsInNewOwner).
 ProjectOopHirNode* ProjectOopHirModel::temporaryBorrowConsumer(
@@ -529,9 +596,9 @@ ProjectOopHirNode* ProjectOopHirModel::temporaryBorrowConsumer(
     return nullptr;
 }
 
-// EN: Freeze 3.0 (plan item 135): `new T(...)` of a class whose object and storage this expression owns (not a
+// EN: Freeze (plan item 135): `new T(...)` of a class whose object and storage this expression owns (not a
 //     placement or stack-promoted construction).
-// ES: Congelamiento 3.0 (elemento 135 del plan): `new T(...)` de una clase cuyo objeto y almacenamiento posee
+// ES: Congelamiento (elemento 135 del plan): `new T(...)` de una clase cuyo objeto y almacenamiento posee
 //     esta expresion (no una construccion en sitio ni promovida a la pila).
 bool ProjectOopHirModel::isOwnedNewObject(const ProjectOopHirNode& node) const
 {
@@ -541,10 +608,10 @@ bool ProjectOopHirModel::isOwnedNewObject(const ProjectOopHirNode& node) const
         !node.stackPromotedObject && isReferenceType(node.typeKey);
 }
 
-// EN: Freeze 3.0 (plan item 135): `consumer` makes a new owner that cannot keep `borrowed`: a new string (a
+// EN: Freeze (plan item 135): `consumer` makes a new owner that cannot keep `borrowed`: a new string (a
 //     concatenation or any string-returning call), or an object returned by a method called on the borrow.
 //     An object built from the borrow as an argument may keep it, so that one does not end the borrow.
-// ES: Congelamiento 3.0 (elemento 135 del plan): `consumer` crea un owner nuevo que no puede guardar `borrowed`:
+// ES: Congelamiento (elemento 135 del plan): `consumer` crea un owner nuevo que no puede guardar `borrowed`:
 //     un string nuevo (una concatenacion o cualquier llamada que devuelve string), o un objeto devuelto por un
 //     metodo llamado sobre el prestamo. Un objeto construido con el prestamo como argumento puede guardarlo, asi
 //     que ese no termina el prestamo.
@@ -556,9 +623,9 @@ bool ProjectOopHirModel::endsInNewOwner(const ProjectOopHirNode& consumer, const
         consumer.children.front().get() == &borrowed && isReferenceType(consumer.typeKey);
 }
 
-// EN: Freeze 3.0 (plan item 135): the result of `consumer` is still a borrow of the temporary: a further
+// EN: Freeze (plan item 135): the result of `consumer` is still a borrow of the temporary: a further
 //     reference field read, a call or getter whose result is a non-owned reference, or a conversion.
-// ES: Congelamiento 3.0 (elemento 135 del plan): el resultado de `consumer` sigue siendo un prestamo del
+// ES: Congelamiento (elemento 135 del plan): el resultado de `consumer` sigue siendo un prestamo del
 //     temporal: otra lectura de campo de referencia, una llamada o getter cuyo resultado es una referencia no
 //     owned, o una conversion.
 bool ProjectOopHirModel::passesBorrowThrough(
@@ -589,11 +656,11 @@ bool ProjectOopHirModel::consumesIntoPlainValue(const ProjectOopHirNode& consume
 //     condicionalmente o suspende) en un FullExpressionCleanup, salvo que ya haya uno que la contenga. Una raiz
 //     que contiene una suspension cierra en `start`, para no mantener ningun temporal a traves de ella.
 //
-// EN: Freeze 3.0 (plan item 135): the choice is made before the receiver gets its owner
+// EN: Freeze (plan item 135): the choice is made before the receiver gets its owner
 //     (planFullExpressionClose): `root` is the node to wrap, or `enclosing` the cleanup that already closes the
 //     expression. A borrow that crosses a branch needs an enclosing cleanup without a suspension, because that
 //     cleanup clears the owner slots when it starts (booleanValue).
-// ES: Congelamiento 3.0 (elemento 135 del plan): la eleccion se hace antes de dar dueno al receptor
+// ES: Congelamiento (elemento 135 del plan): la eleccion se hace antes de dar dueno al receptor
 //     (planFullExpressionClose): `root` es el nodo que se envuelve, o `enclosing` la limpieza que ya cierra la
 //     expresion. Un prestamo que cruza una rama necesita una limpieza envolvente sin suspension, porque esa
 //     limpieza pone en null los slots de los duenos al empezar (booleanValue).
@@ -733,8 +800,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerArrayDeleteExpressio
         return nullptr;
     }
     const MethodCoreBinding* elementBinding = coreBinding(expression->first());
-    // EN: Freeze 3.0 (owned arrays): an owned array field is addressed too, so it is cleared.
-    // ES: Congelamiento 3.0 (arreglos owned): un campo de arreglo owned tambien se direcciona,
+    // EN: Freeze (owned arrays): an owned array field is addressed too, so it is cleared.
+    // ES: Congelamiento (arreglos owned): un campo de arreglo owned tambien se direcciona,
     //     asi queda vacio.
     const bool clearsOwnedField = methodBodyModel_ != nullptr &&
         methodBodyModel_->arrayDeleteClearsOwnedField(expression);
@@ -750,8 +817,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerArrayDeleteExpressio
     // borrowed T[] owns no T elements even when its containing class manually
     // releases the backing buffer in its destructor.
     node->storageOwnership = operandType.storageOwnership;
-    // EN: Freeze 3.0 (item 130, F2): a plain local array does not own its references.
-    // ES: Congelamiento 3.0 (elemento 130, F2): un local arreglo plano no posee sus referencias.
+    // EN: Freeze (item 130, F2): a plain local array does not own its references.
+    // ES: Congelamiento (elemento 130, F2): un local arreglo plano no posee sus referencias.
     if (methodBodyModel_ != nullptr && methodBodyModel_->arrayDeleteKeepsElements(expression))
         node->storageOwnership = sema::OwnershipKind::None;
     // A jagged row is itself an owning native-array reference. Carrying the slot
@@ -789,17 +856,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerScalarDeleteExpressi
     const bool directElement = elementBinding != nullptr &&
         (elementBinding->kind == MethodCoreOperationKind::ArrayElement ||
          elementBinding->kind == MethodCoreOperationKind::RawElement);
-    // EN: Freeze 3.0 C-12: `delete items[i]` of a struct element with a destructor or owned
+    // EN: Freeze C-12: `delete items[i]` of a struct element with a destructor or owned
     //     fields drops that element in place, so a generic container's cleanup releases its
     //     value elements too; the slot is left zeroed. Other value types stay a no-op.
-    // ES: Congelamiento 3.0 C-12: `delete items[i]` de un elemento struct con destructor o campos
+    // ES: Congelamiento C-12: `delete items[i]` de un elemento struct con destructor o campos
     //     owned destruye ese elemento en su lugar, asi la limpieza de un contenedor generico libera
     //     tambien sus elementos valor; el slot queda en cero. Los demas tipos valor siguen sin efecto.
     const bool dropsValueElement = !deletable && elementBinding != nullptr &&
         elementBinding->kind == MethodCoreOperationKind::ArrayElement &&
         memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(operandType.typeKey);
-    // EN: Freeze 3.0 (item 121): `delete p` of an owned parameter clears the parameter too.
-    // ES: Congelamiento 3.0 (elemento 121): `delete p` de un parametro owned tambien lo vacia.
+    // EN: Freeze (item 121): `delete p` of an owned parameter clears the parameter too.
+    // ES: Congelamiento (elemento 121): `delete p` de un parametro owned tambien lo vacia.
     const bool clearsOwnedParameter = methodBodyModel_ != nullptr &&
         methodBodyModel_->deleteClearsOwnedParameter(expression);
     const bool clearsElementSlot = (directElement &&
@@ -838,7 +905,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerDeleteExpression(
         error = "Stage 41 cannot determine delete operand type";
         return nullptr;
     }
-    return expression->flag()
+    // EN: A generic scalar delete whose T became a dynamic array releases it as `delete[]`.
+    // ES: Un delete escalar generico cuyo T resulto arreglo dinamico lo libera como `delete[]`.
+    const bool arrayForm = expression->flag() ||
+        (methodBodyModel_ != nullptr && methodBodyModel_->scalarDeleteReleasesArray(expression));
+    return arrayForm
         ? lowerArrayDeleteExpression(expression, memberOrdinal, *operandType, error)
         : lowerScalarDeleteExpression(expression, memberOrdinal, *operandType, error);
 }

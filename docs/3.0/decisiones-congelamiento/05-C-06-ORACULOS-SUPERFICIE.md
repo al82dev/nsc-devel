@@ -42,7 +42,7 @@ Decisión de Alberto Huerta Luna (2026-10-26): no fijar estos oráculos hasta ce
 - **Evidencia de partida.** Corrida de NSC Builder 3 `20261025-222449-571bf9f4` (FAIL=18, 11 causas
   terminales), reproducida caso por caso con `nsc_component_tests --case` en Release el 2026-10-26.
 - **Archivos modificables.** `include/nativesharp/Diagnostics/DiagnosticId.h`,
-  `src/Language/Language3Surface.cpp`, `tests/compiler-suite/host/modules/DiagnosticIdentityModule.cpp`,
+  `src/Language/LanguageSurface.cpp`, `tests/compiler-suite/host/modules/DiagnosticIdentityModule.cpp`,
   `tests/compiler-suite/host/modules/LanguageSurfaceModule.cpp`,
   `tests/compiler-suite/host/modules/ParserSwitchCoordinatorCounterfactualModule.cpp`,
   `tests/compiler-suite/manifest/cases.jsonl`, las filas de esos casos en
@@ -62,12 +62,12 @@ Decisión de Alberto Huerta Luna (2026-10-26): no fijar estos oráculos hasta ce
 `tests/compiler-suite/host/modules/LanguageSurfaceModule.cpp`:
 
 - `kExpectedSurface`: las cinco entradas pasan a `Implemented` con la rationale exacta de
-  `src/Language/Language3Surface.cpp`, y `move-only-defaults` toma la rationale de DEC-07/DEC-08. Comentario
+  `src/Language/LanguageSurface.cpp`, y `move-only-defaults` toma la rationale de DEC-07/DEC-08. Comentario
   bilingüe: la tabla es el oráculo independiente del catálogo.
 - `expectedManifest()`: las mismas seis líneas en bytes exactos, mismo orden y salto de línea final.
 - TL-LANG-160: el conteo pasa a 0 planeadas, 0 diferidas y 1 rechazada (`long-double`). El caso sigue comparando
   el diagnóstico exacto de cada entrada no implementada; con la superficie real sólo queda `long-double`. Las ramas
-  `PlannedFor304` y `DeferredTo4` de `language3SurfaceDiagnostic` ya no tienen entrada que las use; no se pueden
+  `Planned` y `Deferred` de `languageSurfaceDiagnostic` ya no tienen entrada que las use; no se pueden
   ejercitar por la API pública sin cambiar el catálogo.
 - TL-LANG-155, 156, 157, 158, 159 y 161 no cambian de código: comparan contra la tabla y el manifiesto de arriba.
 
@@ -78,7 +78,7 @@ and 'is', not in 'case' labels; use a match expression over the value». El text
 
 ## Verificación del oráculo contra el catálogo
 
-Antes de escribir los archivos se compiló, fuera del repositorio, un programa con `src/Language/Language3Surface.cpp`
+Antes de escribir los archivos se compiló, fuera del repositorio, un programa con `src/Language/LanguageSurface.cpp`
 y las tablas `kExpectedSurface`, `expectedManifest` y `expectedDiagnostic` de la prueba: 16 entradas idénticas,
 16 diagnósticos idénticos, manifiesto idéntico (2200 bytes), conteos 0/0/1.
 

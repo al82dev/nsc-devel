@@ -95,6 +95,10 @@ class Win32SiblingToolchainTests(unittest.TestCase):
             joined = [" ".join(command) for _, command, _ in commands]
             self.assertIn(f"-DNSLINK_PRODUCT_OUTPUT_DIR={output}", joined[0])
             self.assertIn(f"-DNSC_NSLINK_EXECUTABLE={output}/nslink.exe", joined[2])
+            # EN: The product compiler always includes C/C++ interoperability. / ES: El compilador del producto
+            #     siempre incluye la interoperabilidad C/C++.
+            self.assertIn("-DNSC_ENABLE_CPP_INTEROP=ON", joined[2])
+            self.assertIn("-DClang_DIR=", joined[2])
             self.assertIn(f"-DNSASM_PRODUCT_OUTPUT_DIR={output}", joined[4])
             self.assertIn(f"-DNSDBG_PRODUCT_OUTPUT_DIR={output}", joined[6])
             self.assertIn(f"-DNSDBG_NSASM_EXECUTABLE={output}/nsasm.exe", joined[6])

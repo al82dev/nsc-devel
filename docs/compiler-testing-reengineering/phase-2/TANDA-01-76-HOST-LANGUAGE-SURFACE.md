@@ -26,7 +26,7 @@ no convierte las etiquetas históricas `3.0`/`4.0` en una decisión nueva de dis
 | `TL-LANG-157` | Valores externos -1, 16, 17 e `int` máximo usan el fallback vigente a la primera entry. |
 | `TL-LANG-158` | Bytes completos del manifest, headers, labels, orden y newline terminal. |
 | `TL-LANG-159` | Diagnóstico exacto para las seis features `Implemented`. |
-| `TL-LANG-160` | Diagnóstico exacto para nueve `DeferredTo4` y una `RejectedFor3`. |
+| `TL-LANG-160` | Diagnóstico exacto para nueve `Deferred` y una `Rejected`. |
 | `TL-LANG-161` | Repetición determinista sin mutación de tabla, manifest ni diagnostics. |
 
 ## Propiedades adicionales verificadas

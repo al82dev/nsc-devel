@@ -1,0 +1,10 @@
+class Inspector : BinaryHierarchy.Derived
+{
+    public int Inspect(BinaryHierarchy.Derived value)
+    {
+        int result = 0;
+        static foreach (field in Fields(BinaryHierarchy.Derived)) { result = result * 10 + field.Get(value); }
+        return result;
+    }
+}
+int Main() { return 0; }

@@ -19,14 +19,14 @@ namespace NativeSharp.CompilerSuite.SelfHost.Types
         private static int MinimalInventory()
         {
             raii TypeTable table = new TypeTable();
-            return table.Count() == 16 && table.Find("error") == 0 &&
+            return table.Count() == 17 && table.Find("error") == 0 &&
                 table.Find("void") == 1 && table.Get(0).Kind() == SemanticTypeKind.Error ? 0 : 21;
         }
 
         private static int CompleteInventory()
         {
             raii TypeTable table = new TypeTable();
-            return table.Count() == 16 && SelfHostTypesTestSupport.BuiltinInventory(table) ? 0 : 22;
+            return table.Count() == 17 && SelfHostTypesTestSupport.BuiltinInventory(table) ? 0 : 22;
         }
 
         private static int LookupBoundaries()

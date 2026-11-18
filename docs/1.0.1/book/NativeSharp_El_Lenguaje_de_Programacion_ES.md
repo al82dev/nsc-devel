@@ -10,6 +10,8 @@ platform: "x86_64-pc-windows-msvc"
 date: "2026-09-12"
 ---
 
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # NativeSharp: el lenguaje de programación
 
 ## La referencia absoluta
@@ -2102,7 +2104,7 @@ namespace FastMath
 }
 ```
 
-Un consumidor con `LibraryReference` puede llamar ambos métodos. NSMETA 1.13 lleva el cuerpo de
+Un consumidor con `LibraryReference` puede llamar ambos métodos. NSMETA lleva el cuerpo de
 `ClampPositive`; el compilador lo vuelve a analizar bajo la identidad nominal de `FastMath`, emite
 una definición ODR compatible con la copia del productor y cumple `forceinline` también en O0. Para
 `ProfilingBoundary` sólo lleva firma, identidad física y política: el LLVM del consumidor declara

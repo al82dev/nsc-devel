@@ -14,8 +14,8 @@ int nscConstructorSyntaxLegacyEntry();
 int nscItem317PlacementConstructionSyntaxLegacyEntry();
 int nscItem327BitFieldSyntaxLegacyEntry();
 int nscNamespaceSyntaxLegacyEntry();
-int nscNativeSharp3T01ExpressionLegacyEntry();
-int nscNativeSharp3T02AggregateLegacyEntry();
+int nscNativeSharpT01ExpressionLegacyEntry();
+int nscNativeSharpT02AggregateLegacyEntry();
 int nscParserLegacyEntry();
 int nscStage45ExceptionsSyntaxLegacyEntry();
 int nscStage50_1OwnershipSyntaxLegacyEntry();
@@ -91,16 +91,16 @@ void registerParserUnitTests(TestRegistry& registry)
         nscNamespaceSyntaxLegacyEntry);
     addLegacyEntry(
         registry,
-        "nsc.ns3.t01.expressions",
+        "nsc.language.t01.expressions",
         "expression syntax",
         {"expression"},
-        nscNativeSharp3T01ExpressionLegacyEntry);
+        nscNativeSharpT01ExpressionLegacyEntry);
     addLegacyEntry(
         registry,
-        "nsc.ns3.t02.aggregates",
+        "nsc.language.t02.aggregates",
         "aggregate syntax",
         {"aggregate"},
-        nscNativeSharp3T02AggregateLegacyEntry);
+        nscNativeSharpT02AggregateLegacyEntry);
     addLegacyEntry(
         registry,
         "nsc.parser",

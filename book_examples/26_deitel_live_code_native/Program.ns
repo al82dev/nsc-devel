@@ -4,7 +4,7 @@ namespace NativeSharp.BookExamples.DeitelNative
 {
     public class Program
     {
-        public static int Main()
+        public static int Main() throws NativeSharp.Core.InvalidOperationException
         {
             Console.WriteLine("NativeSharp Book Example 26 - Deitel-style live code");
             Console.WriteLine("-----------------------------------------------------");

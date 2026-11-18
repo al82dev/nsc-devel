@@ -3,6 +3,7 @@
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
+#include "nativesharp/Language/AbiSemantics.h"
 
 namespace nativesharp::llvm_backend
 {
@@ -48,7 +49,13 @@ LLVMValueRef OopLlvmImplementation::lowerMatchGoverningValue(
         }
         LLVMValueRef governing = lowerExpression(node->children.front().get(), error);
         if (governing == nullptr) return nullptr;
-        governingAddress = LLVMBuildAlloca(builder_, governingType, "match.value.addr");
+        // EN: LKF-442: the slot was allocated where the match was, so a match inside a loop grew the stack
+        //     on every iteration and a long loop overflowed it (0xC00000FD). It now lives in the entry block.
+        // ES: LKF-442: la ranura se reservaba donde estaba el match, así que un match dentro de un bucle
+        //     hacía crecer la pila en cada vuelta y un bucle largo la desbordaba (0xC00000FD). Ahora vive en
+        //     el bloque de entrada.
+        governingAddress = entryBlockAlloca(governingType, structAlignmentFor(node->children.front()->typeKey),
+            "match.value.addr");
         LLVMBuildStore(builder_, governing, governingAddress);
         return governing;
 }
@@ -344,6 +351,15 @@ LLVMValueRef OopLlvmImplementation::lowerConditional(const frontend::ProjectOopM
         LLVMValueRef condition = lowerExpression(node->children[0].get(), error);
         if (condition == nullptr) return nullptr;
         if (terminated()) return condition;
+        const auto mask = language::parsePortableSimdType(node->children[0]->typeKey);
+        if (mask.has_value() && mask->mask)
+        {
+            LLVMValueRef whenTrue = lowerExpression(node->children[1].get(), error);
+            if (whenTrue == nullptr || terminated()) return whenTrue;
+            LLVMValueRef whenFalse = lowerExpression(node->children[2].get(), error);
+            if (whenFalse == nullptr || terminated()) return whenFalse;
+            return LLVMBuildSelect(builder_, condition, whenTrue, whenFalse, "mask.select");
+        }
         LLVMBasicBlockRef trueBlock = appendBlock("cond.true");
         LLVMBasicBlockRef falseBlock = appendBlock("cond.false");
         LLVMBasicBlockRef endBlock = appendBlock("cond.end");
@@ -725,6 +741,7 @@ LLVMValueRef OopLlvmImplementation::lowerNullConditionalField(
         LLVMTypeRef resultType = llvmType(node->typeKey, error);
         if (resultType == nullptr) return nullptr;
         LLVMValueRef value = LLVMBuildLoad2(builder_, resultType, address, "nullcond.field");
+        if (LLVMGetTypeKind(resultType) == LLVMVectorTypeKind) LLVMSetAlignment(value, 1U);
         if (node->volatileAccess) LLVMSetVolatile(value, 1);
         LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
         if (!terminated()) LLVMBuildBr(builder_, endBlock);
@@ -774,6 +791,7 @@ bool OopLlvmImplementation::prepareNullConditionalFieldStore(
         {
             current = LLVMBuildLoad2(
                 builder_, resultType, address, "nullcond.compound.load");
+            if (LLVMGetTypeKind(resultType) == LLVMVectorTypeKind) LLVMSetAlignment(current, 1U);
             if (node->volatileAccess) LLVMSetVolatile(current, 1);
         }
         return true;
@@ -838,6 +856,8 @@ LLVMValueRef OopLlvmImplementation::finishNullConditionalFieldStore(
         LLVMValueRef storedValue = computeNullConditionalFieldValue(node, current, value, error);
         if (storedValue == nullptr) return nullptr;
         LLVMValueRef store = LLVMBuildStore(builder_, storedValue, address);
+        if (LLVMGetTypeKind(LLVMTypeOf(storedValue)) == LLVMVectorTypeKind)
+            LLVMSetAlignment(store, 1U);
         if (node->volatileAccess) LLVMSetVolatile(store, 1);
         LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
         const bool valueReachesEnd = !terminated();
@@ -930,6 +950,7 @@ LLVMValueRef OopLlvmImplementation::finishNullConditionalArrayLoad(
         if (address == nullptr) return nullptr;
         LLVMValueRef element = LLVMBuildLoad2(
             builder_, resultType, address, "nullcond.index.element");
+        if (LLVMGetTypeKind(resultType) == LLVMVectorTypeKind) LLVMSetAlignment(element, 1U);
         LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
         if (!terminated()) LLVMBuildBr(builder_, endBlock);
 
@@ -1017,7 +1038,8 @@ LLVMValueRef OopLlvmImplementation::finishNullConditionalArrayStore(
         }
         LLVMValueRef address = nullConditionalArrayStoreAddress(node, receiver, index, error);
         if (address == nullptr) return nullptr;
-        LLVMBuildStore(builder_, value, address);
+        LLVMValueRef store = LLVMBuildStore(builder_, value, address);
+        if (LLVMGetTypeKind(LLVMTypeOf(value)) == LLVMVectorTypeKind) LLVMSetAlignment(store, 1U);
         LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
         const bool valueReachesEnd = !terminated();
         if (valueReachesEnd) LLVMBuildBr(builder_, endBlock);

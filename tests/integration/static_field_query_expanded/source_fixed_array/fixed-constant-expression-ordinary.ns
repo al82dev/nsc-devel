@@ -1,0 +1,1 @@
+struct C { public int[2+2] Values; } int Main() { C c=default(C); c.Values[3]=7; return c.Values[3]==7 ? 0 : 1; }

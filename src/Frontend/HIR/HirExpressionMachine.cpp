@@ -101,8 +101,11 @@ std::unique_ptr<ProjectOopHirNode> buildInterpolationHandlerExpression(
     for (const language::InterpolationPart& part : parts)
     {
         const bool isHole = part.kind == language::InterpolationPartKind::Hole;
-        const std::size_t builderOrdinal =
-            isHole ? core.builderMemberOrdinals[1] : core.builderMemberOrdinals[0];
+        // LKF-314: each hole calls the AppendFormatted overload the analyzer chose for its type.
+        // LKF-314: cada hueco llama a la sobrecarga de AppendFormatted elegida para su tipo.
+        const std::size_t builderOrdinal = !isHole ? core.builderMemberOrdinals[0]
+            : holeIndex < core.interpolationHoleMemberOrdinals.size()
+                ? core.interpolationHoleMemberOrdinals[holeIndex] : core.builderMemberOrdinals[1];
         std::unique_ptr<ProjectOopHirNode> argument;
         if (isHole)
         {
@@ -1024,6 +1027,22 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerIncrementDecrementEx
     if (address == nullptr) return nullptr;
     auto step = makeNode(
         ProjectOopHirNodeKind::CompoundStore, expression, targetType->typeKey);
+    const MethodCallBinding* overload = callBinding(expression);
+    if (overload != nullptr && overload->resolution == MethodCallResolutionKind::Resolved &&
+        overload->selectedMemberOrdinal.has_value())
+    {
+        step->memberOrdinal = *overload->selectedMemberOrdinal;
+        step->operation = expression->tokenKind();
+        step->booleanValue = expression->kind() == ast::AstNodeKind::PostfixExpression;
+        if (expression->first() != nullptr &&
+            expression->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+            isReferenceType(targetType->typeKey) &&
+            targetType->ownership == sema::OwnershipKind::Owned)
+            step->localOrdinal = targetType->ownershipSourceLocalOrdinal;
+        step->children.push_back(std::move(address));
+        step->children.push_back(makeNode(ProjectOopHirNodeKind::DefaultValue, expression, targetType->typeKey));
+        return step;
+    }
     step->operation = expression->tokenKind() == lexer::TokenKind::PlusPlus
         ? lexer::TokenKind::Plus : lexer::TokenKind::Minus;
     // La UNICA diferencia entre postfijo y prefijo.
@@ -1318,7 +1337,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerArrayOrStringIndexEx
         indexSyntaxes.assign(expression->children().begin(), expression->children().end());
     else indexSyntaxes.push_back(expression->second());
     ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::StringElementValue;
-    if (core->kind == MethodCoreOperationKind::ArrayElement)
+    if (core->kind == MethodCoreOperationKind::SimdMaskElement)
+    {
+        if (addressContext)
+        {
+            error = "SIMD mask lanes are not addressable";
+            return nullptr;
+        }
+        kind = ProjectOopHirNodeKind::SimdMaskElementValue;
+    }
+    else if (core->kind == MethodCoreOperationKind::ArrayElement)
     {
         kind = addressContext
             ? ProjectOopHirNodeKind::ArrayElementAddress
@@ -1704,7 +1732,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerIndexExpressionImplC
     }
     const MethodCoreBinding* core = coreBinding(expression);
     if (core != nullptr &&
-        (core->kind == MethodCoreOperationKind::ArrayElement ||
+        (core->kind == MethodCoreOperationKind::SimdMaskElement ||
+         core->kind == MethodCoreOperationKind::ArrayElement ||
          core->kind == MethodCoreOperationKind::RangeArrayElement ||
          core->kind == MethodCoreOperationKind::StringElement))
     {
@@ -2347,8 +2376,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundAssignmentEx
     }
     auto address = lowerExpression(expression->first(), memberOrdinal, true, error);
     if (address == nullptr) return nullptr;
-    auto value = lowerExpression(expression->second(), memberOrdinal, false, error);
+    const MethodCallBinding* operatorBinding = callBinding(expression);
+    const ClassMemberSymbol* operatorMember = operatorBinding != nullptr &&
+        operatorBinding->selectedMemberOrdinal.has_value()
+        ? callableSymbol(*operatorBinding->selectedMemberOrdinal) : nullptr;
+    const bool rightIsRef = operatorMember != nullptr && operatorMember->parameters.size() == 2 &&
+        operatorMember->parameters[1].passKind == ParameterPassKind::Ref;
+    const bool rightIsIn = operatorMember != nullptr && operatorMember->parameters.size() == 2 &&
+        operatorMember->parameters[1].passKind == ParameterPassKind::In;
+    const bool rightHasAddress = rightIsRef || (rightIsIn && isNaturallyAddressable(expression->second()));
+    auto value = lowerExpression(expression->second(), memberOrdinal, rightHasAddress, error);
     if (value == nullptr) return nullptr;
+    bool hasOwnedTemporary = false;
 
     auto compound = makeNode(
         ProjectOopHirNodeKind::CompoundStore, expression, targetType->typeKey);
@@ -2361,7 +2400,52 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundAssignmentEx
     // El valor de `x += e` es el NUEVO, como en C#.
     compound->booleanValue = false;
 
-    if (ProjectTypeConversion::isPointer(targetType->typeKey))
+    const MethodCallBinding* overload = callBinding(expression);
+    if (overload != nullptr && overload->resolution == MethodCallResolutionKind::Resolved &&
+        overload->selectedMemberOrdinal.has_value())
+    {
+        if (overload->selectedConversions.size() != 2 ||
+            overload->selectedConversions[0].kind != ProjectConversionKind::Identity)
+        {
+            error = "compound operator requires an identity conversion for its destination";
+            return nullptr;
+        }
+        compound->memberOrdinal = *overload->selectedMemberOrdinal;
+        if (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(targetType->typeKey))
+        {
+            const MethodNameBinding* targetName = nameBinding(expression->first());
+            const MethodExpressionTypeBinding* receiver = expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IndexExpression
+                ? expressionType(expression->first()->first()) : nullptr;
+            const bool nativeArrayTarget = receiver != nullptr && ProjectTypeConversion::isNativeArray(receiver->typeKey);
+            if (!nativeArrayTarget && (targetName == nullptr ||
+                (!targetName->localOrdinal.has_value() && !targetName->parameterOrdinal.has_value())))
+            {
+                error = "destructible compound destination must be a local, owned parameter or native array element";
+                return nullptr;
+            }
+            compound->booleanValue = true;
+            if (targetName != nullptr)
+            {
+                compound->localOrdinal = targetName->localOrdinal;
+                compound->parameterOrdinal = targetName->parameterOrdinal;
+            }
+        }
+        if (operatorMember != nullptr && operatorMember->declaredTypeKey != targetType->typeKey)
+        {
+            const ProjectImplicitConversion resultConversion = classifyImplicit(
+                operatorMember->declaredTypeKey, targetType->typeKey, std::nullopt);
+            if (!resultConversion.userDefinedMemberOrdinal.has_value())
+            {
+                error = "compound operator result has no selected implicit conversion";
+                return nullptr;
+            }
+            compound->secondaryMemberOrdinal = resultConversion.userDefinedMemberOrdinal;
+        }
+        value = prepareBoundCallArgument(*overload, *overload->selectedMemberOrdinal,
+            1, expression->second(), std::move(value), hasOwnedTemporary);
+    }
+    else if (ProjectTypeConversion::isPointer(targetType->typeKey))
     {
         compound->elementTypeKey =
             targetType->typeKey.substr(0, targetType->typeKey.size() - 1);
@@ -2395,7 +2479,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundAssignmentEx
     }
     compound->children.push_back(std::move(address));
     compound->children.push_back(std::move(value));
-    return compound;
+    return wrapFullExpressionCleanup(std::move(compound), expression, hasOwnedTemporary);
 }
 
 
@@ -2832,6 +2916,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerLiteralExpressionImp
         {
             auto node = makeNode(ProjectOopHirNodeKind::FloatingConstant, expression, resultType);
             node->floatingValue = expression->floatingValue();
+            if (resultType == "builtin:decimal") node->stringValue = expression->text();
             return node;
         }
         case ast::AstNodeKind::StringLiteralExpression:
@@ -3302,10 +3387,10 @@ bool ProjectOopHirModel::isNaturallyAddressable([[maybe_unused]] const ast::AstN
         }
         case ast::AstNodeKind::CallExpression:
         {
-            // EN: Freeze 3.0 P3: a method that returns `ref T` returns existing storage, exactly
+            // EN: Freeze P3: a method that returns `ref T` returns existing storage, exactly
             //     like a ref-returning accessor above. `holder.Get().Field = v` and
             //     `holder.Get().Mutate()` must reach that storage, not a temporary copy of it.
-            // ES: Congelamiento 3.0 P3: un metodo que devuelve `ref T` devuelve almacenamiento que
+            // ES: Congelamiento P3: un metodo que devuelve `ref T` devuelve almacenamiento que
             //     ya existe, igual que un accesor ref de arriba. `holder.Get().Field = v` y
             //     `holder.Get().Mutar()` deben llegar a ese almacenamiento, no a una copia temporal.
             const MethodCallBinding* call = callBinding(expression);

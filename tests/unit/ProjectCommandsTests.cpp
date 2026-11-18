@@ -14,6 +14,12 @@
 #include <utility>
 #include <vector>
 
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
+
 namespace
 {
 namespace fs = std::filesystem;
@@ -34,13 +40,26 @@ nativesharp::ExitCode run(const std::vector<std::string>& owned,
 }
 }
 
-int main()
+int main(int argc, char** argv)
 {
+#if defined(_WIN32)
+    if (argc > 1 && std::string_view(argv[1]) == "--format-probe")
+        return argc == 4 && std::string_view(argv[2]) == "--output-format=json" &&
+            std::string_view(argv[3]) == "end" ? 0 : 32;
+    if (argc > 1 && std::string_view(argv[1]) == "--argument-probe")
+        return argc == 5 && std::string_view(argv[2]).empty() &&
+            std::string_view(argv[3]) == "two words" && std::string_view(argv[4]) == "end" ? 0 : 31;
+#endif
     using nativesharp::ExitCode;
     using nativesharp::tests::TestContext;
     TestContext tests;
 
+#if defined(_WIN32)
+    const fs::path root = fs::temp_directory_path() /
+        ("nativesharp_project_commands_tests_" + std::to_string(GetCurrentProcessId()));
+#else
     const fs::path root = fs::temp_directory_path() / "nativesharp_project_commands_tests";
+#endif
     std::error_code cleanupError;
     fs::remove_all(root, cleanupError);
     fs::create_directories(root);
@@ -149,15 +168,67 @@ int main()
             arguments, output, error, compiler);
         const std::string text = output.str();
         const std::size_t progress = text.find("\"schema\":\"nativesharp-progress-event\"");
+        const std::size_t progressName = text.find("nativesharp-progress-event");
         const std::size_t envelope = text.find("\"schemaVersion\":1");
         tests.expect(code == ExitCode::Success && sawProgress && error.str().empty(),
                      "build accepts and forwards JSON progress selection");
         tests.expect(progress != std::string::npos && envelope > progress,
                      "JSON progress streams before the project result envelope");
         tests.expect(text.find("\"stdout\":\"technical output\\n\"") != std::string::npos &&
-                         text.find("nativesharp-progress-event", progress + 1U) == std::string::npos,
-                     "project envelope retains technical output without duplicating progress events");
+                         progressName != std::string::npos &&
+                         text.find("nativesharp-progress-event", progressName + 1U) == std::string::npos,
+                     "project envelope retains technical output without duplicating progress events: " + text);
     }
+
+#if defined(_WIN32)
+    {
+        std::ostringstream output, error;
+        const std::vector<std::string> owned{
+            "run", project.string(), "--no-restore", "--", "--argument-probe", "", "two words", "end"};
+        std::vector<std::string_view> arguments;
+        for (const std::string& value : owned) arguments.push_back(value);
+        bool copiedChild = false;
+        const auto compiler = [&](std::span<const std::string_view> compilerArguments,
+                                  std::ostream&, std::ostream&) {
+            std::wstring executable(32768, L'\0');
+            const DWORD count = GetModuleFileNameW(nullptr, executable.data(),
+                                                   static_cast<DWORD>(executable.size()));
+            if (count == 0 || count == executable.size()) return ExitCode::InternalError;
+            executable.resize(count);
+            for (std::size_t i = 0; i + 1 < compilerArguments.size(); ++i)
+                if (compilerArguments[i] == "-o")
+                {
+                    const fs::path destination(compilerArguments[i + 1]);
+                    fs::create_directories(destination.parent_path());
+                    if (!copiedChild)
+                    {
+                        fs::copy_file(executable, destination, fs::copy_options::overwrite_existing);
+                        copiedChild = true;
+                    }
+                    return ExitCode::Success;
+                }
+            return ExitCode::CommandLineError;
+        };
+        const ExitCode code = nativesharp::driver::runProjectCommand(arguments, output, error, compiler);
+        tests.expect(code == ExitCode::Success,
+            "run preserves an empty argument and neighboring arguments: " + error.str());
+        for (const bool json : {false, true})
+        {
+            std::vector<std::string> formatOwned{"run", project.string(), "--no-restore"};
+            if (json) formatOwned.push_back("--output-format=json");
+            formatOwned.insert(formatOwned.end(),
+                               {"--", "--format-probe", "--output-format=json", "end"});
+            std::vector<std::string_view> formatArguments;
+            for (const auto& value : formatOwned) formatArguments.push_back(value);
+            std::ostringstream formatOutput, formatError;
+            const ExitCode formatCode = nativesharp::driver::runProjectCommand(
+                formatArguments, formatOutput, formatError, compiler);
+            tests.expect(formatCode == ExitCode::Success &&
+                    (formatOutput.str().find("\"schemaVersion\":1") != std::string::npos) == json,
+                "run preserves program format argument and its own output mode: " + formatError.str());
+        }
+    }
+#endif
 
     // Optimization part 2, items 41 and 43: nsc build forwards -flto and reports the mode.
     // Puntos 41 y 43 de la parte 2: nsc build reenvia -flto y reporta el modo.
@@ -197,6 +268,77 @@ int main()
                      "build rejects an unknown link-time optimization mode");
     }
 
+    {
+        const fs::path debugRoot = root / "DebugSettings";
+        const fs::path debugProject = debugRoot / "DebugSettings.nsproj";
+        writeFile(debugProject, "<Project><PropertyGroup><Name>DebugSettings</Name>"
+            "<OutputType>Exe</OutputType></PropertyGroup>"
+            "<ItemGroup><Compile Include=\"**/*.ns\"/></ItemGroup></Project>");
+        writeFile(debugRoot / "Main.ns", "public class Program { public static int Main() { return 0; } }\n");
+
+        const auto invoke = [&](std::string_view jsonValue, std::string_view expectedFlag) {
+            writeFile(debugRoot / "DebugSettings.nspm.json",
+                "{\"schemaVersion\":1,\"build\":{\"debug_information\":" + std::string(jsonValue) + "},\"packages\":[]}");
+            std::ostringstream output, error;
+            const std::vector<std::string> owned{"build", debugProject.string(), "--no-restore"};
+            std::vector<std::string_view> args;
+            for (const std::string& value : owned) args.push_back(value);
+            bool sawExpected = false;
+            const auto compiler = [&](std::span<const std::string_view> compilerArgs,
+                                      std::ostream&, std::ostream&) {
+                for (std::size_t i = 0; i < compilerArgs.size(); ++i)
+                {
+                    if (compilerArgs[i] == expectedFlag) sawExpected = true;
+                    if (compilerArgs[i] == "-o" && i + 1 < compilerArgs.size())
+                        writeFile(fs::path(compilerArgs[i + 1]), "executable");
+                }
+                return ExitCode::Success;
+            };
+            const ExitCode code = nativesharp::driver::runProjectCommand(args, output, error, compiler);
+            return std::tuple(code, error.str(), sawExpected);
+        };
+
+        for (const std::string_view invalid : {"\"typo\"", "123", "null"})
+        {
+            const auto result = invoke(invalid, "-g");
+            tests.expect(std::get<0>(result) != ExitCode::Success &&
+                    std::get<1>(result).find("debug_information") != std::string::npos,
+                "build rejects invalid debug_information: " + std::string(invalid));
+        }
+        for (const auto& [setting, flag] :
+             {std::pair<std::string_view, std::string_view>{"\"none\"", "-g0"},
+              {"\"line-tables-only\"", "-gline-tables-only"}, {"\"full\"", "-g"}})
+        {
+            const auto result = invoke(setting, flag);
+            tests.expect(std::get<0>(result) == ExitCode::Success && std::get<2>(result),
+                "build forwards valid debug_information: " + std::string(setting) + ": " + std::get<1>(result));
+        }
+    }
+
+    {
+        const fs::path numberRoot = root / "JsonNumbers";
+        const fs::path numberProject = numberRoot / "Probe.nsproj";
+        writeFile(numberProject, "<Project/>\n");
+        for (const std::string_view number : {"1e", "1-2", "01", "1.", "-"})
+        {
+            writeFile(numberRoot / "Probe.nspm.json",
+                "{\"schemaVersion\":" + std::string(number) + ",\"packages\":[]}");
+            std::ostringstream output, error;
+            tests.expect(run({"list", "package", numberProject.string(), "--output-format=json"}, output, error) !=
+                    ExitCode::Success,
+                "malformed JSON number is rejected: " + std::string(number));
+        }
+        for (const std::string_view number : {"1", "1e+0", "1.0"})
+        {
+            writeFile(numberRoot / "Probe.nspm.json",
+                "{\"schemaVersion\":" + std::string(number) + ",\"packages\":[]}");
+            std::ostringstream output, error;
+            tests.expect(run({"list", "package", numberProject.string(), "--output-format=json"}, output, error) ==
+                    ExitCode::Success,
+                "valid JSON number remains accepted: " + std::string(number));
+        }
+    }
+
     const fs::path package = root / "packages" / "NativeSharp.Test" / "2.0.0";
     writeFile(package / "NativeSharp.Test.lib", "archive");
     writeFile(package / "NativeSharp.Test.nsmeta", "metadata");
@@ -230,6 +372,29 @@ int main()
         tests.expect(code == ExitCode::Success && output.str().find("Restore verified") != std::string::npos,
                      "restore verify accepts matching hashes without rewriting packages");
     }
+
+#if defined(_WIN32)
+    {
+        const fs::path installed = projectRoot / "obj/nativesharp/packages";
+        const HANDLE held = CreateFileW(installed.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                        nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+        tests.expect(held != INVALID_HANDLE_VALUE, "restore failure fixture locks the package directory");
+        if (held != INVALID_HANDLE_VALUE)
+        {
+            std::error_code expected;
+            fs::rename(installed, installed.parent_path() / "rename-probe", expected);
+            tests.expect(bool(expected), "the held directory prevents renaming the package root");
+            std::ostringstream output, error;
+            const ExitCode code = run({"restore", project.string(), "--force"}, output, error);
+            CloseHandle(held);
+            tests.expect(code != ExitCode::Success && expected &&
+                    error.str().find(expected.message()) != std::string::npos,
+                "restore reports the original rename error after cleaning staging");
+            tests.expect(fs::is_regular_file(installed / "NativeSharp.Test/2.0.0/NativeSharp.Test.lib"),
+                "failed restore keeps the previously published package");
+        }
+    }
+#endif
 
     // Optimization part 2, item 52: restore brings the ThinLTO sidecar of a static library with the
     // library, and never the one beside a DLL's import library.
@@ -328,6 +493,45 @@ int main()
                 textOutput.str().find("Dependency provenance:\n") != std::string::npos &&
                 textOutput.str().find("store-cache NativeSharp.Test@2.0.0") != std::string::npos,
             "dependency provenance has a deterministic human-readable report");
+    }
+
+    {
+        const fs::path lock = projectRoot / "NativeSharp.lock.json";
+        std::ifstream originalStream(lock, std::ios::binary);
+        const std::string original{std::istreambuf_iterator<char>(originalStream), {}};
+        originalStream.close();
+        const std::string sizeField = "\"size\": 7";
+        const auto position = original.find(sizeField);
+        tests.expect(position != std::string::npos, "lock size fixture exists");
+        if (position != std::string::npos)
+        {
+            for (const std::string_view invalid : {"7.5", "7.00000000000000001", "18446744073709551616", "1e100"})
+            {
+                std::string altered = original;
+                altered.replace(position, sizeField.size(), "\"size\": " + std::string(invalid));
+                writeFile(lock, altered);
+                std::ostringstream output, error;
+                const ExitCode code = run({"build", project.string(), "--no-restore"}, output, error);
+                tests.expect(code == ExitCode::CompilationError &&
+                        error.str().find("lock file contains an invalid artifact") != std::string::npos,
+                    "lock rejects invalid artifact size: " + std::string(invalid));
+            }
+            for (const std::string_view valid : {"7.0", "70e-1", "9007199254740993",
+                                                  "18446744073709551615"})
+            {
+                std::string altered = original;
+                altered.replace(position, sizeField.size(), "\"size\": " + std::string(valid));
+                writeFile(lock, altered);
+                std::ostringstream output, error;
+                run({"build", project.string(), "--no-restore"}, output, error);
+                tests.expect(error.str().find("lock file contains an invalid artifact") == std::string::npos,
+                    "lock accepts representable integer spelling: " + std::string(valid));
+                if (valid == "9007199254740993" || valid == "18446744073709551615")
+                    tests.expect(error.str().find("restore verification found stale artifact") != std::string::npos,
+                        "large lock size reaches exact store verification: " + std::string(valid));
+            }
+        }
+        writeFile(lock, original);
     }
 
     {

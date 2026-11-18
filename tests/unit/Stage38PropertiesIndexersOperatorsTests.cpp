@@ -386,8 +386,10 @@ class Pair
         "class C { public static int operator +(int a, int b) { return a + b; } }", "containing type");
     expectInvalid(tests, root, "ComparisonNonBool",
         "class C { public static int operator ==(C a, C b) { return 1; } }", "return bool");
-    expectInvalid(tests, root, "IncrementDeferred",
-        "class C { public static C operator ++(C a) { return a; } }", "deferred");
+    // EN: Since cc0b34cbd (NCSS-003) a user ++/-- operator is supported, so it is no longer deferred.
+    // ES: Desde cc0b34cbd (NCSS-003) un operador ++/-- de usuario está soportado y ya no se difiere.
+    expectValid(tests, root, "IncrementSupported",
+        "class C { public static C operator ++(C a) { return a; } }");
     expectInvalid(tests, root, "ConversionNotPublic",
         "class C { static implicit operator int(C v) { return 1; } }", "public static");
     expectInvalid(tests, root, "ConversionNotStatic",

@@ -1,4 +1,6 @@
 #include "nativesharp/Linker/LldLinker.h"
+#include "nativesharp/Basic/Sha256.h"
+#include "Internal/ScopedTemporaryDirectory.h"
 
 #include <algorithm>
 #include <cctype>
@@ -234,6 +236,7 @@ std::string linkerProductName(const std::filesystem::path& executable)
     const std::string name = executableName(executable);
     if (name == "llvm-lib" || name == "llvm-lib.exe") return "llvm-lib";
     if (isLldLinkExecutable(executable)) return "lld-link";
+    if (name == "llvm-objcopy" || name == "llvm-objcopy.exe") return "llvm-objcopy";
     return "NSLink";
 }
 
@@ -1562,5 +1565,141 @@ bool LldLinker::linkExecutable(
         return false;
     }
     return verifyExecutableProducts(executablePath_, outputPath, pdbPath, error);
+}
+
+bool LldLinker::validateAddressSanitizerRuntime(
+    const std::filesystem::path& clang,
+    const std::filesystem::path& runtime,
+    std::string& error)
+{
+    error.clear();
+    if (!std::filesystem::is_regular_file(clang) || !std::filesystem::is_regular_file(runtime))
+    {
+        error = "AddressSanitizer requires existing Clang and runtime files";
+        return false;
+    }
+    auto temp = ScopedTemporaryDirectory::create("nsc-asan-runtime-", "ASan runtime", {}, error);
+    if (temp == nullptr) return false;
+    const auto responsePath = temp->path() / "query.rsp";
+    const auto logPath = temp->path() / "query.log";
+    const std::vector<std::string> arguments = {
+        "--target=x86_64-pc-windows-msvc", "-print-file-name=clang_rt.asan_dynamic-x86_64.dll"};
+    if (!writeResponseFile(responsePath, arguments, error)) return false;
+    const LldLinker clangDriver(clang);
+    if (!clangDriver.runResponseFile(responsePath, logPath, error)) return false;
+    const std::string reported = trimTrailingWhitespace(readText(logPath));
+    const std::filesystem::path expected(std::u8string(reported.begin(), reported.end()));
+    if (!expected.is_absolute() || !std::filesystem::is_regular_file(expected))
+    {
+        error = "Clang could not locate its AddressSanitizer runtime DLL";
+        return false;
+    }
+    basic::Sha256Digest expectedHash{}, actualHash{};
+    std::uintmax_t expectedSize = 0, actualSize = 0;
+    if (!basic::sha256File(expected, expectedHash, expectedSize, error) ||
+        !basic::sha256File(runtime, actualHash, actualSize, error)) return false;
+    if (expectedSize == actualSize && expectedHash == actualHash) return true;
+    error = "AddressSanitizer runtime does not match the DLL supplied by the selected Clang";
+    return false;
+}
+
+bool LldLinker::adaptAddressSanitizerRuntime(
+    const std::filesystem::path& input,
+    const std::filesystem::path& output,
+    std::string& error)
+{
+    error.clear();
+    if (input == output || containsQuote(input) || containsQuote(output) ||
+        !std::filesystem::is_regular_file(input))
+    {
+        error = "AddressSanitizer runtime adaptation requires distinct valid input and output paths";
+        return false;
+    }
+#ifdef _WIN32
+    const DWORD pathSize = GetEnvironmentVariableW(L"PATH", nullptr, 0);
+    std::vector<wchar_t> searchPath(pathSize);
+    const DWORD pathLength = pathSize == 0 ? 0 :
+        GetEnvironmentVariableW(L"PATH", searchPath.data(), pathSize);
+    if (pathLength == 0 || pathLength >= pathSize)
+    {
+        error = "AddressSanitizer runtime adaptation requires llvm-objcopy.exe in PATH";
+        return false;
+    }
+    const DWORD size = SearchPathW(searchPath.data(), L"llvm-objcopy.exe", nullptr, 0, nullptr, nullptr);
+    if (size == 0)
+    {
+        error = "AddressSanitizer runtime adaptation requires llvm-objcopy.exe in PATH";
+        return false;
+    }
+    std::vector<wchar_t> resolved(size);
+    const DWORD length = SearchPathW(
+        searchPath.data(), L"llvm-objcopy.exe", nullptr, size, resolved.data(), nullptr);
+    if (length == 0 || length >= size)
+    {
+        error = "could not resolve llvm-objcopy.exe for AddressSanitizer runtime adaptation";
+        return false;
+    }
+    const LldLinker objcopy(std::filesystem::path(resolved.data()));
+#else
+    const LldLinker objcopy(std::filesystem::path("llvm-objcopy"));
+#endif
+    std::filesystem::path responsePath = output;
+    std::filesystem::path logPath = output;
+    responsePath += ".rsp";
+    logPath += ".log";
+    const std::vector<std::string> arguments = {
+        "--redefine-sym=HeapAlloc=nsc_asan_heap_alloc",
+        "--redefine-sym=HeapReAlloc=nsc_asan_heap_realloc",
+        "--redefine-sym=HeapFree=nsc_asan_heap_free",
+        responseFileArgument(input), responseFileArgument(output)};
+    if (!writeResponseFile(responsePath, arguments, error)) return false;
+    const bool success = objcopy.runResponseFile(responsePath, logPath, error);
+    std::error_code cleanupError;
+    cleanupLinkerTemporaries(responsePath, logPath, cleanupError);
+    if (!success) return false;
+    if (!std::filesystem::is_regular_file(output))
+    {
+        error = "llvm-objcopy did not produce the AddressSanitizer runtime copy";
+        return false;
+    }
+    return true;
+}
+
+bool LldLinker::linkAddressSanitizedExecutable(
+    const std::filesystem::path& clang,
+    std::span<const std::filesystem::path> objectFiles,
+    std::span<const std::filesystem::path> libraries,
+    const std::filesystem::path& outputPath,
+    std::string& error)
+{
+    error.clear();
+    if (clang.empty() || containsQuote(clang) || !std::filesystem::is_regular_file(clang))
+    {
+        error = "AddressSanitizer requires a valid Clang executable path";
+        return false;
+    }
+    if (!validateExecutableRequest(objectFiles, libraries, outputPath, {}, error)) return false;
+    std::filesystem::path responsePath = outputPath;
+    std::filesystem::path logPath = outputPath;
+    responsePath += ".asan-link.rsp";
+    logPath += ".asan-link.log";
+    std::vector<std::string> arguments = {
+        "--target=x86_64-pc-windows-msvc", "-fuse-ld=lld", "-fsanitize=address"};
+    for (const auto& object : objectFiles) arguments.push_back(responseFileArgument(object));
+    for (const auto& library : libraries) arguments.push_back(responseFileArgument(library));
+    arguments.push_back("-o");
+    arguments.push_back(responseFileArgument(outputPath));
+    if (!writeResponseFile(responsePath, arguments, error)) return false;
+    std::error_code cleanupError;
+    removeExecutableOutputs(outputPath, {}, cleanupError);
+    const LldLinker clangDriver(clang);
+    const bool success = clangDriver.runResponseFile(responsePath, logPath, error);
+    cleanupLinkerTemporaries(responsePath, logPath, cleanupError);
+    if (!success)
+    {
+        removeExecutableOutputs(outputPath, {}, cleanupError);
+        return false;
+    }
+    return verifyExecutableProducts(clang, outputPath, {}, error);
 }
 }

@@ -1,0 +1,34 @@
+namespace DeterministicFutureCancellation
+{
+    /// <summary>
+    /// Provides coroutines that hold RAII leases across suspension points to test cancellation cleanup.
+    /// </summary>
+    public static class CancellableSessionWork
+    {
+        /// <summary>
+        /// Opens two RAII leases in sequence across suspension points so early drop triggers LIFO cleanup.
+        /// </summary>
+        public static Iterator<int> RunTwoStageSession()
+        {
+            raii ScopedChannelLease outerSocket = new ScopedChannelLease(1);
+            yield return outerSocket.LeaseDigit() * 10;
+
+            raii ScopedChannelLease innerBuffer = new ScopedChannelLease(2);
+            yield return innerBuffer.LeaseDigit() * 10;
+
+            yield return 99;
+        }
+
+        /// <summary>
+        /// Runs an asynchronous stream that acquires RAII leases across async suspension points.
+        /// </summary>
+        public static AsyncIterator<int, int> StreamWithTimeoutBudgetAsync()
+        {
+            raii ScopedChannelLease sessionGuard = new ScopedChannelLease(7);
+            yield return sessionGuard.LeaseDigit() * 100;
+
+            raii ScopedChannelLease stageGuard = new ScopedChannelLease(8);
+            yield return stageGuard.LeaseDigit() * 100;
+        }
+    }
+}

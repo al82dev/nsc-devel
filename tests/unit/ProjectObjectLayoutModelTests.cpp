@@ -260,7 +260,7 @@ void testInvalidLayouts(TestContext& tests, const std::filesystem::path& root)
         const auto directory = root / "RecursiveStruct";
         writeProject(directory, "RecursiveStruct");
         writeFile(directory / "Main.ns",
-            "struct Node { Node Value; } class Holder { Node Root; Holder Make() { return new Holder(); } }\n");
+            "struct Node { Node Value; } class Holder { Node Root; owned Holder Make() { return new Holder(); } }\n");
         ProjectCompilation compilation;
         std::string error;
         const bool ok = compilation.compileProjectObjectLayouts(directory / "RecursiveStruct.nsproj", error);
@@ -272,7 +272,7 @@ void testInvalidLayouts(TestContext& tests, const std::filesystem::path& root)
     {
         const auto directory = root / "ZeroArray";
         writeProject(directory, "ZeroArray");
-        writeFile(directory / "Main.ns", "class Box { int[0] Data; Box Make() { return new Box(); } }\n");
+        writeFile(directory / "Main.ns", "class Box { int[0] Data; owned Box Make() { return new Box(); } }\n");
         ProjectCompilation compilation;
         std::string error;
         const bool ok = compilation.compileProjectObjectLayouts(directory / "ZeroArray.nsproj", error);
@@ -284,7 +284,7 @@ void testInvalidLayouts(TestContext& tests, const std::filesystem::path& root)
     {
         const auto directory = root / "NonConstantArray";
         writeProject(directory, "NonConstantArray");
-        writeFile(directory / "Main.ns", "class Box { int[N] Data; Box Make() { return new Box(); } }\n");
+        writeFile(directory / "Main.ns", "class Box { int[N] Data; owned Box Make() { return new Box(); } }\n");
         ProjectCompilation compilation;
         std::string error;
         const bool ok = compilation.compileProjectObjectLayouts(directory / "NonConstantArray.nsproj", error);

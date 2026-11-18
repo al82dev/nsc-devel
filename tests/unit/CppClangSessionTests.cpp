@@ -402,7 +402,7 @@ int main(int argc, char** argv)
         { std::cerr << "NSMETA verification failed: " << error << '\n'; return 1; }
         std::vector<CppCRecordSnapshot> records;
         std::vector<CppCEnumSnapshot> enums;
-        if (!metadata_detail::decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error, metadata.formatMinor))
+        if (!metadata_detail::decodeCTypeCatalogByContent(metadata.cppCRecordCatalog, records, enums, error))
         { std::cerr << "C catalogue decode failed: " << error << '\n'; return 1; }
         const auto header = std::filesystem::absolute(argv[3]);
         const auto workingDirectory = header.parent_path().string();
@@ -1101,7 +1101,6 @@ int main(int argc, char** argv)
         if (built && !catalog.empty())
         {
         nativesharp::interop::LibraryMetadata model;
-        model.formatMinor = 41;
         model.moduleName = "BinaryCatalogTest";
         model.producerVersion = "test";
         model.targetTriple = "x86_64-pc-windows-msvc";
@@ -1116,7 +1115,7 @@ int main(int argc, char** argv)
         nativesharp::interop::LibraryMetadata decoded;
         const bool encoded = metadataCollected && codec.writeModel(model, metadataPath, metadataError) &&
             codec.read(metadataPath, decoded, metadataError);
-        ok &= expect(encoded && decoded.formatMinor == 41 && decoded.cppBinaryDependencies == model.cppBinaryDependencies,
+        ok &= expect(encoded && decoded.cppBinaryDependencies == model.cppBinaryDependencies,
                      "NSMETA preserves ordered C++ binary dependencies and repeated link inputs");
         std::vector<nativesharp::interop::ResolvedCppBinaryDependency> decodedPaths;
         const bool decodedResolved = encoded && nativesharp::interop::resolveCppBinaryMetadataDependencies(
@@ -1135,9 +1134,6 @@ int main(int argc, char** argv)
         ok &= expect(encoded && codec.verifyCurrentCompiler(decoded, metadataError),
                      "NSMETA accepts structurally valid C++ binary and runtime dependencies");
         auto oldModel = model;
-        oldModel.formatMinor = 40;
-        ok &= expect(!codec.writeModel(oldModel, root / "invalid-old.nsmeta", metadataError),
-                     "NSMETA 1.40 refuses to silently discard C++ dependencies");
         auto cCatalogModel = model;
         cCatalogModel.cppCRecordCatalog = {1, 2, 3};
         nativesharp::interop::LibraryMetadataMerger merger;
@@ -1152,14 +1148,14 @@ int main(int argc, char** argv)
         ok &= expect(!merger.merge(disagreeingCatalogs, mergedCatalog, metadataError),
                      "metadata merger rejects conflicting C record catalogues");
         ok &= expect(!codec.writeModel(cCatalogModel, root / "old-c-records.nsmeta", metadataError),
-                     "NSMETA 1.41 refuses to discard a C record catalogue");
+                     "NSMETA refuses an invalid C record catalogue");
         oldModel.cppBinaryDependencies.clear();
         nativesharp::interop::LibraryMetadata oldDecoded;
         const bool oldRoundTrip = codec.writeModel(oldModel, root / "old.nsmeta", metadataError) &&
             codec.read(root / "old.nsmeta", oldDecoded, metadataError) &&
             codec.verifyCurrentCompiler(oldDecoded, metadataError);
-        ok &= expect(oldRoundTrip && oldDecoded.formatMinor == 40 && oldDecoded.cppBinaryDependencies.empty(),
-                     "NSMETA 1.40 without C++ closure remains readable and valid");
+        ok &= expect(oldRoundTrip && oldDecoded.cppBinaryDependencies.empty(),
+                     "NSMETA without C++ closure remains readable and valid");
         auto baseline = model;
         baseline.cppBinaryDependencies.clear();
         nativesharp::interop::LibraryMetadata baselineDecoded;
@@ -3510,16 +3506,12 @@ int main(int argc, char** argv)
                                  recoveredForward->sourceProvenance == forward->sourceProvenance,
                                  "version 3 preserves incomplete C record provenance");
                     LibraryMetadata forwardMetadata;
-                    forwardMetadata.formatMinor = 44;
                     forwardMetadata.targetTriple = "x86_64-pc-windows-msvc";
                     forwardMetadata.moduleName = "Semantic";
                     forwardMetadata.producerVersion = "forward-test";
                     forwardMetadata.cppCRecordCatalog = forwardBytes;
-                    ok &= expect(forwardRoundTrip && !metadata_detail::verifyBinaryClosureMetadata(forwardMetadata, codecError),
-                                 "metadata 1.44 rejects incomplete C provenance");
-                    forwardMetadata.formatMinor = 45;
                     ok &= expect(forwardRoundTrip && metadata_detail::verifyBinaryClosureMetadata(forwardMetadata, codecError),
-                                 "metadata 1.45 accepts incomplete C provenance");
+                                 "metadata accepts incomplete C provenance by content");
                 }
                 const auto provenanceRecord = std::find_if(provenanceCatalog.begin(), provenanceCatalog.end(),
                     [](const auto& item) { return item.complete; });
@@ -3572,21 +3564,16 @@ int main(int argc, char** argv)
                                      floatComparison == metadata_detail::CRecordContractComparison::Insufficient,
                                      "C record comparison does not infer an unknown floating format");
                         LibraryMetadata formatMetadata;
-                        formatMetadata.formatMinor = 43;
                         formatMetadata.targetTriple = "x86_64-pc-windows-msvc";
                         formatMetadata.moduleName = "Semantic";
                         formatMetadata.producerVersion = "format-test";
                         formatMetadata.cppCRecordCatalog = floatingBytes;
-                        ok &= expect(!metadata_detail::verifyBinaryClosureMetadata(formatMetadata, codecError),
-                                     "old metadata version rejects a catalogue with floating format");
-                        formatMetadata.formatMinor = 44;
                         ok &= expect(metadata_detail::verifyBinaryClosureMetadata(formatMetadata, codecError),
                                      "current metadata accepts a canonical floating format catalogue");
                         auto mixedCatalog = floatingCatalog;
                         for (std::size_t i = 0; i < mixedCatalog.size(); ++i)
                             if (!mixedCatalog[i].complete) mixedCatalog[i].sourceProvenance = (*catalog)[i].sourceProvenance;
                         auto mixedMetadata = formatMetadata;
-                        mixedMetadata.formatMinor = 45;
                         const bool mixedEncoded = metadata_detail::encodeCTypeCatalogWithProvenance(
                             mixedCatalog, {}, mixedMetadata.cppCRecordCatalog, codecError);
                         ok &= expect(mixedEncoded && !mixedMetadata.cppCRecordCatalog.empty() &&
@@ -3765,7 +3752,6 @@ int main(int argc, char** argv)
                 }
                 else ok &= expect(false, "C record contract comparison has a complete test record");
                 LibraryMetadata catalogMetadata;
-                catalogMetadata.formatMinor = 42;
                 catalogMetadata.targetTriple = "x86_64-pc-windows-msvc";
                 catalogMetadata.moduleName = "Semantic";
                 catalogMetadata.producerVersion = "catalog-test";
@@ -3785,20 +3771,16 @@ int main(int argc, char** argv)
                         auto newerMetadata = catalogMetadata;
                         const bool encodedOrigin = metadata_detail::encodeCTypeCatalogWithProvenance(
                             withOrigin, {}, newerMetadata.cppCRecordCatalog, codecError);
-                        newerMetadata.formatMinor = 42;
-                        const bool oldRejected = encodedOrigin &&
-                            !metadata_detail::verifyBinaryClosureMetadata(newerMetadata, codecError);
-                        newerMetadata.formatMinor = 43;
                         const bool newAccepted = encodedOrigin &&
                             metadata_detail::verifyBinaryClosureMetadata(newerMetadata, codecError);
                         std::vector<CppCRecordSnapshot> decodedVersioned;
                         std::vector<CppCEnumSnapshot> enumsVersioned;
-                        const bool readNew = metadata_detail::decodeVersionedCTypeCatalog(
-                            newerMetadata.cppCRecordCatalog, decodedVersioned, enumsVersioned, codecError, newerMetadata.formatMinor);
-                        const bool readOld = metadata_detail::decodeVersionedCTypeCatalog(
-                            catalogMetadata.cppCRecordCatalog, decodedVersioned, enumsVersioned, codecError, catalogMetadata.formatMinor);
-                        ok &= expect(oldRejected && newAccepted && readNew && readOld,
-                                     "versioned C provenance requires metadata 1.43 and legacy catalogues remain readable");
+                        const bool readNew = metadata_detail::decodeCTypeCatalogByContent(
+                            newerMetadata.cppCRecordCatalog, decodedVersioned, enumsVersioned, codecError);
+                        const bool readOld = metadata_detail::decodeCTypeCatalogByContent(
+                            catalogMetadata.cppCRecordCatalog, decodedVersioned, enumsVersioned, codecError);
+                        ok &= expect(newAccepted && readNew && readOld,
+                                     "C provenance is accepted by content and legacy catalogues remain readable");
                         ok &= expect(metadata_detail::encodeAbiProjection(newerMetadata) ==
                                      metadata_detail::encodeAbiProjection(catalogMetadata),
                                      "C source provenance does not change the public ABI projection");
@@ -3808,13 +3790,13 @@ int main(int argc, char** argv)
                         const bool originRoundTrip = metadataCodec.writeModel(newerMetadata, originFile, codecError) &&
                             metadataCodec.read(originFile, loadedOrigin, codecError) &&
                             metadataCodec.verifyCurrentCompiler(loadedOrigin, codecError) &&
-                            loadedOrigin.formatMinor == 43 && metadata_detail::decodeVersionedCTypeCatalog(
-                                loadedOrigin.cppCRecordCatalog, decodedVersioned, enumsVersioned, codecError, loadedOrigin.formatMinor);
+                            metadata_detail::decodeCTypeCatalogByContent(
+                                loadedOrigin.cppCRecordCatalog, decodedVersioned, enumsVersioned, codecError);
                         const auto foundOrigin = std::find_if(decodedVersioned.begin(), decodedVersioned.end(),
                             [&](const auto& item) { return item.identityKey == completeRecord->identityKey; });
                         ok &= expect(originRoundTrip && foundOrigin != decodedVersioned.end() &&
                                      foundOrigin->sourceProvenance == completeRecord->sourceProvenance,
-                                     "metadata 1.43 writes and reads a C source provenance catalogue");
+                                     "metadata writes and reads a C source provenance catalogue");
                     }
                     else ok &= expect(false, "versioned catalogue has a complete record");
                 }
@@ -3824,22 +3806,18 @@ int main(int argc, char** argv)
                     LibraryMetadata reread;
                     const bool roundtrip42 = combinedEncoded && codec.writeModel(catalogMetadata, metadataFile, codecError) &&
                         codec.read(metadataFile, reread, codecError) && codec.verifyCurrentCompiler(reread, codecError);
-                    ok &= expect(roundtrip42 && reread.formatMinor == 42 &&
+                    ok &= expect(roundtrip42 && 
                                  reread.cppCRecordCatalog == catalogMetadata.cppCRecordCatalog,
-                                 "public metadata codec writes and authenticates the 1.42 C catalogue");
+                                 "public metadata codec writes and authenticates the C catalogue");
                     auto legacy = catalogMetadata;
-                    legacy.formatMinor = 41;
-                    ok &= expect(!codec.writeModel(legacy, metadataFile, codecError),
-                                 "public metadata codec rejects C catalogue in 1.41");
                     legacy.cppCRecordCatalog.clear();
                     const bool legacyRoundtrip = codec.writeModel(legacy, metadataFile, codecError) &&
                         codec.read(metadataFile, reread, codecError) && codec.verifyCurrentCompiler(reread, codecError);
-                    ok &= expect(legacyRoundtrip && reread.formatMinor == 41 && reread.cppCRecordCatalog.empty(),
-                                 "public metadata codec retains 1.41 compatibility");
+                    ok &= expect(legacyRoundtrip && reread.cppCRecordCatalog.empty(),
+                                 "public metadata codec accepts metadata without a C catalogue");
                 }
-                const auto payload = metadata_detail::encodePayload(catalogMetadata, 3, true);
+                const auto payload = metadata_detail::encodePayload(catalogMetadata);
                 LibraryMetadata decodedPayload;
-                decodedPayload.formatMinor = 42;
                 const bool payloadRead = metadata_detail::decodePayload(payload, decodedPayload, codecError);
                 ok &= expect(payloadRead && decodedPayload.cppCRecordCatalog == catalogMetadata.cppCRecordCatalog,
                              "prepared metadata payload preserves the C record catalogue");
@@ -3851,7 +3829,6 @@ int main(int argc, char** argv)
                 auto truncatedPayload = payload;
                 if (!truncatedPayload.empty()) truncatedPayload.pop_back();
                 LibraryMetadata truncatedDecoded;
-                truncatedDecoded.formatMinor = 42;
                 ok &= expect(!metadata_detail::decodePayload(truncatedPayload, truncatedDecoded, codecError),
                              "metadata payload rejects a truncated C record catalogue");
                 catalogMetadata.targetTriple = "different-target";
@@ -7143,7 +7120,6 @@ int main(int argc, char** argv)
                         if (supplied && records.size() == 1 && enums.size() == 1)
                         {
                             auto closureMetadata = api;
-                            closureMetadata.formatMinor = api.formatMinor;
                             closureMetadata.moduleName = records[0].moduleName;
                             closureMetadata.targetTriple = records[0].targetTriple;
                             closureMetadata.cppCRecordCatalog = bytes;

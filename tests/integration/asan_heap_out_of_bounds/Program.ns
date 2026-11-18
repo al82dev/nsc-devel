@@ -1,0 +1,9 @@
+// Deliberately writes one element beyond the allocation for an ASan demonstration.
+int Main()
+{
+    int[] values = new int[4];
+    int* pointer = &values[0];
+    pointer[4] = 42;
+    delete[] values;
+    return 0;
+}

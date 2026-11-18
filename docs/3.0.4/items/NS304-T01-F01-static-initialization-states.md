@@ -9,7 +9,7 @@ posteriores de T01 sin anticipar su protocolo de concurrencia.
 
 - Objetivo: definir exactamente `uninitialized`, `initializing`, `initialized`
   y `failed`.
-- Productor: `Language3Surface.h`.
+- Productor: `LanguageSurface.h`.
 - Contrato/prueba: `CL-LANG-012` / `TL-LANG-294`.
 - Revisión base: `dbc5e4289` en `development`.
 - Protegido: Parser, Sema, HIR/MIR, runtime, CMake, toolchain, Builder y

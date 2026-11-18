@@ -1,13 +1,26 @@
-# NS3-T16-F01 — Modo de compatibilidad 2.x / 2.x compatibility mode
+# NS3-T16-F01 — Compatibilidad por contenido / Content-based compatibility
 
 ## Español
 
-El frontend 3.0 acepta unidades de edición 2 únicamente con semántica 2.x explícita. Un módulo semántico no puede mezclar ediciones silenciosamente, aunque módulos de distintas ediciones sí pueden importarse mediante identidades canónicas. Metadata 2.x válida se acepta directamente cuando target y fingerprint ABI coinciden; un fingerprint distinto exige adapter explícito y una estructura corrupta se rechaza. Cambiar fuente o edición invalida el módulo y sus consumidores incrementales.
+El frontend utiliza un único lenguaje acumulativo y no selecciona semántica por edición. Los
+módulos deben tener identidades de fuente y módulo válidas y sus imports deben resolverse. Para
+contratos binarios, una estructura inválida o un target no admitido se rechazan; una huella ABI
+distinta requiere un adaptador explícito. Un cambio de huella de fuente invalida el módulo y sus
+consumidores incrementales. NSMeta no se acepta ni se rechaza por versión.
 
-Archivos modificados: `CompatibilitySemantics.h`, `CompatibilitySemantics.cpp` y `CMakeLists.txt`. Se creó `NativeSharp3T16Edition2CompatTests.cpp` para aislar corpus mixto, metadata antigua, versiones inválidas e invalidación incremental.
+Las comprobaciones existentes se encuentran en `CompatibilitySemantics.h`,
+`CompatibilitySemantics.cpp` y `NativeSharp3T16Edition2CompatTests.cpp`. El nombre de esta última
+es un identificador histórico del archivo, no una selección de lenguaje. La validación del estado
+actual corresponde al usuario.
 
 ## English
 
-The 3.0 frontend accepts edition 2 units only with explicit 2.x semantics. A semantic module cannot silently mix editions, although modules from different editions may import each other through canonical identities. Valid 2.x metadata loads directly when target and ABI fingerprint match; a different fingerprint requires an explicit adapter, and corrupt structure is rejected. Changing source or edition invalidates the module and its incremental consumers.
+The frontend uses one cumulative language and does not select semantics by edition. Modules need
+valid source and module identities and resolved imports. Structurally invalid binary contracts or
+unsupported targets are rejected; a different ABI fingerprint requires an explicit adapter. A
+source fingerprint change invalidates the module and its incremental consumers. NSMeta is not
+accepted or rejected by version.
 
-Modified files: `CompatibilitySemantics.h`, `CompatibilitySemantics.cpp`, and `CMakeLists.txt`. `NativeSharp3T16Edition2CompatTests.cpp` was added to isolate mixed corpora, old metadata, invalid versions, and incremental invalidation.
+Existing checks are in `CompatibilitySemantics.h`, `CompatibilitySemantics.cpp`, and
+`NativeSharp3T16Edition2CompatTests.cpp`. The latter filename is a historical identifier, not a
+language selection. The user will validate the current state.

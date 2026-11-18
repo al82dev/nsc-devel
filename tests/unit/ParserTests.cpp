@@ -184,15 +184,22 @@ int Main()
 
     frontend::FrontendCompilation ternary;
     const bool ternaryOk = ternary.compileBuffer(
-        "no_ternary.ns",
+        "ternary.ns",
         "int Main() { return true ? 1 : 0; }");
-    tests.expect(!ternaryOk, "invalid ternary conditional syntax is rejected by NativeSharp 1.0.1");
+    tests.expect(ternaryOk, "conditional expressions parse");
 
     frontend::FrontendCompilation singleStatementLoop;
     const bool loopOk = singleStatementLoop.compileBuffer(
         "braced_loop.ns",
         "int Main() { while (false) return 1; return 0; }");
     tests.expect(!loopOk, "while body without braces is rejected by parser");
+
+    frontend::FrontendCompilation singleStatementFor;
+    const bool forOk = singleStatementFor.compileBuffer(
+        "embedded_for.ns",
+        "int Main() { int sum = 0; for (int i = 0; i < 3; i++) "
+        "for (int j = 0; j < 2; j++) sum = sum + i; return sum; }");
+    tests.expect(forOk, "nested for bodies accept a single embedded statement");
 
     frontend::FrontendCompilation expressionForms;
     const bool expressionFormsOk = expressionForms.compileBuffer(

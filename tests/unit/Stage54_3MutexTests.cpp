@@ -66,6 +66,8 @@
 
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/Driver/Driver.h"
+#include "nativesharp/Compilation/PrecompiledProjectPreparation.h"
+#include "nativesharp/Compilation/ProjectGraphLoader.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/LlvmModule.h"
@@ -114,14 +116,13 @@ void writeProject(const std::filesystem::path& directory, std::string_view name)
 // and Thread classes (not fixture stand-ins) to exercise real multi-threaded execution.
 void writeProjectWithThreadingLibraries(const std::filesystem::path& directory, std::string_view name)
 {
-    const std::filesystem::path core = std::filesystem::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core/NativeSharp.Core.nsproj";
     const std::filesystem::path threading =
-        std::filesystem::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj";
+        std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj";
     writeFile(
         directory / (std::string(name) + ".nsproj"),
         "<Project><PropertyGroup><Name>" + std::string(name) +
             "</Name></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" />"
-            "<ProjectReference Include=\"" + core.string() + "\" />"
+            "<LibraryReference Include=\"NativeSharpCore.lib\" Metadata=\"NativeSharpCore.nsmeta\" />"
             "<ProjectReference Include=\"" + threading.string() + "\" /></ItemGroup></Project>");
 }
 
@@ -189,13 +190,39 @@ std::filesystem::path buildExe(
 {
     std::string error;
     ProjectCompilation bodies;
+    nativesharp::compilation::ProjectLoadOptions options;
+    options.standardPackageRoot = std::filesystem::path(NSC_BINARY_DIR) / "packages";
+    options.standardPackageOptimization = std::string(levelFlag.substr(1));
+    bodies.setProjectLoadOptions(options);
+    const auto prepare = [&](ProjectCompilation& compilation)
+    {
+        nativesharp::compilation::ProjectGraphLoader loader(1, {}, options);
+        auto graph = loader.load(project, error);
+        return graph.has_value() && nativesharp::compilation::preparePrecompiledProject(
+            std::move(*graph), options, compilation, error);
+    };
+    if (!prepare(bodies))
+    {
+        tests.expect(false, std::string(label) + ": prepares package closure (" + error + ")");
+        return {};
+    }
     tests.expect(bodies.compileProjectMethodBodies(project, error),
         std::string(label) + ": passes method-body ownership analysis");
     tests.expect(error.empty(), std::string(label) + ": method-body analysis has no loader error");
 
     error.clear();
     ProjectCompilation mir;
-    tests.expect(mir.compileProjectOopMir(project, error), std::string(label) + ": lowers to OOP MIR");
+    mir.setProjectLoadOptions(options);
+    if (!prepare(mir))
+    {
+        tests.expect(false, std::string(label) + ": prepares package closure for MIR (" + error + ")");
+        return {};
+    }
+    const bool mirOk = mir.compileProjectOopMir(project, error);
+    std::string mirDiagnostics;
+    for (const auto& diagnostic : mir.diagnostics().diagnostics())
+        mirDiagnostics += diagnostic.message() + '\n';
+    tests.expect(mirOk, std::string(label) + ": lowers to OOP MIR (" + error + mirDiagnostics + ")");
     tests.expect(error.empty(), std::string(label) + ": MIR lowering has no loader/lowering error");
     if (mir.nameLookup() == nullptr || mir.oopMirModel() == nullptr) return {};
 
@@ -482,9 +509,11 @@ class Program
 )NS");
 
     const std::string wine = wineCommand();
-    const std::array<std::pair<nativesharp::llvm_backend::LlvmOptimizationLevel, std::pair<std::string_view, std::string_view>>, 2> levels = {
+    const std::array<std::pair<nativesharp::llvm_backend::LlvmOptimizationLevel, std::pair<std::string_view, std::string_view>>, 4> levels = {
         std::make_pair(nativesharp::llvm_backend::LlvmOptimizationLevel::O0, std::make_pair(std::string_view("-O0"), std::string_view("O0"))),
-        std::make_pair(nativesharp::llvm_backend::LlvmOptimizationLevel::O2, std::make_pair(std::string_view("-O2"), std::string_view("O2")))};
+        std::make_pair(nativesharp::llvm_backend::LlvmOptimizationLevel::O1, std::make_pair(std::string_view("-O1"), std::string_view("O1"))),
+        std::make_pair(nativesharp::llvm_backend::LlvmOptimizationLevel::O2, std::make_pair(std::string_view("-O2"), std::string_view("O2"))),
+        std::make_pair(nativesharp::llvm_backend::LlvmOptimizationLevel::O3, std::make_pair(std::string_view("-O3"), std::string_view("O3")))};
 
     for (const auto& entry : levels)
     {
@@ -629,7 +658,11 @@ int main()
     testPackagedExampleAtOptimizationLevel(
         tests, root, nativesharp::llvm_backend::LlvmOptimizationLevel::O0, "-O0", "O0");
     testPackagedExampleAtOptimizationLevel(
+        tests, root, nativesharp::llvm_backend::LlvmOptimizationLevel::O1, "-O1", "O1");
+    testPackagedExampleAtOptimizationLevel(
         tests, root, nativesharp::llvm_backend::LlvmOptimizationLevel::O2, "-O2", "O2");
+    testPackagedExampleAtOptimizationLevel(
+        tests, root, nativesharp::llvm_backend::LlvmOptimizationLevel::O3, "-O3", "O3");
     testConcurrentStaticFieldFirstTouchDoesNotRace(tests, root);
     testSelfReferencingStaticInitializerDoesNotDeadlock(tests, root);
 

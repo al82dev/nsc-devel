@@ -66,12 +66,12 @@ def main() -> int:
     timings["metadata-current"] = round(elapsed, 6)
     if result.returncode != 0:
         failures.append(f"emit current metadata: {result.stdout}{result.stderr}")
-    legacy = output / "legacy.nsmeta"
-    legacy.write_text("NSMETA/1\nproducer=compat-fixture\nname=AdvancedToolchain\n", encoding="utf-8", newline="\n")
+    alternate = output / "alternate.nsmeta"
+    alternate.write_text("NSMETA/ignored-label\nproducer=fixture\nname=AdvancedToolchain\n", encoding="utf-8", newline="\n")
     corrupt = output / "corrupt.nsmeta"
-    corrupt.write_bytes(b"NSMETA/3\nunsupported=true\n")
+    corrupt.write_bytes(b"NSMETA\nname=\n")
     metadata_results: dict[str, int] = {}
-    for name, path, expected in (("current", current, 0), ("legacy", legacy, 0), ("corrupt", corrupt, 1)):
+    for name, path, expected in (("current", current, 0), ("alternate", alternate, 0), ("corrupt", corrupt, 1)):
         result, elapsed = run([str(args.compiler), "--verify-nsmeta", str(path)], root)
         timings[f"verify-{name}"] = round(elapsed, 6)
         metadata_results[name] = result.returncode
@@ -109,7 +109,7 @@ def main() -> int:
         for failure in failures:
             print(f"NSH4902: {failure}", file=sys.stderr)
         return 1
-    print(f"SH49 advanced toolchain passed: {len(names)}/{len(names)} tests; metadata N-1/N; deterministic manifest")
+    print(f"SH49 advanced toolchain passed: {len(names)}/{len(names)} tests; metadata content checks; deterministic manifest")
     return 0
 
 

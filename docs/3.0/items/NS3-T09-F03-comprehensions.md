@@ -4,7 +4,7 @@
 
 ### Resultado
 
-NativeSharp 3 incorpora comprensiones mediante una forma explícita y predecible:
+NativeSharp incorpora comprensiones mediante una forma explícita y predecible:
 
 ```ns
 SumBuilder result = comprehend(seed) {
@@ -27,7 +27,7 @@ local y cada `yield return value;` —o la abreviatura `yield value;`— invoca 
   `comprehend(move(builder))`; el resultado se transfiere sin copia.
 - Los generadores, filtros y anidamientos son sentencias ordinarias dentro del bloque, por lo que
   conservan las reglas existentes de `foreach`, `if`, ownership, `noheap` y limpieza.
-- La característica requiere `<Language>3</Language>`.
+- La característica no requiere seleccionar una versión del lenguaje.
 
 ### Implementación
 
@@ -43,7 +43,7 @@ relajar la validación de `move(...)` escrita por el usuario.
 - `src/Parser/Parser.cpp`: reconocimiento, desazucarado y yields contextuales.
 - `src/Frontend/ProjectMethodBodyModel.cpp`: transferencia interna, limitada al resultado de una
   comprensión.
-- `tests/unit/NativeSharp3T09ComprehensionTests.cpp`: prueba dirigida O0/NSLink.
+- `tests/unit/NativeSharpT09ComprehensionTests.cpp`: prueba dirigida O0/NSLink.
 - `CMakeLists.txt`: objetivo aislado `nsc_ns3_t09_comprehension_tests`.
 
 ### Validación puntual
@@ -55,7 +55,7 @@ general.
 
 ### Result
 
-NativeSharp 3 now provides comprehensions through an explicit, predictable builder form. The seed
+NativeSharp now provides comprehensions through an explicit, predictable builder form. The seed
 expression is evaluated exactly once, each `yield return value;` (or `yield value;`) performs normal
 `Add(value)` member lookup, and `yield break;` returns the accumulated builder immediately.
 

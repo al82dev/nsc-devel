@@ -1,4 +1,4 @@
-# NativeSharp 3.0 — Argumentos nombrados / Named arguments
+# NativeSharp — Argumentos nombrados / Named arguments
 
 ## Español
 

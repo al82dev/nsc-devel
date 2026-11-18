@@ -1,8 +1,10 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # NS3-T06-F08 — Drop glue genérico e indirecto / Generic and indirect drop glue
 
 ## Resultado
 
-NativeSharp 3.0 emite un thunk físico por cada tipo valor que necesita destrucción. El thunk nace
+NativeSharp emite un thunk físico por cada tipo valor que necesita destrucción. El thunk nace
 del layout MIR del productor, se publica mediante NSMETA 1.36 y se reutiliza desde arrays fijos,
 especializaciones genéricas, variants y consumidores precompilados. La bandera de vida existente
 se limpia antes de invocarlo, por lo que cada valor inicializado se destruye una sola vez.
@@ -25,7 +27,7 @@ se limpia antes de invocarlo, por lo que cada valor inicializado se destruye una
 
 ## Archivos nuevos
 
-- `tests/unit/NativeSharp3T06DropGlueTests.cpp`: única prueba dirigida de F08.
+- `tests/unit/NativeSharpT06DropGlueTests.cpp`: única prueba dirigida de F08.
 - `docs/3.0/language/generic-drop-glue.md`: contrato normativo bilingüe.
 - Este documento: mapa del commit y evidencia de validación.
 

@@ -125,7 +125,7 @@ enum class AstNodeKind
     // children in declaration order and nested braces for nested aggregates.
     AggregateInitializerExpression,
 
-    // NativeSharp 3.0 T01. Appended to preserve every 2.x serialized node identity.
+    // NativeSharp T01. Appended to preserve existing serialized node identities.
     NullCoalescingExpression,
     NullConditionalMemberExpression,
     // NS304-T10-F05: null-conditional index `obj?[i]` (READ/WRITE residual).
@@ -138,56 +138,59 @@ enum class AstNodeKind
     InterpolatedStringExpression,
     WithExpression,
 
-    // NativeSharp 3.0 T02. A tuple remains a structural aggregate; assignment decides whether
+    // NativeSharp T02. A tuple remains a structural aggregate; assignment decides whether
     // this syntax is a value literal or a deconstruction target.
     TupleExpression,
-    // NativeSharp 3.0 T02-F03. `var (a, _, b) = tuple;`: first() is the source expression and
+    // NativeSharp T02-F03. `var (a, _, b) = tuple;`: first() is the source expression and
     // children are identifier bindings/discards in textual order.
     DeconstructionDeclarationStatement,
-    // NativeSharp 3.0 T05-F03. Logical trait items: neither node introduces object storage nor a
+    // NativeSharp T05-F03. Logical trait items: neither node introduces object storage nor a
     // callable ABI entry. typeSyntax() is the optional/default associated type; for a constant it
     // is the declared value type and first() is the optional/default constant expression.
     AssociatedTypeDeclaration,
     AssociatedConstantDeclaration,
-    // NativeSharp 3.0 T05-F06. Container only: productive extension members are lowered by the
+    // NativeSharp T05-F06. Container only: productive extension members are lowered by the
     // parser to ordinary namespace functions with a synthetic receiver parameter.
     ExtensionDeclaration,
 
-    // NativeSharp 3.0 T07-F01. `result?` consumes one compatible Result variant. first() is the
+    // NativeSharp T07-F01. `result?` consumes one compatible Result variant. first() is the
     // carrier expression. The semantic binding freezes both variant contracts, the optional
     // explicit error adapter, and the cleanup path used by the conditional early return.
-    // Appended so every serialized 2.x/earlier-3.0 node identity remains stable.
+    // Appended so every previously serialized node identity remains stable.
     ResultPropagationExpression,
 
-    // NativeSharp 3.0 T03-F03. MatchExpression evaluates first() exactly once and owns ordered
+    // NativeSharp T03-F03. MatchExpression evaluates first() exactly once and owns ordered
     // MatchArmExpression children. An arm stores its structural condition in first(), optional
     // guard in second(), result in third(), and generated binding declarations in children().
     // MatchValueExpression is the compiler-owned reference to the single governing value.
     MatchExpression,
     MatchArmExpression,
     MatchValueExpression,
-    // NativeSharp 3.0 T07-F05. `loop [label] { ... }` is a value expression. first() is the
+    // NativeSharp T07-F05. `loop [label] { ... }` is a value expression. first() is the
     // body block and text() is the optional label. BreakStatement::first() carries an optional
     // result value; BreakStatement/ContinueStatement::text() carries an optional target label.
     LoopExpression,
-    // NativeSharp 3.0 T05-F01. `await expr` is a first-class expression until the productive
+    // NativeSharp T05-F01. `await expr` is a first-class expression until the productive
     // state-machine lowering (T05-F03) materializes it. first() is the awaited operand.
     AwaitExpression,
-    // NativeSharp 3.0 T06-F01. `yield return expr` / `yield break`. first() is the yielded value
+    // NativeSharp T06-F01. `yield return expr` / `yield break`. first() is the yielded value
     // (nullptr for break). The productive frame lowering is T06-F03.
     YieldReturnStatement,
     YieldBreakStatement,
-    // NativeSharp 3.0 T05-F09. A bare `yield;` in an async body is an explicit suspension point:
+    // NativeSharp T05-F09. A bare `yield;` in an async body is an explicit suspension point:
     // the poll suspends once (state = resume index) and continues on the next poll. No value.
     SuspendStatement,
 
-    // NativeSharp 3.0 T10-F07. first() preserves the source operand; typeSyntaxes() preserves
+    // NativeSharp T10-F07. first() preserves the source operand; typeSyntaxes() preserves
     // explicit generic arguments. Semantic analysis resolves that syntax without evaluating it
     // before the node becomes a compile-time string constant.
     NameOfExpression,
     // NS304-T15-F05. `checked(expr)` / `saturating(expr)`. first() is the wrapped expression and
     // auxiliaryText() is the policy spelling ("checked" or "saturating").
     OverflowPolicyExpression,
+    // Compile-time field iteration. typeSyntax() selects the type, text() is
+    // the descriptor name, and first() retains the unexpanded source body.
+    StaticFieldIterationStatement,
     // EN: T19-042. A predefined type written as a call argument (`SIZE(int)`, `CAST(x, long*)`); typeSyntax() is the
     //     type. Only a C function-like macro accepts it: it passes the C spelling of the type.
     // ES: T19-042. Un tipo predefinido escrito como argumento de llamada (`SIZE(int)`, `CAST(x, long*)`); typeSyntax()

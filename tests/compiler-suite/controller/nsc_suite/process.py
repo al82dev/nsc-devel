@@ -25,7 +25,6 @@ SEMVER = re.compile(
 IDENTITY_FIELDS = (
     "compiler_version",
     "compiler_release",
-    "language",
     "stage",
     "build",
 )
@@ -121,7 +120,6 @@ class CompilerIdentityExecutor:
             )
             actual = {
                 "compiler_release": primary.get("compiler_release"),
-                "language": primary.get("language"),
                 "previous_release": matrix.get("compiler.N-1"),
                 "stage": primary.get("stage"),
             }

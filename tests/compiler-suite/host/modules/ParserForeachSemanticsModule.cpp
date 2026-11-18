@@ -107,9 +107,9 @@ void testSpanCandidate(TestContext& context)
     AstNode* const node = fixture.parser().parseStatement();
     const AstNode* const candidate =
         node != nullptr && node->children().size() >= 2 ? node->children()[1] : nullptr;
-    // EN: Freeze 3.0 P4 (plan item 138): the element place is RefAt(index), so a span over an array reads
+    // EN: Freeze P4 (plan item 138): the element place is RefAt(index), so a span over an array reads
     //     through its liveness map.
-    // ES: Congelamiento 3.0 P4 (elemento 138 del plan): el lugar del elemento es RefAt(index), asi un span sobre
+    // ES: Congelamiento P4 (elemento 138 del plan): el lugar del elemento es RefAt(index), asi un span sobre
     //     un arreglo lee a traves de su mapa de vida.
     context.expect(candidate != nullptr && countText(candidate, "Length") == 1 &&
             countText(candidate, "RefAt") == 1 && countText(candidate, "Data") == 0 &&

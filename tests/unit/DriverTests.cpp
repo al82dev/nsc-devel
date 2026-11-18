@@ -54,7 +54,7 @@ int main()
         std::ostringstream error;
         const ExitCode code = runDriver({}, output, error);
         tests.expect(code == ExitCode::Success, "empty command line prints help successfully");
-        const std::string helpText = "NativeSharp Compiler 3.0.0 (nsc)";
+        const std::string helpText = "NativeSharp Compiler 1.0.0 (nsc)";
         tests.expect(
             output.str().find(helpText) != std::string::npos,
             "help text is written to stdout");
@@ -89,7 +89,7 @@ int main()
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::Success,
             "Spanish help selection succeeds");
-        tests.expect(output.str().find("Compilador NativeSharp 3.0.0 (nsc)") != std::string::npos &&
+        tests.expect(output.str().find("Compilador NativeSharp 1.0.0 (nsc)") != std::string::npos &&
                 output.str().find("Uso:") != std::string::npos &&
                 output.str().find("Hash de compilación: ") != std::string::npos,
             "Spanish help uses the localized compiler identity and heading");
@@ -576,6 +576,97 @@ int main()
         tests.expect(error.str().empty(), "valid Stage 27 method-body dump keeps stderr empty");
     }
 
+    const std::filesystem::path warningProjectDirectory =
+        std::filesystem::temp_directory_path() / "nativesharp_driver_warning_project";
+    std::filesystem::remove_all(warningProjectDirectory, projectCleanupError);
+    std::filesystem::create_directories(warningProjectDirectory);
+    const auto warningSource = warningProjectDirectory / "Warning.ns";
+    const auto warningProject = warningProjectDirectory / "Warning.nsproj";
+    writeFile(warningProject, "<Project><PropertyGroup><Name>Warning</Name></PropertyGroup></Project>\n");
+    const std::string warningBody =
+        "class Program { public static int Main() { for (int i = 0; i < 2; i++) "
+        "{ int* data = stackalloc int[4]; } ";
+    writeFile(warningSource, warningBody + "return 0; } }\n");
+    {
+        std::ostringstream output, error;
+        const std::string path = warningProject.string();
+        const ExitCode code = runDriver({"--check-project-method-bodies", path}, output, error);
+        tests.expect(code == ExitCode::Success && error.str().find("warning: stackalloc inside a loop") != std::string::npos,
+            "project check reports a warning without failing");
+    }
+    {
+        std::ostringstream output, error;
+        const std::string path = warningSource.string();
+        const ExitCode code = runDriver({"--check", path}, output, error);
+        tests.expect(code == ExitCode::Success && error.str().find("warning: stackalloc inside a loop") != std::string::npos,
+            "single-file check reports a warning without failing");
+    }
+    {
+        std::ostringstream output, error;
+        const std::string path = warningSource.string();
+        const std::string object = (warningProjectDirectory / "warning.obj").string();
+        const ExitCode code = runDriver({"--emit-obj", path, "-o", object}, output, error);
+        tests.expect(code == ExitCode::Success && error.str().find("warning: stackalloc inside a loop") != std::string::npos,
+            "single-file object emission reports a warning without failing");
+    }
+    writeFile(warningSource, warningBody + "return unknownName; } }\n");
+    {
+        std::ostringstream output, error;
+        const std::string path = warningProject.string();
+        const ExitCode code = runDriver({"--check-project-method-bodies", path}, output, error);
+        tests.expect(code == ExitCode::CompilationError &&
+                error.str().find("warning: stackalloc inside a loop") != std::string::npos &&
+                error.str().find("unknown identifier") != std::string::npos,
+            "project check reports both the warning and the error");
+    }
+
+    const std::filesystem::path namedPassDirectory =
+        std::filesystem::temp_directory_path() / "nativesharp_driver_named_pass_project";
+    std::filesystem::remove_all(namedPassDirectory, projectCleanupError);
+    std::filesystem::create_directories(namedPassDirectory);
+    const auto namedPassProject = namedPassDirectory / "NamedPass.nsproj";
+    writeFile(namedPassProject, "<Project><PropertyGroup><Name>NamedPass</Name></PropertyGroup></Project>\n");
+    const std::string namedPrefix =
+        "class Program { static int F(ref int first, int second) { return first + second; } "
+        "public static int Main() { int value = 1; return ";
+    writeFile(namedPassDirectory / "Main.ns", namedPrefix + "F(second: 2, first: value); } }");
+    {
+        std::ostringstream output, error;
+        const std::string path = namedPassProject.string();
+        const ExitCode code = runDriver({"--check-project-method-bodies", path}, output, error);
+        tests.expect(code == ExitCode::CompilationError &&
+                error.str().find("argument 2 of 'F' must be passed with 'ref'") != std::string::npos &&
+                error.str().find("argument 1 of 'F'") == std::string::npos,
+            "reordered named call identifies the source argument missing ref");
+    }
+    writeFile(namedPassDirectory / "Main.ns", namedPrefix + "F(second: 2, first: ref value); } }");
+    {
+        std::ostringstream output, error;
+        const std::string path = namedPassProject.string();
+        tests.expect(runDriver({"--check-project-method-bodies", path}, output, error) == ExitCode::Success,
+            "reordered named call with ref remains valid");
+    }
+
+    const std::filesystem::path namedOwnedDirectory =
+        std::filesystem::temp_directory_path() / "nativesharp_driver_named_owned_project";
+    std::filesystem::remove_all(namedOwnedDirectory, projectCleanupError);
+    std::filesystem::create_directories(namedOwnedDirectory);
+    const auto namedOwnedProject = namedOwnedDirectory / "NamedOwned.nsproj";
+    writeFile(namedOwnedProject, "<Project><PropertyGroup><Name>NamedOwned</Name></PropertyGroup></Project>\n");
+    writeFile(namedOwnedDirectory / "Main.ns",
+        "class Payload {} class Program { static void F(owned Payload first, Payload second) {} "
+        "public static int Main() { raii Payload a = new Payload(); raii Payload b = new Payload(); "
+        "F(second: b, first: a); return 0; } }");
+    {
+        std::ostringstream output, error;
+        const std::string path = namedOwnedProject.string();
+        const ExitCode code = runDriver({"--check-project-method-bodies", path}, output, error);
+        tests.expect(code == ExitCode::CompilationError &&
+                error.str().find("cannot copy owned value 'a' into owned parameter") != std::string::npos &&
+                error.str().find("cannot copy owned value 'b'") == std::string::npos,
+            "reordered named call diagnoses the actual owned argument");
+    }
+
     const std::filesystem::path constructionProjectDirectory =
         std::filesystem::temp_directory_path() / "nativesharp_driver_stage28_construction_project";
     std::filesystem::remove_all(constructionProjectDirectory, projectCleanupError);
@@ -934,9 +1025,9 @@ int main()
         const std::string path = classOnlyPath.string();
         const std::vector<std::string_view> arguments = {"--check", path};
         const ExitCode code = runDriver(arguments, output, error);
-        // EN: Freeze 3.0 C-05: a source file compiles as its implicit project, so classes reach
+        // EN: Freeze C-05: a source file compiles as its implicit project, so classes reach
         //     the same 3.x pipeline a project uses.
-        // ES: Congelamiento 3.0 C-05: un archivo fuente compila como su proyecto implicito, asi que
+        // ES: Congelamiento C-05: un archivo fuente compila como su proyecto implicito, asi que
         //     las clases llegan al mismo pipeline 3.x que usa un proyecto.
         tests.expect(code == ExitCode::Success,
             "--check compiles a class-only source file through its implicit project");
@@ -1382,6 +1473,9 @@ int main()
     std::filesystem::remove_all(projectDirectory, projectCleanupError);
     std::filesystem::remove_all(partialProjectDirectory, projectCleanupError);
     std::filesystem::remove_all(methodBodyProjectDirectory, projectCleanupError);
+    std::filesystem::remove_all(warningProjectDirectory, projectCleanupError);
+    std::filesystem::remove_all(namedPassDirectory, projectCleanupError);
+    std::filesystem::remove_all(namedOwnedDirectory, projectCleanupError);
     std::filesystem::remove_all(constructionProjectDirectory, projectCleanupError);
     std::filesystem::remove_all(layoutProjectDirectory, projectCleanupError);
     std::filesystem::remove_all(oopProjectDirectory, projectCleanupError);

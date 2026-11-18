@@ -19,8 +19,8 @@ Estado: terminado.
 - `src/Language/ExpressionErgonomics.cpp`
 - `src/Parser/Parser.cpp`
 - `src/Frontend/ProjectMethodBodyModel.cpp`
-- `tests/unit/NativeSharp3T01ExpressionTests.cpp`
-- `tests/unit/NativeSharp3T01StaticInterpolationTests.cpp` (nuevo)
+- `tests/unit/NativeSharpT01ExpressionTests.cpp`
+- `tests/unit/NativeSharpT01StaticInterpolationTests.cpp` (nuevo)
 - `CMakeLists.txt`
 - `docs/3.0/language/static-interpolation.md` (nuevo, ES/EN)
 - `docs/3.0/TANDA-OPERATIVA-06-T01-NULL-RANGE-INTERPOLATION-WITH.md`

@@ -1,0 +1,6 @@
+int Main()
+{
+    mask<float, 8> predicate = default(mask<float, 8>);
+    simd<uint, 8> lanes = (simd<uint, 8>)predicate;
+    return 0;
+}

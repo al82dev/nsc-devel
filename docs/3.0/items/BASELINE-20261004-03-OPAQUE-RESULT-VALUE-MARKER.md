@@ -1,3 +1,5 @@
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
 # Baseline 2026-10-04: marcador de valor para `some Trait`
 
 ## Problema
@@ -12,7 +14,7 @@ generado por el propio compilador.
 - `ProjectOpaqueResultModel` conserva `opaque-result` como prefijo contractual y añade
   `ns3-value` al wrapper sintético.
 - El factory generado continúa transfiriendo el wrapper mediante `move(...)`; ahora el modelo de
-  miembros y el de cuerpos coinciden en que se trata de un valor move-only de edition 3.
+  miembros y el de cuerpos coinciden en que se trata de un valor move-only de NativeSharp.
 
 ## Archivos
 

@@ -176,7 +176,7 @@ bool ProjectOopMirModel::appendTupleLayout(
     if (!elements.has_value() || !layout.has_value() ||
         elements->size() != layout->offsets.size())
     {
-        error = "NativeSharp 3.0 tuple has no deterministic physical layout: " + key;
+        error = "NativeSharp tuple has no deterministic physical layout: " + key;
         return false;
     }
     std::vector<ObjectFieldLayout> fields;
@@ -187,7 +187,7 @@ bool ProjectOopMirModel::appendTupleLayout(
             nameLookup, (*elements)[index]);
         if (!elementLayout.has_value())
         {
-            error = "NativeSharp 3.0 tuple element has no physical layout: " + (*elements)[index];
+            error = "NativeSharp tuple element has no physical layout: " + (*elements)[index];
             return false;
         }
         fields.push_back(ObjectFieldLayout{
@@ -220,6 +220,23 @@ bool ProjectOopMirModel::importTupleLayouts(
     // HIR (including nested element tuples), sort the keys for reproducible dumps, and publish
     // synthetic physical layouts in the ordinary struct-layout catalogue.
     std::vector<std::string> tupleKeys;
+    // Static fields are emitted even when no function mentions their types. Open generic
+    // fields without a concrete layout remain deferred until their type is specialized.
+    for (const ClassMemberSymbol& field : memberModel.members())
+    {
+        if (field.kind == ClassMemberKind::Field && field.isStatic &&
+            ProjectTypeConversion::isTuple(field.declaredTypeKey) &&
+            objectLayoutModel.tupleLayoutForTypeKey(nameLookup, field.declaredTypeKey).has_value())
+            collectTupleTypeKey(field.declaredTypeKey, tupleKeys);
+    }
+    for (const NamespaceStateDeclaration& state : nameLookup.namespaceStates())
+    {
+        if (state.syntax == nullptr || state.syntax->typeSyntax() == nullptr) continue;
+        const std::string key = memberModel.canonicalTypeKey(state.syntax->typeSyntax(), nameLookup);
+        if (ProjectTypeConversion::isTuple(key) &&
+            objectLayoutModel.tupleLayoutForTypeKey(nameLookup, key).has_value())
+            collectTupleTypeKey(key, tupleKeys);
+    }
     for (const ProjectOopHirFunction& function : hirModel.functions())
     {
         collectTupleTypeKey(function.returnTypeKey, tupleKeys);
@@ -312,10 +329,10 @@ bool ProjectOopMirModel::appendFutureLayout(
     const std::uint64_t errorEnd = errorInner.has_value() && errorLayout->first > 0
         ? errorOffset + errorLayout->first
         : pollFnOffset + pollFnSize;
-    // EN: Freeze 3.0 C-14: the future carries its Drop function pointer (member 5) so a future
+    // EN: Freeze C-14: the future carries its Drop function pointer (member 5) so a future
     //     discarded, overwritten or out of scope before completing releases its frame and the
     //     owned parameters stored in it.
-    // ES: Congelamiento 3.0 C-14: el future lleva su puntero a funcion Drop (miembro 5) para que un
+    // ES: Congelamiento C-14: el future lleva su puntero a funcion Drop (miembro 5) para que un
     //     future descartado, sobrescrito o fuera de scope antes de completar libere su frame y los
     //     parametros owned guardados en el.
     constexpr std::uint64_t dropFnSize = 8;
@@ -369,6 +386,17 @@ bool ProjectOopMirModel::importFutureLayouts(
         for (const std::string& key : function.parameterTypeKeys) collectFutureKey(key);
         for (const std::string& key : function.captureTypeKeys) collectFutureKey(key);
         collectFutureLayoutKeys(function.body.get(), futureKeys);
+    }
+    // A future returned as the result of another future also needs an LLVM
+    // carrier, even when no function exposes the inner future directly.
+    for (std::size_t i = 0; i < futureKeys.size(); ++i)
+    {
+        const auto inner = language::futureInnerTypeKey(futureKeys[i]);
+        if (inner.has_value() && language::futureInnerTypeKey(*inner).has_value())
+        {
+            std::string nested(*inner);
+            futureKeys.push_back(std::move(nested));
+        }
     }
     std::ranges::sort(futureKeys);
     futureKeys.erase(std::unique(futureKeys.begin(), futureKeys.end()), futureKeys.end());

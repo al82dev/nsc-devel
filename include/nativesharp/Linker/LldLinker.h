@@ -18,6 +18,24 @@ public:
 
     static std::unique_ptr<LldLinker> discover(std::string& error);
     static std::unique_ptr<LldLinker> discoverSelected(std::string_view selection, std::string& error);
+    static bool validateAddressSanitizerRuntime(
+        const std::filesystem::path& clang,
+        const std::filesystem::path& runtime,
+        std::string& error);
+
+    // Clang supplies its matching ASan runtime and CRT startup for explicitly sanitized builds.
+    static bool linkAddressSanitizedExecutable(
+        const std::filesystem::path& clang,
+        std::span<const std::filesystem::path> objectFiles,
+        std::span<const std::filesystem::path> libraries,
+        const std::filesystem::path& outputPath,
+        std::string& error);
+
+    // Writes a separate runtime copy whose heap calls reach the ASan adapter.
+    static bool adaptAddressSanitizerRuntime(
+        const std::filesystem::path& input,
+        const std::filesystem::path& output,
+        std::string& error);
 
     const std::filesystem::path& executablePath() const noexcept;
     std::filesystem::path librarianExecutablePath() const;

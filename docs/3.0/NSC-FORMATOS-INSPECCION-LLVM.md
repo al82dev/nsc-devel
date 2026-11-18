@@ -1,4 +1,6 @@
-# Formatos de inspección LLVM de un archivo fuente (NativeSharp 3.0)
+# Formatos de inspección LLVM de un archivo fuente (NativeSharp)
+
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
 
 Versión de este documento: 1 (2026-10-26). Origen: decisión DEC-05 del congelamiento 3.0.
 

@@ -127,12 +127,48 @@ int main()
                      !restoredType->modifiers()[1].importedCRestrict,
                      "syntax serialization preserves volatile pointee and restrict on the correct pointer level");
     }
+    const std::string oldPrefix = "ns" + std::to_string(7) + "-";
+    struct MarkerCase { ast::AstNodeKind kind; std::string input; std::string expected; };
+    const std::vector<MarkerCase> markerCases = {
+        {ast::AstNodeKind::InterfaceDeclaration, oldPrefix + "trait", "nsc-trait"},
+        {ast::AstNodeKind::ClassDeclaration, oldPrefix + "trait-impl", "nsc-trait-impl"},
+        {ast::AstNodeKind::FunctionDeclaration, "stage;nsc-meta:" + oldPrefix + "extension", "stage;nsc-meta:nsc-extension"},
+        {ast::AstNodeKind::MethodDeclaration, "other|" + oldPrefix + "extension-static", "other|nsc-extension-static"},
+        {ast::AstNodeKind::InterfaceDeclaration, oldPrefix + "trait|" + oldPrefix + "trait", "nsc-trait|nsc-trait"},
+        {ast::AstNodeKind::InterfaceDeclaration, "nsc-trait", "nsc-trait"},
+        {ast::AstNodeKind::InterfaceDeclaration, oldPrefix + "traitor", oldPrefix + "traitor"},
+        {ast::AstNodeKind::MethodDeclaration, oldPrefix + "extension-static-extra", oldPrefix + "extension-static-extra"},
+        {ast::AstNodeKind::InterfaceDeclaration, "prefix" + oldPrefix + "trait", "prefix" + oldPrefix + "trait"},
+        {ast::AstNodeKind::IdentifierExpression, oldPrefix + "trait", oldPrefix + "trait"},
+        {ast::AstNodeKind::FunctionDeclaration, oldPrefix + "trait", oldPrefix + "trait"},
+    };
+    for (const auto& [kind, input, expected] : markerCases)
+    {
+        ast::AstNode node(kind, {});
+        node.setAuxiliaryText(input);
+        const std::string serialized = frontend::internal::serializeAstNodeTree(&node);
+        frontend::internal::CachePayloadReader reader(serialized);
+        ast::AstArena restoredArena;
+        const ast::AstNode* restored =
+            frontend::internal::deserializeAstNodeTree(restoredArena, reader);
+        tests.expect(restored != nullptr && restored->auxiliaryText() == expected &&
+                reader.remaining().empty(),
+            "cached syntax normalizes known historical markers without changing other text");
+    }
     const std::filesystem::path sourceRoot(NSC_SOURCE_DIR);
     std::size_t compared = 0;
     std::vector<std::string> mismatches;
     std::vector<std::string> openIndexes;
     std::vector<std::string> digests;
-    for (const std::filesystem::path& file : sourceFiles(sourceRoot / "lib"))
+    // EN: The library corpus is the compiler's own lib/ plus the standard libraries, which live in NativeSharp
+    //     Libraries since they left lib/.
+    // ES: El corpus de bibliotecas es el lib/ propio del compilador mas las bibliotecas estandar, que viven en
+    //     NativeSharp Libraries desde que salieron de lib/.
+    std::vector<std::filesystem::path> corpus = sourceFiles(sourceRoot / "lib");
+    const std::vector<std::filesystem::path> standard =
+        sourceFiles(std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib");
+    corpus.insert(corpus.end(), standard.begin(), standard.end());
+    for (const std::filesystem::path& file : corpus)
     {
         source::SourceManager sources;
         ast::AstArena arena;

@@ -1,0 +1,10 @@
+struct Box<T> { public T Value; public int Count; }
+int Main()
+{
+    Box<int> value = default(Box<int>);
+    value.Value = 7;
+    value.Count = 3;
+    int sum = 0;
+    static foreach (field in Fields(Box<int>)) { sum = sum + field.Get(value); }
+    return sum == 10 ? 0 : 1;
+}

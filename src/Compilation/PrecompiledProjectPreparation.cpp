@@ -1,20 +1,29 @@
 #include "nativesharp/Compilation/PrecompiledProjectPreparation.h"
 
+#include "Internal/StandardPackageLookup.h"
+
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Basic/Version.h"
 #include "nativesharp/Compilation/PrecompiledProductCache.h"
 #include "nativesharp/Compilation/PrecompiledProductSidecarCodec.h"
 #include "nativesharp/Compilation/PrecompiledProductSidecarPath.h"
+#include "nativesharp/Frontend/PrecompiledTemplateSources.h"
 
 #include "PrecompiledSurfaceReachability.h"
 
 #include "../Driver/Internal/DriverInternal.h"
+#if defined(_WIN32)
+#include "../Driver/ProductContractLock.h"
+#endif
 #include "../Frontend/Cache/SyntaxProductCacheCodec.h"
 
+#include <algorithm>
 #include <memory>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string_view>
+#include <unordered_set>
 
 namespace nativesharp::compilation
 {
@@ -125,6 +134,13 @@ bool publishedSyntaxProductIsValid(
     std::string_view sourceText,
     std::string_view syntaxProduct)
 {
+    if (frontend::isPrecompiledTemplateFrame(sourceText))
+    {
+        std::vector<std::string> units;
+        std::string error;
+        return syntaxProduct.empty() &&
+            frontend::decodePrecompiledTemplateSources(sourceText, units, error);
+    }
     if (syntaxProduct.empty()) return sourceText.empty();
     source::SourceFile sourceFile(
         FileId{1U}, std::filesystem::path{}, std::string(sourceText));
@@ -230,7 +246,14 @@ std::vector<frontend::PrecompiledMemberIdentity> memberIdentities(
             member.name,
             member.signatureKey,
             member.mangledName,
-            std::move(summary)});
+            std::move(summary),
+            member.kind == static_cast<std::uint8_t>(frontend::ClassMemberKind::Method) &&
+                (member.flags & interop::kMetadataOperatorInOperandsNoEscape) != 0U,
+            member.kind == static_cast<std::uint8_t>(frontend::ClassMemberKind::Method) &&
+                (member.flags & interop::kMetadataMemberReceiverNoReferenceFieldEffects) != 0U,
+            member.kind == static_cast<std::uint8_t>(frontend::ClassMemberKind::Method) &&
+                (member.flags & interop::kMetadataMemberVerifiedNoEscapeOut) != 0U,
+            member.pointerOutputObjectOrigins});
     }
     return result;
 }
@@ -386,6 +409,207 @@ bool materializePrunedProducts(
     return true;
 }
 
+std::vector<frontend::PrecompiledFieldCertificate> makeFieldCertificates(
+    const interop::LibraryMetadata& full, const interop::LibraryMetadata& surface,
+    const std::unordered_map<std::string, const interop::LibraryMetadataType*>& fullTypes,
+    const std::unordered_map<std::string, const interop::LibraryMetadata*>& fullModules)
+{
+    std::vector<frontend::PrecompiledFieldCertificate> result;
+    std::unordered_map<std::string, const interop::LibraryMetadataType*> retainedTypes;
+    for (const auto& type : surface.types)
+        if (!retainedTypes.emplace(type.identityKey, &type).second) retainedTypes[type.identityKey] = nullptr;
+    const auto indexMembers = [](const interop::LibraryMetadata& metadata) {
+        std::unordered_map<std::string, const interop::LibraryMetadataMember*> result;
+        for (const auto& member : metadata.members)
+        {
+            if (member.kind != 0 || (member.flags & 1U) != 0) continue;
+            const std::string key = member.declaringTypeKey + "\n" + member.name;
+            if (!result.emplace(key, &member).second) result[key] = nullptr;
+        }
+        return result;
+    };
+    const auto fullMembers = indexMembers(full);
+    const auto surfaceMembers = indexMembers(surface);
+    for (const interop::LibraryMetadataType& type : full.types)
+    {
+        if ((type.kind != interop::LibraryMetadataTypeKind::Struct &&
+             type.kind != interop::LibraryMetadataTypeKind::Class) ||
+            !type.interfaceTypeKeys.empty() ||
+            (type.kind == interop::LibraryMetadataTypeKind::Struct && !type.baseTypeKey.empty())) continue;
+        const auto foundType = retainedTypes.find(type.identityKey);
+        if (foundType == retainedTypes.end() || foundType->second == nullptr) continue;
+        const auto* retained = foundType->second;
+        if (retained->kind != type.kind || retained->fields.size() != type.fields.size() ||
+            retained->baseTypeKey != type.baseTypeKey || retained->size != type.size ||
+            retained->interfaceTypeKeys != type.interfaceTypeKeys ||
+            retained->alignment != type.alignment || retained->headerSize != type.headerSize ||
+            retained->referenceSize != type.referenceSize || retained->referenceAlignment != type.referenceAlignment)
+            continue;
+        const std::string owner = "type:" + type.identityKey;
+        frontend::PrecompiledFieldCertificate certificate;
+        certificate.typeIdentity = type.identityKey;
+        certificate.isClass = type.kind == interop::LibraryMetadataTypeKind::Class;
+        if (certificate.isClass)
+        {
+            certificate.classSize = type.size;
+            certificate.classAlignment = type.alignment;
+            if (!type.baseTypeKey.empty())
+            {
+                if (!type.baseTypeKey.starts_with("type:")) continue;
+                certificate.baseTypeIdentity = type.baseTypeKey.substr(5);
+                const auto base = fullTypes.find(certificate.baseTypeIdentity);
+                if (base == fullTypes.end() || base->second == nullptr ||
+                    base->second->kind != interop::LibraryMetadataTypeKind::Class) continue;
+                const std::size_t separator = certificate.baseTypeIdentity.find("::");
+                if (separator == std::string::npos) continue;
+                const std::string moduleName = certificate.baseTypeIdentity.substr(0, separator);
+                if (moduleName != full.moduleName)
+                {
+                    const auto baseModule = fullModules.find(moduleName);
+                    if (baseModule == fullModules.end() || baseModule->second == nullptr ||
+                        base->second->accessibility != 3U) continue;
+                    std::size_t matches = 0;
+                    for (const auto& dependency : full.binaryDependencies)
+                        if (dependency.moduleName == moduleName &&
+                            dependency.abiFingerprint == baseModule->second->abiFingerprint) ++matches;
+                    if (matches != 1) continue;
+                }
+                certificate.baseSize = base->second->size;
+                certificate.baseAlignment = base->second->alignment;
+            }
+        }
+        bool valid = true;
+        for (std::size_t index = 0; index < type.fields.size(); ++index)
+        {
+            const auto& original = type.fields[index];
+            const auto& copy = retained->fields[index];
+            if ((original.flags != 0U && original.flags != 1024U) ||
+                original.ownership != interop::LibraryMetadataOwnershipKind::None ||
+                !original.lifetimeName.empty() ||
+                (original.typeKey.rfind("builtin:", 0) != 0 && original.typeKey.rfind("type:", 0) != 0) ||
+                original.name.empty() || original.name != copy.name || original.typeKey != copy.typeKey ||
+                original.flags != copy.flags || original.ownership != copy.ownership ||
+                original.lifetimeName != copy.lifetimeName || original.offset != copy.offset ||
+                original.size != copy.size || original.alignment != copy.alignment ||
+                original.bitOffset != copy.bitOffset || original.bitWidth != copy.bitWidth)
+            { valid = false; break; }
+            const std::string memberKey = owner + "\n" + original.name;
+            const auto fullMember = fullMembers.find(memberKey);
+            const auto surfaceMember = surfaceMembers.find(memberKey);
+            if ((fullMember != fullMembers.end() && fullMember->second == nullptr) ||
+                (surfaceMember != surfaceMembers.end() && surfaceMember->second == nullptr))
+            { valid = false; break; }
+            const auto* originalMember = fullMember != fullMembers.end() ? fullMember->second : nullptr;
+            const auto* retainedMember = surfaceMember != surfaceMembers.end() ? surfaceMember->second : nullptr;
+            if (!valid || (originalMember == nullptr) != (retainedMember == nullptr) ||
+                (originalMember != nullptr && (originalMember->accessibility != retainedMember->accessibility ||
+                 originalMember->flags != retainedMember->flags ||
+                 originalMember->declaredTypeKey != retainedMember->declaredTypeKey ||
+                 originalMember->declaredTypeKey != original.typeKey)))
+            { valid = false; break; }
+            certificate.fields.push_back({original.name, original.typeKey, original.flags,
+                originalMember != nullptr && originalMember->accessibility == 3U,
+                originalMember != nullptr && originalMember->accessibility == 1U,
+                originalMember != nullptr,
+                original.offset, original.size, original.alignment});
+        }
+        if (valid && certificate.isClass)
+        {
+            // A class surface cannot express explicit offsets. Accept only a
+            // simple natural layout that reconstruction can reproduce.
+            std::uint64_t offset = certificate.baseTypeIdentity.empty() ? type.headerSize : certificate.baseSize;
+            std::uint64_t alignment = certificate.baseTypeIdentity.empty() ? type.referenceAlignment : certificate.baseAlignment;
+            if (type.headerSize != type.referenceSize || type.referenceSize != 8U ||
+                type.referenceAlignment != 8U || alignment == 0 || (alignment & (alignment - 1U)) != 0)
+                valid = false;
+            for (const auto& field : type.fields)
+            {
+                const std::uint64_t naturalSize = field.typeKey == "builtin:int" ? 4U :
+                    field.typeKey == "builtin:long" ? 8U : 0U;
+                const std::uint64_t a = field.alignment;
+                if (!valid || naturalSize == 0 || field.size != naturalSize || a < naturalSize ||
+                    (a & (a - 1U)) != 0 || offset > std::numeric_limits<std::uint64_t>::max() - (a - 1U))
+                { valid = false; break; }
+                offset = (offset + a - 1U) & ~(a - 1U);
+                if (offset != field.offset || offset > std::numeric_limits<std::uint64_t>::max() - field.size)
+                { valid = false; break; }
+                offset += field.size;
+                alignment = std::max(alignment, a);
+            }
+            if (valid && (alignment == 0 || offset > std::numeric_limits<std::uint64_t>::max() - (alignment - 1U) ||
+                ((offset + alignment - 1U) & ~(alignment - 1U)) != type.size || type.alignment != alignment))
+                valid = false;
+        }
+        if (valid) result.push_back(std::move(certificate));
+    }
+    return result;
+}
+
+std::vector<frontend::PrecompiledTemplateFieldCertificate> makeTemplateFieldCertificates(
+    const interop::LibraryMetadata& full, const interop::LibraryMetadata& surface)
+{
+    std::unordered_map<std::string, const interop::LibraryMetadataGenericTemplate*> retained;
+    for (const auto& item : surface.genericTemplates)
+        if (!retained.emplace(item.canonicalKey, &item).second) retained[item.canonicalKey] = nullptr;
+    std::unordered_set<std::string> seen;
+    std::vector<frontend::PrecompiledTemplateFieldCertificate> result;
+    for (const auto& item : full.genericTemplates)
+    {
+        if (!seen.insert(item.canonicalKey).second) return {};
+        const auto found = retained.find(item.canonicalKey);
+        if (found == retained.end() || found->second == nullptr) continue;
+        const auto& copy = *found->second;
+        if (item.kind > 1U || item.sourceText.empty() || !item.ownerName.empty() ||
+            item.moduleName != full.moduleName || item.kind != copy.kind ||
+            item.accessibility != copy.accessibility || item.namespaceName != copy.namespaceName ||
+            item.ownerName != copy.ownerName || item.name != copy.name ||
+            item.parameters != copy.parameters || item.sourceText != copy.sourceText) continue;
+        result.push_back({item.canonicalKey, item.sourceText});
+    }
+    return result;
+}
+
+void closeFieldCertificateChains(std::vector<frontend::PrecompiledSyntaxModule>& modules)
+{
+    std::unordered_map<std::string, const frontend::PrecompiledFieldCertificate*> byIdentity;
+    for (const auto& module : modules)
+        for (const auto& certificate : module.fieldCertificates)
+            if (!byIdentity.emplace(certificate.typeIdentity, &certificate).second)
+                byIdentity[certificate.typeIdentity] = nullptr;
+    // 1 = visiting, 2 = complete, 3 = rejected. Memoization keeps shared
+    // tails linear; a cycle, missing/duplicate base, or excessive chain fails closed.
+    std::unordered_map<std::string, unsigned char> status;
+    for (const auto& [identity, ignored] : byIdentity)
+    {
+        (void)ignored;
+        if (status[identity] != 0) continue;
+        std::vector<std::string> path;
+        std::string current = identity;
+        bool valid = false;
+        for (;;)
+        {
+            const auto found = byIdentity.find(current);
+            if (found == byIdentity.end() || found->second == nullptr || path.size() >= 1024) break;
+            if (status[current] == 2) { valid = true; break; }
+            if (status[current] != 0) break;
+            status[current] = 1;
+            path.push_back(current);
+            const auto& certificate = *found->second;
+            if (certificate.baseTypeIdentity.empty()) { valid = true; break; }
+            const auto base = byIdentity.find(certificate.baseTypeIdentity);
+            if (base == byIdentity.end() || base->second == nullptr || !base->second->isClass ||
+                certificate.baseSize != base->second->classSize ||
+                certificate.baseAlignment != base->second->classAlignment) break;
+            current = certificate.baseTypeIdentity;
+        }
+        for (const std::string& item : path) status[item] = valid ? 2 : 3;
+    }
+    for (auto& module : modules)
+        std::erase_if(module.fieldCertificates, [&](const auto& certificate) {
+            return status[certificate.typeIdentity] != 2;
+        });
+}
+
 bool materializeModules(
     std::vector<LoadedMetadata>& loaded,
     const LibraryMetadataRepository& repository,
@@ -396,6 +620,15 @@ bool materializeModules(
 {
     const std::vector<std::shared_ptr<const interop::LibraryMetadata>> surfaces =
         surfaceMetadata(loaded, demand);
+    std::unordered_map<std::string, const interop::LibraryMetadataType*> fullTypes;
+    std::unordered_map<std::string, const interop::LibraryMetadata*> fullModules;
+    for (const auto& entry : loaded)
+    {
+        if (!fullModules.emplace(entry.metadata->moduleName, entry.metadata.get()).second)
+            fullModules[entry.metadata->moduleName] = nullptr;
+        for (const auto& type : entry.metadata->types)
+            if (!fullTypes.emplace(type.identityKey, &type).second) fullTypes[type.identityKey] = nullptr;
+    }
     modules.reserve(loaded.size());
     for (std::size_t index = 0; index < loaded.size(); ++index)
     {
@@ -436,6 +669,12 @@ bool materializeModules(
         {
             return false;
         }
+        // The certificate is derived from the same verified metadata used to
+        // construct this module. Snapshot installation separately validates
+        // its dependency digests and restored syntax; body analysis checks
+        // the selected declarations against the installed member model.
+        auto fieldCertificates = makeFieldCertificates(*entry.metadata, surface, fullTypes, fullModules);
+        auto templateFieldCertificates = makeTemplateFieldCertificates(*entry.metadata, surface);
         modules.push_back({
             entry.ownerProjectFile,
             entry.metadataPath,
@@ -456,8 +695,38 @@ bool materializeModules(
             std::move(publicApiSnapshot),
             pruned,
             surface.cppCRecordCatalog,
-            surface.formatMinor});
+            entry.metadata->trivialCleanupRootTypeKeys,
+            entry.metadata->nonEscapingLifecycleTypeKeys,
+            entry.metadata->identitySafeLifecycleTypeKeys,
+            std::move(fieldCertificates),
+            std::move(templateFieldCertificates)});
+        // Observational transport only. These records are not consumed by the
+        // frontend: no product lock is retained across analysis/linking yet.
+        if (entry.staticLibrary && !entry.ambiguousLibrary && !entry.libraryPath.empty())
+        {
+            std::filesystem::path receiverPath = entry.libraryPath;
+            receiverPath += ".nsreceiver";
+            const auto contract = frontend::readReceiverContractManifest(receiverPath);
+            std::string ignoredError;
+            const auto* metadataFile = repository.load(entry.metadataPath, ignoredError);
+            if (contract.has_value() && metadataFile != nullptr &&
+                metadataFile->contentDigest() == contract->metadataDigest &&
+                frontend::verifyReceiverManifestPair(contract, entry.libraryPath, entry.metadataPath) ==
+                    frontend::ReceiverManifestPairStatus::MatchedBytes)
+            {
+                std::unordered_set<std::string> types;
+                for (const auto& type : surface.types)
+                    if (type.kind == interop::LibraryMetadataTypeKind::Class) types.insert(type.identityKey);
+                for (const auto& record : contract->records)
+                    if (types.contains(record.identity)) {
+                        modules.back().observedReceiverContracts.push_back(record);
+                        if (entry.receiverContractGuarded)
+                            modules.back().guardedReceiverContracts.push_back(record);
+                    }
+            }
+        }
     }
+    closeFieldCertificateChains(modules);
     return true;
 }
 
@@ -499,7 +768,7 @@ bool loadExplicitMetadata(
             const auto existing = loadedByModule.find(metadata->moduleName);
             if (existing != loadedByModule.end())
             {
-                const LoadedMetadata& prior = loaded[existing->second];
+                LoadedMetadata& prior = loaded[existing->second];
                 if (prior.metadata->abiFingerprint != metadata->abiFingerprint ||
                     driver::foldedPathKey(prior.metadataPath) !=
                         driver::foldedPathKey(reference.metadataPath))
@@ -510,6 +779,8 @@ bool loadExplicitMetadata(
                         reference.metadataPath.generic_string() + "'";
                     return false;
                 }
+                if (driver::foldedPathKey(prior.libraryPath) != driver::foldedPathKey(reference.libraryPath) ||
+                    prior.staticLibrary != reference.runtimePath.empty()) prior.ambiguousLibrary = true;
                 continue;
             }
             loadedByModule.emplace(metadata->moduleName, loaded.size());
@@ -517,7 +788,9 @@ bool loadExplicitMetadata(
                 project.projectFile(),
                 reference.metadataPath,
                 std::move(metadata),
-                reference.productSidecarPath});
+                reference.productSidecarPath,
+                reference.libraryPath,
+                reference.runtimePath.empty()});
         }
     }
     return true;
@@ -577,11 +850,30 @@ bool resolveBinaryReference(
         resolved = std::move(candidate);
         return true;
     }
+    std::string packageError;
+    const auto packageLibrary = standardPackageArtifact(dependency.libraryFileName, loadOptions, packageError);
+    if (!packageError.empty()) { error = std::move(packageError); return false; }
+    const auto packageMetadata = standardPackageArtifact(dependency.metadataFileName, loadOptions, packageError);
+    if (!packageError.empty()) { error = std::move(packageError); return false; }
+    if (packageLibrary.has_value() && packageMetadata.has_value() &&
+        packageLibrary->parent_path() == packageMetadata->parent_path())
+    {
+        const auto runtime = dependency.runtimeFileName.empty()
+            ? std::filesystem::path{}
+            : packageLibrary->parent_path() / dependency.runtimeFileName;
+        std::error_code fileError;
+        if (runtime.empty() || std::filesystem::is_regular_file(runtime, fileError))
+        {
+            resolved = {*packageLibrary, *packageMetadata, runtime,
+                        availablePrecompiledProductSidecarPath(*packageMetadata)};
+            return true;
+        }
+    }
     error = "binary closure for module '" + parentModule +
         "' cannot resolve dependency '" + dependency.moduleName +
         "' (expected " + dependency.libraryFileName + " + " +
         dependency.metadataFileName +
-        ") beside metadata or under LibraryReferenceRoot";
+        ") beside metadata, under LibraryReferenceRoot, or in the standard packages";
     return false;
 }
 
@@ -669,13 +961,21 @@ bool appendResolvedBinaryDependency(
             childMetadata->moduleName + "'";
         return false;
     }
-    if (existing != loadedByModule.end()) return true;
+    if (existing != loadedByModule.end())
+    {
+        LoadedMetadata& prior = loaded[existing->second];
+        if (driver::foldedPathKey(prior.libraryPath) != driver::foldedPathKey(resolved.libraryPath) ||
+            prior.staticLibrary != resolved.runtimePath.empty()) prior.ambiguousLibrary = true;
+        return true;
+    }
     loadedByModule.emplace(childMetadata->moduleName, loaded.size());
     loaded.push_back({
         parentOwner,
         resolved.metadataPath,
         std::move(childMetadata),
-        resolved.productSidecarPath});
+        resolved.productSidecarPath,
+        resolved.libraryPath,
+        resolved.runtimePath.empty()});
     discoveredByOwner[driver::foldedPathKey(parentOwner)].push_back(
         std::move(resolved));
     return true;
@@ -829,6 +1129,77 @@ bool applyGraphClosure(
     return driver::validatePrecompiledExternalTypeClosure(
         loaded, sourceProjects, error);
 }
+
+// Called before the bundle lookup. A missing/unavailable lock is Unknown; the
+// identity records that fact separately from a guarded product even if the
+// sidecar happens to appear concurrently during input hashing.
+void guardReceiverProducts(std::vector<LoadedMetadata>& loaded, frontend::ProjectCompilation& compilation)
+{
+    std::string identity;
+    for (auto& entry : loaded)
+    {
+        std::string guardedContractDigest;
+        std::string guardedLibraryDigest;
+        std::string guardedMetadataDigest;
+        std::string guardedThinLtoDigest;
+#if defined(_WIN32)
+        if (entry.staticLibrary && !entry.ambiguousLibrary && !entry.libraryPath.empty())
+        {
+            std::filesystem::path receiverPath = entry.libraryPath;
+            receiverPath += ".nsreceiver";
+            std::error_code ec;
+            if (std::filesystem::is_regular_file(receiverPath, ec) && !ec)
+            {
+                auto guard = std::make_shared<contract_lock_prototype::ProductLock>();
+                if (guard->acquireReader(entry.libraryPath))
+                {
+                    auto artifacts = std::make_shared<contract_lock_prototype::ProductArtifactGuard>();
+                    std::vector<std::filesystem::path> artifactPaths{entry.libraryPath, entry.metadataPath, receiverPath};
+                    std::filesystem::path thinSidecar = entry.libraryPath;
+                    thinSidecar.replace_extension(".nsthinlto");
+                    if (compilation.receiverRequiresThinLtoSidecar()) artifactPaths.push_back(thinSidecar);
+                    if (artifacts->acquire(artifactPaths))
+                    {
+                        const auto contract = frontend::readReceiverContractManifest(receiverPath);
+                        std::string ignoredError;
+                        const auto* metadata = compilation.libraryMetadataRepository().load(entry.metadataPath, ignoredError);
+                        if (contract.has_value() && metadata != nullptr &&
+                            metadata->contentDigest() == contract->metadataDigest &&
+                            frontend::verifyReceiverManifestPair(contract, entry.libraryPath, entry.metadataPath) ==
+                                frontend::ReceiverManifestPairStatus::MatchedBytes)
+                        {
+                            basic::Sha256Digest sidecarDigest{};
+                            std::uintmax_t sidecarSize = 0;
+                            basic::Sha256Digest thinDigest{};
+                            std::uintmax_t thinSize = 0;
+                            const bool thinMatched = !compilation.receiverRequiresThinLtoSidecar() ||
+                                basic::sha256File(thinSidecar, thinDigest, thinSize, ignoredError);
+                            if (thinMatched && basic::sha256File(receiverPath, sidecarDigest, sidecarSize, ignoredError))
+                            {
+                                guardedContractDigest = basic::sha256Hex(sidecarDigest);
+                                guardedLibraryDigest = basic::sha256Hex(contract->libraryDigest);
+                                guardedMetadataDigest = basic::sha256Hex(contract->metadataDigest);
+                                if (compilation.receiverRequiresThinLtoSidecar())
+                                    guardedThinLtoDigest = basic::sha256Hex(thinDigest);
+                                entry.receiverContractGuarded = true;
+                                compilation.retainReceiverProductGuard(std::move(guard));
+                                compilation.retainReceiverProductGuard(std::move(artifacts));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+#endif
+        appendCacheIdentityField(identity, entry.metadata->moduleName);
+        appendCacheIdentityField(identity, entry.receiverContractGuarded ? "guarded" : "unknown");
+        appendCacheIdentityField(identity, guardedContractDigest);
+        appendCacheIdentityField(identity, guardedLibraryDigest);
+        appendCacheIdentityField(identity, guardedMetadataDigest);
+        appendCacheIdentityField(identity, guardedThinLtoDigest);
+    }
+    compilation.setReceiverProductIdentity(std::move(identity));
+}
 }
 
 bool preparePrecompiledProject(
@@ -927,6 +1298,7 @@ bool preparePrecompiledProject(
         return false;
     }
 
+    guardReceiverProducts(loaded, compilation);
     bool skipMaterialization = false;
     if (gate && !gate(graph, skipMaterialization, error))
     {

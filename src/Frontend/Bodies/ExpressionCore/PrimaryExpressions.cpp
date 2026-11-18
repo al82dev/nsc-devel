@@ -12,6 +12,7 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
+#include "nativesharp/Language/NumericSemantics.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
@@ -196,15 +197,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
             result.typeKey = std::string(*inner);
             result.valid = true;
-            // EN: Freeze 3.0 C-13: the error of an `async throws E` future surfaces at its await.
-            // ES: Congelamiento 3.0 C-13: el error de un future `async throws E` aparece en su await.
+            // EN: Freeze C-13: the error of an `async throws E` future surfaces at its await.
+            // ES: Congelamiento C-13: el error de un future `async throws E` aparece en su await.
             if (const std::optional<std::string_view> error =
                     language::futureErrorTypeKey(operand.typeKey))
                 requireDeclaredErrorHandled(
                     expression, *error, "await", methodMemberOrdinal, diagnostics);
-            // EN: Freeze 3.0 C-14: awaiting a future local consumes it (the backend zeroes it), so
+            // EN: Freeze C-14: awaiting a future local consumes it (the backend zeroes it), so
             //     a second await or a read afterwards is a use of a moved value.
-            // ES: Congelamiento 3.0 C-14: esperar un future local lo consume (el backend lo pone en
+            // ES: Congelamiento C-14: esperar un future local lo consume (el backend lo pone en
             //     cero), asi que un segundo await o una lectura despues usan un valor movido.
             if (expression->first() != nullptr &&
                 expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
@@ -404,6 +405,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 (expression->text().back() == 'm' || expression->text().back() == 'M'))
             {
                 result.typeKey = "builtin:decimal";
+                // NSC-NEW-009: the literal is checked where it is written. Without this a nonzero
+                // literal with more than 28 decimals or a coefficient past 96 bits reached LLVM
+                // lowering and failed there, with no source position.
+                std::string literalError;
+                const std::string_view spelling = expression->text();
+                if (!language::parseDecimalLiteral(spelling.substr(0, spelling.size() - 1), literalError))
+                {
+                    diagnostics.report(diagnostics::DiagnosticId::InvalidNumericLiteral,
+                        diagnostics::DiagnosticSeverity::Error, expression->range(),
+                        "invalid decimal literal '" + std::string(spelling) + "': " + literalError);
+                    return result;
+                }
             }
             else
             {
@@ -459,18 +472,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         case ast::AstNodeKind::OverflowPolicyExpression:
         {
             const std::string policy = expression->auxiliaryText();
-            if (policy == "unchecked" || policy == "wrapping")
-            {
-                // NS304-T15-F05: decimal has no modular arithmetic, so these two policies are
-                // rejected outright (they would silently turn overflow into wrapping).
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
-                    diagnostics::DiagnosticSeverity::Error,
-                    expression->range(),
-                    "overflow policy '" + policy + "' is not allowed for decimal arithmetic");
-                break;
-            }
-            if (policy != "checked" && policy != "saturating")
+            // EN: NS304-T15-F05 rejected unchecked/wrapping before typing the operand, so integer
+            //     code got a decimal-only message (LKF-313). Integer arithmetic already wraps by
+            //     default, so both policies are accepted unless decimal arithmetic is inside.
+            // ES: NS304-T15-F05 rechazaba unchecked/wrapping antes de tipar el operando y el código
+            //     entero recibía un mensaje solo de decimal (LKF-313). La aritmética entera ya da la
+            //     vuelta por defecto, así que ambas políticas se aceptan salvo con decimal dentro.
+            const bool modularPolicy = policy == "unchecked" || policy == "wrapping";
+            if (!modularPolicy && policy != "checked" && policy != "saturating")
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
@@ -491,6 +500,33 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             result = analyzeExpression(
                 expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
                 allowMethodGroup, allowEvent, allowMove, allowConstructorPropertyWrite);
+            if (modularPolicy && result.valid)
+            {
+                // NS304-T15-F05: decimal has no modular arithmetic, so these two policies are
+                // rejected outright (they would silently turn overflow into wrapping).
+                bool decimalInside = false;
+                std::vector<const ast::AstNode*> pending{expression->first()};
+                while (!pending.empty() && !decimalInside)
+                {
+                    const ast::AstNode* node = pending.back();
+                    pending.pop_back();
+                    if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+                    decimalInside = recordedExpressionTypeKey(node, methodMemberOrdinal) == "builtin:decimal";
+                    pending.push_back(node->first());
+                    pending.push_back(node->second());
+                    pending.push_back(node->third());
+                    for (const ast::AstNode* child : node->children()) pending.push_back(child);
+                }
+                if (decimalInside || result.typeKey == "builtin:decimal")
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "overflow policy '" + policy + "' is not allowed for decimal arithmetic");
+                    result.valid = false;
+                }
+            }
             break;
         }
         default:
@@ -866,8 +902,29 @@ bool ProjectMethodBodyModel::bindInterpolationHandler(
         interpolationHandlerMember(typeOrdinal, "Finish");
     if (!appendLiteral.has_value() || !appendFormatted.has_value() || !finish.has_value())
         return false;
-    const ClassMemberSymbol& formattedMember = memberModel_->members()[*appendFormatted];
-    bool holesValid = formattedMember.parameters.size() == 1U;
+    // EN: LKF-314: the handler protocol was bound by name only. Every hole called the first
+    //     AppendFormatted whatever its type, so with AppendFormatted(int) declared first a string
+    //     hole reached an int parameter; AppendLiteral and Finish were not checked either. Each hole
+    //     now selects the one-parameter overload whose parameter type is exactly the hole's type.
+    // ES: LKF-314: el protocolo del handler se enlazaba solo por nombre. Cada hueco llamaba al
+    //     primer AppendFormatted fuera cual fuera su tipo, así que con AppendFormatted(int) primero
+    //     un hueco string llegaba a un parámetro int; AppendLiteral y Finish tampoco se comprobaban.
+    //     Cada hueco elige ahora la sobrecarga de un parámetro cuyo tipo es exactamente el suyo.
+    const auto sameValueType = [](std::string_view parameter, std::string_view value)
+    {
+        if (parameter == value) return true;
+        return parameter == "builtin:string" && value == "string-literal";
+    };
+    std::vector<std::size_t> formattedCandidates;
+    for (const std::size_t ordinal : memberModel_->findMembers(typeOrdinal, "AppendFormatted"))
+    {
+        if (ordinal >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& candidate = memberModel_->members()[ordinal];
+        if (candidate.parameters.size() == 1U && !candidate.isStatic) formattedCandidates.push_back(ordinal);
+    }
+    const ClassMemberSymbol& literalMember = memberModel_->members()[*appendLiteral];
+    const ClassMemberSymbol& finishMember = memberModel_->members()[*finish];
+    bool holesValid = !formattedCandidates.empty();
     if (!holesValid)
     {
         diagnostics.report(
@@ -876,6 +933,26 @@ bool ProjectMethodBodyModel::bindInterpolationHandler(
             expression->range(),
             "an interpolation handler AppendFormatted must take exactly one parameter");
     }
+    if (holesValid && (literalMember.parameters.size() != 1U ||
+            literalMember.parameters.front().typeKey != "builtin:string"))
+    {
+        holesValid = false;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "an interpolation handler AppendLiteral must take exactly one string parameter");
+    }
+    if (holesValid && (!finishMember.parameters.empty() || finishMember.declaredTypeKey != handlerTarget))
+    {
+        holesValid = false;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "an interpolation handler Finish must take no parameters and return the handler type");
+    }
+    std::vector<std::size_t> holeMembers;
     if (holesValid)
     {
         // NS304-T10-F03: analyze each hole once, in source order, so the HIR
@@ -892,6 +969,25 @@ bool ProjectMethodBodyModel::bindInterpolationHandler(
                 holesValid = false;
                 break;
             }
+            const auto selected = std::ranges::find_if(formattedCandidates, [&](std::size_t ordinal)
+                {
+                    return sameValueType(
+                        memberModel_->members()[ordinal].parameters.front().typeKey, holeValue.typeKey);
+                });
+            if (selected == formattedCandidates.end())
+            {
+                const std::string shown = holeValue.typeKey == "string-literal"
+                    ? std::string("builtin:string") : holeValue.typeKey;
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    hole->range(),
+                    "no AppendFormatted of interpolation handler takes a hole of type '" + shown +
+                        "'; declare an AppendFormatted overload for that type or convert the hole");
+                holesValid = false;
+                break;
+            }
+            holeMembers.push_back(*selected);
         }
     }
     result.typeKey = handlerTarget;
@@ -905,6 +1001,7 @@ bool ProjectMethodBodyModel::bindInterpolationHandler(
         binding.scopeOrdinal = scopeOrdinal;
         binding.resultTypeKey = handlerTarget;
         binding.builderMemberOrdinals = {*appendLiteral, *appendFormatted, *finish};
+        binding.interpolationHoleMemberOrdinals = std::move(holeMembers);
         coreBindings_.push_back(std::move(binding));
     }
     return true;

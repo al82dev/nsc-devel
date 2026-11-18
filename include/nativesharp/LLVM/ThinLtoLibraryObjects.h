@@ -12,7 +12,7 @@ namespace nativesharp::llvm_backend
 ///     punto 48).
 struct ThinLtoLibraryObjects final
 {
-    std::filesystem::path libraryPath;
+    std::filesystem::path libraryPath{};
     std::vector<std::filesystem::path> objectFiles;
 };
 }

@@ -1,0 +1,14 @@
+int Main()
+{
+    BinaryComplex.Box<int> value = default(BinaryComplex.Box<int>);
+    value.Value = 7;
+    int count = 0;
+    static foreach (field in Fields(BinaryComplex.Box<int>))
+    {
+        field.Type item = field.Get(value);
+        if (field.Name == "Value") count = count + 1;
+        if (field.Name == "Pair") count = count + 1;
+        if (field.Name == "Pointer") count = count + 1;
+    }
+    return count == 2 && value.Value == 7 ? 0 : 1;
+}

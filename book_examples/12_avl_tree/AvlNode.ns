@@ -2,13 +2,13 @@ namespace NativeSharp.BookExamples.AvlTree
 {
     public class AvlNode
     {
-        public AvlRecord Value;
+        public owned AvlRecord Value;
         public AvlNode Left;
         public AvlNode Right;
         public int Height;
-        public AvlNode(AvlRecord value)
+        public AvlNode(owned AvlRecord value)
         {
-            Value = value;
+            Value = move(value);
             Left = null;
             Right = null;
             Height = 1;

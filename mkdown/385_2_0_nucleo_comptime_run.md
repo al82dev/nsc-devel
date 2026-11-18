@@ -1,8 +1,10 @@
 # 385 — Núcleo `comptime/#run` / Compile-time execution core
 
-NativeSharp 2.0 incorpora una primera ruta ejecutable de `comptime`. `comptime` es un marcador
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+NativeSharp incorpora una primera ruta ejecutable de `comptime`. `comptime` es un marcador
 contextual que puede preceder una declaración y `#run(expresión)` evalúa una expresión entera con
-semántica `int64` antes del lexer y el parser ordinarios. / NativeSharp 2.0 now has its first
+semántica `int64` antes del lexer y el parser ordinarios. / NativeSharp now has its first
 executable comptime path. `comptime` is a contextual declaration marker and
 `#run(expression)` evaluates an `int64` integer expression before the ordinary lexer and parser.
 

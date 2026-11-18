@@ -138,6 +138,12 @@ ProjectMethodBodyModel::analyzeExpressionKindTypeTestExpressionOrSafeCastExpress
             {
                 result.objectLifetimeOwnership = operand.objectLifetimeOwnership;
                 result.storageOwnership = operand.storageOwnership;
+                if (operand.readonlyBorrowedObject)
+                {
+                    result.readonlyBorrowedObject = true;
+                    result.readonlyReceiver = true;
+                    result.ownership = sema::OwnershipKind::Borrowed;
+                }
             }
             runtimeTypeBindings_.push_back(MethodRuntimeTypeBinding{
                 expression->kind() == ast::AstNodeKind::TypeTestExpression
@@ -171,7 +177,7 @@ bool ProjectMethodBodyModel::validateNamedCast(
     bool allowed = false;
     if (namedCast == "const_cast")
     {
-        // Qualifiers are source-only and ABI-neutral in this 3.0 profile. The
+        // Qualifiers are source-only and ABI-neutral. The
         // base/indirection identity must therefore remain byte-for-byte equal.
         allowed = sourcePointer && targetPointer && operand.typeKey == result.typeKey;
         if (allowed) result.pointerPointeeReadonly = targetPointeeReadonly;
@@ -228,6 +234,14 @@ bool ProjectMethodBodyModel::applyUserDefinedCast(
     if ((userConversion.kind != ProjectConversionKind::UserDefinedImplicit &&
          userConversion.kind != ProjectConversionKind::UserDefinedExplicit) ||
         !userConversion.userDefinedMemberOrdinal.has_value()) return false;
+    if (operand.readonlyBorrowedObject)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "readonly borrowed object cannot be passed to an unchecked conversion");
+        result.valid = false;
+        return true;
+    }
     const std::vector<ExpressionResult> arguments = {operand};
     ExpressionResult converted = resolveSyntheticCall(
         expression,
@@ -440,6 +454,16 @@ ProjectMethodBodyModel::analyzeExpressionKindCastExpression(
     validateReferenceCast(
         result, operand, expression, classifier,
         methodMemberOrdinal, scopeOrdinal, diagnostics);
+    const NamedTypeDeclaration* targetType = operand.readonlyBorrowedObject
+        ? namedTypeForTypeKey(result.typeKey) : nullptr;
+    if (result.valid && operand.readonlyBorrowedObject &&
+        (isReferenceTypeKey(result.typeKey) || ProjectTypeConversion::isNativeArray(result.typeKey) ||
+         (targetType != nullptr && targetType->kind == NamedTypeDeclarationKind::Struct)))
+    {
+        result.readonlyBorrowedObject = true;
+        result.readonlyReceiver = true;
+        result.ownership = sema::OwnershipKind::Borrowed;
+    }
     return result;
 }
 }

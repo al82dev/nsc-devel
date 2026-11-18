@@ -1,5 +1,7 @@
 # Tanda correctiva G00 — migración de caché LLVM estática
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 Fecha: 2026-10-01
 Rama: `development`
 Estado: corregida; pendiente del baseline integral de Alberto
@@ -23,7 +25,7 @@ quedaba deshabilitado antes de poder usar `LLVM_DIR`.
 
 - `CMakeLists.txt` fuerza en Windows `CMAKE_DISABLE_FIND_PACKAGE_LLVM=FALSE` y elimina de la caché
   `NSC_LLVM_MONOLITHIC_LIBRARY`. El contrato estático prevalece aunque se reutilice un árbol creado
-  por NativeSharp 2.0 o por la primera configuración de 3.0.
+  por NativeSharp o por la primera configuración de 3.0.
 - `nscbuilder.py` escribe explícitamente `-DCMAKE_DISABLE_FIND_PACKAGE_LLVM=FALSE` y añade
   `-UNSC_LLVM_MONOLITHIC_LIBRARY` a cada configuración.
 - La prueba del builder exige ambos argumentos además de `LLVM_DIR`, `clang-cl` para C/C++ y

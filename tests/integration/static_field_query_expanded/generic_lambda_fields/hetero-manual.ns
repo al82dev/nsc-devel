@@ -1,0 +1,1 @@
+struct H { public int X; public long Y; } int Main() { H h=default(H); h.X=3; h.Y=7; var id=<U>(U x) => x; long sum=id<int>(h.X)+id<long>(h.Y); return sum==10 ? 0 : 1; }

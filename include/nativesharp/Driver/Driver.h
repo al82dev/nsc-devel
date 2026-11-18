@@ -149,9 +149,9 @@ private:
         std::ostream& output,
         std::ostream& error,
         llvm_backend::LlvmOptimizationLevel optimizationLevel = llvm_backend::LlvmOptimizationLevel::O0);
-    // EN: Freeze 3.0 C-05: a file action (`nsc <file.ns>`, `--check`, the file dumps) runs on the
+    // EN: Freeze C-05: a file action (`nsc <file.ns>`, `--check`, the file dumps) runs on the
     //     implicit project of the file: the file plus a reference to NativeSharp.Core.
-    // ES: Congelamiento 3.0 C-05: una accion de archivo (`nsc <file.ns>`, `--check`, los dumps de
+    // ES: Congelamiento C-05: una accion de archivo (`nsc <file.ns>`, `--check`, los dumps de
     //     archivo) corre sobre el proyecto implicito del archivo: el archivo y una referencia a
     //     NativeSharp.Core.
     static ExitCode runSourceFile(

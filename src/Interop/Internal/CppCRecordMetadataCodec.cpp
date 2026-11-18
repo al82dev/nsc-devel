@@ -2218,7 +2218,11 @@ bool decodeCTypeCatalogWithDependencies(std::span<const std::uint8_t> bytes,
     return true;
 }
 
-bool decodeCTypeCatalogAndDependencies(std::span<const std::uint8_t> bytes, std::uint16_t formatMinor,
+// EN: Each catalogue form is told by its envelope tag, which is content: 7 with enum provenance, 6 with anonymous
+//     carriers, 5 with dependencies, 1..4 with provenance, otherwise the plain catalogue.
+// ES: Cada forma del catalogo se distingue por la etiqueta de su sobre, que es contenido: 7 con procedencia de
+//     enums, 6 con portadores anonimos, 5 con dependencias, 1..4 con procedencia y, si no, el catalogo simple.
+bool decodeCTypeCatalogAndDependencies(std::span<const std::uint8_t> bytes,
     std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums,
     CDependencyCatalog& dependencies, std::string& error)
 {
@@ -2231,24 +2235,22 @@ bool decodeCTypeCatalogAndDependencies(std::span<const std::uint8_t> bytes, std:
         bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0;
     const bool enumProvenanceEnvelope = bytes.size() >= 4 && bytes[0] == 7 &&
         bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0;
-    if (formatMinor >= 49 && enumProvenanceEnvelope)
+    if (enumProvenanceEnvelope)
     {
         if (!decodeCTypeCatalogWithEnumProvenance(bytes, decodedRecords, decodedEnums, decodedDependencies, error))
             return false;
     }
-    else if (formatMinor >= 48 && anonymousEnvelope)
+    else if (anonymousEnvelope)
     {
         if (!decodeCTypeCatalogWithAnonymousCarriers(bytes, decodedRecords, decodedEnums, decodedDependencies, error))
             return false;
     }
-    else if (formatMinor >= 46 && dependencyEnvelope)
+    else if (dependencyEnvelope)
     {
         if (!decodeCTypeCatalogWithDependencies(bytes, decodedRecords, decodedEnums, decodedDependencies, error))
             return false;
-        if (formatMinor < 47 && !decodedDependencies.enumerators.empty())
-        { error = "C enumerator dependencies require metadata 1.47"; return false; }
     }
-    else if (!decodeVersionedCTypeCatalog(bytes, decodedRecords, decodedEnums, error, formatMinor))
+    else if (!decodeCTypeCatalogByContent(bytes, decodedRecords, decodedEnums, error))
         return false;
     records = std::move(decodedRecords);
     enums = std::move(decodedEnums);
@@ -2311,7 +2313,7 @@ bool decodeCTypeCatalogWithAnonymousCarriers(std::span<const std::uint8_t> bytes
     std::vector<CppCRecordSnapshot> decodedRecords;
     std::vector<CppCEnumSnapshot> decodedEnums;
     CDependencyCatalog decodedDependencies;
-    if (!reader.raw(base) || !decodeCTypeCatalogAndDependencies(base, 47, decodedRecords, decodedEnums,
+    if (!reader.raw(base) || !decodeCTypeCatalogAndDependencies(base, decodedRecords, decodedEnums,
                                                                   decodedDependencies, error)) return false;
     if (!reader.u32(count) || !count || count > maxItems || count > reader.remaining() / 8)
     { error = "invalid anonymous C carrier count"; return false; }
@@ -2393,7 +2395,7 @@ bool decodeCTypeCatalogWithEnumProvenance(std::span<const std::uint8_t> bytes,
     std::vector<CppCRecordSnapshot> decodedRecords;
     std::vector<CppCEnumSnapshot> decodedEnums;
     CDependencyCatalog decodedDependencies;
-    if (!reader.raw(base) || !decodeCTypeCatalogAndDependencies(base, 48, decodedRecords, decodedEnums,
+    if (!reader.raw(base) || !decodeCTypeCatalogAndDependencies(base, decodedRecords, decodedEnums,
                                                                 decodedDependencies, error)) return false;
     if (!reader.u32(count) || count != decodedEnums.size())
     { error = "C enum provenance count mismatch"; return false; }
@@ -3044,36 +3046,16 @@ bool isCTypeCatalogWithProvenance(std::span<const std::uint8_t> bytes) noexcept
         bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0;
 }
 
-bool decodeVersionedCTypeCatalog(std::span<const std::uint8_t> bytes,
-    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums, std::string& error,
-    std::uint16_t formatMinor)
+bool decodeCTypeCatalogByContent(std::span<const std::uint8_t> bytes,
+    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums, std::string& error)
 {
-    if (formatMinor == 42) return decodeCTypeCatalog(bytes, records, enums, error);
-    if (formatMinor >= 49 && bytes.size() >= 4 && bytes[0] == 7 &&
-        bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0)
-    {
-        CDependencyCatalog dependencies;
-        return decodeCTypeCatalogWithEnumProvenance(bytes, records, enums, dependencies, error);
-    }
-    if (formatMinor >= 48 && bytes.size() >= 4 && bytes[0] == 6 &&
-        bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0)
-    {
-        CDependencyCatalog dependencies;
-        return decodeCTypeCatalogWithAnonymousCarriers(bytes, records, enums, dependencies, error);
-    }
-    if (formatMinor >= 46 && bytes.size() >= 4 && bytes[0] == 5 &&
-        bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0)
-    {
-        CDependencyCatalog dependencies;
-        std::vector<CppCRecordSnapshot> decodedRecords;
-        std::vector<CppCEnumSnapshot> decodedEnums;
-        if (!decodeCTypeCatalogWithDependencies(bytes, decodedRecords, decodedEnums, dependencies, error)) return false;
-        if (formatMinor < 47 && !dependencies.enumerators.empty())
-        { error = "C enumerator dependencies require metadata 1.47"; return false; }
-        records = std::move(decodedRecords);
-        enums = std::move(decodedEnums);
-        return true;
-    }
+    const auto envelope = [&](std::uint8_t tag) {
+        return bytes.size() >= 4 && bytes[0] == tag && bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0;
+    };
+    CDependencyCatalog dependencies;
+    if (envelope(7)) return decodeCTypeCatalogWithEnumProvenance(bytes, records, enums, dependencies, error);
+    if (envelope(6)) return decodeCTypeCatalogWithAnonymousCarriers(bytes, records, enums, dependencies, error);
+    if (envelope(5)) return decodeCTypeCatalogWithDependencies(bytes, records, enums, dependencies, error);
     return isCTypeCatalogWithProvenance(bytes) ?
         decodeCTypeCatalogWithProvenance(bytes, records, enums, error) :
         decodeCTypeCatalog(bytes, records, enums, error);
@@ -3406,8 +3388,7 @@ bool reconcilePrecompiledCTypes(std::span<const frontend::PrecompiledSyntaxModul
         if (module.cppCTypeCatalog.empty()) continue;
         std::vector<CppCRecordSnapshot> records;
         std::vector<CppCEnumSnapshot> enums;
-        if (!decodeVersionedCTypeCatalog(module.cppCTypeCatalog, records, enums, error,
-                                         module.cppCTypeCatalogFormatMinor)) return false;
+        if (!decodeCTypeCatalogByContent(module.cppCTypeCatalog, records, enums, error)) return false;
         const auto producerFor = [&](const std::string& owner) -> Producer* {
             const auto project = projectByModule.find(owner);
             if (project == projectByModule.end())
@@ -3512,8 +3493,7 @@ bool reconstructPrecompiledCImportedTypes(std::span<const frontend::PrecompiledS
         if (module.cppCTypeCatalog.empty()) continue;
         std::vector<CppCRecordSnapshot> records;
         std::vector<CppCEnumSnapshot> enums;
-        if (!decodeVersionedCTypeCatalog(module.cppCTypeCatalog, records, enums, error,
-                                         module.cppCTypeCatalogFormatMinor)) return false;
+        if (!decodeCTypeCatalogByContent(module.cppCTypeCatalog, records, enums, error)) return false;
         const auto add = [&](std::string_view identity, std::string_view owner,
                              std::span<const CppCRecordSnapshot> oneRecord,
                              std::span<const CppCEnumSnapshot> oneEnum) {

@@ -195,14 +195,14 @@ void ProjectNameLookup::reportUnsupportedGlobalDeclarations(
                         diagnostics::DiagnosticId::ExpectedDeclaration,
                         diagnostics::DiagnosticSeverity::Error,
                         child->range(),
-                        "an 'extern C' import outside a class is not supported in NativeSharp 3.0; "
+                        "an 'extern C' import outside a class is not supported in NativeSharp; "
                         "declare it in a class: extern C from \"<library>.dll\" { ... }");
                 else if (globalNamespace && child->kind() == ast::AstNodeKind::GlobalVariableDeclaration)
                     diagnostics.report(
                         diagnostics::DiagnosticId::ExpectedDeclaration,
                         diagnostics::DiagnosticSeverity::Error,
                         child->range(),
-                        "a variable outside every namespace is not supported in NativeSharp 3.0; "
+                        "a variable outside every namespace is not supported in NativeSharp; "
                         "declare it inside a namespace or as a static field");
             }
         }

@@ -20,7 +20,7 @@ TERMINADA.
 
 ## Archivos nuevos
 
-- `tests/unit/NativeSharp3T02DeconstructionTests.cpp`: seis checks dirigidos que compilan O0,
+- `tests/unit/NativeSharpT02DeconstructionTests.cpp`: seis checks dirigidos que compilan O0,
   enlazan con NSLink, ejecutan el PE y verifican negativas semánticas.
 - `docs/3.0/language/deconstruction.md`: contrato bilingüe del lenguaje.
 - Este documento: evidencia del ítem y de su validación.

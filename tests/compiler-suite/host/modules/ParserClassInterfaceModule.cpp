@@ -68,7 +68,7 @@ void testTraitDeclaration(TestContext& context)
     DeclarationFixture fixture("trait IValue { int Get(); }");
     AstNode* const node = declaration(fixture);
     context.expect(node != nullptr && node->kind() == AstNodeKind::InterfaceDeclaration &&
-            hasMarker(node, "ns3-trait") && node->children().size() == 1 &&
+            hasMarker(node, "nsc-trait") && node->children().size() == 1 &&
             node->children()[0]->kind() == AstNodeKind::MethodDeclaration &&
             node->children()[0]->text() == "Get",
         "TP-PAR-188 trait marker and members must be retained on the interface node");
@@ -81,7 +81,7 @@ void testTraitImplementation(TestContext& context)
         "impl IValue for Value { int Get() { return 1; } }");
     AstNode* const node = declaration(fixture, 2);
     context.expect(node != nullptr && node->kind() == AstNodeKind::ClassDeclaration &&
-            hasMarker(node, "ns3-trait-impl") && node->text() == "Value" &&
+            hasMarker(node, "nsc-trait-impl") && node->text() == "Value" &&
             node->typeSyntax() != nullptr &&
             node->typeSyntax()->baseName() == "IValue" &&
             node->typeSyntax()->isExplicitTraitImplementation() &&

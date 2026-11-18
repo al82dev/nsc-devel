@@ -1,0 +1,5 @@
+class Inspector : BinaryHierarchy.Derived
+{
+    public int Inspect(BinaryHierarchy.Derived value) { return value.Protected; }
+}
+int Main() { return 0; }

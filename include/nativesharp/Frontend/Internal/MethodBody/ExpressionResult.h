@@ -18,6 +18,8 @@ struct ExpressionResult final
     // the implicit receiver of a readonly struct member. Reads remain legal; writes and calls
     // to mutating instance members do not.
     bool readonlyReceiver = false;
+    // Read-only restriction follows the object when a class reference is borrowed.
+    bool readonlyBorrowedObject = false;
     // Source qualifier for raw pointers. Kept outside typeKey because LLVM pointers are
     // opaque and the qualifier has no ABI/layout effect; semantic assignment/dereference
     // still observes it.
@@ -48,7 +50,18 @@ struct ExpressionResult final
     // `Student s = new Student(...); Insert(s);` hace lo mismo con el mismo objeto. Un
     // parametro sin calificador no rastrea la vida del valor, y eso vale igual para uno
     // recien creado que para uno que ya existia. Ver classifyOwnershipArgument.
+    //
+    // EN: LKF-166: superseded by Freeze C-01 (e64631180): a `new` handed to a parameter
+    //     without `owned` is rejected with LostOwnership, because nothing would destroy it; this
+    //     flag still lets an `owned` parameter take it. The paragraph above is kept as history.
+    // ES: LKF-166: sustituido por Congelamiento C-01 (e64631180): un `new` entregado a un
+    //     parametro sin `owned` se rechaza con LostOwnership, porque nada lo destruiria; esta
+    //     bandera sigue dejando que un parametro `owned` lo reciba. El parrafo anterior se conserva
+    //     como historia.
     bool ownershipFreshOwner = false;
+    // The previous owner extracted by a supported postfix update is an unnamed
+    // full-expression temporary, not an explicit move into the next parameter.
+    bool ownedPostfixTemporary = false;
     std::optional<std::size_t> ownershipSourceLocalOrdinal;
     std::optional<std::size_t> ownershipSourceParameterOrdinal;
     bool ownsStorageDestination = false;
@@ -60,23 +73,23 @@ struct ExpressionResult final
     // last for the whole process), so `delete[]` releases the block only.
     bool borrowedElementSlots = false;
     std::optional<std::size_t> borrowedLocalOrdinal;
-    // EN: Freeze 3.0 (plan item 131a): the value was read from a field of the temporary an owned-returning call
+    // EN: Freeze (plan item 131a): the value was read from a field of the temporary an owned-returning call
     //     made (`Make().Name`), directly or through more field reads. The temporary is destroyed at the end of
     //     the full expression, so the value cannot be stored or returned.
-    // ES: Congelamiento 3.0 (elemento 131a del plan): el valor se leyo de un campo del temporal que creo una
+    // ES: Congelamiento (elemento 131a del plan): el valor se leyo de un campo del temporal que creo una
     //     llamada con retorno owned (`Make().Name`), directo o a traves de mas lecturas de campo. El temporal se
     //     destruye al final de la expresion completa, asi que el valor no puede guardarse ni devolverse.
-    // EN: Freeze 3.0 (plan item 135): the same flag covers every known-life temporary and every form the borrow
+    // EN: Freeze (plan item 135): the same flag covers every known-life temporary and every form the borrow
     //     goes through: a `new` object (`(new T()).Name`), a getter, a call result that is not a new owner
     //     (`Make().GetName()`, `Id(Make().Name)`), and the union of the branches of `?:` and `??`.
-    // ES: Congelamiento 3.0 (elemento 135 del plan): la misma bandera cubre todo temporal de vida conocida y toda
+    // ES: Congelamiento (elemento 135 del plan): la misma bandera cubre todo temporal de vida conocida y toda
     //     forma por la que pasa el prestamo: un objeto `new` (`(new T()).Name`), un getter, un resultado de
     //     llamada que no es un owner nuevo (`Make().GetName()`, `Id(Make().Name)`), y la union de las ramas de
     //     `?:` y `??`.
     bool borrowsOwnedTemporary = false;
-    // EN: Freeze 3.0 (plan item 135): a method group whose receiver is an owned temporary or a borrow of one
+    // EN: Freeze (plan item 135): a method group whose receiver is an owned temporary or a borrow of one
     //     (`Make().GetName`); the call result inherits the borrow (markCallTemporaryBorrow).
-    // ES: Congelamiento 3.0 (elemento 135 del plan): un grupo de metodos cuyo receptor es un temporal owned o un
+    // ES: Congelamiento (elemento 135 del plan): un grupo de metodos cuyo receptor es un temporal owned o un
     //     prestamo de uno (`Make().GetName`); el resultado de la llamada hereda el prestamo
     //     (markCallTemporaryBorrow).
     bool receiverBorrowsOwnedTemporary = false;

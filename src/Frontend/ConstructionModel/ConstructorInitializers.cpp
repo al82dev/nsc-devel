@@ -332,8 +332,8 @@ void ProjectConstructionModel::bindConstructorInitializer(
         anyMatchingArity,
         accessibleMatchingArity,
         diagnostics);
-    // EN: Freeze 3.0 C-13: only the constructor's own `throws` can cover `this(...)`/`base(...)`.
-    // ES: Congelamiento 3.0 C-13: solo el `throws` del propio constructor cubre `this(...)`/`base(...)`.
+    // EN: Freeze C-13: only the constructor's own `throws` can cover `this(...)`/`base(...)`.
+    // ES: Congelamiento C-13: solo el `throws` del propio constructor cubre `this(...)`/`base(...)`.
     requireConstructorErrorHandled(
         binding.selectedConstructorMemberOrdinal,
         binding.initializerSyntax != nullptr ? binding.initializerSyntax : constructor.syntax,
@@ -341,9 +341,9 @@ void ProjectConstructionModel::bindConstructorInitializer(
     storeConstructorInitializerBinding(constructorMemberOrdinal, std::move(binding));
 }
 
-// EN: Freeze 3.0 (item 130a). The constructor that `constructorMemberOrdinal`'s this(...), base(...) or
+// EN: Freeze (item 130a). The constructor that `constructorMemberOrdinal`'s this(...), base(...) or
 //     implicit base() selects, with the evaluation of bindConstructorInitializer and nothing reported.
-// ES: Congelamiento 3.0 (elemento 130a). El constructor que elige el this(...), base(...) o base()
+// ES: Congelamiento (elemento 130a). El constructor que elige el this(...), base(...) o base()
 //     implicito de `constructorMemberOrdinal`, con la evaluacion de bindConstructorInitializer y sin
 //     reportar nada.
 std::optional<std::size_t> ProjectConstructionModel::previewInitializerConstructor(
@@ -386,6 +386,7 @@ void ProjectConstructionModel::validateThisConstructorCycles(
     }
 
     std::vector<bool> invalid(memberModel_->members().size(), false);
+    std::vector<bool> cycleRepresentative(memberModel_->members().size(), false);
     for (const ConstructorInitializerBinding& startBinding : constructorInitializerBindings_)
     {
         if (startBinding.kind != ConstructorInitializerKind::ExplicitThis ||
@@ -415,6 +416,8 @@ void ProjectConstructionModel::validateThisConstructorCycles(
             const auto cycleBegin = std::find(path.begin(), path.end(), current);
             if (cycleBegin != path.end())
             {
+                // Report each distinct cycle once, even when several paths enter it.
+                if (!invalid[current]) cycleRepresentative[current] = true;
                 for (auto it = cycleBegin; it != path.end(); ++it)
                 {
                     invalid[*it] = true;
@@ -427,7 +430,6 @@ void ProjectConstructionModel::validateThisConstructorCycles(
         }
     }
 
-    bool reported = false;
     for (std::size_t memberOrdinal = 0; memberOrdinal < invalid.size(); ++memberOrdinal)
     {
         if (!invalid[memberOrdinal] || memberOrdinal >= initializerBindingByMember_.size() ||
@@ -438,7 +440,7 @@ void ProjectConstructionModel::validateThisConstructorCycles(
         ConstructorInitializerBinding& binding =
             constructorInitializerBindings_[*initializerBindingByMember_[memberOrdinal]];
         binding.resolution = ConstructorInitializerResolutionKind::Invalid;
-        if (!reported)
+        if (cycleRepresentative[memberOrdinal])
         {
             const SourceRange range = binding.initializerSyntax != nullptr
                 ? binding.initializerSyntax->range()
@@ -448,7 +450,6 @@ void ProjectConstructionModel::validateThisConstructorCycles(
                 diagnostics::DiagnosticSeverity::Error,
                 range,
                 "constructor delegation cycle detected in this(...) initializer chain");
-            reported = true;
         }
     }
 }

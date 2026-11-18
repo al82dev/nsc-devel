@@ -61,14 +61,15 @@ std::string structuralGenericKey(std::string_view value)
 }
 
 PrecompiledMemberIdentityIndex::PrecompiledMemberIdentityIndex(
-    std::span<const PrecompiledMemberIdentity> identities)
-    : identities_(identities)
+    std::span<const PrecompiledMemberIdentity> identities,
+    bool includeWithoutPhysicalName)
+    : identities_(identities), includeWithoutPhysicalName_(includeWithoutPhysicalName)
 {
     ordinalsByHash_.reserve(identities.size());
     for (std::size_t ordinal = 0; ordinal < identities.size(); ++ordinal)
     {
         const PrecompiledMemberIdentity& identity = identities[ordinal];
-        if (identity.mangledName.empty()) continue;
+        if (identity.mangledName.empty() && !includeWithoutPhysicalName_) continue;
         ordinalsByHash_.emplace(keyHash(
             identity.kind,
             identity.declaringTypeKey,
@@ -116,7 +117,8 @@ PrecompiledMemberIdentityMatch PrecompiledMemberIdentityIndex::findStructurally(
     const PrecompiledMemberIdentity* match = nullptr;
     for (const PrecompiledMemberIdentity& candidate : identities_)
     {
-        if (candidate.mangledName.empty() || candidate.kind != kind || candidate.name != name ||
+        if ((candidate.mangledName.empty() && !includeWithoutPhysicalName_) ||
+            candidate.kind != kind || candidate.name != name ||
             structuralGenericKey(candidate.declaringTypeKey) != structuralDeclaringType ||
             structuralGenericKey(candidate.signatureKey) != structuralSignature)
         {

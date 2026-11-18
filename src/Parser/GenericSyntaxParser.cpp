@@ -20,6 +20,44 @@ namespace nativesharp::parser
 namespace
 {
 using lexer::TokenKind;
+
+std::string writtenConstraintCount(const ast::AstNode* node)
+{
+    if (node == nullptr) return "_";
+    std::string result = "(" + std::to_string(static_cast<int>(node->kind())) + ":" +
+        std::to_string(static_cast<int>(node->tokenKind())) + ":" +
+        std::to_string(node->text().size()) + ":" + node->text();
+    result += writtenConstraintCount(node->first());
+    result += writtenConstraintCount(node->second());
+    result += writtenConstraintCount(node->third());
+    for (const ast::AstNode* child : node->children())
+        result += writtenConstraintCount(child);
+    return result + ')';
+}
+
+std::string writtenConstraintType(const ast::TypeSyntax* type)
+{
+    if (type == nullptr) return "?";
+    std::string result = type->baseName();
+    if (!type->typeArguments().empty())
+    {
+        result += '<';
+        for (std::size_t i = 0; i < type->typeArguments().size(); ++i)
+        {
+            if (i != 0) result += ',';
+            result += writtenConstraintType(type->typeArguments()[i]);
+        }
+        result += '>';
+    }
+    for (const ast::TypeModifierSyntax& modifier : type->modifiers())
+    {
+        result += '#' + std::to_string(static_cast<int>(modifier.kind)) + ':' +
+            std::to_string(modifier.arrayRank);
+        if (modifier.arrayCount != nullptr)
+            result += writtenConstraintCount(modifier.arrayCount);
+    }
+    return result;
+}
 }
 
 bool Parser::supportsConstGenericParameterType(const ast::TypeSyntax* type) noexcept
@@ -197,9 +235,9 @@ bool Parser::beginGenericConstraintClause(
             return item.name == state.rootParameter;
         });
     state.known = knownGeneric || state.knownLifetime;
-    // EN: Freeze 3.0 P1: a non-generic method or a constructor of a generic class or struct may
+    // EN: Freeze P1: a non-generic method or a constructor of a generic class or struct may
     //     restrict a generic parameter of that type. The clause is checked on each closed type.
-    // ES: Congelamiento 3.0 P1: un metodo no generico o un constructor de una clase o struct
+    // ES: Congelamiento P1: un metodo no generico o un constructor de una clase o struct
     //     generica puede restringir un parametro generico de ese tipo. La clausula se comprueba en
     //     cada tipo cerrado.
     const bool memberDeclaration = declaration->kind() == ast::AstNodeKind::MethodDeclaration ||
@@ -526,7 +564,7 @@ bool Parser::parseGenericNominalConstraint(
                 "' for equality instead of a trait/base constraint");
         ok = false;
     }
-    if (!written.insert(constraint->baseName()).second)
+    if (!written.insert(writtenConstraintType(constraint)).second)
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::DuplicateSymbol,
@@ -783,6 +821,25 @@ bool Parser::genericLookaheadTokenIsAllowed(
     int parenthesisDepth) const noexcept
 {
     const TokenKind kind = tokens_[cursor].kind();
+    // EN: A module-qualified type argument (`Token<Module::Ns.Type>.Get()`, which the metadata
+    //     producer writes) lexes `::` as two colons; only that `Identifier : : Identifier` shape is
+    //     allowed, so a ternary `:` still ends the lookahead. See
+    //     docs/fixes/argumento-generico-calificado-por-modulo.md.
+    // ES: Un argumento de tipo calificado por modulo (`Token<Modulo::Ns.Tipo>.Get()`, que escribe el
+    //     productor de metadatos) lexea `::` como dos dos-puntos; solo se permite la forma
+    //     `Identificador : : Identificador`, asi un `:` de ternario sigue terminando la vista anticipada.
+    if (kind == TokenKind::Colon)
+    {
+        const auto kindAt = [&](std::size_t index, TokenKind expected)
+        {
+            return index < tokens_.size() && tokens_[index].kind() == expected;
+        };
+        const bool first = cursor > 0U && kindAt(cursor - 1U, TokenKind::Identifier) &&
+            kindAt(cursor + 1U, TokenKind::Colon) && kindAt(cursor + 2U, TokenKind::Identifier);
+        const bool second = cursor > 1U && kindAt(cursor - 1U, TokenKind::Colon) &&
+            kindAt(cursor - 2U, TokenKind::Identifier) && kindAt(cursor + 1U, TokenKind::Identifier);
+        return first || second;
+    }
     if (!canAppearInTypeArgumentList(kind)) return false;
     const bool functionReferenceCarrier = kind == TokenKind::Amp && cursor > 0 &&
         tokens_[cursor - 1U].kind() == TokenKind::Identifier &&
@@ -861,7 +918,16 @@ bool Parser::looksLikeGenericCallTypeArguments() const noexcept
                 kind == TokenKind::Tilde || kind == TokenKind::Bang ||
                 kind == TokenKind::IntegerLiteral || kind == TokenKind::KwTrue ||
                 kind == TokenKind::KwFalse;
-            if (!constantArgument && !canStartTypeArgumentAt(cursor)) return false;
+            const bool packExpansion = kind == TokenKind::Identifier &&
+                cursor + 1U < tokens_.size() &&
+                tokens_[cursor + 1U].kind() == TokenKind::Ellipsis;
+            const bool knownQualifiedValue = kind == TokenKind::Identifier &&
+                cursor + 1U < tokens_.size() && tokens_[cursor + 1U].kind() == TokenKind::Dot &&
+                std::any_of(knownTypeNames_.begin(), knownTypeNames_.end(), [&](const std::string& name) {
+                    return name == tokens_[cursor].lexeme();
+                });
+            if (!constantArgument && !packExpansion && !knownQualifiedValue && !canStartTypeArgumentAt(cursor))
+                return false;
             expectsArgument = false;
             sawArgument = true;
         }

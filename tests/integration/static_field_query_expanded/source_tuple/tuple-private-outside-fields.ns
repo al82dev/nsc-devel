@@ -1,0 +1,1 @@
+class Outer { private struct P { public int X; } public struct Record { public (int,P) Pair; } } int Main() { Outer.Record value=default(Outer.Record); static foreach (field in Fields(Outer.Record)) { field.Type item=field.Get(value); } return 0; }

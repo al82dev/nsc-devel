@@ -35,7 +35,7 @@ tipos hacia expresiones anidadas y conserva un algoritmo acotado sin búsqueda d
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T04BidirectionalInferenceTests.cpp`: seis cierres dirigidos con PE O0 y
+- `tests/unit/NativeSharpT04BidirectionalInferenceTests.cpp`: seis cierres dirigidos con PE O0 y
   NSLink local, estructuras contextuales, orden de overloads y rechazos causales.
 - `docs/3.0/language/bidirectional-inference.md`: contrato bilingüe y guía de desambiguación.
 - Este documento: evidencia atómica del commit F04.

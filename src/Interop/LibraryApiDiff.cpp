@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/LibraryApiDiff.h"
+#include "nativesharp/Frontend/ClassMemberKind.h"
 
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Language/ModuleSemantics.h"
@@ -333,6 +334,16 @@ void appendSourceGenericTemplates(const LibraryMetadata& metadata, Surface& resu
             field(contract, shorter);
         }
         strings(contract, generic.dependencies, true);
+        strings(contract, generic.candidateReceiverTypeKeys, true);
+        number(contract, generic.sourceImports.size());
+        for (const auto& directive : generic.sourceImports)
+        {
+            field(contract, directive.namespaceName);
+            field(contract, directive.alias);
+            field(contract, directive.target);
+            number(contract, directive.importKind);
+            number(contract, directive.reexport ? 1U : 0U);
+        }
         // A reusable generic is compiled in the consumer. Its declaration/body is therefore a
         // public compilation input, not a private producer implementation detail.
         field(contract, canonicalGenericSource(generic.sourceText));
@@ -432,7 +443,10 @@ void appendAbiMembers(const LibraryMetadata& metadata, Surface& result)
             member.accessibility != kProtectedAccessibility) continue;
         std::string contract;
         number(contract, member.kind);
-        number(contract, member.flags & ~kSemanticOnlyMemberFlags);
+        const std::uint32_t semanticFlags = kSemanticOnlyMemberFlags |
+            (member.kind == static_cast<std::uint8_t>(frontend::ClassMemberKind::Method)
+                ? kMetadataMemberReceiverNoReferenceFieldEffects : 0U);
+        number(contract, member.flags & ~semanticFlags);
         field(contract, member.declaredTypeKey);
         field(contract, member.declaredErrorTypeKey);
         field(contract, member.cAbiName);

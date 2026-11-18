@@ -11,7 +11,7 @@ Antes de F01 deben cumplirse simultáneamente:
 |---|---|
 | T03–T16 cerradas con evidencia por ítem | ❌ (T05–T07 núcleos ✅; T08–T16 mayormente auditadas, no cerradas) |
 | tracking sin huecos secuenciales ni doble conteo | ❌ (residuales documentados) |
-| cero `DeferredTo4`/`PlannedFor304` en el alcance | ❌ (surfaces pendientes de Alberto) |
+| cero `Deferred`/`Planned` en el alcance | ❌ (surfaces pendientes de Alberto) |
 | host/self-host parity | ❌ (T16-F06 auditada, no ejecutada) |
 | metadata/ABI/debug versionados | ❌ (T16-F01/F05 auditadas, no cerradas) |
 | repositorio limpio y commits de una sola hipótesis | ✅ |

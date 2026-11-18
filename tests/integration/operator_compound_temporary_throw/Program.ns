@@ -1,0 +1,25 @@
+namespace NativeSharp.Core { public class Exception { } }
+using NativeSharp.Core;
+public struct Right
+{
+    public static int drops;
+    public int value;
+    public Right(int x) { value = x; }
+    ~Right() { drops = drops + 1; }
+}
+public struct Left
+{
+    public int value;
+    public Left(int x) { value = x; }
+    public static Left operator +(Left left, in Right right) throws Exception { throw new Exception(); }
+}
+public class Program
+{
+    public static int Main()
+    {
+        Left left = new Left(1);
+        try { left += new Right(2); }
+        catch (Exception error) { return left.value == 1 && Right.drops == 1 ? 42 : 1; }
+        return 2;
+    }
+}

@@ -1,14 +1,13 @@
 # NS2-PERF-P00 corpus
 
-This directory defines the reproducible NativeSharp 2.0 compiler-performance
+This directory defines the reproducible NativeSharp compiler-performance
 baseline. The runner exercises every optimization level (`O0` through `O3`),
 all supported debug-information modes, object and executable production, and
 both Windows linkers where linking applies.
 
-From a Developer Command Prompt:
+From a Developer Command Prompt in the repository root:
 
 ```bat
-cd /d A:\nsc-devel
 python tools\nsc_performance_baseline.py --iterations 5 --warmups 1
 ```
 

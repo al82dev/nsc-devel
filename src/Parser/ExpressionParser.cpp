@@ -15,7 +15,7 @@
 #include "nativesharp/Language/ExpressionErgonomics.h"
 #include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Language/IterationSemantics.h"
-#include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Language/LanguageSurface.h"
 #include "nativesharp/Lexer/Lexer.h"
 #include "nativesharp/Lexer/TokenKind.h"
 #include "nativesharp/Source/SourceFile.h"
@@ -1006,6 +1006,27 @@ bool Parser::looksLikeSizeofTypeForm(std::size_t cursor) const noexcept
         while (cursor + 1 < tokens_.size() && tokens_[cursor].kind() == TokenKind::Dot &&
                tokens_[cursor + 1].kind() == TokenKind::Identifier)
             cursor += 2;
+        // LKF-079: a closed generic type, `sizeof(Box<int>)` or `sizeof(Map<string, Box<long>>)`.
+        // The argument list is balanced and holds only what a type argument can spell -- names,
+        // builtin types, dots, commas, pointers, array brackets and integer constants for const
+        // parameters -- so a comparison such as `sizeof(a < b)` never matches. `>>` closes two.
+        if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Less)
+        {
+            int depth = 1;
+            for (++cursor; cursor < tokens_.size() && depth > 0; ++cursor)
+            {
+                const TokenKind kind = tokens_[cursor].kind();
+                if (kind == TokenKind::Less) ++depth;
+                else if (kind == TokenKind::Greater) --depth;
+                else if (kind == TokenKind::GreaterGreater) depth -= 2;
+                else if (kind != TokenKind::Identifier && kind != TokenKind::Dot && kind != TokenKind::Comma &&
+                         kind != TokenKind::Star && kind != TokenKind::LeftBracket &&
+                         kind != TokenKind::RightBracket && kind != TokenKind::IntegerLiteral &&
+                         !lexer::isBuiltinTypeKeyword(kind))
+                    return false;
+            }
+            if (depth != 0) return false;
+        }
     }
     else ++cursor;
     while (cursor < tokens_.size())

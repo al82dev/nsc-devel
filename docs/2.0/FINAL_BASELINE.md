@@ -1,24 +1,25 @@
-# Baseline completo final de NativeSharp 2.0
+# Baseline histórico de NativeSharp
 
-La promoción de NativeSharp 2.0 exige una sola corrida completa posterior a todos los cambios de
-la tanda 16. El contrato instalado `NativeSharp2FinalBaseline.contract` (`NSFINALBASELINE 1`) fija
-los criterios que debe satisfacer su reporte:
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+La campaña histórica de la tanda 16 definió una corrida completa posterior a sus cambios. Su
+contrato describía los criterios siguientes; esta evidencia no certifica los cambios actuales:
 
 - construcción Release limpia e instalación verificada en `C:\native-sharp`;
 - CTest completo con `lld-link` y NSLink, sin pruebas omitidas;
-- todos los fixtures y casos de bug triage en O0 y O2;
+- los fixtures y casos de bug triage en O0 y O2;
 - Gate 0 `LANDED`, digest de fuentes estable y hashes de compilador/NSLink estables;
 - cero fallos, CTest no interactivo y ningún messagebox.
 
-El contrato describe la puerta; el expediente de cierre de la tanda registra el identificador y la
-ruta del reporte que la atravesó.
+El contrato generado actualmente se llama `NativeSharpFinalBaseline.contract`; no se ha validado
+en esta tarea. Su texto enumera O0 y O2, por lo que no acredita por sí solo los cuatro niveles que
+exigen los lineamientos vigentes: O0, O1, O2 y O3 por separado cuando corresponda ejecutar pruebas.
 
 ---
 
-# NativeSharp 2.0 final complete baseline
+# Historical NativeSharp baseline
 
-Promotion requires exactly one complete run after every batch-16 change. The installed
-`NativeSharp2FinalBaseline.contract` (`NSFINALBASELINE 1`) requires a clean Release build, verified
-installation, complete CTest matrices with lld-link and NSLink, every fixture and bug-triage case
-in O0 and O2, a LANDED Gate 0, stable source and tool hashes, zero failures, non-interactive CTest,
-and no message boxes. The batch closure records the report that satisfies this gate.
+The historical batch-16 baseline described the criteria listed above. It does not certify current
+changes. The current generated contract is named `NativeSharpFinalBaseline.contract`; it has not
+been validated in this task. Its text lists O0 and O2 and therefore does not by itself establish
+the O0, O1, O2 and O3 coverage required by current guidelines when tests are performed.

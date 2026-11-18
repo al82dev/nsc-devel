@@ -1,0 +1,17 @@
+public struct Box<T, const int N>
+{
+    public T[N] Data;
+}
+
+public static class InvalidOps
+{
+    public static int Invalid<T>(Box<T, int> value)
+    {
+        return 0;
+    }
+}
+
+int Main()
+{
+    return 0;
+}

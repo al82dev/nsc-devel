@@ -1,0 +1,16 @@
+noinline decimal Calc(decimal a, decimal b)
+{
+    return saturating(a - b);
+}
+
+int Main()
+{
+    unsafe("inspect saturating boundary")
+    {
+        i128 bits = (((i128)1 << 96) - (i128)1) | ((i128)1 << 127);
+        decimal a = *((decimal*)&bits);
+        decimal r = Calc(a, 0.0000000000000000000000000001m);
+        if (*((i128*)&r) != bits) return 31;
+        return 0;
+    }
+}

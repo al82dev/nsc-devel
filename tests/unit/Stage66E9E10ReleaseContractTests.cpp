@@ -184,6 +184,36 @@ int main()
                      !std::filesystem::exists(removalRoot / "share/nativesharp"),
         "retirement prunes empty package directories but preserves shared roots");
 
+#if defined(_WIN32)
+    // LKF-257: a target that cannot be retired midway (an open handle without delete sharing) leaves every
+    // installed file in place: the earlier targets were only parked and go back.
+    // LKF-257: un destino que no se puede retirar a mitad (un handle abierto sin compartir borrado) deja
+    // todos los archivos instalados: los anteriores solo se apartaron y vuelven.
+    const std::filesystem::path interruptedRoot = evidence / "interrupted-retirement";
+    std::filesystem::path interruptedManifest;
+    tests.expect(createManifest(interruptedRoot, "compiler", "stable", "same", true, false, interruptedManifest, error),
+        "interrupted-retirement fixture has a current manifest");
+    const std::filesystem::path interruptedPlan = evidence / "interrupted-retirement.plan";
+    tests.expect(driver::writeInstallationRemovalPlan(interruptedManifest, interruptedPlan, error),
+        "interrupted-retirement fixture has a bound retirement plan");
+    {
+        std::ifstream held(interruptedRoot / "sdk/win64/nativesharp-runtime.nsimports", std::ios::binary);
+        tests.expect(held.is_open(), "a later retirement target is held open");
+        tests.expect(
+            !driver::applyInstallationRemovalPlan(interruptedRoot, interruptedManifest, {}, interruptedPlan, error) &&
+                error.find("no installed file was removed") != std::string::npos,
+            "an interrupted retirement reports that nothing was removed");
+    }
+    tests.expect(std::filesystem::exists(interruptedRoot / "bin/nsc.exe") &&
+                     std::filesystem::exists(interruptedRoot / "lib/Core/Common.ns") &&
+                     std::filesystem::exists(interruptedRoot / "sdk/win64/nativesharp-runtime.nsimports"),
+        "an interrupted retirement restores the targets it had already parked");
+    tests.expect(
+        driver::applyInstallationRemovalPlan(interruptedRoot, interruptedManifest, {}, interruptedPlan, error) &&
+                     !std::filesystem::exists(interruptedRoot / "bin/nsc.exe"),
+        "the same retirement succeeds once the handle is closed");
+#endif
+
     const std::filesystem::path guardedRoot = evidence / "guarded";
     std::filesystem::path guardedManifest;
     tests.expect(createManifest(guardedRoot, "compiler", "stable", "same", true, false, guardedManifest, error),
@@ -249,9 +279,6 @@ int main()
         "full preflight prevents partial deletion before a late failure");
 
     const std::string policy = driver::currentCompatibilityPolicy();
-    const std::string metadataFormat =
-        std::to_string(nativesharp::interop::kMetadataFormatMajor) + "." +
-        std::to_string(nativesharp::interop::kMetadataFormatMinor);
     const std::string nativeAbi =
         std::to_string(nativesharp::interop::kNativeAbiMajor) + "." +
         std::to_string(nativesharp::interop::kNativeAbiMinor);
@@ -260,13 +287,12 @@ int main()
         std::to_string(nativesharp::interop::kRuntimeAbiMinor);
     tests.expect(
         policy.starts_with("NSCOMPAT 1\n") && policy.ends_with('\n'), "compatibility policy has canonical framing");
-    tests.expect(policy.find("compiler_release=3.0.0\n") != std::string::npos &&
-                     policy.find("language_release=3.0.0\n") != std::string::npos,
-        "policy separates compiler and language releases");
-    tests.expect(policy.find("nsmeta_read=content-compatible;version-label-informational\n") !=
-                         std::string::npos &&
-                     policy.find("nsmeta_write=" + metadataFormat + "\n") != std::string::npos,
-        "policy separates capability-based reading from the producer format label");
+    tests.expect(policy.find("compiler_release=1.0.0\n") != std::string::npos &&
+                     policy.find("language_compatibility=capability-based\n") != std::string::npos,
+        "policy identifies the product without a language version");
+    tests.expect(policy.find("nsmeta_read=content-compatible\n") != std::string::npos &&
+                     policy.find("nsmeta_write=content\n") != std::string::npos,
+        "policy describes metadata reading and writing by content");
     tests.expect(policy.find("native_abi=" + nativeAbi + "\n") != std::string::npos &&
                      policy.find("runtime_abi=" + runtimeAbi + "\n") != std::string::npos,
         "binary compatibility versions are explicit");
@@ -279,6 +305,56 @@ int main()
     tests.expect(driver::writeCompatibilityPolicy(policyPath, error), "compatibility policy writer succeeds");
     tests.expect(readFile(policyPath) == policy, "writer emits exactly the canonical policy bytes");
     tests.expect(driver::verifyCompatibilityPolicy(policyPath, error), "current compatibility policy verifies");
+    std::string legacyPolicy = policy;
+    const auto metadataRead = legacyPolicy.find("nsmeta_read=content-compatible");
+    legacyPolicy.replace(metadataRead, std::string("nsmeta_read=content-compatible").size(),
+                         "nsmeta_read=opaque-read-annotation");
+    const auto metadataWrite = legacyPolicy.find("nsmeta_write=content");
+    legacyPolicy.replace(metadataWrite, std::string("nsmeta_write=content").size(), "nsmeta_write=opaque-write-annotation");
+    tests.expect(writeFile(policyPath, legacyPolicy) &&
+                     driver::verifyInstalledCompatibilityCapabilities(policyPath, error),
+        "installed policy accepts opaque metadata annotations while validating other capabilities");
+    std::string policyWithoutLabels = policy;
+    for (const std::string_view label : {std::string_view("nsmeta_read=content-compatible\n"),
+             std::string_view("nsmeta_write=content\n"),
+             std::string_view("language_compatibility=capability-based\n")})
+    {
+        const auto position = policyWithoutLabels.find(label);
+        if (position != std::string::npos) policyWithoutLabels.erase(position, label.size());
+    }
+    tests.expect(writeFile(policyPath, policyWithoutLabels) &&
+                     driver::verifyInstalledCompatibilityCapabilities(policyPath, error),
+        "installed policy accepts missing informational metadata and language labels");
+    tests.expect(writeFile(policyPath, policyWithoutLabels +
+                         "nsmeta_read=\nnsmeta_read=other\nlanguage_compatibility=\n") &&
+                     driver::verifyInstalledCompatibilityCapabilities(policyPath, error),
+        "empty or repeated informational labels do not restrict the installed policy");
+    std::string legacyLanguagePolicy = policy + "language_label=\nlanguage_label=opaque-label\n";
+    const auto languageCapability = legacyLanguagePolicy.find("language_compatibility=capability-based");
+    legacyLanguagePolicy.replace(languageCapability, std::string("language_compatibility=capability-based").size(),
+        "language_compatibility=opaque-label");
+    const auto deprecationCapability = legacyLanguagePolicy.find("deprecation=prior-deprecation-or-documented-security-exception");
+    legacyLanguagePolicy.replace(deprecationCapability,
+        std::string("deprecation=prior-deprecation-or-documented-security-exception").size(),
+        "deprecation=opaque-label");
+    tests.expect(writeFile(policyPath, legacyLanguagePolicy) &&
+                     driver::verifyInstalledCompatibilityCapabilities(policyPath, error),
+        "historical language labels do not gate installed capability checks");
+    std::string legacyCompilerPolicy = policy;
+    const auto compilerRelease = legacyCompilerPolicy.find("compiler_release=1.0.0");
+    legacyCompilerPolicy.replace(compilerRelease, std::string("compiler_release=1.0.0").size(),
+        "compiler_release=historic-label");
+    tests.expect(writeFile(policyPath, legacyCompilerPolicy) &&
+                     driver::verifyInstalledCompatibilityCapabilities(policyPath, error),
+        "compiler release labels are informational when actual capabilities match");
+    std::string incompatibleAbiPolicy = policy;
+    const std::string nativeAbiField = "native_abi=" + nativeAbi;
+    const auto nativeAbiPosition = incompatibleAbiPolicy.find(nativeAbiField);
+    incompatibleAbiPolicy.replace(nativeAbiPosition, nativeAbiField.size(), "native_abi=incompatible");
+    tests.expect(writeFile(policyPath, incompatibleAbiPolicy) &&
+                     !driver::verifyInstalledCompatibilityCapabilities(policyPath, error) &&
+                     error.find("incompatible compatibility policy capability 'native_abi'") != std::string::npos,
+        "installed policy still rejects incompatible native ABI capabilities");
     tests.expect(writeFile(policyPath, "NSCOMPAT 9\n") && driver::verifyCompatibilityPolicy(policyPath, error),
         "future policy label is accepted when no unsupported capability is requested");
     tests.expect(writeFile(policyPath, policy + "unknown=value\n") &&
@@ -286,17 +362,17 @@ int main()
         "unknown policy fields remain forward-compatible");
 
     std::string explanation;
-    tests.expect(driver::checkCompilerCompatibility("3.0.0", explanation, error) &&
+    tests.expect(driver::checkCompilerCompatibility("1.0.0", explanation, error) &&
                      explanation.find("informational") != std::string::npos,
         "current compiler release is informational");
-    tests.expect(driver::checkCompilerCompatibility("2.0.0", explanation, error) && error.empty(),
-        "a prior release label does not block compatible input");
-    tests.expect(driver::checkCompilerCompatibility("3.0.1", explanation, error) && error.empty(),
-        "a newer patch label does not block compatible input");
-    tests.expect(driver::checkCompilerCompatibility("3.1.0", explanation, error) && error.empty(),
-        "a future minor label does not block compatible input");
-    tests.expect(driver::checkCompilerCompatibility("4.0.0", explanation, error) && error.empty(),
-        "a different major label does not block compatible input");
+    tests.expect(driver::checkCompilerCompatibility("opaque-a", explanation, error) && error.empty(),
+        "an opaque label does not block compatible input");
+    tests.expect(driver::checkCompilerCompatibility("opaque-b", explanation, error) && error.empty(),
+        "another opaque label does not block compatible input");
+    tests.expect(driver::checkCompilerCompatibility("opaque-c", explanation, error) && error.empty(),
+        "a third opaque label does not block compatible input");
+    tests.expect(driver::checkCompilerCompatibility("opaque-d", explanation, error) && error.empty(),
+        "a fourth opaque label does not block compatible input");
     tests.expect(driver::checkCompilerCompatibility("1.0", explanation, error) && error.empty(),
         "version spelling does not replace capability validation");
 
@@ -312,9 +388,10 @@ int main()
     output.clear();
     driverError.str({});
     driverError.clear();
-    const std::vector<std::string_view> compatibleRequirement = {"--check-compiler-compatibility", "3.0.0"};
+    const std::vector<std::string_view> compatibleRequirement = {"--check-compiler-compatibility", "opaque-a"};
     tests.expect(compiler.run(compatibleRequirement, output, driverError) == ExitCode::Success &&
-                     output.str().find("satisfies 3.0.0") != std::string::npos && driverError.str().empty(),
+                     output.str().find("label 'opaque-a' as informational") != std::string::npos &&
+                     output.str().find("satisfies opaque-a") == std::string::npos && driverError.str().empty(),
         "public compatibility command returns an executable positive decision");
 
     tests.expect(

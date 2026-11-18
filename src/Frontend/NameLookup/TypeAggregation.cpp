@@ -34,7 +34,7 @@ namespace
 bool isTraitImplementationPart(const NamedTypeDeclarationPart& part) noexcept
 {
     return part.syntax != nullptr && part.syntax->kind() == ast::AstNodeKind::ClassDeclaration &&
-        part.syntax->auxiliaryText() == "ns3-trait-impl";
+        part.syntax->auxiliaryText() == "nsc-trait-impl";
 }
 
 compilation::TypeDeclarationKind compilationTypeKind(NamedTypeDeclarationKind kind) noexcept
@@ -201,19 +201,15 @@ void ProjectNameLookup::validateTraitImplementationTarget(
         }
     }
     if (implementation == nullptr) return;
-    // NS304-T11-F06: a borrowed (ref-like) struct view is a valid static witness target.
-    const bool isBorrowedStructTarget =
-        primary.part.kind == NamedTypeDeclarationKind::Struct &&
-        primary.part.syntax != nullptr &&
-        primary.part.syntax->auxiliaryText().find("borrowedview") != std::string::npos;
-    if (isBorrowedStructTarget ||
+    // Struct witnesses, including borrowed views, are resolved statically.
+    if (primary.part.kind == NamedTypeDeclarationKind::Struct ||
         (primary.part.kind == NamedTypeDeclarationKind::Class && !primary.part.isStatic))
         return;
     diagnostics.report(
         diagnostics::DiagnosticId::InvalidBaseType,
         diagnostics::DiagnosticSeverity::Error,
         implementation->part.range,
-        "a trait impl target must be a non-static class declared by this module");
+        "a trait impl target must be a struct or non-static class declared by this module");
 }
 
 void ProjectNameLookup::reportTypeAggregationFailure(

@@ -1,0 +1,13 @@
+class Base
+{
+    protected int Hidden;
+    public int Visible;
+    public Base() { this.Hidden = 3; this.Visible = 7; }
+    public int Inspect()
+    {
+        int sum = 0;
+        static foreach (field in Fields(Base)) { sum = sum + field.Get(this); }
+        return sum;
+    }
+}
+int Main() { owned Base value = new Base(); return value.Inspect() == 10 ? 0 : 1; }

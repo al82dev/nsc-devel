@@ -10,22 +10,11 @@
 #include "nativesharp/Driver/ReleaseCandidateFreeze.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 
-#include <array>
 #include <string_view>
 #include <system_error>
 
 namespace nativesharp::driver {
 namespace {
-constexpr std::array<RequiredFile, 3> kRequiredLibraries = {{
-    {"lib/NativeSharp.Core/NativeSharp.Core.nsproj",
-     "NativeSharp.Core project manifest"},
-    {"lib/NativeSharp.Core.Collections.Generic/"
-     "NativeSharp.Core.Collections.Generic.nsproj",
-     "NativeSharp.Core.Collections.Generic project manifest"},
-    {"lib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj",
-     "NativeSharp.Core.Threading project manifest"},
-}};
-
 bool requireRegularFile(const std::filesystem::path &prefix,
                         const RequiredFile &required, std::string &error) {
   const std::filesystem::path path =
@@ -63,14 +52,14 @@ bool verifyFoundationContracts(
     return false;
   }
   const std::filesystem::path migrationPath =
-      prefix / "share/nativesharp/toolchain/NativeSharp3Migration.baseline";
+      prefix / "share/nativesharp/toolchain/NativeSharpMigration.baseline";
   std::string migrationError;
   if (!verifyMigrationBaseline(migrationPath, migrationError)) {
     error = "installed migration baseline is invalid: " + migrationError;
     return false;
   }
   const std::filesystem::path breakingChangesPath =
-      prefix / "share/nativesharp/toolchain/NativeSharp3BreakingChanges.ledger";
+      prefix / "share/nativesharp/toolchain/NativeSharpBreakingChanges.ledger";
   std::string breakingChangesError;
   if (!verifyBreakingChangeLedger(breakingChangesPath, breakingChangesError)) {
     error = "installed breaking-change ledger is invalid: " + breakingChangesError;
@@ -84,35 +73,35 @@ bool verifyReleaseContracts(
     std::string& error)
 {
   const std::filesystem::path migrationGuidePath =
-      prefix / "share/nativesharp/toolchain/NativeSharp3Migration.guide";
+      prefix / "share/nativesharp/toolchain/NativeSharpMigration.guide";
   std::string migrationGuideError;
   if (!verifyMigrationGuide(migrationGuidePath, migrationGuideError)) {
     error = "installed migration guide is invalid: " + migrationGuideError;
     return false;
   }
   const std::filesystem::path freezePath =
-      prefix / "share/nativesharp/toolchain/NativeSharp3RC.freeze";
+      prefix / "share/nativesharp/toolchain/NativeSharpRC.freeze";
   std::string freezeError;
   if (!verifyReleaseCandidateFreeze(freezePath, freezeError)) {
     error = "installed release-candidate freeze is invalid: " + freezeError;
     return false;
   }
   const std::filesystem::path matrixPath =
-      prefix / "share/nativesharp/toolchain/NativeSharp3Compatibility.matrix";
+      prefix / "share/nativesharp/toolchain/NativeSharpCompatibility.matrix";
   std::string matrixError;
   if (!verifyCompatibilityMatrix(matrixPath, matrixError)) {
     error = "installed final compatibility matrix is invalid: " + matrixError;
     return false;
   }
   const std::filesystem::path finalBaselinePath =
-      prefix / "share/nativesharp/toolchain/NativeSharp3FinalBaseline.contract";
+      prefix / "share/nativesharp/toolchain/NativeSharpFinalBaseline.contract";
   std::string finalBaselineError;
   if (!verifyFinalBaselineContract(finalBaselinePath, finalBaselineError)) {
     error = "installed final baseline contract is invalid: " + finalBaselineError;
     return false;
   }
   const std::filesystem::path promotionPath =
-      prefix / "share/nativesharp/toolchain/NativeSharp3Promotion.act";
+      prefix / "share/nativesharp/toolchain/NativeSharpPromotion.act";
   std::string promotionError;
   if (!verifyPromotionAct(promotionPath, promotionError)) {
     error = "installed promotion act is invalid: " + promotionError;
@@ -149,11 +138,6 @@ bool verifyInstallation(const std::filesystem::path &prefix,
   if (!verifyFoundationContracts(prefix, error)) return false;
   if (!verifyReleaseContracts(prefix, error)) return false;
 
-  for (const RequiredFile &required : kRequiredLibraries) {
-    if (!requireRegularFile(prefix, required, error)) {
-      return false;
-    }
-  }
   return true;
 }
 } // namespace nativesharp::driver

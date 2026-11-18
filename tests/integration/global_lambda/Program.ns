@@ -1,0 +1,12 @@
+delegate int Reducer(int left, int right);
+
+/// <summary>Invokes a noncapturing delegate created in a global entry point.</summary>
+int Main()
+{
+    raii Reducer add = (int left, int right) => left + right;
+    if (add(1, 2) != 3)
+    {
+        return 1;
+    }
+    return 0;
+}

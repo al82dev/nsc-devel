@@ -27,7 +27,7 @@ semantica del lenguaje para hacer pasar una prueba.
 
 ## Archivos
 
-- `tests/unit/NativeSharp3T49LanguageSurfaceTests.cpp`
+- `tests/unit/NativeSharpT49LanguageSurfaceTests.cpp`
   - Retira el control redundante y conserva las pruebas lexer y end-to-end productivas.
 - `docs/compiler-optimization/TANDA-UNIVERSAL-23-T49-RAW-STRING.md`
   - Registra causa, limite y evidencia de esta correccion.

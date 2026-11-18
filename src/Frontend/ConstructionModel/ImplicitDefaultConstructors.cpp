@@ -76,7 +76,8 @@ void ProjectConstructionModel::bindExplicitBaseDefaultConstructor(
             nameLookup_->namedTypes()[typeOrdinal].range,
             "implicit constructor for class '" +
                 nameLookup_->namedTypes()[typeOrdinal].identity.fullyQualifiedName() +
-                "' cannot chain to its base class because the base declares no parameterless constructor");
+                "' cannot chain to its base class because the base declares no parameterless constructor; "
+                "an implicit constructor passes no default arguments, so declare a constructor that calls base()");
         binding.resolution = ImplicitDefaultConstructorResolutionKind::NoViableBaseConstructor;
     }
     else if (!constructorAccessibleFromType(

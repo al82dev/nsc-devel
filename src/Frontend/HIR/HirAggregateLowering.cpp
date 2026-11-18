@@ -1,5 +1,7 @@
 #include "HirLoweringSupport.h"
 #include "Internal/HirAggregateFrame.h"
+#include "nativesharp/Frontend/ProjectMetaprogrammingModel.h"
+#include "nativesharp/Target/TargetDataLayout.h"
 
 #include <optional>
 #include <string>
@@ -279,6 +281,25 @@ bool ProjectOopHirModel::appendAggregateLeaves(
     std::vector<std::unique_ptr<ProjectOopHirNode>>& leaves,
     std::string& error)
 {
+    // A record explicitly deriving both equality and hashing uses the same
+    // selected fields for both operations. Ordinary struct comparison keeps
+    // its existing physical-field semantics.
+    std::optional<std::size_t> derivedTypeOrdinal;
+    if (metaprogrammingModel_ != nullptr && inheritanceModel_ != nullptr)
+    {
+        const auto ordinal = inheritanceModel_->typeOrdinalForTypeKey(typeKey);
+        bool equality = false;
+        bool hash = false;
+        for (const StaticDeriveInfo& derive : metaprogrammingModel_->derives())
+        {
+            if (ordinal.has_value() && derive.typeOrdinal == *ordinal)
+            {
+                equality = equality || derive.traitName == "Equality";
+                hash = hash || derive.traitName == "Hash";
+            }
+        }
+        if (equality && hash) derivedTypeOrdinal = ordinal;
+    }
     std::vector<std::pair<std::string, std::uint64_t>> pending;
     pending.emplace_back(typeKey, baseOffset);
     while (!pending.empty())
@@ -332,6 +353,22 @@ bool ProjectOopHirModel::appendAggregateLeaves(
             for (std::size_t remaining = layout->fields.size(); remaining > 0; --remaining)
             {
                 const ObjectFieldLayout& field = layout->fields[remaining - 1U];
+                bool ignored = false;
+                if (derivedTypeOrdinal.has_value() && typeOrdinal == derivedTypeOrdinal &&
+                    currentBaseOffset == baseOffset)
+                {
+                    for (const StaticAttributeInfo& attribute : metaprogrammingModel_->attributes())
+                    {
+                        if (attribute.memberOrdinal == field.memberOrdinal &&
+                            (attribute.identity == "NativeSharp.DeriveIgnore" ||
+                             attribute.identity.ends_with(".DeriveIgnore")))
+                        {
+                            ignored = true;
+                            break;
+                        }
+                    }
+                }
+                if (ignored) continue;
                 pending.emplace_back(
                     field.typeKey, currentBaseOffset + field.offset);
             }
@@ -375,6 +412,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishCollectionBuilderEx
             ProjectOopHirNodeKind::LocalAddress, expression, temporaryTypeKey + "*");
         receiver->localOrdinal = temporaryOrdinal;
         add->children.push_back(std::move(receiver));
+        if (memberModel_ != nullptr && core.builderMemberOrdinals[1] < memberModel_->members().size())
+        {
+            const auto& addMember = memberModel_->members()[core.builderMemberOrdinals[1]];
+            if (addMember.parameters.size() == 1U)
+            {
+                const auto* source = expressionType(child);
+                const ProjectImplicitConversion conversion = classifyImplicit(
+                    elements[index]->typeKey, addMember.parameters[0].typeKey,
+                    source != nullptr ? source->integerConstant : std::nullopt);
+                if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
+                    elements[index] = wrapImplicitConversion(std::move(elements[index]), conversion, child);
+            }
+        }
         add->children.push_back(std::move(elements[index]));
         auto statement = makeNode(
             ProjectOopHirNodeKind::ExpressionStatement, child, "builtin:void");
@@ -450,8 +500,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStackAllocationExpre
             error = "CC1 stackalloc requires the object layout model to size it";
             return nullptr;
         }
-        const std::optional<std::pair<std::uint64_t, std::uint64_t>> elementLayout =
+        std::optional<std::pair<std::uint64_t, std::uint64_t>> elementLayout =
             objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, core->elementTypeKey);
+        if (!elementLayout.has_value() && core->elementTypeKey == "builtin:decimal")
+        {
+            const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(
+                target::BuiltinLayoutKind::Decimal);
+            elementLayout = {{decimal.size, decimal.alignment}};
+        }
         if (!elementLayout.has_value())
         {
             error = "stackalloc cannot size '" + core->elementTypeKey +
@@ -616,9 +672,9 @@ void ProjectOopHirModel::appendAllocatorPreamble(
     auto allocate = makeNode(ProjectOopHirNodeKind::InstanceCall, expression, "builtin:byte*");
     allocate->memberOrdinal = *binding.allocatorAllocateMemberOrdinal;
     allocate->children.push_back(std::move(contextValue));
-    // EN: Freeze 3.0 C-08: IAllocator.Allocate(long bytes, int alignment) receives sizeof(T)
+    // EN: Freeze C-08: IAllocator.Allocate(long bytes, int alignment) receives sizeof(T)
     //     and alignof(T), so an over-aligned T is never placed at the allocator's default.
-    // ES: Congelamiento 3.0 C-08: IAllocator.Allocate(long bytes, int alignment) recibe
+    // ES: Congelamiento C-08: IAllocator.Allocate(long bytes, int alignment) recibe
     //     sizeof(T) y alignof(T); un T sobre-alineado nunca queda en la alineacion por omision.
     auto sizeArg = makeNode(
         ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:long");
@@ -925,8 +981,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAggregateOrLayoutExp
                 error = "layout query requires the object layout model";
                 return nullptr;
             }
-            const std::optional<std::pair<std::uint64_t, std::uint64_t>> layout =
+            std::optional<std::pair<std::uint64_t, std::uint64_t>> layout =
                 objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, binding->elementTypeKey);
+            // NSC-NCSS-013: `decimal` has a 128-bit target layout, but valueLayoutForTypeKey does
+            // not list it, so `sizeof(decimal)` and `alignof(decimal)` were rejected with "no value
+            // layout" while decimal arrays, stackalloc and raw elements already measured it. The
+            // same target layout those paths use is taken here, for exactly this type.
+            if (!layout.has_value() && binding->elementTypeKey == "builtin:decimal")
+            {
+                const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(
+                    target::BuiltinLayoutKind::Decimal);
+                layout = {{decimal.size, decimal.alignment}};
+            }
             if (!layout.has_value())
             {
                 error = (binding->kind == MethodCoreOperationKind::AlignofConstant ? "alignof" : "sizeof") +

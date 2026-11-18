@@ -1,0 +1,11 @@
+noinline decimal Divide(decimal a, decimal b) { return checked(a / b); }
+
+int Main()
+{
+    unsafe("inspect scaled zero quotient")
+    {
+        decimal result = Divide(0.0m, -1m);
+        i128 expectedBits = (i128)2 << 96;
+        return *((i128*)&result) == expectedBits ? 0 : 1;
+    }
+}

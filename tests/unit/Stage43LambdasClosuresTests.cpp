@@ -43,7 +43,7 @@ void writeProject(const std::filesystem::path& directory, std::string_view name)
     writeFile(
         directory / (std::string(name) + ".nsproj"),
         "<Project><PropertyGroup><Name>" + std::string(name) +
-            "</Name><Language>3</Language></PropertyGroup>"
+            "</Name></PropertyGroup>"
             "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
 }
 

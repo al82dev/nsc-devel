@@ -63,7 +63,7 @@ bool validatePrioritizedInteractionMatrix(
     return true;
 }
 
-std::vector<InteractionCase> buildNativeSharp3InteractionMatrix(std::uint64_t seedBase)
+std::vector<InteractionCase> buildNativeSharpInteractionMatrix(std::uint64_t seedBase)
 {
     if (seedBase == 0) seedBase = 0x4e533300ULL;
     return {
@@ -123,7 +123,7 @@ bool validateWholeProgramCorpus(
     return !programs.empty();
 }
 
-std::vector<WholeProgramWitness> buildNativeSharp3WholeProgramCorpus()
+std::vector<WholeProgramWitness> buildNativeSharpWholeProgramCorpus()
 {
     using Kind = WholeProgramWitness::Kind;
     return {
@@ -135,7 +135,7 @@ std::vector<WholeProgramWitness> buildNativeSharp3WholeProgramCorpus()
         {"async-server", true, true, false, Kind::AsyncServer, true, true, true, true, false, 5, 42}};
 }
 
-bool validateNativeSharp3WholeProgramCorpus(
+bool validateNativeSharpWholeProgramCorpus(
     std::span<const WholeProgramWitness> programs,
     std::string& error)
 {
@@ -182,7 +182,7 @@ bool withinPerformanceBudget(
         measured.codeBytes <= maximum.codeBytes;
 }
 
-std::vector<PerformanceBudgetProfile> nativeSharp3PerformanceBudgets()
+std::vector<PerformanceBudgetProfile> nativeSharpPerformanceBudgets()
 {
     constexpr std::string_view hardware =
         "Windows-x64|12-logical-cores|32GiB|NVMe|clang-cl-23|NSLink-3";
@@ -399,6 +399,8 @@ bool validateSemanticDebugEvidence(
         }
         coveredKinds.insert(entry.kind);
     }
+    // LKF-417: categories and optimization levels are covered as separate sets, as in validateZeroCostAudit.
+    // LKF-417: categorías y niveles de optimización se cubren como conjuntos separados, como en validateZeroCostAudit.
     if (!hasO0 || !hasO2 || coveredKinds.size() != 8)
     {
         error = "semantic debug audit requires O0/O2 and every observable entity category";
@@ -454,6 +456,10 @@ bool validateZeroCostAudit(
         coveredCosts.insert(record.event.kind);
         coveredOptimizations.insert(record.optimization);
     }
+    // EN: LKF-417: the audit covers every cost kind and both optimization settings as two sets, not as a
+    //     kind x optimization matrix; each fixture names one construct at one setting (TL-LANG-140).
+    // ES: LKF-417: la auditoría cubre cada tipo de costo y ambas optimizaciones como dos conjuntos, no
+    //     como una matriz tipo x optimización; cada fixture nombra un constructo en un ajuste (TL-LANG-140).
     if (coveredCosts.size() != 6 || coveredOptimizations.size() != 2)
     {
         error = "zero-cost audit requires all six cost kinds with optimization off and on";

@@ -64,7 +64,7 @@ Evidencia cruzada de capas (grep en `src/` e `include/`):
 
 - **Plan builder sin consumidor productivo**: `buildAsyncFunctionPlan`, `awaitAllowed`,
   `validateFutureProtocol` y `FutureState` sólo se invocan desde tests
-  (`tests/unit/NativeSharp3T10*`, `tests/compiler-suite/host/modules/LanguageCoroutinePlanningModule.cpp`).
+  (`tests/unit/NativeSharpT10*`, `tests/compiler-suite/host/modules/LanguageCoroutinePlanningModule.cpp`).
   Ningún archivo de `src/Frontend` ni `src/LLVM` los llama.
 - **Sin tipo de superficie `Future`**: no existe type-key `"Future"`/`"future:"`. Los type-keys son
   cadenas (`builtin:int`, `type:Ns::T`, `ReadOnlySpan<T>`, `Optional<T>`, …). El único `Future*` vive en

@@ -1,0 +1,14 @@
+noinline decimal Divide(decimal a, decimal b) { return saturating(a / b); }
+int Main()
+{
+    unsafe("inspect saturated decimal division")
+    {
+        i128 bits = ((i128)1 << 96) - (i128)1;
+        decimal value = *((decimal*)&bits);
+        decimal positive = Divide(value, 0.1m);
+        decimal negative = Divide(value, -0.1m);
+        if (*((i128*)&positive) != bits) return 1;
+        if (*((i128*)&negative) != (bits | ((i128)1 << 127))) return 2;
+        return 0;
+    }
+}

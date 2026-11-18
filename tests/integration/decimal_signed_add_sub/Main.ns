@@ -1,0 +1,22 @@
+decimal Add(decimal a, decimal b) { return checked(a + b); }
+decimal Sub(decimal a, decimal b) { return checked(a - b); }
+int Main()
+{
+    if (Add(1.0m, 0.5m) != 1.5m || Add(-1.0m, 0.5m) != -0.5m) return 1;
+    if (Add(1.0m, -0.5m) != 0.5m || Add(-1.0m, -2.0m) != -3.0m) return 2;
+    if (Add(1.00m, -1.0m) != 0.0m || Add(-1.00m, 1.0m) != 0.0m) return 3;
+    if (Sub(1.0m, 0.5m) != 0.5m || Sub(0.5m, 1.0m) != -0.5m) return 4;
+    if (Sub(-1.0m, -0.5m) != -0.5m || Sub(-0.5m, -1.0m) != 0.5m) return 5;
+    if (Sub(1.0m, -0.5m) != 1.5m || Sub(-1.0m, 0.5m) != -1.5m) return 6;
+    if (Add(-0.10m, 0.005m) != -0.095m || Add(0.005m, -0.10m) != -0.095m) return 7;
+    if (Sub(0.005m, 0.10m) != -0.095m || Sub(-0.10m, -0.005m) != -0.095m) return 8;
+    if (Add(0m, -0.0m) != 0m || Sub(-0.0m, 0m) != 0m) return 9;
+    if (Add(1000000000m, -1m) != 999999999m) return 10;
+    // Four operand-sign combinations for each operation, with equal scales.
+    if (Add(1.0m, 0.5m) != 1.5m || Add(1.0m, -0.5m) != 0.5m) return 11;
+    if (Add(-1.0m, 0.5m) != -0.5m || Add(-1.0m, -0.5m) != -1.5m) return 12;
+    if (Sub(1.0m, 0.5m) != 0.5m || Sub(1.0m, -0.5m) != 1.5m) return 13;
+    if (Sub(-1.0m, 0.5m) != -1.5m || Sub(-1.0m, -0.5m) != -0.5m) return 14;
+    if (Sub(1.0m, 1.00m) != 0m || Sub(-1.0m, -1.00m) != 0m) return 15;
+    return 0;
+}

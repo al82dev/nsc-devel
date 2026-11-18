@@ -1,0 +1,14 @@
+{
+  "schema": "nativesharp.conformance.v1",
+  "id": "t00.language.production-pipeline",
+  "kind": "normative",
+  "target": "windows-x64",
+  "inputs": ["Language.nsproj", "Main.ns"],
+  "command": ["{compiler}", "--check-project-oop-mir", "{case_dir}/Language.nsproj", "-O0"],
+  "expected": {
+    "exitCode": 0,
+    "diagnostics": [],
+    "stdoutContains": ["project OOP MIR check: ok"]
+  },
+  "repeat": 1
+}

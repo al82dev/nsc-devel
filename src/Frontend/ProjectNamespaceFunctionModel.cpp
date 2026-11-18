@@ -11,6 +11,7 @@
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
+#include "nativesharp/Language/IterationSemantics.h"
 
 #include <algorithm>
 #include <cctype>
@@ -55,6 +56,27 @@ std::string_view cppOperatorSpelling(lexer::TokenKind kind) noexcept
     }
 }
 
+bool containsNamespaceGeneratorYield(const ast::AstNode* body)
+{
+    std::vector<const ast::AstNode*> pending{body};
+    std::unordered_set<const ast::AstNode*> seen;
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || !seen.insert(node).second) continue;
+        if (node->kind() == ast::AstNodeKind::LambdaExpression ||
+            node->kind() == ast::AstNodeKind::FunctionDeclaration) continue;
+        if (node->kind() == ast::AstNodeKind::YieldReturnStatement ||
+            node->kind() == ast::AstNodeKind::YieldBreakStatement) return true;
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    return false;
+}
+
 // NS304-T08-F06: stable source identity for the extension binding index. Reusing the AST node
 // pointer as a key is a textual cache that goes stale under incremental re-parses; the source
 // location (file + begin offset) is the invalidation-stable identity.
@@ -92,8 +114,10 @@ std::string ownershipSignaturePrefix(sema::OwnershipKind ownership)
 ParameterPassKind parameterPassKind(const ast::AstNode& parameter) noexcept
 {
     if (!parameter.auxiliaryText().starts_with("pass:")) return ParameterPassKind::Value;
-    const std::string_view spelling(parameter.auxiliaryText().data() + 5,
-                                    parameter.auxiliaryText().size() - 5);
+    const std::string_view marker(parameter.auxiliaryText());
+    const std::size_t end = marker.find('|');
+    const std::string_view spelling = marker.substr(5, end == std::string_view::npos
+        ? std::string_view::npos : end - 5);
     if (spelling == "ref") return ParameterPassKind::Ref;
     if (spelling == "out") return ParameterPassKind::Out;
     return ParameterPassKind::In;
@@ -262,16 +286,16 @@ void reportPrevious(
 
 bool isExtensionDeclaration(const ast::AstNode& syntax) noexcept
 {
-    return syntax.auxiliaryText() == "ns3-extension" ||
-        syntax.auxiliaryText() == "ns3-extension-static" ||
-        syntax.auxiliaryText().find("|ns3-extension-static") != std::string::npos ||
-        syntax.auxiliaryText().find("nsc-meta:ns3-extension") != std::string::npos;
+    return syntax.auxiliaryText() == "nsc-extension" ||
+        syntax.auxiliaryText() == "nsc-extension-static" ||
+        syntax.auxiliaryText().find("|nsc-extension-static") != std::string::npos ||
+        syntax.auxiliaryText().find("nsc-meta:nsc-extension") != std::string::npos;
 }
 
 bool isStaticExtensionDeclaration(const ast::AstNode& syntax) noexcept
 {
-    return syntax.auxiliaryText() == "ns3-extension-static" ||
-        syntax.auxiliaryText().find("|ns3-extension-static") != std::string::npos;
+    return syntax.auxiliaryText() == "nsc-extension-static" ||
+        syntax.auxiliaryText().find("|nsc-extension-static") != std::string::npos;
 }
 
 bool compatibleDeclarations(
@@ -520,6 +544,10 @@ void ProjectNamespaceFunctionModel::resetBuildState()
     extensionFunctionIndexBuilt_ = false;
     referenceBindings_.clear();
     referenceBindingBySyntax_.clear();
+    // LKF-393: state references belong to the build that bound them, like function references.
+    // LKF-393: las referencias a estado pertenecen al build que las enlazó, como las de funciones.
+    stateReferenceBindings_.clear();
+    stateReferenceBindingBySyntax_.clear();
     extensionBindings_.clear();
     extensionBindingBySyntax_.clear();
     completionScopes_.clear();
@@ -1032,6 +1060,17 @@ void ProjectNamespaceFunctionModel::mergeNamespaceFunction(
     {
         symbol.definitionSyntax = declaration.syntax;
         symbol.inliningPolicy = candidate.inliningPolicy;
+        // EN: LKF-392: the body binds the names, lifetimes and constraints its own declaration writes.
+        //     The prototype's parameters were kept, so `int F(int x);` followed by
+        //     `int F(int y) { return y; }` failed with "unknown identifier 'y'". The signature key is
+        //     equal by construction, so the types and pass modes agree.
+        // ES: LKF-392: el cuerpo enlaza los nombres, lifetimes y restricciones que escribe su propia
+        //     declaración. Se conservaban los parámetros del prototipo, así que `int F(int x);` seguido
+        //     de `int F(int y) { return y; }` fallaba con "unknown identifier 'y'". La clave de firma es
+        //     igual por construcción, así que tipos y modos de paso coinciden.
+        symbol.parameters = candidate.parameters;
+        symbol.lifetimeParameters = candidate.lifetimeParameters;
+        symbol.lifetimeOutlivesConstraints = candidate.lifetimeOutlivesConstraints;
     }
 }
 
@@ -1097,6 +1136,13 @@ void ProjectNamespaceFunctionModel::collectNamespaceState(
     //     (plan 3.4); su inicializador constante lo evaluó el productor.
     const bool installed = installSnapshotState(declaration, state);
     if (!installed) initializeNamespaceState(state, declaration, nameLookup, memberModel);
+
+    if (memberModel.typeContainsThreadLocalSharedPointer(state.declaredTypeKey))
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            state.range,
+            "shared static storage cannot contain a thread-local shared pointer (Rc or WeakRc)");
 
     const std::string lookupKey =
         nameLookupKey(state.projectOrdinal, state.namespaceName, state.name);
@@ -2007,6 +2053,14 @@ bool ProjectNamespaceFunctionModel::build(
             }
         }
     }
+    // Derive source generator effects after declarations and their definition
+    // are merged. Iterator-returning factories and imported declarations keep
+    // their existing ordinary-call semantics.
+    for (NamespaceFunctionSymbol& function : functions_)
+        if (!function.isPrecompiled && !function.isExternC && function.definitionSyntax != nullptr &&
+            language::asyncIteratorInnerTypeKey(function.declaredTypeKey).has_value() &&
+            containsNamespaceGeneratorYield(function.definitionSyntax->first()))
+            function.effects = function.effects.with(sema::Effect::Generator).with(sema::Effect::Async);
     buildExtensionFunctionIndex();
     collectNamespaceStates(nameLookup, memberModel, diagnostics);
     for (const auto& state : cppImportedStates_)

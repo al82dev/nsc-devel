@@ -1,0 +1,1 @@
+class Box : Alpha.Base<int> { public int Tail; } int Main() { owned Box value=new Box(); value.Set(3); value.Tail=7; return value.Hidden; }

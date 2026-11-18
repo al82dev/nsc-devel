@@ -1,0 +1,24 @@
+using NodeAlias = BinaryNominal.Node;
+namespace Other { public struct Node { public long OtherValue; } }
+static class Inspector
+{
+    public static int Format<T>(T value) { return 7; }
+    public static int Fold<T>(T value)
+    {
+        int sum = 0;
+        static foreach (field in Fields(T))
+        {
+            field.Type item = field.Get(value);
+            sum = sum + Format<field.Type>(item);
+        }
+        return sum;
+    }
+}
+int Main()
+{
+    BinaryNominal.Record value = default(BinaryNominal.Record);
+    value.Item.Value = 5;
+    value.Count = 3;
+    NodeAlias node = value.Item;
+    return Inspector.Format<NodeAlias>(node) == 7 && Inspector.Fold<BinaryNominal.Record>(value) == 14 ? 0 : 1;
+}

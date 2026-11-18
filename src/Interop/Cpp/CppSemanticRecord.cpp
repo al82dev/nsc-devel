@@ -1925,7 +1925,6 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     if (!lookup || !graph) { error = "C record metadata requires a compiled project lookup"; return false; }
     metadata_detail::CDependencyCatalog dependencies;
     std::vector<frontend::NamespaceFunctionSymbol> projectedFunctions;
-    if (metadata.formatMinor >= 46)
     {
         auto aliasesResult = collectCppSemanticTypeAliases(*graph, compilation.cppProjectSessions());
         if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&aliasesResult))
@@ -1963,7 +1962,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         }
         if (!captureCppTemplateAliasCandidates(*graph, candidates, aliases, dependencies.aliases, error)) return false;
     }
-    if (metadata.formatMinor >= 46 && !metadata.genericTemplates.empty())
+    if (!metadata.genericTemplates.empty())
     {
         auto functionsResult = collectCppSemanticFunctions(*graph, compilation.cppProjectSessions());
         if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&functionsResult))
@@ -2052,7 +2051,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
             {
                 const auto scope = entry.declaration.containingRecords.empty()
                     ? cppUnnamedEnumScope(entry.declaration) : std::nullopt;
-                if (!scope || metadata.formatMinor < 47 || entry.projectOrdinal >= graph->projects().size() ||
+                if (!scope || entry.projectOrdinal >= graph->projects().size() ||
                     std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), entry.projectOrdinal) ==
                         demand.visibleProjects.end()) continue;
                 std::string ns = *scope;
@@ -2085,7 +2084,6 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                     [&](const auto& value) { return value.name == demand.lookupName; })) continue;
                 if (entry.declaration.name.empty())
                 {
-                    if (metadata.formatMinor < 47) continue;
                     const auto selected = std::find_if(constants.begin(), constants.end(), [&](const auto& value) {
                         return value.projectOrdinal == entry.projectOrdinal && value.name == demand.lookupName &&
                             value.isCppEnumConstant && value.cppImportError.empty() && value.cppClangUsr && !value.cppClangUsr->empty();
@@ -2411,7 +2409,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     //     its reference, so the consumer expands each call with the types of its instantiation.
     // ES: T19-003. Una macro de funcion C/C++ que llama una plantilla publicada viaja con la fuente preprocesada de su
     //     referencia, para que el consumidor expanda cada llamada con los tipos de su instanciacion.
-    if (metadata.formatMinor >= 46 && !metadata.genericTemplates.empty())
+    if (!metadata.genericTemplates.empty())
         for (const auto& group : compilation.cppProjectSessions())
         {
             std::optional<std::size_t> owner;
@@ -2805,7 +2803,6 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     }
     if (!anonymousEnumFields.empty())
     {
-        if (metadata.formatMinor < 47) { error = "anonymous C enum fields require metadata 1.47"; return false; }
         auto observed = collectCppSemanticEnums(*graph, compilation.cppProjectSessions());
         if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&observed))
         { error = failure->message; return false; }
@@ -2907,7 +2904,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     const bool hasEnumProvenance = std::any_of(enums.begin(), enums.end(), [](const auto& value) {
         return value.declaration.sourceProvenance.has_value();
     });
-    if (hasEnumProvenance && metadata.formatMinor >= 49)
+    if (hasEnumProvenance)
         return metadata_detail::encodeCTypeCatalogWithEnumProvenance(records, enums, dependencies, output, error);
     const bool hasAnonymousCarriers = std::any_of(records.begin(), records.end(), [](const auto& record) {
         return std::any_of(record.fields.begin(), record.fields.end(), [](const auto& field) {
@@ -2916,29 +2913,13 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     });
     if (hasAnonymousCarriers)
     {
-        if (metadata.formatMinor < 48) { error = "anonymous C carriers require metadata 1.48"; return false; }
         return metadata_detail::encodeCTypeCatalogWithAnonymousCarriers(records, enums, dependencies, output, error);
     }
     if (!dependencies.aliases.empty() || !dependencies.functions.empty() || !dependencies.globals.empty() ||
         !dependencies.enumerators.empty() || !dependencies.staticMethods.empty() || !dependencies.instanceMethods.empty() ||
         !dependencies.staticFields.empty() || !dependencies.macroSources.empty())
         return metadata_detail::encodeCTypeCatalogWithDependencies(records, enums, dependencies, output, error);
-    if (metadata.formatMinor >= 43)
-    {
-        if (!metadata_detail::encodeCTypeCatalogWithProvenance(records, enums, output, error)) return false;
-        if (metadata.formatMinor < 45 && !output.empty() && output[0] >= 3)
-        { error = "metadata before 1.45 cannot represent incomplete C source provenance"; output.clear(); return false; }
-        if (metadata.formatMinor < 44 && !output.empty() && output[0] == 2)
-        { error = "metadata before 1.44 cannot represent C floating format"; output.clear(); return false; }
-        return true;
-    }
-    std::vector<std::uint8_t> checked;
-    if (!metadata_detail::encodeCTypeCatalogWithProvenance(records, enums, checked, error)) return false;
-    if (!checked.empty() && checked[0] >= 3)
-    { error = "metadata before 1.45 cannot represent incomplete C source provenance"; return false; }
-    if (!checked.empty() && checked[0] == 2)
-    { error = "metadata before 1.44 cannot represent C floating format"; return false; }
-    return metadata_detail::encodeCTypeCatalog(records, enums, output, error);
+    return metadata_detail::encodeCTypeCatalogWithProvenance(records, enums, output, error);
 }
 
 bool providePrecompiledCParserTypes(const frontend::ProjectCompilation& compilation,
@@ -3108,8 +3089,7 @@ bool reconstructPrecompiledCMembers(std::span<const frontend::PrecompiledSyntaxM
         if (module.cppCTypeCatalog.empty()) continue;
         std::vector<CppCRecordSnapshot> records;
         std::vector<CppCEnumSnapshot> enums;
-        if (!metadata_detail::decodeVersionedCTypeCatalog(module.cppCTypeCatalog, records, enums, error,
-                                                          module.cppCTypeCatalogFormatMinor)) return false;
+        if (!metadata_detail::decodeCTypeCatalogByContent(module.cppCTypeCatalog, records, enums, error)) return false;
         for (const auto& record : records)
         {
             // EN: T08-D26: the fields and enumerators of a reconciled producer type are those of its canonical type.
@@ -3186,7 +3166,7 @@ bool provideCppStaticFieldsWithPrecompiledCatalogs(const compilation::ProjectGra
         std::vector<CppCEnumSnapshot> enums;
         metadata_detail::CDependencyCatalog dependencies;
         if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
-                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+                records, enums, dependencies, error)) return false;
         for (const auto& dependency : dependencies.staticFields)
         {
             const auto owner = owners.find(dependency.moduleName);
@@ -3275,7 +3255,7 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
         std::vector<CppCEnumSnapshot> enums;
         metadata_detail::CDependencyCatalog dependencies;
         if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
-                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+                records, enums, dependencies, error)) return false;
         for (const auto& global : dependencies.globals)
         {
             const auto owner = owners.find(global.moduleName);
@@ -4009,8 +3989,8 @@ static bool collectVisibleCRecordReconciliations(
     {
         if (module.cppCTypeCatalog.empty()) continue;
         Catalog catalog;
-        if (!metadata_detail::decodeVersionedCTypeCatalog(module.cppCTypeCatalog,
-                catalog.records, catalog.enums, error, module.cppCTypeCatalogFormatMinor)) return false;
+        if (!metadata_detail::decodeCTypeCatalogByContent(module.cppCTypeCatalog,
+                catalog.records, catalog.enums, error)) return false;
         catalogs.push_back(std::move(catalog));
     }
     if (catalogs.empty()) { output.clear(); error.clear(); return true; }

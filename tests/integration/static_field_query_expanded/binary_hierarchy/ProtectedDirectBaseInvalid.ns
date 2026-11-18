@@ -1,0 +1,10 @@
+class Inspector : BinaryHierarchy.Base
+{
+    public int Inspect(BinaryHierarchy.Base value)
+    {
+        int result = 0;
+        static foreach (field in Fields(BinaryHierarchy.Base)) { result = result * 10 + field.Get(value); }
+        return result;
+    }
+}
+int Main() { return 0; }

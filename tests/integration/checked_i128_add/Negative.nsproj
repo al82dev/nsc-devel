@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>CheckedI128Negative</Name></PropertyGroup><ItemGroup><Compile Include="Negative.ns" /></ItemGroup></Project>

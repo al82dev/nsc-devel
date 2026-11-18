@@ -1,5 +1,6 @@
 #include "CompilerInvocation.h"
 #include "Internal/InvocationCapabilities.h"
+#include "Internal/ProjectCommandSupport.h"
 
 #include "nativesharp/Compilation/Project.h"
 #include "nativesharp/Driver/CompilerConsole.h"
@@ -285,6 +286,27 @@ ExitCode parseCompilerInvocation(
     const ExitCode defaultsResult = loadProjectDefaults(projectLoader, invocation, error);
     if (defaultsResult != ExitCode::Success) return defaultsResult;
     applyProfileDefaults(invocation);
+    const std::filesystem::path compiler = compilerExecutablePath();
+    if (!compiler.empty())
+    {
+        invocation.projectLoadOptions.standardPackageRoot =
+            compiler.parent_path().parent_path() / "packages";
+        invocation.projectLoadOptions.standardPackageOptimization =
+            std::string(llvm_backend::llvmOptimizationLevelName(invocation.optimizationLevel));
+    }
+    // ThinLTO runs its summaries, imports and backends at -O1 to -O3 (optimization part 2, item 44).
+    // At -O0 it would only add cost, so the build stays partitioned; say so instead of letting the
+    // option promise cross-partition optimization. The level is known only after every option.
+    // ThinLTO ejecuta resumenes, imports y backends de -O1 a -O3 (parte 2, punto 44). En -O0 solo
+    // agregaria costo, asi que el build sigue particionado; se dice en lugar de dejar que la opcion
+    // prometa optimizacion entre particiones. El nivel solo se conoce despues de todas las opciones.
+    if (invocation.linkTimeOptimization == llvm_backend::LinkTimeOptimizationMode::Thin &&
+        invocation.optimizationLevel == llvm_backend::LlvmOptimizationLevel::O0)
+    {
+        error << "nsc: warning: " << compilerText(
+            "-flto=thin at -O0 builds the ordinary partitioned code; ThinLTO runs at -O1 to -O3\n",
+            "-flto=thin en -O0 compila el código particionado normal; ThinLTO se ejecuta de -O1 a -O3\n");
+    }
     return ExitCode::Success;
 }
 
@@ -292,6 +314,41 @@ ExitCode validateCompilerInvocation(
     CompilerInvocation& invocation,
     std::ostream& error)
 {
+    const bool sanitizerPaths = !invocation.addressSanitizerClang.empty() ||
+        !invocation.addressSanitizerRuntime.empty();
+    if (sanitizerPaths && !invocation.addressSanitizer)
+    {
+        error << "nsc: error: ASan dependency paths require --sanitize-address\n";
+        return ExitCode::CommandLineError;
+    }
+    if (invocation.addressSanitizer)
+    {
+        const auto& args = invocation.arguments;
+        if (args.size() != 4U || args[0] != "--emit-project-oop-exe" || args[2] != "-o" ||
+            invocation.linkTimeOptimizationSeen || invocation.incrementalLink ||
+            invocation.debugInformation != llvm_backend::DebugInformationKind::None ||
+            invocation.subsystem != linker::WindowsExecutableSubsystem::Console ||
+            invocation.artifactCacheSeen || invocation.artifactCacheMaximumSeen)
+        {
+            error << "nsc: error: --sanitize-address requires a project OOP console executable without LTO, PDB, incremental link or artifact cache\n";
+            return ExitCode::CommandLineError;
+        }
+        if (!std::filesystem::is_regular_file(invocation.addressSanitizerClang) ||
+            !std::filesystem::is_regular_file(invocation.addressSanitizerRuntime) ||
+            invocation.addressSanitizerRuntime.filename() != "clang_rt.asan_dynamic-x86_64.dll")
+        {
+            error << "nsc: error: --sanitize-address requires --asan-clang=<clang.exe> and --asan-runtime=<clang_rt.asan_dynamic-x86_64.dll>\n";
+            return ExitCode::CommandLineError;
+        }
+        std::string sanitizerError;
+        if (!linker::LldLinker::validateAddressSanitizerRuntime(
+                invocation.addressSanitizerClang, invocation.addressSanitizerRuntime, sanitizerError))
+        {
+            error << "nsc: error: " << sanitizerError << '\n';
+            return ExitCode::CommandLineError;
+        }
+        invocation.artifactCacheDisabled = true;
+    }
     const InvocationCapabilities capabilities = classifyInvocation(invocation.arguments);
     const ExitCode validation = validateActionOptions(invocation, capabilities, error);
     if (validation != ExitCode::Success) return validation;
@@ -324,8 +381,8 @@ ExitCode validateCompilerLinkOptions(
                  "OOP executable\n";
         return ExitCode::CommandLineError;
     }
-    // EN: Freeze 3.0 DEC-13: only a linked executable or DLL imports from DLLs at load time.
-    // ES: Congelamiento 3.0 DEC-13: solo un ejecutable o DLL enlazado importa de DLL al cargar.
+    // EN: Freeze DEC-13: only a linked executable or DLL imports from DLLs at load time.
+    // ES: Congelamiento DEC-13: solo un ejecutable o DLL enlazado importa de DLL al cargar.
     const bool fileExecutableInvocation = arguments.size() == 3U && arguments[1] == "-o" &&
         !arguments[0].empty() && arguments[0].front() != '-';
     const bool systemImportCapableInvocation = fileExecutableInvocation ||

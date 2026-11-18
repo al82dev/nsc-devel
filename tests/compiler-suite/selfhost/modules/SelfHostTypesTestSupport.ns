@@ -3,7 +3,8 @@ using NativeSharp.Compiler.Types;
 namespace NativeSharp.CompilerSuite.SelfHost.Types
 {
     // Centralizes exhaustive tables used by several cases. Every loop is bounded by the
-    // frozen 16-entry builtin inventory, so the helpers are O(1) in product terms.
+    // frozen 17-entry builtin inventory, so the helpers are O(1) in product terms.
+    // TSH-01001/01002/01006/01026: 05a105dfc appended sbyte as builtin 16, a signed integer.
     public class SelfHostTypesTestSupport
     {
         public static bool MatchesKind(SemanticTypeKind kind, string display)
@@ -65,7 +66,8 @@ namespace NativeSharp.CompilerSuite.SelfHost.Types
                 Builtin(table, 12, "nuint", SemanticTypeKind.NUInt, 8, 8) &&
                 Builtin(table, 13, "float", SemanticTypeKind.Float, 4, 4) &&
                 Builtin(table, 14, "double", SemanticTypeKind.Double, 8, 8) &&
-                Builtin(table, 15, "null", SemanticTypeKind.NullLiteral, 8, 8);
+                Builtin(table, 15, "null", SemanticTypeKind.NullLiteral, 8, 8) &&
+                Builtin(table, 16, "sbyte", SemanticTypeKind.SByte, 1, 1);
         }
 
         public static bool TablesEqual(TypeTable first, TypeTable second)
@@ -88,7 +90,7 @@ namespace NativeSharp.CompilerSuite.SelfHost.Types
             int index = 0;
             while (index < table.Count())
             {
-                bool integer = index >= 3 && index <= 12;
+                bool integer = (index >= 3 && index <= 12) || index == 16;
                 bool numeric = integer || index == 13 || index == 14;
                 if (table.IsInteger(index) != integer || table.IsNumeric(index) != numeric) { return false; }
                 index = index + 1;

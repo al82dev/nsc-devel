@@ -40,7 +40,7 @@ deconstruction and variant payload extraction are value projections and reject a
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T03FundamentalPatternTests.cpp`: ejecución O0 y diagnósticos aislados de
+- `tests/unit/NativeSharpT03FundamentalPatternTests.cpp`: ejecución O0 y diagnósticos aislados de
   nesting, tuple/struct/variant, range, OR, value/ref/move y fronteras de ownership.
 - `docs/3.0/language/fundamental-patterns.md`: contrato bilingüe de gramática, evaluación y ownership.
 - Este documento: evidencia por commit y deuda explícita conforme a la metodología.

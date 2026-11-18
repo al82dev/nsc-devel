@@ -1,10 +1,10 @@
-// EN: NativeSharp 3.0 freeze (NSC-PLAN-CONGELAMIENTO-3.0.md). Each block reproduces, by compiling
+// EN: NativeSharp freeze (NSC-PLAN-CONGELAMIENTO-3.0.md). Each block reproduces, by compiling
 //     and running a real Windows x64 program at -O0 and -O2, one contract the language promises
 //     before the freeze: C-08 allocator alignment, C-06 published surface, C-07 IDisposable, C-01
 //     lost ownership, C-02 synchronous await, C-05 file mode, C-11/C-12 value and array
 //     destruction, C-13 throws contracts, C-14 future drop, C-16 generator cleanup and C-17
 //     async-generator errors.
-// ES: Congelamiento de NativeSharp 3.0 (NSC-PLAN-CONGELAMIENTO-3.0.md). Cada bloque reproduce,
+// ES: Congelamiento de NativeSharp (NSC-PLAN-CONGELAMIENTO-3.0.md). Cada bloque reproduce,
 //     compilando y ejecutando un programa Windows x64 real en -O0 y -O2, un contrato que el
 //     lenguaje promete antes del congelamiento: C-08 alineacion de allocators, C-06 superficie
 //     publicada, C-07 IDisposable, C-01 ownership perdido, C-02 await sincrono, C-05 modo
@@ -327,10 +327,10 @@ void testLostOwnershipRejected(TestContext& tests, const std::filesystem::path& 
         "public static int Main() { return 0; } }\n", thrown);
 }
 
-/// EN: Freeze 3.0 item 141. A direct `new` initializer makes an unqualified lexical local an
+/// EN: Freeze item 141. A direct `new` initializer makes an unqualified lexical local an
 ///     inferred owner. It uses every established RAII rule: one cleanup, move-only aliases and
 ///     captures, explicit transfer on return, and frame-backed lifetime in async and generators.
-/// ES: Congelamiento 3.0 elemento 141. Un inicializador directo `new` convierte un local lexico
+/// ES: Congelamiento elemento 141. Un inicializador directo `new` convierte un local lexico
 ///     sin calificador en dueno inferido. Usa todas las reglas RAII existentes: un cleanup, aliases
 ///     y capturas move-only, transferencia explicita al retornar y vida en el frame async/generator.
 void testInferredLocalOwnership(TestContext& tests, const std::filesystem::path& root)
@@ -1237,11 +1237,11 @@ class Program
 )ns", 6);
 }
 
-/// EN: Freeze 3.0 D-01. A resumed poll re-enters the statement around the await that suspended;
+/// EN: Freeze D-01. A resumed poll re-enters the statement around the await that suspended;
 ///     every operand evaluated before the await in that statement (a call, an index, a condition,
 ///     a struct value, an assignment target) runs once, and an await in a `for` or `do` condition
 ///     resumes in the condition, not at the initializer or the body.
-/// ES: Congelamiento 3.0 D-01. Un poll reanudado vuelve a entrar a la sentencia que rodea al await
+/// ES: Congelamiento D-01. Un poll reanudado vuelve a entrar a la sentencia que rodea al await
 ///     que suspendio; todo operando evaluado antes del await en esa sentencia (una llamada, un
 ///     indice, una condicion, un valor struct, un destino de asignacion) corre una vez, y un await en
 ///     la condicion de un `for` o un `do` reanuda en la condicion, no en el inicializador ni el cuerpo.
@@ -1938,7 +1938,7 @@ class Program
         return 0;
     }
 }
-)ns", "an 'extern C' import outside a class is not supported in NativeSharp 3.0");
+)ns", "an 'extern C' import outside a class is not supported in NativeSharp");
     expectReject(tests, root, "C05GlobalVariable", R"ns(
 int Counter;
 
@@ -1949,7 +1949,7 @@ class Program
         return 0;
     }
 }
-)ns", "a variable outside every namespace is not supported in NativeSharp 3.0");
+)ns", "a variable outside every namespace is not supported in NativeSharp");
 }
 
 /// EN: C-11. A struct with a destructor or owned fields, used as a local, is destroyed exactly
@@ -2275,9 +2275,9 @@ class Program
     }
 }
 )ns", 21);
-    // EN: Freeze 3.0 DEC-11: the first stores into the never-written slots and the moved-out slot
+    // EN: Freeze DEC-11: the first stores into the never-written slots and the moved-out slot
     //     destroy nothing; this was 10302 while those zero values were destroyed too.
-    // ES: Congelamiento 3.0 DEC-11: los primeros stores en slots nunca escritos y el slot movido no
+    // ES: Congelamiento DEC-11: los primeros stores en slots nunca escritos y el slot movido no
     //     destruyen nada; daba 10302 mientras esos valores cero tambien se destruian.
     expectRun(tests, root, "C12AssignAndMove", std::string(kGuardPrelude) + R"ns(
 class Program
@@ -2304,11 +2304,11 @@ class Program
 )ns", 132);
 }
 
-/// EN: Freeze 3.0 DEC-11. An array of structs with a destructor keeps one live bit per element. The
+/// EN: Freeze DEC-11. An array of structs with a destructor keeps one live bit per element. The
 ///     slots of `new T[n]` start dead; the first whole write or field write makes one alive (a field
 ///     write zeroes the other fields first); move and delete make it dead; only live elements are
 ///     destroyed; reading or moving a dead element traps (exit 146).
-/// ES: Congelamiento 3.0 DEC-11. Un arreglo de structs con destructor guarda un bit de vida por
+/// ES: Congelamiento DEC-11. Un arreglo de structs con destructor guarda un bit de vida por
 ///     elemento. Los slots de `new T[n]` nacen muertos; la primera escritura completa o de campo
 ///     revive uno (la de campo pone en cero los demas campos antes); move y delete lo matan; solo se
 ///     destruyen los vivos; leer o mover un elemento muerto atrapa (exit 146).
@@ -2708,11 +2708,11 @@ class Program
 }
 
 // EN: List<T> of a struct with a destructor drops each live element exactly once, also across
-//     growth and RemoveAt; a removed slot is left dead (Freeze 3.0 DEC-11), so shifting the next
+//     growth and RemoveAt; a removed slot is left dead (Freeze DEC-11), so shifting the next
 //     element into it destroys nothing: C12ListRemove is 2213 (it was 22013 while the dead slot's
 //     zero value was destroyed too).
 // ES: List<T> de un struct con destructor destruye cada elemento vivo una sola vez, tambien al
-//     crecer y en RemoveAt; un slot removido queda muerto (Congelamiento 3.0 DEC-11), asi mover el
+//     crecer y en RemoveAt; un slot removido queda muerto (Congelamiento DEC-11), asi mover el
 //     siguiente elemento a el no destruye nada: C12ListRemove da 2213 (daba 22013 mientras el valor
 //     cero del slot muerto tambien se destruia).
 void testValueListElements(TestContext& tests, const std::filesystem::path& root)
@@ -2812,7 +2812,7 @@ void testMemberCopyConstraintLibrary(TestContext& tests, const std::filesystem::
 {
     const std::filesystem::path producer = root / "P1Library" / "Api";
     writeFile(producer / "CopyApi.nsproj",
-        "<Project><PropertyGroup><Name>CopyApi</Name><Language>3</Language>"
+        "<Project><PropertyGroup><Name>CopyApi</Name>"
         "<OutputType>StaticLibrary</OutputType></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
     writeFile(producer / "Main.ns", "namespace CopyApi\n{\npublic " +
@@ -3539,7 +3539,7 @@ void testRefReturnLibrary(TestContext& tests, const std::filesystem::path& root)
 {
     const std::filesystem::path producer = root / "P3RefLibrary" / "Api";
     writeFile(producer / "RefApi.nsproj",
-        "<Project><PropertyGroup><Name>RefApi</Name><Language>3</Language>"
+        "<Project><PropertyGroup><Name>RefApi</Name>"
         "<OutputType>StaticLibrary</OutputType></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
     writeFile(producer / "Main.ns", R"ns(
@@ -3594,7 +3594,7 @@ class Program
         const std::filesystem::path directory = root / "P3RefLibrary" / std::string(name);
         const std::filesystem::path project = directory / "Consumer.nsproj";
         writeFile(project,
-            "<Project><PropertyGroup><Name>Consumer</Name><Language>3</Language></PropertyGroup>"
+            "<Project><PropertyGroup><Name>Consumer</Name></PropertyGroup>"
             "<ItemGroup><Compile Include=\"**/*.ns\" />" + reference + "</ItemGroup></Project>");
         writeFile(directory / "Main.ns", source);
         const std::filesystem::path executable = directory / "Consumer.exe";
@@ -3623,7 +3623,7 @@ void testGenericConstructorDemandLibrary(TestContext& tests, const std::filesyst
 {
     const std::filesystem::path producer = root / "F130aLibrary" / "Api";
     writeFile(producer / "LApi.nsproj",
-        "<Project><PropertyGroup><Name>LApi</Name><Language>3</Language>"
+        "<Project><PropertyGroup><Name>LApi</Name>"
         "<OutputType>StaticLibrary</OutputType></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
     writeFile(producer / "Main.ns", R"ns(
@@ -3691,7 +3691,7 @@ class Program
         const std::filesystem::path directory = root / "F130aLibrary" / std::string(name);
         const std::filesystem::path project = directory / "Consumer.nsproj";
         writeFile(project,
-            "<Project><PropertyGroup><Name>Consumer</Name><Language>3</Language></PropertyGroup>"
+            "<Project><PropertyGroup><Name>Consumer</Name></PropertyGroup>"
             "<ItemGroup><Compile Include=\"**/*.ns\" />" + reference + "</ItemGroup></Project>");
         writeFile(directory / "Main.ns", source);
         const std::filesystem::path executable = directory / "Consumer.exe";
@@ -3789,7 +3789,7 @@ ExitCode buildItem139Library(
     const std::filesystem::path& producer, const std::string& name, std::string_view source, std::string& diagnostic)
 {
     writeFile(producer / (name + ".nsproj"),
-        "<Project><PropertyGroup><Name>" + name + "</Name><Language>3</Language>"
+        "<Project><PropertyGroup><Name>" + name + "</Name>"
         "<OutputType>StaticLibrary</OutputType></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
     writeFile(producer / "Main.ns", source);
@@ -3826,7 +3826,7 @@ void testPublishedSpecializationConstructors(TestContext& tests, const std::file
     const std::filesystem::path directory = root / "F139Library" / "Use";
     const std::filesystem::path project = directory / "Consumer.nsproj";
     writeFile(project,
-        "<Project><PropertyGroup><Name>Consumer</Name><Language>3</Language></PropertyGroup>"
+        "<Project><PropertyGroup><Name>Consumer</Name></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /><LibraryReference Include=\"" +
         (producer / "LApi.lib").generic_string() + "\" /></ItemGroup></Project>");
     writeFile(directory / "Main.ns", kPublishedSpecializationConsumer);
@@ -3885,7 +3885,7 @@ void testReferenceReturnPropertyLibrary(TestContext& tests, const std::filesyste
     const std::filesystem::path directory = root / "F140Library" / "Use";
     const std::filesystem::path project = directory / "Consumer.nsproj";
     writeFile(project,
-        "<Project><PropertyGroup><Name>Consumer</Name><Language>3</Language></PropertyGroup>"
+        "<Project><PropertyGroup><Name>Consumer</Name></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /><LibraryReference Include=\"" +
         (producer / "LRef.lib").generic_string() + "\" /></ItemGroup></Project>");
     writeFile(directory / "Main.ns", kReferencePropertyConsumer);
@@ -4018,10 +4018,10 @@ class Program { public static int Main() { return 0; } }
 )ns", "contains non-Copy field 'G'");
 }
 
-/// EN: Freeze 3.0 DEC-12. Returning a field, an element or another place of a move-only type by value
+/// EN: Freeze DEC-12. Returning a field, an element or another place of a move-only type by value
 ///     copies it: the caller drops the copy and the owner drops the original. It is rejected with
 ///     NS3020 like any other copy; `return move(...)` and a reference return stay valid.
-/// ES: Congelamiento 3.0 DEC-12. Devolver por valor un campo, un elemento u otro lugar de tipo
+/// ES: Congelamiento DEC-12. Devolver por valor un campo, un elemento u otro lugar de tipo
 ///     move-only lo copia: el llamador destruye la copia y el dueno destruye el original. Se
 ///     rechaza con NS3020 como cualquier otra copia; `return move(...)` y el retorno por referencia
 ///     siguen siendo validos.
@@ -4070,10 +4070,10 @@ class Program
 )ns", 77);
 }
 
-/// EN: Freeze 3.0 P3. An indexer or property accessor of a generic type may restrict the type's
+/// EN: Freeze P3. An indexer or property accessor of a generic type may restrict the type's
 ///     parameter (`get where T : copy`). The getter fails at the access with the constraint message; a plain
 ///     `=` runs only the setter and stays valid for a move-only T.
-/// ES: Congelamiento 3.0 P3. Un accesor de indexador o de propiedad de un tipo generico puede
+/// ES: Congelamiento P3. Un accesor de indexador o de propiedad de un tipo generico puede
 ///     restringir el parametro del tipo (`get where T : copy`). El getter falla en el acceso con el mensaje del
 ///     constraint; un `=` simple solo ejecuta el setter y sigue valido para un T move-only.
 void testIndexerAccessorWhere(TestContext& tests, const std::filesystem::path& root)
@@ -4163,9 +4163,9 @@ class Program
 )ns", "'Holder.get_Value' requires copyable storage ('where T : copy')");
 }
 
-/// EN: Freeze 3.0 P3. A `ref` local of a move-only type aliases its place: binding it is not a copy
+/// EN: Freeze P3. A `ref` local of a move-only type aliases its place: binding it is not a copy
 ///     (no NS3020) and it is not destroyed at the end of its scope; the owner destroys the value once.
-/// ES: Congelamiento 3.0 P3. Un local `ref` de tipo move-only es alias de su lugar: enlazarlo no es
+/// ES: Congelamiento P3. Un local `ref` de tipo move-only es alias de su lugar: enlazarlo no es
 ///     una copia (sin NS3020) y no se destruye al final de su scope; el dueno destruye el valor una vez.
 void testMoveOnlyReferenceLocal(TestContext& tests, const std::filesystem::path& root)
 {
@@ -4195,12 +4195,12 @@ class Program
 )ns", 601);
 }
 
-/// EN: Freeze 3.0 P3 (library). Reference access without copies for any T: List/Span/Stack/Queue/
+/// EN: Freeze P3 (library). Reference access without copies for any T: List/Span/Stack/Queue/
 ///     PriorityQueue RefAt, Peek by reference, SortedSet Min/Max/RefAt and SortedList KeyAt readonly,
 ///     ValueAt and LinkedListNode.Value by reference, and `foreach (ref ...)` over the live
 ///     enumerators. Lookups hand their parameter on without copying; what returns a copy requires
 ///     `copy`. RefAt out of range panics.
-/// ES: Congelamiento 3.0 P3 (biblioteca). Acceso por referencia sin copias para todo T: RefAt de
+/// ES: Congelamiento P3 (biblioteca). Acceso por referencia sin copias para todo T: RefAt de
 ///     List/Span/Stack/Queue/PriorityQueue, Peek por referencia, Min/Max/RefAt de SortedSet y KeyAt de
 ///     SortedList de solo lectura, ValueAt y LinkedListNode.Value por referencia, y `foreach (ref ...)`
 ///     sobre los enumeradores vivos. Las busquedas entregan su parametro sin copiarlo; lo que
@@ -4375,9 +4375,9 @@ class Program
 )ns", 1311105, true);
 }
 
-/// EN: Freeze 3.0 P3 (library), continued: SortedList, LinkedList and Span references, RefAt out of
+/// EN: Freeze P3 (library), continued: SortedList, LinkedList and Span references, RefAt out of
 ///     range, and the copying List getter rejected for a move-only T.
-/// ES: Congelamiento 3.0 P3 (biblioteca), continuacion: referencias de SortedList, LinkedList y Span,
+/// ES: Congelamiento P3 (biblioteca), continuacion: referencias de SortedList, LinkedList y Span,
 ///     RefAt fuera de rango, y el getter de List que copia rechazado para un T move-only.
 void testCollectionReferencesSorted(TestContext& tests, const std::filesystem::path& root)
 {
@@ -4556,11 +4556,11 @@ class Program
 }
 
 
-/// EN: Freeze 3.0 P4. A span made from an array keeps the array and its first index, so the array's
+/// EN: Freeze P4. A span made from an array keeps the array and its first index, so the array's
 ///     liveness map applies through the span, its slices, AsReadOnly, the implicit array view and
 ///     foreach: reading a dead slot traps (146), Put revives a dead slot and destroys a live one.
 ///     Spans over int arrays, raw pointers, parameter packs and u8 literals behave as before.
-/// ES: Congelamiento 3.0 P4. Un span hecho de un arreglo guarda el arreglo y su primer indice, asi
+/// ES: Congelamiento P4. Un span hecho de un arreglo guarda el arreglo y su primer indice, asi
 ///     que el mapa de vida del arreglo se aplica por el span, sus Slice, AsReadOnly, la vista
 ///     implicita del arreglo y foreach: leer un slot muerto atrapa (146), Put revive un slot muerto
 ///     y destruye uno vivo. Los spans sobre arreglos de int, punteros crudos, paquetes de parametros
@@ -4907,11 +4907,11 @@ class Program
 )ns", 630800, true);
 }
 
-/// EN: Freeze 3.0 P10. A non-owned parameter of an exception type is a loan from the caller (it may
+/// EN: Freeze P10. A non-owned parameter of an exception type is a loan from the caller (it may
 ///     be a caught exception): storing it, or a local that copies it, in a field, a static or an
 ///     element, returning it or capturing it in a lambda is rejected. Reading it, passing it on and
 ///     keeping it in a local are allowed; an owned parameter takes it with move(...).
-/// ES: Congelamiento 3.0 P10. Un parametro no owned de tipo excepcion es un prestamo del llamador
+/// ES: Congelamiento P10. Un parametro no owned de tipo excepcion es un prestamo del llamador
 ///     (puede ser una excepcion atrapada): guardarlo, o un local que lo copia, en un campo, un static
 ///     o un elemento, retornarlo o capturarlo en un lambda se rechaza. Leerlo, pasarlo y tenerlo en
 ///     un local se permite; un parametro owned lo toma con move(...).
@@ -5152,9 +5152,9 @@ class Program
 )ns", 71);
 }
 
-/// EN: Freeze 3.0 P10. The catch variable receives the caught exception: a lambda may not capture it
+/// EN: Freeze P10. The catch variable receives the caught exception: a lambda may not capture it
 ///     (the delegate may outlive the handler); a lambda in the handler that does not capture it is fine.
-/// ES: Congelamiento 3.0 P10. La variable del catch recibe la excepcion atrapada: un lambda no puede
+/// ES: Congelamiento P10. La variable del catch recibe la excepcion atrapada: un lambda no puede
 ///     capturarla (el delegate puede sobrevivir al handler); un lambda del handler que no la captura sirve.
 void testCaughtExceptionNotCaptured(TestContext& tests, const std::filesystem::path& root)
 {
@@ -5208,9 +5208,9 @@ class Program
 )ns", 121);
 }
 
-/// EN: Freeze 3.0 P6 (DEC-09). IAllocator keeps only the C-08 signature. A class that still implements a
+/// EN: Freeze P6 (DEC-09). IAllocator keeps only the C-08 signature. A class that still implements a
 ///     replaced member gets a diagnostic on that member naming the new signature.
-/// ES: Congelamiento 3.0 P6 (DEC-09). IAllocator conserva solo la firma de C-08. Una clase que aun
+/// ES: Congelamiento P6 (DEC-09). IAllocator conserva solo la firma de C-08. Una clase que aun
 ///     implementa un miembro reemplazado recibe en ese miembro un diagnostico con la firma nueva.
 void testReplacedAllocatorSignature(TestContext& tests, const std::filesystem::path& root)
 {
@@ -5231,7 +5231,7 @@ class Program
     }
 }
 )ns",
-        "implements the IAllocator signature replaced in 3.0 (C-08); "
+        "implements a replaced IAllocator signature (C-08); "
         "implement 'byte* Allocate(long bytes, int alignment)'");
     expectReject(tests, root, "P6OldDeallocate", R"ns(
 using NativeSharp.Core;
@@ -5269,10 +5269,10 @@ class Program
 )ns", 3);
 }
 
-/// EN: Freeze 3.0 P8. Object ABI 3 marks the array and span layout of DEC-11 and P4. A library with object ABI 2 is
-///     rejected and the diagnostic asks for its recompilation; the NSMETA version is not consulted.
-/// ES: Congelamiento 3.0 P8. El object ABI 3 marca el layout de arreglos y spans de DEC-11 y P4. Una biblioteca con
-///     object ABI 2 se rechaza y el diagnostico pide recompilarla; no se consulta la version de NSMETA.
+/// EN: Freeze P8. Object ABI 3 marks the array and span layout of DEC-11 and P4. A library with object ABI 2 is
+///     rejected and the diagnostic asks for its recompilation based on its physical contract.
+/// ES: Congelamiento P8. El object ABI 3 marca el layout de arreglos y spans de DEC-11 y P4. Una biblioteca con
+///     object ABI 2 se rechaza y el diagnostico pide recompilarla por su contrato fisico.
 void testObjectAbiBoundary(TestContext& tests, const std::filesystem::path& root)
 {
     (void)root;
@@ -5296,9 +5296,9 @@ void testObjectAbiBoundary(TestContext& tests, const std::filesystem::path& root
                  "P8: the same library with the current object ABI is accepted (" + error + ")");
 }
 
-/// EN: Freeze 3.0 P3 regression. SortedDictionary's indexer getter forwarded `items[move(key)]`, which is rejected
+/// EN: Freeze P3 regression. SortedDictionary's indexer getter forwarded `items[move(key)]`, which is rejected
 ///     for every key type; a SortedDictionary<int, int> read through the indexer did not compile.
-/// ES: Regresion de P3 del congelamiento 3.0. El getter del indexador de SortedDictionary pasaba
+/// ES: Regresion de P3 del congelamiento. El getter del indexador de SortedDictionary pasaba
 ///     `items[move(key)]`, que se rechaza con todo tipo de clave; leer un SortedDictionary<int, int> por el
 ///     indexador no compilaba.
 void testSortedDictionaryIndexerGet(TestContext& tests, const std::filesystem::path& root)
@@ -5316,7 +5316,7 @@ class Program
         return d[1] + d[2] + d[3];
     }
 }
-)ns", 41);
+)ns", 41, true);
 }
 
 constexpr std::string_view kErrorPrelude = R"ns(
@@ -7423,10 +7423,10 @@ void expectCompiles(
     tests.expect(code == ExitCode::Success, std::string(name) + ": compiles: " + diagnostic);
 }
 
-// EN: Freeze 3.0 (checked throw). C-13 left the `throw` statement unchecked. A thrown or rethrown
+// EN: Freeze (checked throw). C-13 left the `throw` statement unchecked. A thrown or rethrown
 //     exception must now be caught by an enclosing try or declared by the callable; a throw in an
 //     async function without `throws` used to crash the compiler, and is rejected the same way.
-// ES: Congelamiento 3.0 (throw chequeado). C-13 dejo sin chequeo la sentencia `throw`. Una excepcion
+// ES: Congelamiento (throw chequeado). C-13 dejo sin chequeo la sentencia `throw`. Una excepcion
 //     lanzada o relanzada ahora debe atraparla un try envolvente o declararla el callable; un throw
 //     en una funcion async sin `throws` tronaba el compilador, y se rechaza igual.
 void testCheckedThrow(TestContext& tests, const std::filesystem::path& root)
@@ -7487,10 +7487,10 @@ class Program
 )ns", 789);
 }
 
-// EN: Freeze 3.0 (owned arrays). An `owned T[]` local is an owner like `raii T[]`: it is released
+// EN: Freeze (owned arrays). An `owned T[]` local is an owner like `raii T[]`: it is released
 //     at scope exit with its elements and is not deleted by hand. An owned array field is released
 //     by its container; `delete[]` on it still works and clears the field, so it is released once.
-// ES: Congelamiento 3.0 (arreglos owned). Un local `owned T[]` es dueno como `raii T[]`: se libera
+// ES: Congelamiento (arreglos owned). Un local `owned T[]` es dueno como `raii T[]`: se libera
 //     al salir del scope con sus elementos y no se borra a mano. Un campo de arreglo owned lo libera
 //     su contenedor; `delete[]` sobre el sigue funcionando y vacia el campo, asi se libera una vez.
 void testOwnedArrays(TestContext& tests, const std::filesystem::path& root)
@@ -7768,9 +7768,9 @@ class Program
 )ns", 21);
 }
 
-// EN: Freeze 3.0 (receiver temporaries). `Make().Field` whose result is plain data (here a struct
+// EN: Freeze (receiver temporaries). `Make().Field` whose result is plain data (here a struct
 //     of scalars) destroys the temporary after copying the field out; before, it leaked.
-// ES: Congelamiento 3.0 (temporales receptores). `Make().Campo` cuyo resultado son datos simples
+// ES: Congelamiento (temporales receptores). `Make().Campo` cuyo resultado son datos simples
 //     (aqui un struct de escalares) destruye el temporal despues de copiar el campo; antes se fugaba.
 void testReceiverTemporaries(TestContext& tests, const std::filesystem::path& root)
 {
@@ -7798,9 +7798,9 @@ class Program
 )ns", 678);
 }
 
-/// EN: Freeze 3.0 DEC-13. Compiles `source` with --validate-system-imports and checks the outcome:
+/// EN: Freeze DEC-13. Compiles `source` with --validate-system-imports and checks the outcome:
 ///     success when `fragment` is empty, otherwise a failure whose diagnostic contains `fragment`.
-/// ES: Congelamiento 3.0 DEC-13. Compila `source` con --validate-system-imports y comprueba el
+/// ES: Congelamiento DEC-13. Compila `source` con --validate-system-imports y comprueba el
 ///     resultado: exito si `fragment` esta vacio; si no, un fallo cuyo diagnostico contiene `fragment`.
 void expectSystemImportValidation(
     TestContext& tests,
@@ -7827,10 +7827,10 @@ void expectSystemImportValidation(
     tests.expect(accepted, std::string(name) + ": --validate-system-imports outcome: " + diagnostic);
 }
 
-// EN: Freeze 3.0 DEC-13 (unresolved DLL imports). By default the build never reads host DLLs, so a
+// EN: Freeze DEC-13 (unresolved DLL imports). By default the build never reads host DLLs, so a
 //     symbol the named DLL does not export still compiles. Under --validate-system-imports it is a
 //     compile error; a DLL that cannot be found at compile time is not judged even then.
-// ES: Congelamiento 3.0 DEC-13 (imports de DLL sin resolver). Por defecto la compilacion nunca lee
+// ES: Congelamiento DEC-13 (imports de DLL sin resolver). Por defecto la compilacion nunca lee
 //     DLL del host, asi que un simbolo que la DLL nombrada no exporta compila. Con
 //     --validate-system-imports es error de compilacion; una DLL que no se encuentra al compilar no
 //     se juzga ni siquiera entonces.

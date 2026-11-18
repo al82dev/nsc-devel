@@ -34,7 +34,7 @@ CodeView names, and every listed negative boundary.
 
 ### Nuevos / New
 
-- `tests/unit/NativeSharp3T02PromotedFieldTests.cpp`: frontera exclusiva de 11 comprobaciones.
+- `tests/unit/NativeSharpT02PromotedFieldTests.cpp`: frontera exclusiva de 11 comprobaciones.
 - `docs/3.0/language/promoted-fields.md`: contrato bilingüe y desazucarado completo.
 - este documento de evidencia.
 

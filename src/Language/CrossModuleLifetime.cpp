@@ -67,6 +67,21 @@ std::string crossModuleLifetimeFingerprint(const CrossModuleLifetimeContract& co
     return suffix("contract", material);
 }
 
+// EN: LKF-416: the registry froze the fingerprint of the first object's whole contract, which names its
+//     type and thunks, so a second exported type of the same module was rejected as an incompatible
+//     contract. The module-level fingerprint keeps what must agree across the module: ABI, producer,
+//     allocator and unload policy.
+// ES: LKF-416: el registro congelaba la huella del contrato completo del primer objeto, que nombra su tipo
+//     y sus thunks, así un segundo tipo exportado del mismo módulo se rechazaba como contrato
+//     incompatible. La huella de módulo conserva lo que debe coincidir en todo el módulo: ABI,
+//     productor, asignador y política de descarga.
+std::string moduleLifetimeFingerprint(const CrossModuleLifetimeContract& contract)
+{
+    const std::string material = std::to_string(contract.abiMajor) + "|" + contract.producerModule + "|" +
+        contract.allocatorIdentity + "|" + std::to_string(static_cast<unsigned>(contract.unloadPolicy));
+    return suffix("module", material);
+}
+
 bool ModuleLifetimeRegistry::registerObject(
     const CrossModuleLifetimeContract& contract,
     std::string& error)
@@ -74,7 +89,7 @@ bool ModuleLifetimeRegistry::registerObject(
     if (!validateCrossModuleLifetimeContract(contract, error)) return false;
     std::scoped_lock lock(mutex_);
     ModuleState& state = modules_[contract.producerModule];
-    const std::string fingerprint = crossModuleLifetimeFingerprint(contract);
+    const std::string fingerprint = moduleLifetimeFingerprint(contract);
     if (state.contractFingerprint.empty()) state.contractFingerprint = fingerprint;
     if (state.contractFingerprint != fingerprint)
     { error = "producer module attempted to mix incompatible allocator/destruction contracts"; return false; }
@@ -83,6 +98,7 @@ bool ModuleLifetimeRegistry::registerObject(
     if (state.liveObjects == std::numeric_limits<std::size_t>::max())
     { error = "producer module live-object counter overflow"; return false; }
     ++state.liveObjects;
+    ++typeContracts_[crossModuleLifetimeFingerprint(contract)];
     return true;
 }
 
@@ -95,9 +111,15 @@ bool ModuleLifetimeRegistry::unregisterObject(
     const auto found = modules_.find(contract.producerModule);
     if (found == modules_.end() || found->second.liveObjects == 0)
     { error = "cross-module object release has no matching live registration"; return false; }
-    if (found->second.contractFingerprint != crossModuleLifetimeFingerprint(contract))
+    // EN: TL-LANG-085: LKF-416 left only the module fingerprint here, so a release whose thunks differ from
+    //     the registered contract decremented the count. The release must match a live type contract.
+    // ES: TL-LANG-085: LKF-416 dejó aquí sólo la huella de módulo, así una liberación con thunks distintos
+    //     del contrato registrado decrementaba el conteo. La liberación debe coincidir con un contrato vivo.
+    const auto typeContract = typeContracts_.find(crossModuleLifetimeFingerprint(contract));
+    if (typeContract == typeContracts_.end())
     { error = "cross-module object must be destroyed and deallocated by its producer contract"; return false; }
     --found->second.liveObjects;
+    if (--typeContract->second == 0) typeContracts_.erase(typeContract);
     return true;
 }
 

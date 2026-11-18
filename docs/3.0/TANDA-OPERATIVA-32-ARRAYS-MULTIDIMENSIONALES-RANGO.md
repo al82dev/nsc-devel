@@ -1,8 +1,12 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Tanda operativa 32 — arrays multidimensionales de rango
 
 ## Resultado
 
-NativeSharp 3.0 incorpora arrays rectangulares nativos con identidad propia. `T[,]` y `T[,,]`
+NativeSharp incorpora arrays rectangulares nativos con identidad propia. `T[,]` y `T[,,]`
 ya no se interpretan como arrays jagged: el rango sobrevive desde la sintaxis hasta CodeView,
 NSMETA y el backend. La construcción `new T[d0, d1, ...]` reserva una sola región row-major,
 comprueba cada dimensión y conserva dimensiones y strides en una cabecera ABI estable para
@@ -81,7 +85,7 @@ de clases, strings, delegates y arrays anidados, incluso cuando sólo algunas ce
 
 ## Archivo nuevo
 
-- `tests/unit/NativeSharp3T32RangeArrayTests.cpp`: prueba vertical aislada. Es nueva porque T32
+- `tests/unit/NativeSharpT32RangeArrayTests.cpp`: prueba vertical aislada. Es nueva porque T32
   necesita observar conjuntamente parser, ejecución, metadata, dumps, depuración y fallos de
   rango sin incorporar esta carga al baseline durante desarrollo.
 

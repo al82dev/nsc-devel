@@ -1,0 +1,15 @@
+i128 Divide(i128 a, i128 b) { return checked(a / b); }
+i128 DivideOrdinary(i128 a, i128 b) { return a / b; }
+i128 Remainder(i128 a, i128 b) { return checked(a % b); }
+int Main()
+{
+    i128 half = (i128)1 << 126;
+    i128 maximum = (half - (i128)1) * (i128)2 + (i128)1;
+    i128 minimum = -maximum - (i128)1;
+    if (Divide(minimum, (i128)2) != -half) return 1;
+    if (Divide(minimum, (i128)1) != minimum) return 2;
+    if (Divide(maximum, (i128)-1) != -maximum) return 3;
+    if (DivideOrdinary(minimum, (i128)-1) != minimum) return 4;
+    if (Remainder(minimum, (i128)-1) != (i128)0) return 5;
+    return 0;
+}

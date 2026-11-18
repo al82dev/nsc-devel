@@ -1,0 +1,9 @@
+<Project>
+<PropertyGroup>
+<Name>DivScaleReduction</Name>
+<OutputType>Exe</OutputType>
+</PropertyGroup>
+<ItemGroup>
+<Compile Include="DivScaleReduction.ns"/>
+</ItemGroup>
+</Project>

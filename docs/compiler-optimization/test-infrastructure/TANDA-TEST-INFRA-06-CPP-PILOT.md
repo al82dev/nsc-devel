@@ -1,5 +1,9 @@
 # Tanda 6 — Piloto de unidad C++ consolidada
 
+> **Vigencia:** Esta ficha conserva la evidencia de una ejecución histórica. El producto
+> es 1.0 y el lenguaje no tiene versiones ni ediciones; las expectativas numeradas sobre
+> esas identidades describen únicamente aquella ejecución y no deben reintroducirse.
+
 ## Objetivo
 
 Migrar una unidad interna pequeña al registro consolidado y demostrar paridad sin modificar ni retirar su ejecutable legado.

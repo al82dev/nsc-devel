@@ -7,6 +7,7 @@
 #include "nativesharp/Source/SourceManager.h"
 
 #include "../support/TestContext.h"
+#include "../support/MetadataHeaderControl.h"
 
 #include <array>
 #include <filesystem>
@@ -170,7 +171,7 @@ public class Native
     output.clear();
     error.clear();
     const bool emitted = runDriver(emitArguments, output, error) == ExitCode::Success;
-    tests.expect(emitted, "variadic declaration producer emits NSMETA 1.19 (" + error + ")");
+    tests.expect(emitted, "variadic declaration producer emits NSMETA (" + error + ")");
 
     nativesharp::interop::LibraryMetadata metadata;
     nativesharp::interop::LibraryMetadataCodec codec;
@@ -187,17 +188,24 @@ public class Native
                  (member.flags & nativesharp::interop::kMetadataMemberVariadic) != 0U);
         }
     }
-    tests.expect(metadataRead && metadata.formatMinor >= 19U && foundVariadic,
-        "current NSMETA preserves the 1.19 variadic member flag (" + metadataError + ")");
+    tests.expect(metadataRead && foundVariadic,
+        "metadata preserves the variadic member flag (" + metadataError + ")");
 
+    // The variadic flag must survive the round trip with varied reserved header bytes.
     nativesharp::interop::LibraryMetadata downlevel = metadata;
-    downlevel.formatMinor = 18U;
     metadataError.clear();
-    tests.expect(metadataRead &&
-                     !codec.writeModel(downlevel, producer / "unsupported-1.18.nsmeta", metadataError) &&
-                     metadataError.find("before 1.19 cannot represent a variadic C declaration") !=
-                         std::string::npos,
-        "NSMETA refuses a lossy pre-1.19 variadic downlevel (" + metadataError + ")");
+    nativesharp::interop::LibraryMetadata reread;
+    bool rereadVariadic = false;
+    if (metadataRead && nativesharp::tests::metadataSurvivesReservedBytes(
+            codec, downlevel, 18U, producer / "content-sample-18.nsmeta", metadataError) &&
+        codec.read(producer / "content-sample-18.nsmeta", reread, metadataError))
+    {
+        for (const auto& member : reread.members)
+            rereadVariadic = rereadVariadic || (member.name == "Printf" &&
+                (member.flags & nativesharp::interop::kMetadataMemberVariadic) != 0U);
+    }
+    tests.expect(rereadVariadic,
+        "metadata keeps the variadic flag with varied reserved bytes (" + metadataError + ")");
 
     const auto consumer = root / "consumer";
     writeFile(consumer / "VariadicConsumer.nsproj",

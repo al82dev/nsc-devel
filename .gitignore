@@ -27,3 +27,4 @@ Claude outputs/nsc-all-commits.txt
 *.obj
 /lib/**/obj/
 /tests/**/obj/
+/selfhost/**/obj/

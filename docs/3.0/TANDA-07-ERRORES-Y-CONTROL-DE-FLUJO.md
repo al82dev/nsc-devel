@@ -1,3 +1,7 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Tanda 07 — Errores y control de flujo / Errors and control flow
 
 > **Reclasificación 2026-09-29:** `DESIGNED/IMPLEMENTING`. El helper no implementa syntax, effects,
@@ -29,7 +33,7 @@ errors are handled or propagated, unwind cannot silently cross FFI, and panic cl
 
 ## Límite / Boundary
 
-La tanda operativa 15 conectó una primera vertical física: `panic()` contextual de edición 3,
+La tanda operativa 15 conectó una primera vertical física: `panic()` contextual,
 tipo interno `builtin:never`, nodo HIR/MIR explícito y perfil abort Win64 estable. El catch tipado
 existente convive con esa vertical en c65. `Result/?` ya tiene una vertical productiva completa en
 NS3-T07-F01. `throws E` ya es productivo mediante NS3-T07-F02: chequeo handle-or-propagate,
@@ -42,7 +46,7 @@ cleanup hasta MIR 1.27 y LLVM Win64. NS3-T07-F06 añade `assert`, `unreachable`,
 de panic, perfiles `abort`/`unwind-native`, handler tipado, cleanup nativo, frontera FFI y ABI
 runtime 1.2 hasta MIR 1.28. Constructores throwing y error sets permanecen abiertos.
 
-Operational batch 15 connected the first physical vertical: edition-3 contextual `panic()`, the
+Operational batch 15 connected the first physical vertical: contextual `panic()`, the
 internal `builtin:never` type, explicit HIR/MIR nodes, and a stable Win64 abort profile. Existing
 typed catch coexists with that vertical in c65. `Result/?` is productive through NS3-T07-F01 and
 typed `throws` through NS3-T07-F02. NS3-T07-F03 adds source-ordered typed catches, `when` filters,

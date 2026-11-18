@@ -1,0 +1,30 @@
+/// <summary>Checks wide signed division without relying on an external divide helper.</summary>
+int Main()
+{
+    i128 value = ((i128)1 << 80) + (i128)1;
+    i128 ten = (i128)10;
+    i128 quotient = value / ten;
+    if (quotient * ten + (i128)7 != value)
+    {
+        return 1;
+    }
+    if ((-value) / ten != -quotient || value / (-ten) != -quotient)
+    {
+        return 2;
+    }
+    if ((-value) / (-ten) != quotient)
+    {
+        return 3;
+    }
+    if (value / (i128)1 != value || ten / value != (i128)0)
+    {
+        return 4;
+    }
+    i128 minimum = (i128)1 << 127;
+    i128 negativeOne = (i128)-1;
+    if (minimum / negativeOne != minimum || minimum / (i128)2 != (minimum >> 1))
+    {
+        return 5;
+    }
+    return 0;
+}

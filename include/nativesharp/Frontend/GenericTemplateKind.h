@@ -8,7 +8,7 @@ enum class GenericTemplateKind
     Struct,
     Delegate,
     Method,
-    // Appended to preserve the serialized numeric values of the four 1.0.1 kinds in NSMETA.
+    // Preserve the serialized numeric values of the four preceding kinds.
     Interface
 };
 }

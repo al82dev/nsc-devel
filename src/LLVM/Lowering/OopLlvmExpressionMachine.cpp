@@ -6,6 +6,7 @@
 #include "PackedArrayAlignment.h"
 #include "CRecordBoolStorage.h"
 #include "CVolatileRecordField.h"
+#include "nativesharp/Language/AbiSemantics.h"
 
 namespace nativesharp::llvm_backend
 {
@@ -28,9 +29,9 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionIterative(
                 values.push_back(nullptr);
                 continue;
             }
-            // EN: Freeze 3.0 D-01: an operand with a replay slot opens it before its first phase
+            // EN: Freeze D-01: an operand with a replay slot opens it before its first phase
             //     and closes it, through a marker frame, once its value is on the stack.
-            // ES: Congelamiento 3.0 D-01: un operando con slot de repeticion lo abre antes de su
+            // ES: Congelamiento D-01: un operando con slot de repeticion lo abre antes de su
             //     primera fase y lo cierra, con un frame marcador, cuando su valor esta en la pila.
             if (frame.replayJoin)
             {
@@ -282,6 +283,17 @@ bool OopLlvmImplementation::lowerExpressionFrame001Unary(
             values.push_back(LLVMBuildXor(builder_, operand, signBit, "decimal.neg"));
             return true;
         }
+        // EN: checked(-x) traps on the minimum of every signed integer type, not only i128.
+        // ES: checked(-x) atrapa con el minimo de todo entero con signo, no solo i128.
+        if ((isSignedInteger(current->typeKey) && integerWidth(current->typeKey) > 1U &&
+             currentOverflowPolicy_ == "checked") ||
+            (current->typeKey == "builtin:int" && currentOverflowPolicy_ == "saturating"))
+        {
+            values.push_back(applyIntegerBinaryOperation(
+                lexer::TokenKind::Minus, LLVMConstInt(LLVMTypeOf(operand), 0, 0),
+                operand, current->typeKey, error, false));
+            return true;
+        }
         values.push_back(isFloating(current->typeKey)
             ? applyFloatingPointMode(LLVMBuildFNeg(builder_, operand, "fneg"))
             : LLVMBuildNeg(builder_, operand, "neg"));
@@ -483,6 +495,7 @@ bool OopLlvmImplementation::lowerExpressionFrame004FieldLoad(
         address, cBoolStorage ? "c.bool.field.load" : "field.load");
     if (const auto alignment = fieldOrArrayAddressAlignment(current))
         LLVMSetAlignment(load, static_cast<unsigned>(*alignment));
+    if (LLVMGetTypeKind(type) == LLVMVectorTypeKind) LLVMSetAlignment(load, 1U);
     if (current->volatileAccess) LLVMSetVolatile(load, 1);
     if (const auto alignment = clangMsVolatileFunctionFieldAlignment(memberModel_, current))
     {
@@ -494,6 +507,9 @@ bool OopLlvmImplementation::lowerExpressionFrame004FieldLoad(
         LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
         LLVMSetAlignment(load, static_cast<unsigned>(*width));
     }
+    // LKF-436: a packed field is read with its real alignment. / LKF-436: un campo empaquetado se lee
+    // con su alineación real.
+    clampAccessAlignment(load, current);
     const std::string record =
         runtimeDebugFieldLoadRecord(*current, "FIELD-LOAD-END");
     if (!record.empty() && !emitRuntimeDebugTrace(4U, record, error))
@@ -543,6 +559,7 @@ bool OopLlvmImplementation::lowerExpressionFrame006ArrayElementAddress(
     const frontend::ProjectOopMirNode* current = frame.node;
     if (!(current->kind == frontend::ProjectOopMirNodeKind::ArrayElementAddress ||
         current->kind == frontend::ProjectOopMirNodeKind::ArrayElementLoad ||
+        current->kind == frontend::ProjectOopMirNodeKind::SimdMaskElementLoad ||
         current->kind == frontend::ProjectOopMirNodeKind::StringElementLoad ||
         current->kind == frontend::ProjectOopMirNodeKind::StringCharacterPointer)) return false;
     const bool stringValue =
@@ -571,7 +588,8 @@ bool OopLlvmImplementation::lowerExpressionFrame006ArrayElementAddress(
         LLVMValueRef object = values.back();
         values.pop_back();
         if (object == nullptr) { values.push_back(nullptr); return true; }
-        object = checkedReceiver(object, error);
+        if (current->kind != frontend::ProjectOopMirNodeKind::SimdMaskElementLoad)
+            object = checkedReceiver(object, error);
         if (object == nullptr) { values.push_back(nullptr); return true; }
         frames.push_back({current, 2, object});
         frames.push_back({current->children[1].get(), 0, nullptr});
@@ -580,6 +598,26 @@ bool OopLlvmImplementation::lowerExpressionFrame006ArrayElementAddress(
     LLVMValueRef index = values.back();
     values.pop_back();
     if (index == nullptr) { values.push_back(nullptr); return true; }
+    if (current->kind == frontend::ProjectOopMirNodeKind::SimdMaskElementLoad)
+    {
+        const auto mask = language::parsePortableSimdType(current->children[0]->typeKey);
+        if (!mask.has_value() || !mask->mask)
+        {
+            values.push_back(failValue(error, "SIMD mask index lost its receiver type"));
+            return true;
+        }
+        LLVMValueRef length = LLVMConstInt(LLVMTypeOf(index), mask->laneCount, 0);
+        LLVMValueRef inRange = LLVMBuildICmp(builder_, LLVMIntULT, index, length, "mask.index.inrange");
+        if (!emitGuard(inRange, LlvmTrapReason::BoundsViolation, "mask.index", error))
+        {
+            values.push_back(nullptr);
+            return true;
+        }
+        index = convert(index, current->children[1]->typeKey, "builtin:nuint", error);
+        if (index == nullptr) { values.push_back(nullptr); return true; }
+        values.push_back(LLVMBuildExtractElement(builder_, frame.lhs, index, "mask.lane"));
+        return true;
+    }
     index = convert(index, current->children[1]->typeKey, "builtin:nuint", error);
     if (index == nullptr) { values.push_back(nullptr); return true; }
     finishArrayElementFrame(current, frame.lhs, index, stringValue, values, error);
@@ -592,8 +630,8 @@ void OopLlvmImplementation::finishArrayElementFrame(
         std::vector<LLVMValueRef>& values, std::string& error)
 {
     LLVMValueRef address = arrayElementAddressFromParts(current, object, index, stringValue, error);
-    // EN: Freeze 3.0 DEC-11: liveness work of an element of an array of structs with a destructor.
-    // ES: Congelamiento 3.0 DEC-11: trabajo de vida de un elemento de un arreglo de structs con
+    // EN: Freeze DEC-11: liveness work of an element of an array of structs with a destructor.
+    // ES: Congelamiento DEC-11: trabajo de vida de un elemento de un arreglo de structs con
     //     destructor.
     if (address != nullptr && !stringValue && current->alignment != 0 &&
         !applyArrayElementAccess(
@@ -629,6 +667,7 @@ void OopLlvmImplementation::finishArrayElementFrame(
     LLVMValueRef loaded = type != nullptr
         ? LLVMBuildLoad2(builder_, type, address, "array.element.load")
         : nullptr;
+    if (loaded != nullptr && LLVMGetTypeKind(type) == LLVMVectorTypeKind) LLVMSetAlignment(loaded, 1U);
     const std::string record =
         runtimeDebugArrayRecord(*current, "ARRAY-ELEMENT-END");
     if (loaded != nullptr && !record.empty() &&
@@ -692,8 +731,14 @@ bool OopLlvmImplementation::lowerExpressionFrame008OwnedTemporaryBorrow(
     values.pop_back();
     if (value == nullptr) { values.push_back(nullptr); return true; }
     LLVMBuildStore(builder_, value, frame.lhs);
+    if (current->referenceResult)
+    {
+        const auto flag = localValueDropFlags_.find(*current->localOrdinal);
+        if (flag != localValueDropFlags_.end())
+            LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0), flag->second);
+    }
     activeCleanupRegions_.push_back(*current->cleanupRegionOrdinal);
-    values.push_back(value);
+    values.push_back(current->referenceResult ? frame.lhs : value);
     return true;
 }
 
@@ -710,8 +755,8 @@ bool OopLlvmImplementation::lowerExpressionFrame009FullExpressionCleanup(
             values.push_back(failValue(error, "NSC-LIMIT-021 full expression requires exactly one value"));
             return true;
         }
-        // EN: Freeze 3.0 (plan item 135): a borrow crosses a `?:` or `??`; see clearTemporaryOwnerSlots.
-        // ES: Congelamiento 3.0 (elemento 135 del plan): un prestamo cruza un `?:` o `??`; ver
+        // EN: Freeze (plan item 135): a borrow crosses a `?:` or `??`; see clearTemporaryOwnerSlots.
+        // ES: Congelamiento (elemento 135 del plan): un prestamo cruza un `?:` o `??`; ver
         //     clearTemporaryOwnerSlots.
         if (current->booleanValue) clearTemporaryOwnerSlots(*current);
         frames.push_back({current, 1, nullptr, activeCleanupRegions_.size()});
@@ -727,7 +772,13 @@ bool OopLlvmImplementation::lowerExpressionFrame009FullExpressionCleanup(
     activeCleanupRegions_.resize(frame.retainedDepth);
     for (auto it = temporaries.rbegin(); it != temporaries.rend(); ++it)
     {
-        if (!emitCleanupAction(*it, error)) { values.push_back(nullptr); continue; }
+        // EN: LKF-498: a failed cleanup pushed nullptr and then the value as well, so the stack had
+        //     one entry too many and the parent frame paired its operands with the wrong values.
+        //     A failure now yields exactly one nullptr, as every other frame does.
+        // ES: LKF-498: una limpieza fallida empujaba nullptr y además el valor, así que la pila tenía
+        //     una entrada de más y el frame padre emparejaba sus operandos con valores equivocados.
+        //     Un fallo produce ahora exactamente un nullptr, como los demás frames.
+        if (!emitCleanupAction(*it, error)) { values.push_back(nullptr); return true; }
     }
     values.push_back(value);
     return true;
@@ -802,8 +853,10 @@ bool OopLlvmImplementation::lowerExpressionFrame012IteratorCurrent(
     LLVMBuildStore(builder_, value, slot);
     LLVMTypeRef itemType = llvmType(current->typeKey, error);
     if (itemType == nullptr) { values.push_back(nullptr); return true; }
-    values.push_back(LLVMBuildLoad2(
-        builder_, itemType, byteOffset(slot, 16, "iterator.item.addr"), "iterator.current.item"));
+    LLVMValueRef item = LLVMBuildLoad2(
+        builder_, itemType, byteOffset(slot, 16, "iterator.item.addr"), "iterator.current.item");
+    LLVMSetAlignment(item, 1);
+    values.push_back(item);
     return true;
 }
 
@@ -827,9 +880,11 @@ bool OopLlvmImplementation::lowerExpressionFrame013IteratorDrop(
     LLVMValueRef self = values.back();
     values.pop_back();
     if (self == nullptr) { values.push_back(nullptr); return true; }
+    const std::uint64_t dropOffset = futureFieldOffset(current->elementTypeKey, 4);
+    if (dropOffset == 0) { values.push_back(failValue(error, "iterator Drop layout missing")); return true; }
     LLVMValueRef dropFn = LLVMBuildLoad2(
         builder_, LLVMPointerTypeInContext(context_, 0),
-        byteOffset(self, 32, "iterator.dropfn.addr"), "iterator.dropfn");
+        byteOffset(self, dropOffset, "iterator.dropfn.addr"), "iterator.dropfn");
     LLVMTypeRef fnParams[] = { LLVMPointerTypeInContext(context_, 0) };
     LLVMTypeRef fnType = LLVMFunctionType(
         LLVMVoidTypeInContext(context_), fnParams, 1, 0);
@@ -865,10 +920,10 @@ bool OopLlvmImplementation::lowerExpressionFrame014IteratorCancel(
     if (self == nullptr) { values.push_back(nullptr); return true; }
     LLVMTypeRef intType = llvmType("builtin:int", error);
     if (intType == nullptr) { values.push_back(nullptr); return true; }
-    // EN: Freeze 3.0 C-17: the poll is a coroutine, so a cancel parks the iterator in the cancel
+    // EN: Freeze C-17: the poll is a coroutine, so a cancel parks the iterator in the cancel
     //     state of the yield it is stopped at (kCancelStateBase - k): the next MoveNextAsync runs
     //     the cleanup active there and answers false. One never started just finishes.
-    // ES: Congelamiento 3.0 C-17: el poll es una corrutina, asi que cancelar deja el iterador en
+    // ES: Congelamiento C-17: el poll es una corrutina, asi que cancelar deja el iterador en
     //     el estado de cancelacion del yield donde esta detenido (kCancelStateBase - k): el
     //     siguiente MoveNextAsync corre la limpieza activa ahi y responde false. Uno que nunca
     //     empezo solo termina.
@@ -909,9 +964,11 @@ bool OopLlvmImplementation::lowerExpressionFrame015IteratorMoveNextAsync(
     LLVMValueRef self = values.back();
     values.pop_back();
     if (self == nullptr) { values.push_back(nullptr); return true; }
+    const std::uint64_t moveNextOffset = futureFieldOffset(current->elementTypeKey, 3);
+    if (moveNextOffset == 0) { values.push_back(failValue(error, "iterator MoveNextAsync layout missing")); return true; }
     LLVMValueRef moveNextFn = LLVMBuildLoad2(
         builder_, LLVMPointerTypeInContext(context_, 0),
-        byteOffset(self, 24, "moveNextAsync.fn.addr"), "moveNextAsync.fn");
+        byteOffset(self, moveNextOffset, "moveNextAsync.fn.addr"), "moveNextAsync.fn");
     LLVMTypeRef futureType = llvmType(current->typeKey, error);
     if (futureType == nullptr) { values.push_back(nullptr); return true; }
     LLVMValueRef sretSlot = entryBlockAlloca(futureType, 8, "moveNextAsync.sret");
@@ -949,9 +1006,11 @@ bool OopLlvmImplementation::lowerExpressionFrame016IteratorMoveNext(
     LLVMValueRef self = values.back();
     values.pop_back();
     if (self == nullptr) { values.push_back(nullptr); return true; }
+    const std::uint64_t moveNextOffset = futureFieldOffset(current->elementTypeKey, 3);
+    if (moveNextOffset == 0) { values.push_back(failValue(error, "iterator MoveNext layout missing")); return true; }
     LLVMValueRef moveNextFn = LLVMBuildLoad2(
         builder_, LLVMPointerTypeInContext(context_, 0),
-        byteOffset(self, 24, "iterator.movenextfn.addr"), "iterator.movenextfn");
+        byteOffset(self, moveNextOffset, "iterator.movenextfn.addr"), "iterator.movenextfn");
     LLVMTypeRef fnParams[] = { LLVMPointerTypeInContext(context_, 0) };
     LLVMTypeRef fnType = LLVMFunctionType(
         LLVMInt1TypeInContext(context_), fnParams, 1, 0);
@@ -1019,6 +1078,16 @@ bool OopLlvmImplementation::lowerExpressionFrame017BorrowValue(
     return true;
 }
 
+LLVMValueRef OopLlvmImplementation::completeDelegatedConstructorCall(
+        const frontend::ProjectOopMirNode* node, LLVMValueRef result, const std::string& error)
+{
+    if (node == pendingDelegatedConstructor_ && pendingDelegationFlags_ != nullptr &&
+        result != nullptr && error.empty() && !terminated())
+        for (LLVMValueRef flag : *pendingDelegationFlags_)
+            LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0), flag);
+    return result;
+}
+
 bool OopLlvmImplementation::lowerExpressionFrame018DirectInstanceCall(
         const LlvmExpressionFrame& frame, std::vector<LlvmExpressionFrame>& frames,
         std::vector<LLVMValueRef>& values, std::string& error)
@@ -1053,7 +1122,7 @@ bool OopLlvmImplementation::lowerExpressionFrame018DirectInstanceCall(
         {
             std::vector<LLVMValueRef> noArgs;
             if (current->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall)
-                values.push_back(lowerCall(current, error, receiver, &noArgs));
+                values.push_back(completeDelegatedConstructorCall(current, lowerCall(current, error, receiver, &noArgs), error));
             else if (current->kind == frontend::ProjectOopMirNodeKind::VirtualInstanceCall)
                 values.push_back(lowerVirtualCall(current, error, receiver, &noArgs));
             else
@@ -1079,7 +1148,7 @@ bool OopLlvmImplementation::lowerExpressionFrame018DirectInstanceCall(
         values.pop_back();
     }
     if (current->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall)
-        values.push_back(lowerCall(current, error, frame.lhs, &argumentOverrides));
+        values.push_back(completeDelegatedConstructorCall(current, lowerCall(current, error, frame.lhs, &argumentOverrides), error));
     else if (current->kind == frontend::ProjectOopMirNodeKind::VirtualInstanceCall)
         values.push_back(lowerVirtualCall(current, error, frame.lhs, &argumentOverrides));
     else
@@ -1157,7 +1226,7 @@ bool OopLlvmImplementation::lowerExpressionFrame020DirectStaticCall(
     if (frame.phase < current->children.size())
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -1193,6 +1262,11 @@ bool OopLlvmImplementation::lowerExpressionFrame021ObjectDestroy(
     if (object == nullptr) { values.push_back(nullptr); return true; }
     if (!current->dynamicDestruction)
     {
+        if (!emitObjectOnlyValueDestruction(object, current->elementTypeKey, error))
+        {
+            values.push_back(nullptr);
+            return true;
+        }
         values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
         return true;
     }
@@ -1261,7 +1335,7 @@ bool OopLlvmImplementation::lowerExpressionFrame023ValueConstruct(
     if (frame.phase < current->argumentCount)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -1284,7 +1358,7 @@ bool OopLlvmImplementation::lowerExpressionFrame024AllocateAndConstruct(
     if (frame.phase < current->argumentCount)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -1362,12 +1436,12 @@ bool OopLlvmImplementation::lowerExpressionFrame026AwaitFuture(
             values.push_back(failValue(error, "await future requires one operand"));
             return true;
         }
-        // EN: Freeze 3.0 C-02: a suspending await lowers its operand itself, on the path that
+        // EN: Freeze C-02: a suspending await lowers its operand itself, on the path that
         //     creates the child; evaluating it here would call the producer again on every resume.
-        // ES: Congelamiento 3.0 C-02: un await que suspende baja su operando el mismo, en la ruta
+        // ES: Congelamiento C-02: un await que suspende baja su operando el mismo, en la ruta
         //     que crea el hijo; evaluarlo aqui llamaria otra vez al productor en cada reanudacion.
-        // EN: Freeze 3.0 (plan item 113): a field operand is lowered by lowerAwaitOperand, which zeroes it.
-        // ES: Congelamiento 3.0 (elemento 113 del plan): lowerAwaitOperand baja un operando campo y lo pone en cero.
+        // EN: Freeze (plan item 113): a field operand is lowered by lowerAwaitOperand, which zeroes it.
+        // ES: Congelamiento (elemento 113 del plan): lowerAwaitOperand baja un operando campo y lo pone en cero.
         if (current->integerValue == 1 || awaitOperandIsField(current->children.front().get()))
         {
             values.push_back(lowerAwaitExpression(current, error, nullptr));
@@ -1390,6 +1464,18 @@ bool OopLlvmImplementation::lowerExpressionFrame027AggregateInitialize(
 {
     const frontend::ProjectOopMirNode* current = frame.node;
     if (!(current->kind == frontend::ProjectOopMirNodeKind::AggregateInitialize)) return false;
+    if (frame.phase == 0 && memberModel_ != nullptr &&
+        frontend::ProjectTypeConversion::tupleElementTypeKeys(current->typeKey).has_value() &&
+        memberModel_->typeTransitivelyHasCustomDestructor(current->typeKey) &&
+        std::ranges::all_of(current->children, [](const auto& child)
+        {
+            return child != nullptr &&
+                child->kind == frontend::ProjectOopMirNodeKind::AggregateElementStore;
+        }))
+    {
+        values.push_back(lowerAggregateInitializer(current, error));
+        return true;
+    }
     if (frame.phase < current->children.size())
     {
         const std::size_t index = frame.phase;
@@ -1399,7 +1485,7 @@ bool OopLlvmImplementation::lowerExpressionFrame027AggregateInitialize(
             values.push_back(failValue(error, "C7 aggregate initializer has a malformed element"));
             return true;
         }
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({child->children.front().get(), 0, nullptr});
         return true;
     }
@@ -1452,17 +1538,19 @@ bool OopLlvmImplementation::lowerExpressionFrame029MoveArrayElement(
     LLVMTypeRef elementType = llvmType(current->typeKey, error);
     if (elementType == nullptr) { values.push_back(nullptr); return true; }
     LLVMValueRef value = LLVMBuildLoad2(builder_, elementType, address, "move.array.element.load");
-    // EN: Freeze 3.0 C-12: a moved-out struct with a destructor or owned fields leaves a zeroed
+    if (LLVMGetTypeKind(elementType) == LLVMVectorTypeKind) LLVMSetAlignment(value, 1U);
+    // EN: Freeze C-12: a moved-out struct with a destructor or owned fields leaves a zeroed
     //     slot, so dropping the array later destroys an empty value instead of the moved one.
-    // ES: Congelamiento 3.0 C-12: un struct movido con destructor o campos owned deja el slot en
+    // ES: Congelamiento C-12: un struct movido con destructor o campos owned deja el slot en
     //     cero, asi que destruir el arreglo despues destruye un valor vacio y no el movido.
     if (current->booleanValue ||
         (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(current->typeKey)))
     {
-        LLVMBuildStore(builder_, LLVMConstNull(elementType), address);
+        LLVMValueRef clear = LLVMBuildStore(builder_, LLVMConstNull(elementType), address);
+        if (LLVMGetTypeKind(elementType) == LLVMVectorTypeKind) LLVMSetAlignment(clear, 1U);
     }
-    // EN: Freeze 3.0 DEC-11: the moved-out slot is dead.
-    // ES: Congelamiento 3.0 DEC-11: el slot del que se movio queda muerto.
+    // EN: Freeze DEC-11: the moved-out slot is dead.
+    // ES: Congelamiento DEC-11: el slot del que se movio queda muerto.
     if (const std::optional<OopLlvmArrayElementLiveness> liveness =
             takeArrayElementLiveness(current->children.front().get()))
         setArrayElementAlive(*liveness, false);
@@ -1583,6 +1671,7 @@ bool OopLlvmImplementation::lowerExpressionFrame030PointerLoad(
         if (current->cppMicrosoftVolatileSemantics == std::optional<bool>{true})
             LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
     }
+    if (LLVMGetTypeKind(pointee) == LLVMVectorTypeKind) LLVMSetAlignment(load, 1U);
     if (byteBool) load = LLVMBuildTrunc(builder_, load, LLVMInt1TypeInContext(context_), "pointer.bool");
     values.push_back(load);
     return true;
@@ -1615,6 +1704,23 @@ bool OopLlvmImplementation::lowerExpressionFrame031MoveOwnedField(
     {
         LLVMBuildStore(builder_, LLVMConstNull(fieldType), address);
     }
+    const auto* field = current->children.front().get();
+    if (currentMirFunction_ != nullptr && currentMirFunction_->constructor && memberModel_ != nullptr &&
+        memberModel_->typeRequiresValueDrop(current->typeKey) &&
+        field->kind == frontend::ProjectOopMirNodeKind::FieldAddress && field->memberOrdinal.has_value() &&
+        !field->children.empty() && field->children.front() != nullptr &&
+        field->children.front()->kind == frontend::ProjectOopMirNodeKind::ThisValue)
+    {
+        for (const std::size_t ordinal : activeCleanupRegions_)
+        {
+            const auto action = cleanupRegions_.find(ordinal);
+            const auto flag = localStorage_.find(ordinal);
+            if (action != cleanupRegions_.end() && action->second != nullptr &&
+                action->second->stringValue == "constructor.owned.field.cleanup" &&
+                action->second->memberOrdinal == field->memberOrdinal && flag != localStorage_.end())
+                LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0), flag->second);
+        }
+    }
     values.push_back(value);
     return true;
 }
@@ -1643,9 +1749,11 @@ bool OopLlvmImplementation::lowerExpressionFrame032MoveIteratorCurrent(
     if (itemType == nullptr) { values.push_back(nullptr); return true; }
     LLVMValueRef slot = byteOffset(iterator, 16, "move.iterator.item.addr");
     LLVMValueRef value = LLVMBuildLoad2(builder_, itemType, slot, "move.iterator.item.load");
+    LLVMSetAlignment(value, 1U);
     if (current->booleanValue)
     {
-        LLVMBuildStore(builder_, LLVMConstNull(itemType), slot);
+        LLVMValueRef clear = LLVMBuildStore(builder_, LLVMConstNull(itemType), slot);
+        LLVMSetAlignment(clear, 1U);
     }
     values.push_back(value);
     return true;
@@ -1748,8 +1856,133 @@ bool OopLlvmImplementation::lowerExpressionFrame035CompoundStore(
         LLVMValueRef address = values.back();
         values.pop_back();
         if (address == nullptr) { values.push_back(nullptr); return true; }
+        if (!current->calleeName.empty())
+        {
+            LLVMTypeRef targetType = llvmType(current->typeKey, error);
+            if (targetType == nullptr) { values.push_back(nullptr); return true; }
+            LLVMValueRef previous = LLVMBuildLoad2(builder_, targetType, address, "operator.update.previous");
+            if (current->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
+            clampAccessAlignment(previous, current->children[0].get());
+            if (current->operation != lexer::TokenKind::PlusPlus &&
+                current->operation != lexer::TokenKind::MinusMinus)
+            {
+                values.push_back(previous);
+                frames.push_back({current, 3, address, 0});
+                frames.push_back({current->children[1].get(), 0, nullptr});
+                return true;
+            }
+            frontend::ProjectOopMirNode call;
+            call.kind = frontend::ProjectOopMirNodeKind::DirectStaticCall;
+            call.typeKey = current->typeKey;
+            call.calleeName = current->calleeName;
+            call.memberOrdinal = current->memberOrdinal;
+            auto input = std::make_unique<frontend::ProjectOopMirNode>();
+            const frontend::ProjectOopMirFunction* target = mirModel_.functionForMangledName(current->calleeName);
+            if (target == nullptr || target->parameterPassKinds.empty() || target->parameterTypeKeys.empty())
+            {
+                values.push_back(failValue(error, "user increment/decrement has no parameter ABI"));
+                return true;
+            }
+            const bool byReference = target->parameterPassKinds[0] == frontend::ParameterPassKind::In ||
+                target->parameterPassKinds[0] == frontend::ParameterPassKind::Ref;
+            input->typeKey = byReference ? target->parameterTypeKeys[0] : current->typeKey;
+            call.children.push_back(std::move(input));
+            const LLVMValueRef argument = byReference
+                ? address : previous;
+            const std::vector<LLVMValueRef> arguments{argument};
+            LLVMValueRef updated = lowerStaticCall(&call, error, &arguments);
+            if (updated == nullptr) { values.push_back(nullptr); return true; }
+            if (terminated()) { values.push_back(updated); return true; }
+            LLVMValueRef store = LLVMBuildStore(builder_, updated, address);
+            if (current->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+            clampAccessAlignment(store, current->children[0].get());
+            if ((current->localOrdinal.has_value() || current->ownership == sema::OwnershipKind::Owned) &&
+                !current->booleanValue &&
+                !emitOwnedPointerDestroy(previous, current->typeKey, "operator.update.previous", error))
+            {
+                values.push_back(nullptr);
+                return true;
+            }
+            values.push_back(current->booleanValue ? previous : updated);
+            return true;
+        }
         frames.push_back({current, 2, address, 0});
         frames.push_back({current->children[1].get(), 0, nullptr});
+        return true;
+    }
+    if (frame.phase == 3)
+    {
+        LLVMValueRef right = values.back();
+        values.pop_back();
+        LLVMValueRef previous = values.back();
+        values.pop_back();
+        if (right == nullptr || previous == nullptr) { values.push_back(nullptr); return true; }
+        if (current->booleanValue && current->children[0]->kind == frontend::ProjectOopMirNodeKind::ArrayElementAddress)
+        {
+            const auto alive = arrayElementLiveness_.find(current->children[0].get());
+            if (alive != arrayElementLiveness_.end() &&
+                !emitGuard(arrayElementIsAlive(alive->second), LlvmTrapReason::DeadElementRead, "array.dead", error))
+            {
+                values.push_back(nullptr);
+                return true;
+            }
+        }
+        const frontend::ProjectOopMirFunction* target = mirModel_.functionForMangledName(current->calleeName);
+        if (target == nullptr || target->parameterPassKinds.size() != 2 ||
+            target->parameterTypeKeys.size() != 2)
+        {
+            values.push_back(failValue(error, "compound operator has no binary parameter ABI"));
+            return true;
+        }
+        frontend::ProjectOopMirNode call;
+        call.kind = frontend::ProjectOopMirNodeKind::DirectStaticCall;
+        call.typeKey = target->returnTypeKey;
+        call.calleeName = current->calleeName;
+        call.memberOrdinal = current->memberOrdinal;
+        std::vector<LLVMValueRef> arguments{previous, right};
+        for (std::size_t i = 0; i < 2; ++i)
+        {
+            auto input = std::make_unique<frontend::ProjectOopMirNode>();
+            input->typeKey = target->parameterTypeKeys[i];
+            call.children.push_back(std::move(input));
+            if ((target->parameterPassKinds[i] == frontend::ParameterPassKind::Ref ||
+                 target->parameterPassKinds[i] == frontend::ParameterPassKind::In) && i == 0)
+                arguments[i] = frame.lhs;
+        }
+        LLVMValueRef updated = lowerStaticCall(&call, error, &arguments);
+        if (updated == nullptr) { values.push_back(nullptr); return true; }
+        if (!current->secondaryCalleeName.empty() && !terminated())
+        {
+            frontend::ProjectOopMirNode conversion;
+            conversion.kind = frontend::ProjectOopMirNodeKind::DirectStaticCall;
+            conversion.typeKey = current->typeKey;
+            conversion.calleeName = current->secondaryCalleeName;
+            conversion.memberOrdinal = current->secondaryMemberOrdinal;
+            auto input = std::make_unique<frontend::ProjectOopMirNode>();
+            input->typeKey = target->returnTypeKey;
+            conversion.children.push_back(std::move(input));
+            const std::vector<LLVMValueRef> conversionArguments{updated};
+            updated = lowerStaticCall(&conversion, error, &conversionArguments);
+            if (updated == nullptr) { values.push_back(nullptr); return true; }
+        }
+        if (!terminated())
+        {
+            if (current->booleanValue &&
+                (current->localOrdinal.has_value() || current->parameterOrdinal.has_value() ||
+                 current->children[0]->kind == frontend::ProjectOopMirNodeKind::ArrayElementAddress) &&
+                memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(current->typeKey))
+            {
+                updated = storeFromParts(current, frame.lhs, updated, error);
+                if (updated == nullptr) { values.push_back(nullptr); return true; }
+            }
+            else
+            {
+                LLVMValueRef store = LLVMBuildStore(builder_, updated, frame.lhs);
+                if (current->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+                clampAccessAlignment(store, current->children[0].get());
+            }
+        }
+        values.push_back(updated);
         return true;
     }
     LLVMValueRef value = values.back();
@@ -1773,7 +2006,7 @@ bool OopLlvmImplementation::lowerExpressionFrame036StackAllocation(
     if (frame.phase < current->children.size())
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -2124,6 +2357,22 @@ bool OopLlvmImplementation::lowerExpressionFrame044Store(
     LLVMValueRef stored = storeFromParts(current, frame.lhs, value, error);
     if (stored != nullptr)
     {
+        const auto* address = current->children[0].get();
+        if (currentMirFunction_ != nullptr && currentMirFunction_->constructor && address != nullptr &&
+            address->kind == frontend::ProjectOopMirNodeKind::FieldAddress && address->memberOrdinal.has_value() &&
+            !address->children.empty() && address->children.front() != nullptr &&
+            address->children.front()->kind == frontend::ProjectOopMirNodeKind::ThisValue)
+        {
+            for (const std::size_t ordinal : activeCleanupRegions_)
+            {
+                const auto action = cleanupRegions_.find(ordinal);
+                const auto flag = localStorage_.find(ordinal);
+                if (action != cleanupRegions_.end() && action->second != nullptr &&
+                    action->second->stringValue == "constructor.owned.field.cleanup" &&
+                    action->second->memberOrdinal == address->memberOrdinal && flag != localStorage_.end())
+                    LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0), flag->second);
+            }
+        }
         const std::string fieldRecord =
             runtimeDebugFieldStoreRecord(*current, "FIELD-STORE-END");
         if (!fieldRecord.empty() &&
@@ -2158,15 +2407,24 @@ bool OopLlvmImplementation::lowerExpressionFrame045TupleDeconstruct(
         values.push_back(failValue(error, "tuple deconstruction has no source value"));
         return true;
     }
-    for (std::size_t index = 1; index < current->children.size(); ++index)
+    // EN: LKF-528: a malformed descriptor pushed a failure and the loop went on; the phase below
+    //     then read the first child of that descriptor and the stack held extra values. The
+    //     descriptors are checked once, before any operand, and a malformed one ends the frame.
+    // ES: LKF-528: un descriptor malformado empujaba un fallo y el ciclo seguía; la fase siguiente
+    //     leía el primer hijo de ese descriptor y la pila quedaba con valores de más. Los descriptores
+    //     se comprueban una vez, antes de cualquier operando, y uno malformado termina el frame.
+    if (frame.phase == 0)
     {
-        const frontend::ProjectOopMirNode* element = current->children[index].get();
-        if (element == nullptr ||
-            element->kind != frontend::ProjectOopMirNodeKind::TupleDeconstructElementStore ||
-            element->children.size() != 1U)
+        for (std::size_t index = 1; index < current->children.size(); ++index)
         {
-            values.push_back(failValue(error, "tuple deconstruction has a malformed target descriptor"));
-            continue;
+            const frontend::ProjectOopMirNode* element = current->children[index].get();
+            if (element == nullptr ||
+                element->kind != frontend::ProjectOopMirNodeKind::TupleDeconstructElementStore ||
+                element->children.size() != 1U || element->children.front() == nullptr)
+            {
+                values.push_back(failValue(error, "tuple deconstruction has a malformed target descriptor"));
+                return true;
+            }
         }
     }
     const std::size_t operandCount = current->children.size();
@@ -2176,7 +2434,7 @@ bool OopLlvmImplementation::lowerExpressionFrame045TupleDeconstruct(
         const frontend::ProjectOopMirNode* operand = index == 0
             ? current->children[0].get()
             : current->children[index]->children.front().get();
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({operand, 0, nullptr});
         return true;
     }
@@ -2207,7 +2465,7 @@ bool OopLlvmImplementation::lowerExpressionFrame046ParameterPack(
     if (frame.phase < current->children.size())
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -2510,7 +2768,7 @@ bool OopLlvmImplementation::lowerExpressionFrame055CoreFileWriteAllBytes(
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -3002,7 +3260,7 @@ bool OopLlvmImplementation::lowerExpressionFrame067CoreSemaphoreCreateNamed(
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -3043,7 +3301,7 @@ bool OopLlvmImplementation::lowerExpressionFrame068CoreProcessRun(
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -3117,7 +3375,7 @@ bool OopLlvmImplementation::lowerExpressionFrame070CoreFileCopy(
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -3737,7 +3995,7 @@ bool OopLlvmImplementation::lowerExpressionFrame080CoreInterlockedCompareExchang
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -3793,7 +4051,7 @@ bool OopLlvmImplementation::lowerExpressionFrame081CoreInterlockedCompareExchang
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -4232,6 +4490,16 @@ bool OopLlvmImplementation::lowerExpressionFrame090TemporaryAddress(
     LLVMValueRef value = values.back();
     values.pop_back();
     if (value == nullptr) { values.push_back(nullptr); return true; }
+    // EN: Integration with `development`: the operand may already be the address of a temporary that the HIR
+    //     materialized in a hidden local; that address is the temporary's address.
+    // ES: Integracion con `development`: el operando puede ser ya la direccion de un temporal que el HIR
+    //     materializo en una local oculta; esa direccion es la del temporal.
+    if (LLVMTypeOf(value) == LLVMPointerTypeInContext(context_, 0) && !current->typeKey.ends_with('*') &&
+        findStructLayout(mirModel_, current->typeKey) != nullptr)
+    {
+        values.push_back(value);
+        return true;
+    }
     LLVMTypeRef carrier = llvmType(current->typeKey, error);
     if (carrier == nullptr) { values.push_back(nullptr); return true; }
     LLVMValueRef slot = entryBlockAlloca(
@@ -4505,7 +4773,7 @@ bool OopLlvmImplementation::lowerExpressionFrame095CoreSimdSqrt(
     if (frame.phase < current->children.size())
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -4668,7 +4936,7 @@ bool OopLlvmImplementation::lowerExpressionFrame097StringViewFromString(
     if (frame.phase < operandCount)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -4761,7 +5029,7 @@ bool OopLlvmImplementation::lowerExpressionFrame098SpanFromArray(
     if (frame.phase < operandCount)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -4807,11 +5075,11 @@ bool OopLlvmImplementation::lowerExpressionFrame098SpanFromArray(
     return true;
 }
 
-// EN: Freeze 3.0 P4: a span over a native array also records the array and its first index (fields 2
+// EN: Freeze P4: a span over a native array also records the array and its first index (fields 2
 //     and 3 of NativeSharp.Core.Span/ReadOnlySpan), so the span's accessors reach elements through
 //     the array and its liveness map. An empty span keeps them null and zero, like a raw span; a
 //     layout without those fields (an older library) is left as it was.
-// ES: Congelamiento 3.0 P4: un span sobre un arreglo nativo guarda tambien el arreglo y su primer
+// ES: Congelamiento P4: un span sobre un arreglo nativo guarda tambien el arreglo y su primer
 //     indice (campos 2 y 3 de NativeSharp.Core.Span/ReadOnlySpan), asi que sus accesos llegan a los
 //     elementos por el arreglo y su mapa de vida. Un span vacio los deja nulos y en cero, como un span
 //     crudo; un layout sin esos campos (una biblioteca anterior) queda como estaba.
@@ -4889,7 +5157,7 @@ bool OopLlvmImplementation::lowerExpressionFrame099SpanFromFixedArray(
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }

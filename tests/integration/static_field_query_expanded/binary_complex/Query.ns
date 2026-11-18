@@ -1,0 +1,8 @@
+int Main()
+{
+    BinaryComplex.Box<int> value = default(BinaryComplex.Box<int>);
+    value.Value = 7;
+    int count = 0;
+    static foreach (field in Fields(BinaryComplex.Box<int>)) { if (field.Name == "Value") count = count + 1; }
+    return count == 1 && value.Value == 7 ? 0 : 1;
+}

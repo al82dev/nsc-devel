@@ -1,5 +1,7 @@
 # Tanda operativa 16 — T08 callable values y ABI observable de closures
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 Fecha: 2026-09-29  
 Rama: `development`  
 Alcance: T08-F01, T08-F02 y porción productiva T08-F05
@@ -46,7 +48,7 @@ entonces el thunk protegido ya existente.
 La inferencia contextual cubre overloads y métodos genéricos cuyo resto de argumentos ya determina
 el tipo. `#run` dentro del cuerpo, almacenamiento en campo estático y `sizeof == 0` también quedan
 ejercitados. Las lambdas genéricas reales siguen en F04. Los `static local` no se atribuyen a F02:
-siguen diferidos a edición 4 por el contrato aún abierto de inicialización y lifetime.
+entonces estaban diferidos por el contrato aún abierto de inicialización y lifetime.
 
 ### Procedencia estable
 
@@ -104,7 +106,7 @@ futuro baseline, pero en esta tanda sólo se ejecutó de forma individual.
 
 ## Archivos nuevos y por qué
 
-- `tests/cc1/c66_ns3_callable_values/c66_ns3_callable_values.nsproj`: proyecto edición 3 mínimo.
+- `tests/cc1/c66_ns3_callable_values/c66_ns3_callable_values.nsproj`: proyecto mínimo.
 - `tests/cc1/c66_ns3_callable_values/Main.ns`: witness ejecutable de los tres ABI callable.
 - `docs/3.0/TANDA-OPERATIVA-16-T08-CALLABLE-VALUES.md`: expediente de alcance, evidencia y deuda.
 

@@ -97,6 +97,17 @@ void testArrays()
 
     const TypeLayout hugeElement{std::numeric_limits<std::uint64_t>::max(), 1};
     expect(!layout.layoutArray(hugeElement, 2).has_value(), "array size overflow rejected");
+
+    // LKF-505: an aligned value near UINT64_MAX needs no rounding; an unaligned one still overflows.
+    // LKF-505: un valor alineado cerca de UINT64_MAX no necesita redondeo; uno no alineado sigue
+    // desbordando.
+    const std::uint64_t alignedTop = std::numeric_limits<std::uint64_t>::max() - 7U;
+    const TypeLayout topElement{alignedTop, 8};
+    expect(layout.strideOf(topElement) == alignedTop, "aligned element near the top has its own stride");
+    const TypeLayout unalignedTop{alignedTop + 1U, 8};
+    expect(!layout.strideOf(unalignedTop).has_value(), "unaligned element near the top overflows");
+    const TypeLayout nine{9, 8};
+    expect(layout.strideOf(nine) == 16U, "ordinary element is rounded up");
 }
 
 void testStructs()

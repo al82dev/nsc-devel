@@ -16,27 +16,27 @@ namespace NativeSharp.BookExamples.BinarySearchTree
         public int Count { get { return count; } }
         public bool IsEmpty { get { return root == null; } }
 
-        public void Insert(Student value) throws ArgumentException
+        public void Insert(owned Student value) throws ArgumentException
         {
             // Congelamiento 3.0 (C-01): el nodo se crea en el campo que lo guarda, justo donde se
             // engancha; el arbol es su dueno manual y lo libera con `delete`.
             if (root == null)
             {
-                root = new StudentNode(value);
+                root = new StudentNode(move(value));
                 count = 1;
                 return;
             }
 
             StudentNode current = root;
-            bool inserted = false;
-            while (!inserted)
+            while (true)
             {
                 if (value.Id < current.Value.Id)
                 {
                     if (current.Left == null)
                     {
-                        current.Left = new StudentNode(value);
-                        inserted = true;
+                        current.Left = new StudentNode(move(value));
+                        count = count + 1;
+                        return;
                     }
                     else
                     {
@@ -47,8 +47,9 @@ namespace NativeSharp.BookExamples.BinarySearchTree
                 {
                     if (current.Right == null)
                     {
-                        current.Right = new StudentNode(value);
-                        inserted = true;
+                        current.Right = new StudentNode(move(value));
+                        count = count + 1;
+                        return;
                     }
                     else
                     {
@@ -57,12 +58,11 @@ namespace NativeSharp.BookExamples.BinarySearchTree
                 }
                 else
                 {
-                    delete value;
+
                     throw new ArgumentException();
                 }
             }
 
-            count = count + 1;
         }
 
         public Student Find(int id)
@@ -151,7 +151,7 @@ namespace NativeSharp.BookExamples.BinarySearchTree
 
             if (node.Left == null && node.Right == null)
             {
-                delete node.Value;
+
                 delete node;
                 return null;
             }
@@ -160,7 +160,7 @@ namespace NativeSharp.BookExamples.BinarySearchTree
             {
                 StudentNode child = node.Right;
                 node.Right = null;
-                delete node.Value;
+
                 delete node;
                 return child;
             }
@@ -169,7 +169,7 @@ namespace NativeSharp.BookExamples.BinarySearchTree
             {
                 StudentNode child = node.Left;
                 node.Left = null;
-                delete node.Value;
+
                 delete node;
                 return child;
             }
@@ -180,9 +180,9 @@ namespace NativeSharp.BookExamples.BinarySearchTree
                 successor = successor.Left;
             }
 
-            Student temporaryValue = node.Value;
-            node.Value = successor.Value;
-            successor.Value = temporaryValue;
+            raii Student temporaryValue = move(node.Value);
+            node.Value = move(successor.Value);
+            successor.Value = move(temporaryValue);
 
             bool[] successorRemoved = new bool[1];
             successorRemoved[0] = false;
@@ -287,7 +287,7 @@ namespace NativeSharp.BookExamples.BinarySearchTree
             ClearNode(node.Right);
             node.Left = null;
             node.Right = null;
-            delete node.Value;
+
             delete node;
         }
 

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <optional>
+#include <string>
 
 namespace nativesharp::compilation
 {
@@ -17,6 +18,10 @@ struct ProjectLoadOptions final
     // LibraryReference that already exists beside its project keeps that local meaning; only a
     // missing project-relative artifact is searched below this directory.
     std::optional<std::filesystem::path> libraryReferenceFallbackRoot;
+
+    // Installed NativeSharp Libraries packages are grouped by package and optimization level.
+    std::optional<std::filesystem::path> standardPackageRoot;
+    std::string standardPackageOptimization = "O0";
 
     // Frontend resource budgets. The driver fills these from explicit CLI options or from the
     // root project's build settings. An absent value selects the language's normative defaults.

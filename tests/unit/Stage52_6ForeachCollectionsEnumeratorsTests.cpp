@@ -55,14 +55,12 @@ void writeFile(const std::filesystem::path& path, std::string_view text)
 void writeProjectWithCollectionsLibrary(
     const std::filesystem::path& directory, std::string_view name, const std::filesystem::path& sourceRoot)
 {
-    const std::string corePath = (sourceRoot / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").string();
-    const std::string collectionsPath =
-        (sourceRoot / "lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj").string();
+    const std::string collectionsPath = (sourceRoot /
+        "stdlib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.Sources.nsproj").string();
     writeFile(
         directory / (std::string(name) + ".nsproj"),
         "<Project><PropertyGroup><Name>" + std::string(name) +
             "</Name></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" />"
-            "<ProjectReference Include=\"" + corePath + "\" />"
             "<ProjectReference Include=\"" + collectionsPath + "\" /></ItemGroup></Project>");
 }
 
@@ -274,7 +272,7 @@ namespace ForeachDictionaryMissing
             return Hashing.Int32(value);
         }
 
-        public static int Run()
+        public static int Run() throws NativeSharp.Core.ArgumentException
         {
             HashFunc<int> intHash = HashInt;
             raii Dictionary<int, int> dict = new Dictionary<int, int>(intHash);
@@ -297,6 +295,7 @@ namespace ForeachDictionaryMissing
 }
 
 // ---------------------------------------------------------------------------------------
+// C-13: Dictionary.Add throws ArgumentException, so the fixture callables declare it.
 // Positive: the documented alternative -- `foreach (var key in dict.Keys())` -- already works
 // today with ZERO additional code, since Keys()/Values() are plain single-type-parameter arrays
 // and arrays are already foreach-compatible via the array-mode candidate.
@@ -319,7 +318,7 @@ namespace ForeachDictionaryKeysValues
             return Hashing.Int32(value);
         }
 
-        public static int Main()
+        public static int Main() throws NativeSharp.Core.ArgumentException
         {
             HashFunc<int> intHash = HashInt;
             raii Dictionary<int, int> dict = new Dictionary<int, int>(intHash);
@@ -359,7 +358,7 @@ namespace ForeachDictionaryKeysValues
 int main()
 {
     TestContext tests;
-    const std::filesystem::path sourceRoot = std::filesystem::path(NSC_SOURCE_DIR);
+    const std::filesystem::path sourceRoot = std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT);
     const auto root = std::filesystem::temp_directory_path() / "nativesharp_stage52_6_foreach_collections_enumerators_tests";
     std::error_code cleanupError;
     std::filesystem::remove_all(root, cleanupError);

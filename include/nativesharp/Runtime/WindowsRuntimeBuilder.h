@@ -19,6 +19,7 @@ struct RuntimeModuleState;
 class WindowsRuntimeBuilder final
 {
 public:
+    void setMainArguments(bool enabled) noexcept { mainArguments_ = enabled; }
     std::unique_ptr<llvm_backend::LlvmModule> build(std::string& error) const;
     std::unique_ptr<llvm_backend::LlvmModule> build(
         std::string_view mainSymbol,
@@ -27,12 +28,17 @@ public:
     std::unique_ptr<llvm_backend::LlvmModule> buildEntry(
         std::string_view mainSymbol,
         std::string& error) const;
+    // Adapter used when the CRT must initialize a sanitizer before NativeSharp starts.
+    std::unique_ptr<llvm_backend::LlvmModule> buildSanitizerEntryAdapter(std::string& error) const;
+    // Heap adapter for an explicitly sanitized runtime; ordinary runtime allocation is unchanged.
+    std::unique_ptr<llvm_backend::LlvmModule> buildSanitizerHeapAdapter(std::string& error) const;
     std::unique_ptr<llvm_backend::LlvmModule> buildDynamicLibraryAnchor(
         std::string& error) const;
     // T15: the entry also defines `main` for the C runtime startup. / La entrada define tambien `main`.
     void setCrtStartup(bool crtStartup) noexcept;
 
 private:
+    bool mainArguments_ = false;
     std::unique_ptr<llvm_backend::LlvmModule> finalizeRuntimeModule(
         internal::RuntimeModuleState& state,
         bool includeStart,

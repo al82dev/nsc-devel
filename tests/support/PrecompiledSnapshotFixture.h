@@ -182,7 +182,7 @@ inline std::filesystem::path writeLibraryProject(
         items += "<LibraryReference Include=\"../" + reference + "/" + reference + ".lib\" />";
     writeFile(directory / (std::string(name) + ".nsproj"),
         "<Project><PropertyGroup><Name>" + std::string(name) +
-        "</Name><OutputType>Library</OutputType><Language>3</Language></PropertyGroup><ItemGroup>" + items +
+        "</Name><OutputType>Library</OutputType></PropertyGroup><ItemGroup>" + items +
         "</ItemGroup></Project>");
     writeFile(directory / "Main.ns", source);
     return directory / (std::string(name) + ".nsproj");

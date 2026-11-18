@@ -1,4 +1,6 @@
-# Tanda 56 — SH54: certificación final de NativeSharp 2.0 autoalojado
+# Tanda 56 — SH54: certificación final de NativeSharp autoalojado
+
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
 
 ## 1. Identidad
 
@@ -8,7 +10,7 @@
 | Gate | `SH54` |
 | Rama | `t56-staging` → `development-claude` → `development` |
 | Commit de entrada | T55/SH53 `2856ba24b` |
-| Commit de cierre | este commit (`selfhost(tanda-56): certify NativeSharp 2.0 self-hosting`) |
+| Commit de cierre | este commit (`selfhost(tanda-56): certify NativeSharp self-hosting`) |
 | Fecha de cierre | 2026-09-22 |
 | Baseline de cierre | `tanda-56-sh54-final-certification-r2-20260922` |
 | Build promovido | `5600000000000001` |
@@ -92,7 +94,7 @@ toolchains diferentes, pero ambos satisfacen la misma identidad y comportamiento
 
 ## 6. Cierre, riesgos e higiene
 
-SH54 certifica el alcance definido por el roadmap de NativeSharp 2.0. No afirma que LLVM deje de ser
+SH54 certifica el alcance definido por el roadmap de NativeSharp. No afirma que LLVM deje de ser
 una dependencia ni que NSLink/NSAsm se reescriban dentro de este repositorio. `nsc0` permanece como
 semilla congelada y ruta de recuperación; la evolución posterior corresponde al roadmap 3.0.
 

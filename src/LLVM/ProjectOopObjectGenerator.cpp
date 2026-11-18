@@ -18,6 +18,7 @@
 #include "nativesharp/LLVM/LlvmOptimizationObservation.h"
 #include "nativesharp/LLVM/LlvmOptimizer.h"
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
+#include "nativesharp/LLVM/LlvmNativeSanitizer.h"
 #include "nativesharp/LLVM/ProjectOopCodePartition.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
 #include "nativesharp/LLVM/ProjectOopMirCacheIdentity.h"
@@ -699,6 +700,7 @@ void storeSourceBoundObject(
 
 void processObjectCodeUnit(
     std::size_t ordinal,
+    bool addressSanitizer,
     bool usePartitions,
     bool usePreLlvmCache,
     bool usePreOptimizationCache,
@@ -796,6 +798,11 @@ void processObjectCodeUnit(
             storeSourceBoundObject(
                 cache, sourceDependencies, unitKey, cacheKey, sourceFiles, true, objectFile, telemetry, moduleError);
         return;
+    }
+    if (addressSanitizer)
+    {
+        LlvmNativeSanitizer sanitizer;
+        if (!sanitizer.instrument(*module, *targetMachine, NativeSanitizerKind::Address, moduleError)) return;
     }
     if (!optimizeConfiguredCodeUnit(
             *module, *targetMachine, optimizationLevel, requiresWholeModuleRequiredInlining,
@@ -922,6 +929,21 @@ void composeModuleCacheKeys(
         debugModelIdentity = fullDebugModelIdentity(nameLookup, memberModel);
     const std::vector<std::size_t> allFunctions =
         collectCacheFunctionOrdinals(mirModel, reachableDefinitions);
+    std::vector<std::string> lifecycleKeys;
+    for (const auto& type : nameLookup.namedTypes())
+        if (type.isPrecompiled)
+        {
+            std::string key = "type:" + type.identity.key();
+            if (memberModel.isNonEscapingLifecycleTypeKey(key)) lifecycleKeys.push_back(std::move(key));
+        }
+    std::ranges::sort(lifecycleKeys);
+    std::string lifecycleEvidence;
+    for (const auto& key : lifecycleKeys)
+        lifecycleEvidence += std::to_string(key.size()) + ":" + key;
+    const auto lifecycleBytes = std::span(
+        reinterpret_cast<const std::uint8_t*>(lifecycleEvidence.data()), lifecycleEvidence.size());
+    const std::string lifecycleDigest = basic::sha256Hex(basic::sha256(lifecycleBytes));
+    std::string sharedLifecycleMirDigest;
     const PhaseClock moduleKeyComposeClock;
     for (std::size_t ordinal = 0; ordinal < cacheKeys.size(); ++ordinal)
     {
@@ -944,6 +966,35 @@ void composeModuleCacheKeys(
         }
         const PhaseClock fingerprint;
         std::string identity = identityIndex.identity(definitions, declarations);
+        bool checksSharedLifecycle = false;
+        for (const auto functionOrdinal : definitions)
+        {
+            const auto& function = mirModel.functions()[functionOrdinal];
+            if (function.memberOrdinal >= memberModel.members().size() ||
+                function.declaringTypeOrdinal >= nameLookup.namedTypes().size()) continue;
+            const auto& member = memberModel.members()[function.memberOrdinal];
+            const auto& type = nameLookup.namedTypes()[function.declaringTypeOrdinal];
+            if (type.identity.fullyQualifiedName() == "NativeSharp.Core.Internal.SharedControlStorage" &&
+                (member.name.starts_with("Construct__g") || member.name.starts_with("ConstructValue__g") ||
+                 member.name.starts_with("ConstructThrowing__g") ||
+                 member.name.starts_with("ConstructValueThrowing__g")))
+            {
+                checksSharedLifecycle = true;
+                break;
+            }
+        }
+        if (checksSharedLifecycle)
+        {
+            if (sharedLifecycleMirDigest.empty())
+            {
+                std::vector<std::size_t> allMirFunctions;
+                allMirFunctions.reserve(mirModel.functions().size());
+                for (std::size_t index = 0; index < mirModel.functions().size(); ++index)
+                    allMirFunctions.push_back(index);
+                sharedLifecycleMirDigest = identityIndex.identity(allMirFunctions, allMirFunctions);
+            }
+            identity += lifecycleDigest + sharedLifecycleMirDigest;
+        }
         if (debugInformation == DebugInformationKind::LineTablesOnly)
             identity = combineLineTableCacheIdentity(
                 std::move(identity), lineTableSourceIdentity);
@@ -1125,6 +1176,11 @@ void ProjectOopObjectGenerator::setThinLtoFinalModuleTextCapture(bool capture) n
 void ProjectOopObjectGenerator::setThinLtoUnitBitcodeCapture(bool capture) noexcept
 {
     captureThinLtoUnitBitcode_ = capture;
+}
+
+void ProjectOopObjectGenerator::setAddressSanitizer(bool enabled) noexcept
+{
+    addressSanitizer_ = enabled;
 }
 
 void ProjectOopObjectGenerator::setThinLtoLibraryUnits(std::vector<ThinLtoLibraryUnits> libraries)
@@ -1495,7 +1551,7 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     std::mutex moduleProgressMutex;
     const auto processModule = [&](std::size_t ordinal) {
         processObjectCodeUnit(
-            ordinal, usePartitions, usePreLlvmCache, usePreOptimizationCache, preserveModuleText,
+            ordinal, addressSanitizer_, usePartitions, usePreLlvmCache, usePreOptimizationCache, preserveModuleText,
             requiresWholeModuleRequiredInlining, nameLookup, memberModel, mirModel,
             sourceManager, debugInformation, optimizationLevel, debugPrefixMaps,
             reachableDefinitions, coordinatorFunctionDeclarations, partition,
@@ -1664,6 +1720,11 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     driver::CompilationWorkerPool* workerPool) const
 {
     error.clear();
+    if (addressSanitizer_ && linkTimeOptimization != LinkTimeOptimizationMode::None)
+    {
+        error = "AddressSanitizer does not yet support link-time optimization";
+        return nullptr;
+    }
     workerCount = std::max<std::size_t>(1, workerCount);
     // NSC305-L06D. At O0, using the requested worker count as the code-unit count
     // over-partitions cold builds: beyond eight units the duplicated LLVM setup,
@@ -1684,7 +1745,8 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     const std::size_t partitionCount = optimizationLevel == LlvmOptimizationLevel::O0
         ? maxColdO0CodeUnits
         : stableOptimizedCodeUnits;
-    const CompilationArtifactCache* const cache = activeCompilationArtifactCache();
+    // Sanitized objects must never be read from or stored in the ordinary object cache.
+    const CompilationArtifactCache* const cache = addressSanitizer_ ? nullptr : activeCompilationArtifactCache();
     ColdLlvmPreambleTelemetry preambleTelemetry;
     const PhaseClock reachabilityClock;
     const ProjectOopFunctionReachabilityAnalysis functionAnalysis(mirModel);

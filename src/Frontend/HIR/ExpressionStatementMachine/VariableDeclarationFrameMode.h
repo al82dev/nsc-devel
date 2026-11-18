@@ -8,6 +8,7 @@ enum class VariableDeclarationFrameMode : std::uint8_t
 {
     NoChild,
     Initializer,
+    ImplicitConstruction,
     VlaSingle,
     VlaExtents,
     Ready,

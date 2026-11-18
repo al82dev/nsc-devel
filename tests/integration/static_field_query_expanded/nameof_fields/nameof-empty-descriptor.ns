@@ -1,0 +1,1 @@
+struct Empty { } int Main() { static foreach (field in Fields(Empty)) { string n=nameof(field.Missing); } return 0; }

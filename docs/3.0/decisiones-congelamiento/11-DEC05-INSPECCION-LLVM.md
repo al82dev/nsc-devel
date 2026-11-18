@@ -1,5 +1,7 @@
 # Congelamiento 3.0 DEC-05 — CFG, dominancia, SSA y optimización sobre el LLVM del pipeline 3.x
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 Fecha: 2026-10-26. Rama: `development-release-candidate`. Revisión de partida: `8c1559649`.
 
 ## Propósito y problema
@@ -74,7 +76,7 @@ Las tres excepciones nombran cosas del pipeline 1.x:
 - el phi del símbolo `value`: en LLVM se llama `%local0.addr.0`;
 - el pase MIR `dead-code-elimination`.
 
-Los `.ns` que C-05 portó al lenguaje 3.x no cambian.
+Los `.ns` que C-05 portó al lenguaje no cambian.
 
 ## Validación
 
@@ -94,7 +96,7 @@ nsc Release recompilado (exit 0). Sonda `A:\temp\nsc-dec\d05\probe.cmd`:
 ## Hallazgo (no corregido aquí)
 
 `f078` (generador async con `raii Box` y `panic`) compila como ejecutable, pero como biblioteca falla con
-`NativeSharp 3.0 value drop has no address/member model`. Pasa igual con `--verify-llvm`, que ya existía, y por lo
+`NativeSharp value drop has no address/member model`. Pasa igual con `--verify-llvm`, que ya existía, y por lo
 tanto también con las acciones nuevas, que usan el proyecto implícito de biblioteca como `--dump-llvm`. Es un
 rechazo explícito con mensaje interno, previo a este cambio. Queda para la verificación de colecciones y
 destructores.

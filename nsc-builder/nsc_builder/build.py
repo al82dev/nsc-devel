@@ -685,6 +685,10 @@ def compiler_configure_commands(
             "-DCMAKE_DISABLE_FIND_PACKAGE_LLVM=FALSE",
             "-UNSC_LLVM_MONOLITHIC_LIBRARY",
             f"-DLLVM_DIR={Path(tools['llvm_dir']).as_posix()}",
+            # EN: C/C++ interoperability is part of the product; Clang comes from the same LLVM root as LLVM_DIR.
+            # ES: La interoperabilidad C/C++ es parte del producto; Clang viene de la misma raiz LLVM que LLVM_DIR.
+            "-DNSC_ENABLE_CPP_INTEROP=ON",
+            f"-DClang_DIR={(Path(tools['llvm_dir']).parent / 'clang').as_posix()}",
             "-DNSC_BUILD_TESTS=OFF",
             "-DNSC_WARNINGS_AS_ERRORS=ON",
             f"-DNSC_HOST_LINKAGE={linkage.upper()}",
@@ -716,4 +720,24 @@ def compiler_build_commands(
             "0",
         ]
         commands.append((f"Construir NSC {mode}", command, SOURCE_ROOT))
+    return commands
+
+
+def compiler_library_build_commands(
+    config: BuilderConfig, modes: Sequence[str]
+) -> list[tuple[str, list[str], Path]]:
+    """Build standard packages after their corresponding compiler has been built."""
+    libraries = Path(os.environ.get('NSC_LIBRARIES_SOURCE_ROOT', SOURCE_ROOT.parent / 'nativesharp-libraries'))
+    helper = SOURCE_ROOT / 'nsc-builder' / 'nsc_builder' / 'stdlib_build.py'
+    commands: list[tuple[str, list[str], Path]] = []
+    for mode in modes:
+        build = compiler_build_dir(config, mode)
+        command = ['python', '-B', str(helper), '--libraries', str(libraries),
+                   '--compiler', str(compiler_output(config, mode)),
+                   '--runtime', str(build / 'generated' / 'NativeSharp.Runtime.Win32.lib'),
+                   '--imports', str(build / 'sdk' / 'win64' / 'import-libraries'),
+                   '--linker', str(compiler_sibling_output(config, mode, 'nslink')),
+                   '--package-prefix', str(build),
+                   '--jobs', str(config.jobs)]
+        commands.append((f'Construir bibliotecas estandar {mode}', command, SOURCE_ROOT))
     return commands

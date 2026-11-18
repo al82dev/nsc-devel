@@ -47,6 +47,7 @@
 #include <string>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace nativesharp::frontend
 {
@@ -73,6 +74,59 @@ bool allocatorMemberHasParameters(
     }
     return true;
 }
+}
+
+// EN: True when `name` may be read after `point` inside `root`: a later identifier with that name,
+//     or any use inside a loop that contains `point` but not `declaration`, since the next
+//     iteration reads it after `point`. A shadowing local of the same name counts as a use, which
+//     only makes the answer conservative.
+// ES: Verdadero cuando `name` puede leerse despues de `point` dentro de `root`: un identificador
+//     posterior con ese nombre, o cualquier uso dentro de un bucle que contiene `point` pero no
+//     `declaration`, porque la siguiente iteracion lo lee despues de `point`. Un local que lo
+//     oculta con el mismo nombre cuenta como uso, lo que solo vuelve conservadora la respuesta.
+bool ProjectMethodBodyModel::identifierMayBeReadAfter(
+    const ast::AstNode* root,
+    const std::string& name,
+    const ast::AstNode* point,
+    const ast::AstNode* declaration)
+{
+    if (root == nullptr || point == nullptr) return true;
+    const std::uint32_t pointBegin = point->range().begin().offset();
+    const std::uint32_t pointEnd = point->range().end().offset();
+    const std::uint32_t declarationBegin = declaration != nullptr ? declaration->range().begin().offset() : 0U;
+    const auto isLoop = [](const ast::AstNode* node)
+    {
+        return node->kind() == ast::AstNodeKind::WhileStatement ||
+            node->kind() == ast::AstNodeKind::DoWhileStatement ||
+            node->kind() == ast::AstNodeKind::ForStatement ||
+            node->kind() == ast::AstNodeKind::ForeachStatement;
+    };
+    struct Frame
+    {
+        const ast::AstNode* node;
+        bool insideRepeatingLoop;
+    };
+    std::vector<Frame> pending{{root, false}};
+    std::unordered_set<const ast::AstNode*> visited;
+    while (!pending.empty())
+    {
+        const Frame frame = pending.back();
+        pending.pop_back();
+        if (frame.node == nullptr || !visited.insert(frame.node).second) continue;
+        const SourceRange range = frame.node->range();
+        bool repeating = frame.insideRepeatingLoop;
+        if (isLoop(frame.node) && range.begin().offset() <= pointBegin && pointEnd <= range.end().offset() &&
+            !(range.begin().offset() <= declarationBegin && declarationBegin <= range.end().offset()))
+            repeating = true;
+        if (frame.node->kind() == ast::AstNodeKind::IdentifierExpression && frame.node->text() == name &&
+            (repeating || range.begin().offset() >= pointEnd))
+            return true;
+        pending.push_back({frame.node->first(), repeating});
+        pending.push_back({frame.node->second(), repeating});
+        pending.push_back({frame.node->third(), repeating});
+        for (const ast::AstNode* child : frame.node->children()) pending.push_back({child, repeating});
+    }
+    return false;
 }
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindOffsetofExpression(
@@ -294,7 +348,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     const ExpressionResult argumentResult = analyzeExpression(
                         argument, methodMemberOrdinal, scopeOrdinal, diagnostics,
                         /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
-                    const bool argumentValid = argumentResult.valid &&
+                    if (argumentResult.readonlyBorrowedObject)
+                        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error, argument->range(),
+                            "readonly borrowed object cannot be passed to an unchecked constructor");
+                    const bool argumentValid = argumentResult.valid && !argumentResult.readonlyBorrowedObject &&
                         !argumentResult.methodGroup && !isErrorType(argumentResult.typeKey);
                     argumentsValid = argumentsValid && argumentValid;
                     site.argumentsTyped = site.argumentsTyped && argumentValid;
@@ -342,11 +400,11 @@ void ProjectMethodBodyModel::configureAllocatorConstruction(
         !interfaceModel_->classImplementsInterface(*storageType, *allocatorTrait)) return;
     site.kind = ProjectConstructionSiteKind::Allocator;
     site.allocatorTypeKey = storage.typeKey;
-    // EN: Freeze 3.0 C-08: select the members that implement the frozen IAllocator protocol by
+    // EN: Freeze C-08: select the members that implement the frozen IAllocator protocol by
     //     signature -- Allocate(long, int) and Deallocate(byte*, long, int). A class may also keep
     //     other overloads (ArenaAllocator keeps the historic Allocator.Allocate(int)), and taking
     //     the first member named "Allocate" would call the wrong one.
-    // ES: Congelamiento 3.0 C-08: se eligen por firma los miembros que implementan el protocolo
+    // ES: Congelamiento C-08: se eligen por firma los miembros que implementan el protocolo
     //     congelado de IAllocator -- Allocate(long, int) y Deallocate(byte*, long, int). Una clase
     //     puede conservar otras sobrecargas (ArenaAllocator conserva Allocate(int) de Allocator), y
     //     tomar el primer miembro llamado "Allocate" llamaria al equivocado.
@@ -401,7 +459,11 @@ bool ProjectMethodBodyModel::analyzeConstructionArguments(
         const ExpressionResult argumentResult = analyzeExpression(
             argument, methodMemberOrdinal, scopeOrdinal, diagnostics,
             /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
-        const bool argumentValid = argumentResult.valid &&
+        if (argumentResult.readonlyBorrowedObject)
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, argument->range(),
+                "readonly borrowed object cannot be passed to an unchecked constructor");
+        const bool argumentValid = argumentResult.valid && !argumentResult.readonlyBorrowedObject &&
             !argumentResult.methodGroup && !isErrorType(argumentResult.typeKey);
         argumentsValid = argumentsValid && argumentValid;
         site.argumentsTyped = site.argumentsTyped && argumentValid;
@@ -639,17 +701,24 @@ void ProjectMethodBodyModel::analyzeNativeArrayAllocation(
 {
     const bool inferredInitializer =
         expression->auxiliaryText() == "inferred-array-initializer";
-    bool countValid = inferredInitializer
-        ? expression->first() == nullptr
-        : count.valid && ProjectTypeConversion::isIntegral(count.typeKey);
+    bool countValid = inferredInitializer && expression->first() == nullptr
+        ? true : count.valid && ProjectTypeConversion::isIntegral(count.typeKey);
     if (inferredInitializer && expression->first() != nullptr)
     {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidArrayCount,
-            diagnostics::DiagnosticSeverity::Error,
-            expression->range(),
-            "an inferred native array initializer must omit the element count");
-        countValid = false;
+        bool hasSpread = false;
+        for (const ast::AstNode* initializer : expression->children())
+            hasSpread = hasSpread || (initializer != nullptr &&
+                initializer->kind() == ast::AstNodeKind::SpreadElementExpression);
+        if (!count.integerConstant.has_value() || count.integerConstant->isNegative ||
+            count.integerConstant->value != expression->children().size() || hasSpread)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidArrayCount,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "array initializer count must be constant and match its elements");
+            countValid = false;
+        }
     }
     if (!countValid)
     {
@@ -680,6 +749,16 @@ void ProjectMethodBodyModel::analyzeNativeArrayAllocation(
                 diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
                     diagnostics::DiagnosticSeverity::Error, initializer->range(),
                     "array element cannot yet preserve pointer pointee volatile qualification");
+                elementsValid = false;
+                continue;
+            }
+            if (value.valid && value.readonlyBorrowedObject)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    initializer->range(),
+                    "readonly borrowed value cannot be stored in an array without lifetime tracking");
                 elementsValid = false;
                 continue;
             }
@@ -1004,11 +1083,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         case ast::AstNodeKind::DeleteExpression:
         {
             bool deletesRaiiLocal = false;
-            // EN: Freeze 3.0 DEC-06: `delete[]` of a local declared `owned T[]` consumes it. The
+            // EN: Freeze DEC-06: `delete[]` of a local declared `owned T[]` consumes it. The
             //     local is moved-from afterwards (a later read or delete is a use of a moved value),
             //     the operation clears its slot and the lexical cleanup skips it, so it is destroyed
             //     exactly once on every path. `raii T[]` keeps lexical cleanup as its only owner.
-            // ES: Congelamiento 3.0 DEC-06: `delete[]` de un local declarado `owned T[]` lo consume.
+            // ES: Congelamiento DEC-06: `delete[]` de un local declarado `owned T[]` lo consume.
             //     Despues el local queda movido (leerlo o borrarlo otra vez es usar un valor movido),
             //     la operacion vacia su slot y la limpieza lexica lo omite, asi se destruye
             //     exactamente una vez en todo camino. `raii T[]` conserva la limpieza lexica como
@@ -1042,6 +1121,229 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
             const ExpressionResult operand = analyzeExpression(
                 expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            const MethodNameBinding* deletedName = expression->first() != nullptr
+                ? nameBinding(expression->first(), methodMemberOrdinal) : nullptr;
+            const bool deletesBorrowedFieldObject = operand.valid &&
+                expression->first() != nullptr &&
+                isReferenceTypeKey(operand.typeKey) &&
+                ((expression->first()->kind() == ast::AstNodeKind::MemberExpression &&
+                  hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal)) ||
+                 (expression->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+                  hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal, true)) ||
+                 (expression->first()->kind() == ast::AstNodeKind::IndexExpression &&
+                  hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal, true)) ||
+                 ((expression->first()->kind() == ast::AstNodeKind::CallExpression ||
+                   (deletedName != nullptr && (deletedName->kind == MethodNameBindingKind::StaticField ||
+                                               deletedName->kind == MethodNameBindingKind::NamespaceState))) &&
+                  std::ranges::any_of(locals_, [&](const MethodLocalSymbol& local)
+                  {
+                      return local.methodMemberOrdinal == methodMemberOrdinal &&
+                          scopeContains(local.scopeOrdinal, scopeOrdinal) && !local.viewSourceFields.empty();
+                  })));
+            if (deletesBorrowedFieldObject)
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "cannot delete owner field object while a borrowed view is alive");
+            const bool deletesBorrowedArray = operand.valid && expression->flag() &&
+                ProjectTypeConversion::isNativeArray(operand.typeKey) &&
+                !consumedOwnedArrayLocal.has_value() &&
+                (hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal, true, expression) ||
+                 ((expression->first()->kind() == ast::AstNodeKind::CallExpression ||
+                   (deletedName != nullptr && (deletedName->kind == MethodNameBindingKind::StaticField ||
+                                               deletedName->kind == MethodNameBindingKind::NamespaceState))) &&
+                  std::ranges::any_of(locals_, [&](const MethodLocalSymbol& local)
+                  {
+                      return local.methodMemberOrdinal == methodMemberOrdinal &&
+                          scopeContains(local.scopeOrdinal, scopeOrdinal) && !local.viewSourceFields.empty();
+                  })));
+            if (deletesBorrowedArray)
+                diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error, expression->range(),
+                    "cannot delete[] array while a borrowed view is alive");
+            // LKF-063: a `ref` local bound to an element of the deleted array would read freed storage.
+            // The element alias is recognized from the ref local's initializer (`ref a[i]`, possibly
+            // through member accesses) resolving to the same array variable as the deleted operand.
+            bool deletesArrayWithElementReference = false;
+            if (operand.valid && expression->flag() && ProjectTypeConversion::isNativeArray(operand.typeKey) &&
+                expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const std::optional<ScopeName> deletedArray =
+                    lookupScopeName(scopeOrdinal, expression->first()->text());
+                // EN: LKF-325: the element reference was matched by the array's name only, so
+                //     `int[] b = a; ref int x = ref a[0]; delete[] b;` freed the storage `x` reads. The
+                //     locals that may share the deleted array's storage, through copies in either
+                //     direction, are now treated as the same array.
+                // ES: LKF-325: la referencia al elemento se emparejaba solo por el nombre del arreglo,
+                //     así que `int[] b = a; ref int x = ref a[0]; delete[] b;` liberaba lo que lee `x`.
+                //     Los locales que pueden compartir el almacenamiento del arreglo borrado, por copias
+                //     en cualquier sentido, se tratan ahora como el mismo arreglo.
+                std::unordered_set<std::size_t> sharedStorageLocals;
+                if (deletedArray.has_value() && deletedArray->kind == ScopeNameKind::Local)
+                {
+                    std::vector<std::size_t> pending{deletedArray->semanticOrdinal};
+                    while (!pending.empty())
+                    {
+                        const std::size_t current = pending.back();
+                        pending.pop_back();
+                        if (current >= locals_.size() || !sharedStorageLocals.insert(current).second) continue;
+                        for (const std::size_t source : locals_[current].possibleReferenceSourceLocals)
+                            pending.push_back(source);
+                        for (std::size_t other = 0; other < locals_.size(); ++other)
+                        {
+                            const auto& sources = locals_[other].possibleReferenceSourceLocals;
+                            if (std::find(sources.begin(), sources.end(), current) != sources.end())
+                                pending.push_back(other);
+                        }
+                    }
+                }
+                for (const MethodLocalSymbol& alias : locals_)
+                {
+                    if (!deletedArray.has_value() || deletesArrayWithElementReference) break;
+                    if (alias.methodMemberOrdinal != methodMemberOrdinal || !alias.isReference ||
+                        !scopeContains(alias.scopeOrdinal, scopeOrdinal) || alias.syntax == nullptr) continue;
+                    const ast::AstNode* root = alias.syntax->first();
+                    bool throughElement = false;
+                    for (std::size_t step = 0; step < 16U && root != nullptr &&
+                         root->kind() != ast::AstNodeKind::IdentifierExpression; ++step)
+                    {
+                        if (root->kind() == ast::AstNodeKind::IndexExpression) throughElement = true;
+                        root = root->first();
+                    }
+                    if (!throughElement || root == nullptr ||
+                        root->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+                    const std::optional<ScopeName> aliasedArray = lookupScopeName(alias.scopeOrdinal, root->text());
+                    const bool sameArray = aliasedArray.has_value() && aliasedArray->kind == deletedArray->kind &&
+                        aliasedArray->semanticOrdinal == deletedArray->semanticOrdinal;
+                    const bool sharedArray = aliasedArray.has_value() && aliasedArray->kind == ScopeNameKind::Local &&
+                        sharedStorageLocals.contains(aliasedArray->semanticOrdinal);
+                    if (!sameArray && !sharedArray) continue;
+                    // EN: A reference whose last use precedes the delete is no longer alive.
+                    // ES: Una referencia cuyo ultimo uso precede al delete ya no esta viva.
+                    const ClassMemberSymbol* enclosing = methodSymbol(methodMemberOrdinal);
+                    if (enclosing != nullptr && enclosing->syntax != nullptr &&
+                        !identifierMayBeReadAfter(enclosing->syntax, alias.name, expression, alias.syntax)) continue;
+                    deletesArrayWithElementReference = true;
+                    diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error, expression->range(),
+                        "cannot delete[] array '" + expression->first()->text() + "' while reference '" +
+                            alias.name + "' to one of its elements is alive");
+                }
+            }
+            // EN: LKF-337: a reference returned by a ref method of an object, or taken from an element of
+            //     its array field, stays valid only while that field's buffer lives. `delete[] b.Data`
+            //     with such a reference still read afterwards left it reading freed storage.
+            // ES: LKF-337: una referencia devuelta por un método ref de un objeto, o tomada de un elemento
+            //     de su campo arreglo, vale solo mientras vive el búfer de ese campo. `delete[] b.Data`
+            //     con esa referencia leída después la dejaba leyendo memoria liberada.
+            if (!deletesArrayWithElementReference && operand.valid && expression->flag() &&
+                ProjectTypeConversion::isNativeArray(operand.typeKey) && expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::MemberExpression)
+            {
+                const auto pathOf = [](const ast::AstNode* node) -> std::optional<std::string>
+                {
+                    std::vector<std::string> parts;
+                    while (node != nullptr && node->kind() == ast::AstNodeKind::MemberExpression)
+                    {
+                        parts.push_back(node->text());
+                        node = node->first();
+                    }
+                    if (node == nullptr || node->kind() != ast::AstNodeKind::IdentifierExpression) return std::nullopt;
+                    std::string path = node->text();
+                    for (auto part = parts.rbegin(); part != parts.rend(); ++part) path += "." + *part;
+                    return path;
+                };
+                const std::optional<std::string> deletedPath = pathOf(expression->first());
+                const std::string owner = deletedPath.has_value()
+                    ? deletedPath->substr(0, deletedPath->find('.')) : std::string{};
+                for (const MethodLocalSymbol& alias : locals_)
+                {
+                    if (!deletedPath.has_value() || deletesArrayWithElementReference) break;
+                    if (alias.methodMemberOrdinal != methodMemberOrdinal || !alias.isReference ||
+                        !scopeContains(alias.scopeOrdinal, scopeOrdinal) || alias.syntax == nullptr) continue;
+                    bool derived = false;
+                    const ast::AstNode* node = alias.syntax->first();
+                    for (std::size_t step = 0; step < 16U && node != nullptr && !derived; ++step)
+                    {
+                        if (node->kind() == ast::AstNodeKind::IndexExpression && pathOf(node->first()) == deletedPath)
+                            derived = true;
+                        else if (node->kind() == ast::AstNodeKind::CallExpression && node->first() != nullptr &&
+                            node->first()->kind() == ast::AstNodeKind::MemberExpression &&
+                            pathOf(node->first()->first()) == owner)
+                            derived = true;
+                        node = node->first();
+                    }
+                    if (!derived) continue;
+                    const ClassMemberSymbol* enclosing = methodSymbol(methodMemberOrdinal);
+                    if (enclosing != nullptr && enclosing->syntax != nullptr &&
+                        !identifierMayBeReadAfter(enclosing->syntax, alias.name, expression, alias.syntax)) continue;
+                    deletesArrayWithElementReference = true;
+                    diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error, expression->range(),
+                        "cannot delete[] '" + *deletedPath + "' while reference '" + alias.name +
+                            "', which may point into it through '" + owner + "', is alive");
+                }
+            }
+            bool deletesBorrowedDelegate = false;
+            if (operand.valid && !expression->flag() && isDelegateTypeKey(operand.typeKey) &&
+                !isExternCDelegateTypeKey(operand.typeKey) && expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const auto target = lookupScopeName(scopeOrdinal, expression->first()->text());
+                if (target.has_value() && target->kind == ScopeNameKind::Local &&
+                    target->semanticOrdinal < locals_.size())
+                {
+                    // Local delegate assignments may alias in either direction. Preserve all
+                    // known source edges and inspect the connected component before destruction.
+                    std::vector<std::vector<std::size_t>> aliases(locals_.size());
+                    for (std::size_t ordinal = 0; ordinal < locals_.size(); ++ordinal)
+                    {
+                        const MethodLocalSymbol& local = locals_[ordinal];
+                        if (local.methodMemberOrdinal != methodMemberOrdinal ||
+                            !isDelegateTypeKey(local.typeKey)) continue;
+                        std::vector<const ast::AstNode*> sources = local.possibleDelegateSources;
+                        if (local.syntax != nullptr) sources.push_back(local.syntax->first());
+                        while (!sources.empty())
+                        {
+                            const ast::AstNode* source = sources.back();
+                            sources.pop_back();
+                            if (source == nullptr) continue;
+                            if (source->kind() == ast::AstNodeKind::ConditionalExpression)
+                            {
+                                sources.push_back(source->second());
+                                sources.push_back(source->third());
+                                continue;
+                            }
+                            const MethodNameBinding* binding = nameBinding(source, methodMemberOrdinal);
+                            if (binding == nullptr || binding->kind != MethodNameBindingKind::Local ||
+                                !binding->localOrdinal.has_value() || *binding->localOrdinal >= locals_.size() ||
+                                !isDelegateTypeKey(locals_[*binding->localOrdinal].typeKey)) continue;
+                            aliases[ordinal].push_back(*binding->localOrdinal);
+                            aliases[*binding->localOrdinal].push_back(ordinal);
+                        }
+                    }
+                    std::vector<std::size_t> pending{target->semanticOrdinal};
+                    std::unordered_set<std::size_t> visited;
+                    while (!pending.empty())
+                    {
+                        const std::size_t ordinal = pending.back();
+                        pending.pop_back();
+                        if (!visited.insert(ordinal).second) continue;
+                        if (hasActiveBorrowOfOwnerLocal(ordinal, scopeOrdinal))
+                        {
+                            deletesBorrowedDelegate = true;
+                            break;
+                        }
+                        pending.insert(pending.end(), aliases[ordinal].begin(), aliases[ordinal].end());
+                    }
+                }
+            }
+            if (deletesBorrowedDelegate)
+                diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error, expression->range(),
+                    "cannot delete delegate while a borrowed local is alive");
             const bool parameterConsumable = !operand.valid ||
                 consumeDeletedOwnedParameter(expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
             recordPlainArrayLocalDelete(expression, scopeOrdinal);
@@ -1081,6 +1383,97 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     "delete this is forbidden inside a destructor; the generated destruction entry owns "
                     "final deallocation");
             }
+            // LKF-071: outside a destructor, `this` is borrowed by the call; the object belongs to the
+            // owner that invoked the method (a raii local, an owned field or slot), which still
+            // destroys it, so `delete this` would release it twice.
+            const bool deletesBorrowedThis = !deletesCurrentThis && expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::ThisExpression;
+            if (deletesBorrowedThis)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "delete this is forbidden; the method borrows its receiver and the object's owner "
+                    "releases it");
+            }
+            // LKF-020/LKF-021: three deletes that can never be valid are rejected here.
+            // - A borrowed parameter or local is owned by someone else; deleting it frees storage the
+            //   owner still destroys.
+            // - A pointer whose value is the address of a local or of `stackalloc` storage was never
+            //   allocated on the heap; freeing it corrupts the heap.
+            // - A dynamic array is released with `delete[]`; the scalar form does not run the array
+            //   release protocol.
+            bool deletesForeignStorage = false;
+            if (operand.valid && expression->first() != nullptr)
+            {
+                std::string reason;
+                if (expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+                {
+                    const auto target = lookupScopeName(scopeOrdinal, expression->first()->text());
+                    if (target.has_value() && target->kind == ScopeNameKind::Local &&
+                        target->semanticOrdinal < locals_.size() &&
+                        locals_[target->semanticOrdinal].ownership == sema::OwnershipKind::Borrowed)
+                        reason = "borrowed local '" + locals_[target->semanticOrdinal].name +
+                            "' is owned elsewhere and cannot be deleted";
+                    if (target.has_value() && target->kind == ScopeNameKind::Parameter && context != nullptr &&
+                        target->semanticOrdinal < context->parameters.size())
+                    {
+                        const MethodParameterSymbol& parameter = context->parameters[target->semanticOrdinal];
+                        if (parameter.ownership == sema::OwnershipKind::Borrowed ||
+                            parameter.passKind == ParameterPassKind::In)
+                            reason = "borrowed parameter '" + parameter.name +
+                                "' is owned by the caller and cannot be deleted";
+                    }
+                }
+                if (reason.empty() && operand.typeKey.ends_with("*") &&
+                    pointerExpressionAddressesCurrentFrame(expression->first(), scopeOrdinal))
+                    reason = "a pointer to current-frame storage (a local or stackalloc) was not allocated "
+                        "with new and cannot be deleted";
+                if (reason.empty() && !expression->flag() && ProjectTypeConversion::isNativeArray(operand.typeKey))
+                {
+                    // EN: Generic code releases every element with one `delete` written over T (the Stage 52
+                    //     contract of the collections); when T is a dynamic array that release is `delete[]`.
+                    //     Only a scalar delete written outside a generic specialization is rejected.
+                    // ES: El codigo generico libera cada elemento con un `delete` escrito sobre T (el contrato
+                    //     Stage 52 de las colecciones); cuando T es un arreglo dinamico esa liberacion es
+                    //     `delete[]`. Solo se rechaza un delete escalar escrito fuera de una especializacion.
+                    const bool genericSpecialization = context != nullptr &&
+                        (context->genericTemplateOrdinal.has_value() ||
+                         callableBelongsToGenericTypeSpecialization(methodMemberOrdinal));
+                    if (genericSpecialization)
+                        scalarDeleteReleasesArray_.insert(expression);
+                    else
+                        reason = "a dynamic array is released with delete[], not with scalar delete";
+                }
+                // EN: LKF-020. A local initialized by `new (storage) T(...)` over raw storage lives in that
+                //     storage; delete would hand it to the heap. An allocator placement keeps its own release.
+                // ES: LKF-020. Un local inicializado con `new (storage) T(...)` sobre almacenamiento crudo
+                //     vive en ese almacenamiento; delete lo entregaria al heap. La colocacion con allocator
+                //     conserva su propia liberacion.
+                if (reason.empty() && expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+                {
+                    const auto target = lookupScopeName(scopeOrdinal, expression->first()->text());
+                    const ast::AstNode* initializer = target.has_value() && target->kind == ScopeNameKind::Local &&
+                        target->semanticOrdinal < locals_.size() && locals_[target->semanticOrdinal].syntax != nullptr
+                        ? locals_[target->semanticOrdinal].syntax->first() : nullptr;
+                    if (initializer != nullptr &&
+                        initializer->kind() == ast::AstNodeKind::PlacementConstructionExpression &&
+                        initializer->first() != nullptr &&
+                        recordedExpressionTypeKey(initializer->first(), methodMemberOrdinal).ends_with("*"))
+                        reason = "'" + expression->first()->text() + "' was constructed in place with new (storage) "
+                            "and was not allocated with new; end its lifetime with destroy";
+                }
+                if (!reason.empty())
+                {
+                    deletesForeignStorage = true;
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        reason);
+                }
+            }
             // Bloque 1 (audit finding "delete holder.slot"): explicit delete of an `owned` FIELD
             // is forbidden, for the same reason delete of a RAII local is forbidden two checks
             // above -- the storage's own discharge machinery owns destruction. Measured before
@@ -1112,9 +1505,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     deletedMember.declaredOwnership == sema::OwnershipKind::Owned &&
                     (isReferenceTypeKey(deletedMember.declaredTypeKey) ||
                      deletedMember.declaredTypeKey == "builtin:string");
-                // EN: Freeze 3.0 (owned arrays): an owned array field is released by its container
+                // EN: Freeze (owned arrays): an owned array field is released by its container
                 //     now; `delete[]` on it stays the manual spelling, and it clears the field.
-                // ES: Congelamiento 3.0 (arreglos owned): el contenedor ahora libera un campo de
+                // ES: Congelamiento (arreglos owned): el contenedor ahora libera un campo de
                 //     arreglo owned; `delete[]` sobre el sigue siendo la forma manual, y vacia el campo.
                 if (deletedMember.kind == ClassMemberKind::Field && !deletedMember.isStatic &&
                     deletedMember.declaredOwnership == sema::OwnershipKind::Owned &&
@@ -1132,8 +1525,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 }
             }
             result.typeKey = "builtin:void";
-            result.valid = operand.valid && !deletesCurrentThis && !deletesRaiiLocal &&
-                !deletesOwnedField && !consumesBorrowedOwner && parameterConsumable;
+            result.valid = operand.valid && !deletesCurrentThis && !deletesBorrowedThis && !deletesRaiiLocal &&
+                !deletesBorrowedDelegate &&
+                !deletesOwnedField && !deletesBorrowedFieldObject && !deletesBorrowedArray &&
+                !consumesBorrowedOwner && parameterConsumable && !deletesForeignStorage &&
+                !deletesArrayWithElementReference;
             break;
         }
         default:
@@ -1142,10 +1538,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
     return result;
 }
 
-/// EN: Freeze 3.0 (item 130, F2). Marks `delete[] a` when `a` is a local declared without owned/raii whose
+/// EN: Freeze (item 130, F2). Marks `delete[] a` when `a` is a local declared without owned/raii whose
 ///     elements are class or interface references: the array does not own them, so only the block is
 ///     released. Struct elements (DEC-11) and owned/raii locals keep their behavior.
-/// ES: Congelamiento 3.0 (elemento 130, F2). Marca `delete[] a` cuando `a` es un local declarado sin
+/// ES: Congelamiento (elemento 130, F2). Marca `delete[] a` cuando `a` es un local declarado sin
 ///     owned/raii cuyos elementos son referencias de clase o interfaz: el arreglo no los posee, asi que
 ///     solo se libera el bloque. Los elementos struct (DEC-11) y los locales owned/raii no cambian.
 void ProjectMethodBodyModel::recordPlainArrayLocalDelete(
@@ -1165,10 +1561,10 @@ void ProjectMethodBodyModel::recordPlainArrayLocalDelete(
     arrayDeleteKeepsElements_.insert(expression);
 }
 
-/// EN: Freeze 3.0 (item 121). `delete p` of an owned class or interface parameter consumes `p`, like
+/// EN: Freeze (item 121). `delete p` of an owned class or interface parameter consumes `p`, like
 ///     move(p): it is moved-from afterwards and the HIR clears its slot before destruction. Returns
 ///     false after reporting a delete of a moved parameter or of one a borrowed local still uses.
-/// ES: Congelamiento 3.0 (elemento 121). `delete p` de un parametro owned de clase o interfaz consume
+/// ES: Congelamiento (elemento 121). `delete p` de un parametro owned de clase o interfaz consume
 ///     `p`, como move(p): despues queda movido y el HIR vacia su slot antes de la destruccion. Devuelve
 ///     false despues de reportar el delete de un parametro movido o de uno que un local prestado usa.
 bool ProjectMethodBodyModel::consumeDeletedOwnedParameter(
@@ -1178,19 +1574,28 @@ bool ProjectMethodBodyModel::consumeDeletedOwnedParameter(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     const ast::AstNode* operand = expression->first();
-    if (expression->flag() || operand == nullptr ||
-        operand->kind() != ast::AstNodeKind::IdentifierExpression) return true;
+    if (operand == nullptr || operand->kind() != ast::AstNodeKind::IdentifierExpression) return true;
     const std::optional<ScopeName> target = lookupScopeName(scopeOrdinal, operand->text());
     const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
     if (!target.has_value() || target->kind != ScopeNameKind::Parameter || method == nullptr ||
         target->semanticOrdinal >= method->parameters.size()) return true;
     const MethodParameterSymbol& parameter = method->parameters[target->semanticOrdinal];
-    if (parameter.ownership != sema::OwnershipKind::Owned || !isReferenceTypeKey(parameter.typeKey))
+    // EN: `delete[] a` of an owned array parameter consumes `a` the same way; without it the
+    //     parameter's exit drop released the block a second time.
+    // ES: `delete[] a` de un parametro arreglo owned consume `a` igual; sin esto la liberacion de
+    //     salida del parametro liberaba el bloque una segunda vez.
+    const bool arrayDelete = expression->flag();
+    if (parameter.ownership != sema::OwnershipKind::Owned) return true;
+    if (arrayDelete ? !ProjectTypeConversion::isNativeArray(parameter.typeKey)
+                    : (parameter.typeKey != "builtin:string" && !isReferenceTypeKey(parameter.typeKey)))
         return true;
     if (!validateParameterMoveState(
             parameter, expression, target->semanticOrdinal, scopeOrdinal, true, diagnostics))
         return false;
-    deleteClearsOwnedParameter_.insert(expression);
+    if (arrayDelete)
+        arrayDeleteClearsOwnedField_.insert(expression);
+    else
+        deleteClearsOwnedParameter_.insert(expression);
     maybeMovedOwnedParameters_.erase(target->semanticOrdinal);
     movedOwnedParameters_.insert(target->semanticOrdinal);
     invalidateHistoricalBorrowsOfOwnedParameter(target->semanticOrdinal);
@@ -1248,6 +1653,31 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
 
             const bool validTarget = validateDestroyTarget(expression, operand, diagnostics);
+            const MethodNameBinding* destroyedName = expression->first() != nullptr
+                ? nameBinding(expression->first(), methodMemberOrdinal) : nullptr;
+
+            const bool destroysBorrowedFieldObject = operand.valid &&
+                expression->first() != nullptr && isReferenceTypeKey(operand.typeKey) &&
+                ((expression->first()->kind() == ast::AstNodeKind::MemberExpression &&
+                  hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal)) ||
+                 (expression->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+                  hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal, true)) ||
+                 (expression->first()->kind() == ast::AstNodeKind::IndexExpression &&
+                  hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal, true)) ||
+                 ((expression->first()->kind() == ast::AstNodeKind::CallExpression ||
+                   (destroyedName != nullptr && (destroyedName->kind == MethodNameBindingKind::StaticField ||
+                                                 destroyedName->kind == MethodNameBindingKind::NamespaceState))) &&
+                  std::ranges::any_of(locals_, [&](const MethodLocalSymbol& local)
+                  {
+                      return local.methodMemberOrdinal == methodMemberOrdinal &&
+                          scopeContains(local.scopeOrdinal, scopeOrdinal) && !local.viewSourceFields.empty();
+                  })));
+            if (destroysBorrowedFieldObject)
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "cannot destroy owner field object while a borrowed view is alive");
 
             bool destroysRaiiLocal = false;
             if (expression->first() != nullptr &&
@@ -1282,8 +1712,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     "object lifetime");
             }
 
-            const bool destroysOwnedValue = operand.valid &&
-                operand.ownership == sema::OwnershipKind::Owned && !destroysRaiiLocal;
+            // Field reads can be non-owning expressions even when their slot
+            // retains ownership. Destruction through the slot would leave its
+            // owner responsible for an object whose lifetime has already ended.
+            bool ownedField = false;
+            if (operand.valid && operand.assignmentMemberOrdinal.has_value() && memberModel_ != nullptr &&
+                *operand.assignmentMemberOrdinal < memberModel_->members().size())
+            {
+                const ClassMemberSymbol& member = memberModel_->members()[*operand.assignmentMemberOrdinal];
+                ownedField = member.kind == ClassMemberKind::Field &&
+                    member.declaredOwnership == sema::OwnershipKind::Owned;
+            }
+            const bool destroysOwnedValue = operand.valid && !destroysRaiiLocal &&
+                (operand.ownership == sema::OwnershipKind::Owned || ownedField);
             if (destroysOwnedValue)
             {
                 diagnostics.report(
@@ -1295,7 +1736,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 
             result.typeKey = "builtin:void";
             result.valid = operand.valid && validTarget && !destroysRaiiLocal &&
-                !destroysCurrentThis && !destroysOwnedValue;
+                !destroysCurrentThis && !destroysOwnedValue && !destroysBorrowedFieldObject;
             break;
         }
         default:

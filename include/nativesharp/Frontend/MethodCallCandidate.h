@@ -48,7 +48,7 @@ struct MethodCallCandidate final
     // callable's parameter ordinal.
     std::vector<std::size_t> argumentParameterOrdinals;
     std::vector<std::size_t> defaultedParameterOrdinals;
-    // NativeSharp 3.0 T01-F02. One bit per explicit source argument. A true bit means the
+    // NativeSharp T01-F02. One bit per explicit source argument. A true bit means the
     // argument is an element of the final params ReadOnlySpan<T>, not a prebuilt span.
     std::vector<bool> parameterPackElements;
     std::optional<std::size_t> parameterPackOrdinal;
@@ -61,5 +61,8 @@ struct MethodCallCandidate final
     bool isVariadicCandidate = false;
     std::optional<std::size_t> invalidVariadicArgumentOrdinal;
     std::optional<std::size_t> invalidMoveOnlyArgumentOrdinal;
+    // EN: An owner or move expanded into a temporary params span, which cannot own it (LKF-282).
+    // ES: Un dueño o un move expandido en un span params temporal, que no puede poseerlo (LKF-282).
+    std::optional<std::size_t> invalidPackOwnershipArgumentOrdinal;
 };
 }

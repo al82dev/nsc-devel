@@ -1,5 +1,6 @@
 #include "HirLoweringSupport.h"
 #include "HirObjectSizeIndices.h"
+#include "nativesharp/Language/CallableSemantics.h"
 
 #include <algorithm>
 #include <optional>
@@ -23,6 +24,11 @@ std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanGroup01(
 {
     switch (kind)
     {
+    case MethodCoreOperationKind::SharedDestroyObject:
+        return HirCoreOperandCallPlan{1U, ProjectOopHirNodeKind::ObjectDestruction};
+    case MethodCoreOperationKind::SharedInstanceSize:
+    case MethodCoreOperationKind::SharedInstanceAlignment:
+        return HirCoreOperandCallPlan{1U, ProjectOopHirNodeKind::IntegerConstant};
     // ---------------------------------------------------------------------------------------
     // DOS OPERANDOS. Era el valor por omision de la cadena vieja, y por eso era la trampa: una
     // operacion nueva que se olvidara caia aqui en silencio. Ahora esta escrito.
@@ -374,6 +380,9 @@ std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanGroup04(
         case MethodCoreOperationKind::BitRotateRight:
         case MethodCoreOperationKind::BitTrailingZeroCount:
         case MethodCoreOperationKind::CpuPause:
+        case MethodCoreOperationKind::SharedDestroyObject:
+        case MethodCoreOperationKind::SharedInstanceSize:
+        case MethodCoreOperationKind::SharedInstanceAlignment:
         case MethodCoreOperationKind::CpuPrefetchRead:
         case MethodCoreOperationKind::CpuReadTimestamp:
         case MethodCoreOperationKind::DebugOutputStringRaw:
@@ -464,6 +473,7 @@ std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanGroup04(
     case MethodCoreOperationKind::ArrayLength:
     case MethodCoreOperationKind::FixedArrayLength:
     case MethodCoreOperationKind::ArrayElement:
+    case MethodCoreOperationKind::SimdMaskElement:
     case MethodCoreOperationKind::RangeArrayElement:
     case MethodCoreOperationKind::NullConditionalArrayElement:
     case MethodCoreOperationKind::RawElement:
@@ -837,6 +847,28 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::prepareBoundCallArgument(
     std::unique_ptr<ProjectOopHirNode> argument,
     bool& hasOwnedTemporary)
 {
+    const ClassMemberSymbol* target = callableSymbol(selectedMemberOrdinal);
+    if (argument != nullptr && target != nullptr && target->isUserOperator &&
+        argumentIndex < target->parameters.size() &&
+        target->parameters[argumentIndex].passKind == ParameterPassKind::In &&
+        !isNaturallyAddressable(argumentSyntax))
+    {
+        const bool needsDrop = memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(argument->typeKey);
+        auto temporary = makeNode(
+            needsDrop ? ProjectOopHirNodeKind::OwnedTemporaryBorrow : ProjectOopHirNodeKind::TemporaryAddress,
+            argumentSyntax, argument->typeKey);
+        temporary->elementTypeKey = argument->typeKey;
+        if (needsDrop)
+        {
+            temporary->localOrdinal = nextSyntheticLocalOrdinal_++;
+            temporary->cleanupRegionOrdinal = nextSyntheticCleanupRegionOrdinal_++;
+            temporary->referenceResult = true;
+            temporary->automaticDestruction = true;
+            hasOwnedTemporary = true;
+        }
+        temporary->children.push_back(std::move(argument));
+        argument = std::move(temporary);
+    }
     if (argumentIndex < binding.selectedConversions.size() &&
         binding.selectedConversions[argumentIndex].kind != ProjectConversionKind::Identity)
     {
@@ -962,6 +994,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBoundCall(
     for (std::size_t index = 0; index < argumentSyntaxes.size(); ++index)
     {
         const ast::AstNode* argumentSyntax = argumentSyntaxes[index];
+        const ClassMemberSymbol* argumentTarget = callableSymbol(selectedMemberOrdinal);
+        const bool temporaryIn = argumentTarget != nullptr && argumentTarget->isUserOperator &&
+            index < argumentTarget->parameters.size() &&
+            argumentTarget->parameters[index].passKind == ParameterPassKind::In &&
+            !isNaturallyAddressable(argumentSyntax);
         auto argument = preloweredArguments != nullptr
             ? std::move((*preloweredArguments)[index])
             : preloweredLast != nullptr && index + 1 == argumentSyntaxes.size()
@@ -969,7 +1006,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBoundCall(
                 : lowerExpression(
                     argumentSyntax,
                     memberOrdinal,
-                    boundCallArgumentNeedsAddress(selectedMemberOrdinal, index),
+                    boundCallArgumentNeedsAddress(selectedMemberOrdinal, index) && !temporaryIn,
                     error);
         if (argument == nullptr) return nullptr;
         arguments.push_back(prepareBoundCallArgument(
@@ -1016,6 +1053,28 @@ bool ProjectOopHirModel::validateNoHeapDirectCall(
     if (callee.isNoHeap) return true;
     error = "NS3030: noheap callable '" + caller.signatureKey +
         "' cannot call non-noheap callable '" + callee.signatureKey + "'";
+    return false;
+}
+
+bool ProjectOopHirModel::validateNoHeapIndirectInvocation(
+    std::size_t callerMemberOrdinal,
+    std::string_view delegateTypeKey,
+    std::string& error) const
+{
+    // EN: LKF-378: the statement-root check saw only an invocation that was the whole statement, so
+    //     `return 40 + f();` escaped it. Every delegate, function-pointer and event invocation frame
+    //     asks here; a function type declared `noheap` keeps the contract.
+    // ES: LKF-378: la comprobación en la raíz de la sentencia solo veía una invocación que era toda la
+    //     sentencia, así que `return 40 + f();` escapaba. Todo frame de invocación de delegate, puntero a
+    //     función o evento pregunta aquí; un tipo función declarado `noheap` conserva el contrato.
+    if (memberModel_ == nullptr || callerMemberOrdinal >= memberModel_->members().size())
+        return true;
+    const ClassMemberSymbol& caller = memberModel_->members()[callerMemberOrdinal];
+    if (!sema::EffectContext(caller.effects).allows(sema::Effect::NoHeap)) return true;
+    const auto functionType = language::parseFunctionTypeIdentity(delegateTypeKey);
+    if (functionType.has_value() && functionType->isNoHeap) return true;
+    error = "NS3030: noheap callable '" + caller.signatureKey +
+        "' cannot invoke an indirect target without a noheap contract";
     return false;
 }
 
@@ -1805,14 +1864,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStructCoreCall(
     {
         if (addressContext || !expression->children().empty())
         {
-            error = "NativeSharp 3.0 record Clone() received an invalid operand count";
+            error = "NativeSharp record Clone() received an invalid operand count";
             return nullptr;
         }
         const ast::AstNode* receiverSyntax = expression->first() != nullptr
             ? expression->first()->first() : nullptr;
         if (receiverSyntax == nullptr)
         {
-            error = "NativeSharp 3.0 record Clone() has no receiver";
+            error = "NativeSharp record Clone() has no receiver";
             return nullptr;
         }
         error = "Stage 34 struct Clone call escaped iterative lowering";

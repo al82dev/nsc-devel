@@ -1,0 +1,12 @@
+int Convert(i128 value) { return checked((int)value); }
+int ConvertOrdinary(i128 value) { return (int)value; }
+int Main()
+{
+    i128 maximum = (i128)2147483647;
+    i128 minimum = (i128)-2147483647 - (i128)1;
+    if (Convert(maximum) != 2147483647) return 1;
+    if ((i128)Convert(minimum) != minimum) return 2;
+    if (Convert((i128)0) != 0 || Convert((i128)-1) != -1) return 3;
+    if ((i128)ConvertOrdinary(maximum + (i128)1) != minimum) return 4;
+    return 0;
+}

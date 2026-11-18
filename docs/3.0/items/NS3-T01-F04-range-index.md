@@ -42,7 +42,7 @@ una vez.
 
 ### Nuevos
 
-- `tests/unit/NativeSharp3T01RangeIndexTests.cpp`: vertical O0 exclusivo de F04.
+- `tests/unit/NativeSharpT01RangeIndexTests.cpp`: vertical O0 exclusivo de F04.
 - `docs/3.0/language/range-and-index-operators.md`: contrato ES/EN, protocolo y costos.
 - `docs/3.0/items/NS3-T01-F04-range-index.md`: expediente del ítem.
 

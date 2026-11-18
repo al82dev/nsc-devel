@@ -703,6 +703,7 @@ Token Lexer::lexUtf8String(std::uint32_t begin)
     advance(); // 'u'
     advance(); // '8'
     Token string = lexString(begin);
+    if (string.kind() == TokenKind::Invalid) return string;
     return Token(TokenKind::Utf8StringLiteral, string.range(), string.lexeme(), string.value());
 }
 
@@ -924,12 +925,22 @@ Token Lexer::lexInterpolatedString(std::uint32_t begin)
     advance(); // opening quote
     std::string decoded;
     bool valid = true;
+    bool unmatchedClosingBrace = false;
+    bool invalidLiteralBytes = false;
     std::uint32_t braceDepth = 0;
     while (!isAtEnd() && current() != '\n' && current() != '\r')
     {
         if (current() == '"' && braceDepth == 0)
         {
             advance();
+            if (unmatchedClosingBrace)
+                diagnostics_.report(diagnostics::DiagnosticId::InvalidStringLiteral,
+                    diagnostics::DiagnosticSeverity::Error, range(begin, offset_),
+                    "interpolated string literal contains an unmatched closing brace");
+            if (invalidLiteralBytes)
+                diagnostics_.report(diagnostics::DiagnosticId::InvalidStringLiteral,
+                    diagnostics::DiagnosticSeverity::Error, range(begin, offset_),
+                    "interpolated string literal contains an invalid control byte or UTF-8 sequence");
             return valid
                 ? Token(TokenKind::InterpolatedStringLiteral, range(begin, offset_),
                     text(begin, offset_), std::move(decoded))
@@ -978,6 +989,7 @@ Token Lexer::lexInterpolatedString(std::uint32_t begin)
             if (braceDepth == 0)
             {
                 valid = false;
+                unmatchedClosingBrace = true;
             }
             else
             {
@@ -986,7 +998,18 @@ Token Lexer::lexInterpolatedString(std::uint32_t begin)
             decoded.push_back(advance());
             continue;
         }
-        decoded.push_back(advance());
+        if (braceDepth != 0)
+        {
+            decoded.push_back(advance());
+            continue;
+        }
+        bool validByte = static_cast<unsigned char>(current()) >= 0x20;
+        appendRawStringByte(decoded, validByte);
+        if (!validByte)
+        {
+            valid = false;
+            invalidLiteralBytes = true;
+        }
     }
     valid = false;
     diagnostics_.report(
@@ -1010,6 +1033,8 @@ Token Lexer::lexRawInterpolatedString(std::uint32_t begin)
 
     std::string decoded;
     bool valid = true;
+    bool unmatchedClosingBrace = false;
+    bool invalidEncoding = false;
     std::uint32_t braceDepth = 0;
     while (!isAtEnd())
     {
@@ -1026,7 +1051,11 @@ Token Lexer::lexRawInterpolatedString(std::uint32_t begin)
                         diagnostics::DiagnosticId::InvalidStringLiteral,
                         diagnostics::DiagnosticSeverity::Error,
                         range(begin, offset_),
-                        "raw interpolated string literal contains an invalid control byte");
+                        unmatchedClosingBrace
+                            ? "raw interpolated string literal contains an unmatched closing brace"
+                            : invalidEncoding
+                                ? "raw interpolated string literal contains an invalid UTF-8 sequence"
+                                : "raw interpolated string literal contains an invalid control byte");
                     return Token(TokenKind::Invalid, range(begin, offset_), text(begin, offset_));
                 }
                 return Token(
@@ -1058,9 +1087,24 @@ Token Lexer::lexRawInterpolatedString(std::uint32_t begin)
                 decoded += "}}";
                 continue;
             }
-            if (braceDepth == 0) valid = false;
+            if (braceDepth == 0)
+            {
+                valid = false;
+                unmatchedClosingBrace = true;
+            }
             else --braceDepth;
             decoded.push_back(advance());
+            continue;
+        }
+        if (braceDepth == 0 && static_cast<unsigned char>(current()) >= 0x80)
+        {
+            bool validByte = true;
+            appendRawStringByte(decoded, validByte);
+            if (!validByte)
+            {
+                valid = false;
+                invalidEncoding = true;
+            }
             continue;
         }
         const unsigned char raw = static_cast<unsigned char>(advance());

@@ -60,7 +60,19 @@ void ProjectMemberModel::completeThisMemberAccess(
             }
         }
     }
-    if (candidates.empty())
+    bool mayHaveInheritedMember = false;
+    if (nameLookup_ != nullptr && typeOrdinal < nameLookup_->namedTypes().size())
+    {
+        const NamedTypeDeclaration& type = nameLookup_->namedTypes()[typeOrdinal];
+        mayHaveInheritedMember = type.syntax != nullptr && !type.syntax->typeSyntaxes().empty();
+        for (const NamedTypeDeclarationPart& part : type.parts)
+            mayHaveInheritedMember = mayHaveInheritedMember ||
+                (part.syntax != nullptr && !part.syntax->typeSyntaxes().empty());
+    }
+    // The member model is built before inheritance. A direct miss on a type
+    // with bases is not proof of an unknown member; the body analyzer checks
+    // the inherited candidates and their accessibility once those exist.
+    if (candidates.empty() && !mayHaveInheritedMember)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::UnknownMember,

@@ -1,4 +1,8 @@
-# NativeSharp 3.0 — Tanda operativa 05: calls, typed params e initializers
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
+# NativeSharp — Tanda operativa 05: calls, typed params e initializers
 
 Fecha de cierre: 29 de septiembre de 2026
 
@@ -74,19 +78,18 @@ La misma semántica se aplica a:
 - inicializadores `this(...)` y `base(...)`;
 - construcción por valor y placement.
 
-### 2.3 NSMETA 1.24
+### 2.3 NSMeta
 
-NSMETA sube de 1.23 a 1.24. Cada parámetro de miembro o función libre conserva
+Cada parámetro de miembro o función libre conserva en NSMeta
 `isParameterPack`. El consumidor `LibraryReference` reconstruye la palabra `params` y vuelve a
 ejecutar la misma resolución de calls.
 
-El read-back del productor usa ahora la edición almacenada en metadata al parsear tanto la API
-pública como las plantillas públicas. Esto corrige un defecto encontrado por la prueba dirigida:
-la API generada sí contenía `params`, pero el verificador la analizaba como edición 2 y se
-rechazaba a sí mismo con `NS3002`.
+La campaña histórica encontró que el read-back rechazaba `params` al seleccionar reglas de una
+edición anterior. Esa selección fue retirada: el read-back analiza la API y las plantillas con
+las reglas del lenguaje único.
 
-Un intento de escribir una biblioteca con packs como NSMETA 1.23 o anterior falla de forma
-explícita; el escritor no elimina silenciosamente la semántica.
+El escritor no debe eliminar silenciosamente la semántica de los packs: la capacidad se comprueba
+por el contenido y las reglas aplicables, sin seleccionar un formato por número de versión.
 
 ### 2.4 Inicializadores generalizados
 
@@ -181,7 +184,7 @@ Los dumpers imprimen tipo/element count/storage de packs, número de targets del
 ## 5. Archivos nuevos y razón
 
 - `tests/cc1/c55_ns3_calls_initializers/c55_ns3_calls_initializers.nsproj`
-  - fixture ejecutable edición 3, independiente de NativeSharp.Core, para probar la semántica sin
+  - fixture ejecutable independiente de NativeSharp.Core, para probar la semántica sin
     arrastrar la compilación de las librerías.
 - `tests/cc1/c55_ns3_calls_initializers/Main.ns`
   - cubre calls nombrados, packs 0/1/N, span directo, overload fijo, función libre, constructor de

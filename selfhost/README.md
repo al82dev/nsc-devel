@@ -1,4 +1,4 @@
-# NativeSharp 2.0 self-hosting
+# NativeSharp self-hosting
 
 Este árbol contiene la implementación NativeSharp del compilador y la infraestructura que demuestra
 su bootstrap. El compilador C++ permanece fuera de este árbol como `nsc0`, semilla y oráculo

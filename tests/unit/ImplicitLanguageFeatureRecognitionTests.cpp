@@ -81,30 +81,30 @@ int main()
         "an omitted Language recognizes explicit Copy without mandatory effects: " +
             error + diagnosticsFor(implicitCompilation));
 
-    const std::filesystem::path explicitV2Project =
-        writeProject(root, "ExplicitV2", "2");
-    const auto explicitV2Descriptor = loader.load(explicitV2Project, error);
-    tests.expect(explicitV2Descriptor.has_value() &&
-            explicitV2Descriptor->moduleName() == "ExplicitV2" &&
-            explicitV2Descriptor->sourceSet().sources().size() == 1U,
+    const std::filesystem::path explicitLegacyProject =
+        writeProject(root, "ExplicitLegacy", "legacy-a");
+    const auto explicitLegacyDescriptor = loader.load(explicitLegacyProject, error);
+    tests.expect(explicitLegacyDescriptor.has_value() &&
+            explicitLegacyDescriptor->moduleName() == "ExplicitLegacy" &&
+            explicitLegacyDescriptor->sourceSet().sources().size() == 1U,
         "a historical Language property does not freeze the source contract");
 
-    nativesharp::frontend::ProjectCompilation explicitV2Compilation;
+    nativesharp::frontend::ProjectCompilation explicitLegacyCompilation;
     error.clear();
-    const bool explicitV2Built =
-        explicitV2Compilation.compileProjectMethodBodies(explicitV2Project, error);
-    const std::string explicitV2Diagnostics =
-        error + diagnosticsFor(explicitV2Compilation);
-    tests.expect(explicitV2Built && explicitV2Diagnostics.empty(),
-        "a historical Language property accepts current syntax: " + explicitV2Diagnostics);
+    const bool explicitLegacyBuilt =
+        explicitLegacyCompilation.compileProjectMethodBodies(explicitLegacyProject, error);
+    const std::string explicitLegacyDiagnostics =
+        error + diagnosticsFor(explicitLegacyCompilation);
+    tests.expect(explicitLegacyBuilt && explicitLegacyDiagnostics.empty(),
+        "a historical Language property accepts current syntax: " + explicitLegacyDiagnostics);
 
-    const std::filesystem::path explicitV3Project =
-        writeProject(root, "ExplicitV3", "3");
-    const auto explicitV3Descriptor = loader.load(explicitV3Project, error);
-    tests.expect(explicitV3Descriptor.has_value() &&
-            explicitV3Descriptor->moduleName() == "ExplicitV3" &&
-            explicitV3Descriptor->sourceSet().sources().size() == 1U,
-        "a current Language property is also administrative and does not force effects");
+    const std::filesystem::path explicitOtherProject =
+        writeProject(root, "ExplicitOther", "legacy-b");
+    const auto explicitOtherDescriptor = loader.load(explicitOtherProject, error);
+    tests.expect(explicitOtherDescriptor.has_value() &&
+            explicitOtherDescriptor->moduleName() == "ExplicitOther" &&
+            explicitOtherDescriptor->sourceSet().sources().size() == 1U,
+        "another Language property value is also administrative and does not force effects");
 
     return tests.resultKeeping(root);
 }

@@ -859,7 +859,7 @@ static std::shared_ptr<const abi_plan::Plan> planPrecompiledCPreserveNonePointer
         std::vector<CppCEnumSnapshot> enums;
         metadata_detail::CDependencyCatalog dependencies;
         if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
-                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return {};
+                records, enums, dependencies, error)) return {};
         for (const auto& candidate : dependencies.aliases)
         {
             const auto& declaration = candidate.declaration;
@@ -1031,7 +1031,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                 std::vector<CppCEnumSnapshot> enums;
                 metadata_detail::CDependencyCatalog dependencies;
                 if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
-                        module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return {};
+                        records, enums, dependencies, error)) return {};
                 for (const auto& candidate : dependencies.aliases)
                 {
                     const auto& declaration = candidate.declaration;
@@ -1077,7 +1077,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                         std::vector<CppCEnumSnapshot> enums;
                         metadata_detail::CDependencyCatalog dependencies;
                         if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
-                                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+                                records, enums, dependencies, error)) return false;
                         for (const auto& record : records)
                             if (record.identityKey == id->key() && record.moduleName == moduleName &&
                                 record.clangUsr == importedPointer->clangUsr && record.cppValueObservation &&
@@ -1122,7 +1122,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                         std::vector<CppCEnumSnapshot> enums;
                         metadata_detail::CDependencyCatalog dependencies;
                         if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
-                                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+                                records, enums, dependencies, error)) return false;
                         for (const auto& record : records)
                             if (record.identityKey == id->key() && record.moduleName == moduleName &&
                                 record.clangUsr == importedPointer->clangUsr && record.cppValueObservation &&
@@ -1144,7 +1144,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                         std::vector<CppCEnumSnapshot> enums;
                         metadata_detail::CDependencyCatalog dependencies;
                         if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
-                                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+                                records, enums, dependencies, error)) return false;
                         for (const auto& record : records)
                         {
                             std::uint64_t naturalSize = 0, naturalAlignment = 0;
@@ -1250,7 +1250,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                         std::vector<CppCEnumSnapshot> enums;
                         metadata_detail::CDependencyCatalog dependencies;
                         if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
-                                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return {};
+                                records, enums, dependencies, error)) return {};
                         for (const auto& record : records)
                             if (record.identityKey == parameterIdentity->key() && record.moduleName == moduleName &&
                                 record.clangUsr == parameterImported->clangUsr && record.cppValueObservation && record.complete &&
@@ -1342,7 +1342,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                     std::vector<CppCEnumSnapshot> enums;
                     metadata_detail::CDependencyCatalog dependencies;
                     if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
-                            module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return {};
+                            records, enums, dependencies, error)) return {};
                     for (const auto& record : records)
                         if (record.identityKey == parameterIdentity->key() && record.moduleName == moduleName &&
                             record.clangUsr == parameterImported->clangUsr && record.cppValueObservation && record.complete &&
@@ -1531,7 +1531,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         std::vector<CppCEnumSnapshot> enums;
         metadata_detail::CDependencyCatalog dependencies;
         if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
-                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return {};
+                records, enums, dependencies, error)) return {};
         for (const auto& candidate : dependencies.aliases)
         {
             const auto& declaration = candidate.declaration;
@@ -1964,7 +1964,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         std::vector<CppCEnumSnapshot> enums;
         metadata_detail::CDependencyCatalog dependencies;
         if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
-                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return {};
+                records, enums, dependencies, error)) return {};
         for (const auto& candidate : dependencies.aliases)
         {
             const auto& declaration = candidate.declaration;
@@ -2513,7 +2513,7 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
         metadata_detail::CDependencyCatalog dependencies;
         std::string error;
         if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
-                module.cppCTypeCatalogFormatMinor, found, enums, dependencies, error)) return {};
+                found, enums, dependencies, error)) return {};
         for (const auto& candidate : dependencies.functions)
         {
             const auto& d = candidate.declaration;
@@ -2865,7 +2865,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
         metadata_detail::CDependencyCatalog dependencies;
         std::string error;
         if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
-                module.cppCTypeCatalogFormatMinor, found, enums, dependencies, error)) return {};
+                found, enums, dependencies, error)) return {};
         for (const auto& candidate : dependencies.functions)
         {
             const auto& d = candidate.declaration;

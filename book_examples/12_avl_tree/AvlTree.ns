@@ -85,20 +85,25 @@ namespace NativeSharp.BookExamples.AvlTree
             return node;
         }
 
-        private AvlNode InsertNode(AvlNode node, AvlRecord value, bool[] inserted)
+        private AvlNode InsertNode(AvlNode node, owned AvlRecord value, bool[] inserted)
         {
-            if (node == null)
-            {
-                inserted[0] = true;
-                return new AvlNode(value);
-            }
             if (value.Key < node.Value.Key)
             {
-                node.Left = InsertNode(node.Left, value, inserted);
+                if (node.Left == null)
+                {
+                    node.Left = new AvlNode(move(value));
+                    inserted[0] = true;
+                }
+                else { node.Left = InsertNode(node.Left, move(value), inserted); }
             }
             else if (value.Key > node.Value.Key)
             {
-                node.Right = InsertNode(node.Right, value, inserted);
+                if (node.Right == null)
+                {
+                    node.Right = new AvlNode(move(value));
+                    inserted[0] = true;
+                }
+                else { node.Right = InsertNode(node.Right, move(value), inserted); }
             }
             else
             {
@@ -107,15 +112,20 @@ namespace NativeSharp.BookExamples.AvlTree
             return Rebalance(node);
         }
 
-        public bool Insert(AvlRecord value)
+        public bool Insert(owned AvlRecord value)
         {
+            if (root == null)
+            {
+                root = new AvlNode(move(value));
+                count = count + 1;
+                return true;
+            }
             bool[] inserted = new bool[1];
             inserted[0] = false;
-            root = InsertNode(root, value, inserted);
+            root = InsertNode(root, move(value), inserted);
             bool result = inserted[0];
             delete[] inserted;
             if (result) { count = count + 1; }
-            else { delete value; }
             return result;
         }
 
@@ -158,15 +168,14 @@ namespace NativeSharp.BookExamples.AvlTree
                     if (child == null) { child = node.Right; }
                     node.Left = null;
                     node.Right = null;
-                    delete node.Value;
                     delete node;
                     return child;
                 }
 
                 AvlNode successor = MinimumNode(node.Right);
-                AvlRecord temporary = node.Value;
-                node.Value = successor.Value;
-                successor.Value = temporary;
+                raii AvlRecord temporary = move(node.Value);
+                node.Value = move(successor.Value);
+                successor.Value = move(temporary);
                 bool[] ignored = new bool[1];
                 ignored[0] = false;
                 node.Right = RemoveNode(node.Right, key, ignored);
@@ -232,7 +241,6 @@ namespace NativeSharp.BookExamples.AvlTree
             ClearNode(node.Right);
             node.Left = null;
             node.Right = null;
-            delete node.Value;
             delete node;
         }
 

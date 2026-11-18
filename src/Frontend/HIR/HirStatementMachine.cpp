@@ -16,6 +16,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace nativesharp::frontend
 {
@@ -366,6 +367,17 @@ std::optional<bool> beginStaticAssertEvaluation(
         case ProjectOopHirNodeKind::BooleanConstant:
             value = makeStaticAssertBoolean(current->booleanValue);
             return true;
+        // LKF-053: `default(T)` of a bool, integer or floating type is that type's zero.
+        case ProjectOopHirNodeKind::DefaultValue:
+            if (current->typeKey == "builtin:bool")
+                value = makeStaticAssertBoolean(false);
+            else if (current->typeKey == "builtin:float" || current->typeKey == "builtin:double")
+                value = makeStaticAssertFloating(0.0, current->typeKey);
+            else if (staticAssertIntegerWidth(current->typeKey).has_value())
+                value = makeStaticAssertInteger(0U, current->typeKey);
+            else
+                return std::nullopt;
+            return true;
         case ProjectOopHirNodeKind::Conversion:
         case ProjectOopHirNodeKind::Unary:
             if (current->children.size() != 1U) return std::nullopt;
@@ -472,12 +484,68 @@ std::optional<StaticAssertConstant> evaluateStaticAssertConstant(const ProjectOo
 
 }
 
+// LKF-053: a static_assert may name constants declared elsewhere. An enum constant is replaced by its
+// value (typed with the enum's underlying type, as its field initializer is) and a const field by its
+// lowered initializer, followed transitively up to a fixed depth. Anything else is left in place, so
+// a field that is not constant still makes the condition non-constant.
+bool ProjectOopHirModel::resolveStaticAssertOperands(
+    std::unique_ptr<ProjectOopHirNode>& slot,
+    std::size_t depth,
+    std::string& error)
+{
+    constexpr std::size_t kMaximumConstantDepth = 32;
+    std::vector<std::unique_ptr<ProjectOopHirNode>*> pending{&slot};
+    while (!pending.empty())
+    {
+        std::unique_ptr<ProjectOopHirNode>& current = *pending.back();
+        pending.pop_back();
+        if (current == nullptr) continue;
+        if (current->kind == ProjectOopHirNodeKind::StaticFieldValue && current->memberOrdinal.has_value() &&
+            memberModel_ != nullptr && *current->memberOrdinal < memberModel_->members().size() &&
+            depth < kMaximumConstantDepth)
+        {
+            const std::size_t ordinal = *current->memberOrdinal;
+            const ClassMemberSymbol& field = memberModel_->members()[ordinal];
+            std::unique_ptr<ProjectOopHirNode> replacement;
+            if (field.isEnumConstant)
+            {
+                const frontend::NamedTypeDeclaration* enumType =
+                    field.declaringTypeOrdinal < nameLookup_->namedTypes().size()
+                        ? &nameLookup_->namedTypes()[field.declaringTypeOrdinal]
+                        : nullptr;
+                const std::string_view underlyingKey = enumType != nullptr
+                    ? enumUnderlyingTypeKey(enumType->syntax)
+                    : std::string_view("builtin:int");
+                replacement = makeNode(
+                    ProjectOopHirNodeKind::IntegerConstant, field.syntax, std::string(underlyingKey));
+                replacement->integerValue = static_cast<std::uint64_t>(field.enumConstantValue);
+            }
+            else if (field.kind == ClassMemberKind::Field && field.isConst && field.syntax != nullptr &&
+                     field.syntax->first() != nullptr)
+            {
+                replacement = lowerExpression(field.syntax->first(), ordinal, false, error);
+                if (replacement == nullptr) return false;
+                if (!resolveStaticAssertOperands(replacement, depth + 1U, error)) return false;
+            }
+            if (replacement != nullptr)
+            {
+                destroyHirTreeIteratively(current);
+                current = std::move(replacement);
+                continue;
+            }
+        }
+        for (std::unique_ptr<ProjectOopHirNode>& child : current->children) pending.push_back(&child);
+    }
+    return true;
+}
+
 std::unique_ptr<ProjectOopHirNode>
 ProjectOopHirModel::finishStaticAssertStatement(
     const ast::AstNode* statement,
     std::unique_ptr<ProjectOopHirNode> condition,
     std::string& error)
 {
+    if (!resolveStaticAssertOperands(condition, 0U, error)) return nullptr;
     const std::optional<StaticAssertConstant> value =
         evaluateStaticAssertConstant(*condition);
     destroyHirTreeIteratively(condition);
@@ -508,6 +576,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
 
     switch (statement->kind())
     {
+        case ast::AstNodeKind::StaticFieldIterationStatement:
+            return lowerBlock(statement->first(), memberOrdinal, error);
         case ast::AstNodeKind::BlockStatement:
             return lowerBlock(statement, memberOrdinal, error);
 

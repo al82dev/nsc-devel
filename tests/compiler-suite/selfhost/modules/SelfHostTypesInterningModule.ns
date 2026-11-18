@@ -22,7 +22,8 @@ namespace NativeSharp.CompilerSuite.SelfHost.Types
             raii TypeTable table = new TypeTable();
             int id = table.Intern("Widget");
             SemanticType type = table.Get(id);
-            return id == 16 && table.Count() == 17 && table.Find("Widget") == id &&
+            // TSH-01008: the first nominal ID follows the 17 builtins since sbyte (05a105dfc).
+            return id == 17 && table.Count() == 18 && table.Find("Widget") == id &&
                 type.Kind() == SemanticTypeKind.Named && type.Size() == 8 &&
                 type.Alignment() == 8 ? 0 : 28;
         }

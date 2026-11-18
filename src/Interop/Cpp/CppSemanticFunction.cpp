@@ -1845,7 +1845,7 @@ bool provideCppStaticMethodsWithPrecompiledCatalogs(
         std::vector<CppCEnumSnapshot> enums;
         metadata_detail::CDependencyCatalog dependencies;
         if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
-                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+                records, enums, dependencies, error)) return false;
         for (const auto& saved : dependencies.staticMethods)
         {
             const auto& function = saved.function;
@@ -1993,7 +1993,7 @@ bool provideCppInstanceMethodsWithPrecompiledCatalogs(
         std::vector<CppCEnumSnapshot> enums;
         metadata_detail::CDependencyCatalog dependencies;
         if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
-                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+                records, enums, dependencies, error)) return false;
         for (const auto& savedInstance : dependencies.instanceMethods)
         {
             const auto& saved = savedInstance.method;

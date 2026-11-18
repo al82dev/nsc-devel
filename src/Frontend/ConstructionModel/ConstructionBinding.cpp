@@ -148,9 +148,9 @@ void ProjectConstructionModel::attachDemandResolver(
     namespaceFunctionModel_ = &namespaceFunctionModel;
 }
 
-// EN: Freeze 3.0 (item 130a). The same candidate evaluation and selection as bindConstruction, into a
+// EN: Freeze (item 130a). The same candidate evaluation and selection as bindConstruction, into a
 //     scratch binding and a scratch diagnostic engine.
-// ES: Congelamiento 3.0 (elemento 130a). La misma evaluacion y seleccion de candidatos que
+// ES: Congelamiento (elemento 130a). La misma evaluacion y seleccion de candidatos que
 //     bindConstruction, sobre un binding y un motor de diagnosticos de descarte.
 std::optional<std::size_t> ProjectConstructionModel::previewConstructionConstructor(
     const ProjectConstructionSite& site) const
@@ -190,9 +190,9 @@ std::optional<std::size_t> ProjectConstructionModel::previewSelectedCandidate(
     return candidates[nonDominated.front()].memberOrdinal;
 }
 
-// EN: Freeze 3.0 (item 130a). A type without explicit constructors chains to the nearest base that has
+// EN: Freeze (item 130a). A type without explicit constructors chains to the nearest base that has
 //     them; the implicit default there runs its only constructor callable without arguments.
-// ES: Congelamiento 3.0 (elemento 130a). Un tipo sin constructores explicitos encadena hacia la base mas
+// ES: Congelamiento (elemento 130a). Un tipo sin constructores explicitos encadena hacia la base mas
 //     cercana que los tiene; el default implicito corre alli su unico constructor invocable sin
 //     argumentos.
 std::optional<std::size_t> ProjectConstructionModel::previewImplicitChainConstructor(
@@ -213,8 +213,13 @@ std::optional<std::size_t> ProjectConstructionModel::previewImplicitChainConstru
     for (const std::size_t constructorOrdinal : memberModel_->constructorsOfType(*current))
     {
         const ClassMemberSymbol& constructor = memberModel_->members()[constructorOrdinal];
-        const bool callableWithoutArguments = std::ranges::all_of(
-            constructor.parameters, &MethodParameterSymbol::defaultValueSyntax);
+        // EN: LKF-346: the implicit default binds only a parameterless base constructor
+        //     (bindExplicitBaseDefaultConstructor); the preview predicted a constructor whose
+        //     parameters all have defaults, which the binding then rejects.
+        // ES: LKF-346: el default implícito solo enlaza un constructor base sin parámetros
+        //     (bindExplicitBaseDefaultConstructor); la previsión elegía un constructor cuyos
+        //     parámetros tienen todos valor predeterminado, que el enlace luego rechaza.
+        const bool callableWithoutArguments = constructor.parameters.empty();
         if (!callableWithoutArguments) continue;
         if (selected.has_value()) return std::nullopt;
         selected = constructorOrdinal;
@@ -234,6 +239,19 @@ void ProjectConstructionModel::bindImplicitConstruction(
     ConstructorCandidateBinding candidate;
     candidate.implicitDefault = true;
     candidate.accessible = implicitDefaultAccessible(targetOrdinal, callerMemberOrdinal, false);
+    if (!candidate.accessible && argumentTypes.empty() && expression != nullptr &&
+        (expression->kind() == ast::AstNodeKind::PlacementConstructionExpression ||
+         expression->kind() == ast::AstNodeKind::ObjectCreationExpression) &&
+        expression->typeSyntax() != nullptr && memberModel_ != nullptr && nameLookup_ != nullptr &&
+        methodBodyModel_ != nullptr)
+    {
+        const ProjectGenericConstraintModel* constraints = methodBodyModel_->genericConstraintModel();
+        if (constraints != nullptr)
+        {
+            const std::string typeKey = memberModel_->canonicalTypeKey(expression->typeSyntax(), *nameLookup_);
+            candidate.accessible = constraints->certifiesDefaultConstruction(expression, typeKey);
+        }
+    }
     candidate.viable = candidate.accessible && argumentTypes.empty();
     binding.evaluatedCandidates.push_back(candidate);
 
@@ -376,17 +394,6 @@ bool ProjectConstructionModel::resolveConstructionAccessibility(
     bool accessibleMatchingArity,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
-    if (!anyAccessible)
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidCall,
-            diagnostics::DiagnosticSeverity::Error,
-            binding.syntax->range(),
-            std::string(binding.targetIsStruct ? "struct" : "class") +
-                " has constructors, but none are accessible from this construction site");
-        binding.resolution = ConstructionResolutionKind::Inaccessible;
-        return false;
-    }
     // C6 "struct members": a struct ALWAYS has a parameterless construction available, whether or
     // not it declares constructors of its own. This is where a struct and a class genuinely
     // differ, and the reason is not convenience: `Vector3 v;` already produces the zeroed value,
@@ -398,6 +405,17 @@ bool ProjectConstructionModel::resolveConstructionAccessibility(
     {
         binding.resolution = ConstructionResolutionKind::ResolvedImplicitDefault;
         binding.selectedImplicitDefault = true;
+        return false;
+    }
+    if (!anyAccessible)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error,
+            binding.syntax->range(),
+            std::string(binding.targetIsStruct ? "struct" : "class") +
+                " has constructors, but none are accessible from this construction site");
+        binding.resolution = ConstructionResolutionKind::Inaccessible;
         return false;
     }
     if (accessibleMatchingArity)
@@ -513,9 +531,9 @@ void ProjectConstructionModel::resolveConstructionCandidates(
     constructions_.push_back(std::move(binding));
 }
 
-// EN: Freeze 3.0 C-01 (plan item 115): a constructor that keeps an argument takes it through an `owned`
+// EN: Freeze C-01 (plan item 115): a constructor that keeps an argument takes it through an `owned`
 //     parameter; `new C(new T())` into a parameter without `owned` gives the inner object no owner.
-// ES: Congelamiento 3.0 C-01 (elemento 115 del plan): un constructor que conserva un argumento lo recibe por
+// ES: Congelamiento C-01 (elemento 115 del plan): un constructor que conserva un argumento lo recibe por
 //     un parámetro `owned`; `new C(new T())` hacia un parámetro sin `owned` deja al objeto interior sin dueño.
 void ProjectConstructionModel::rejectNewToOrdinaryConstructorParameters(
     const ConstructorCandidateBinding& selected,

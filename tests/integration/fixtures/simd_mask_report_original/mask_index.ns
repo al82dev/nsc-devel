@@ -1,0 +1,6 @@
+int Main()
+{
+    mask<float, 8> predicate = default(mask<float, 8>);
+    bool first = predicate[0];
+    return first ? 1 : 0;
+}

@@ -3,6 +3,7 @@
 #include "nativesharp/Frontend/InliningPolicy.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/MetadataHeaderControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -133,9 +134,7 @@ namespace CrossLibrary
     LibraryMetadataCodec codec;
     error.clear();
     const bool metadataRead = codec.read(producer / "InlineProducer.nsmeta", metadata, error);
-    tests.expect(metadataRead &&
-                     metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
-                     metadata.formatMinor >= 13U,
+    tests.expect(metadataRead,
         "producer writes the current NSMETA cross-library inline contract (" + error + ")");
     const auto* required = findMember(metadata, "Required");
     const auto* preferred = findMember(metadata, "Preferred");
@@ -163,22 +162,36 @@ namespace CrossLibrary
         "unused inline body is transported so reachability, not metadata omission, decides emission");
 
     LibraryMetadata downLevel = metadata;
-    downLevel.formatMinor = 12U;
     error.clear();
     const bool wroteDownLevel = codec.writeModel(
-        downLevel, producer / "InlineProducer-1.12.nsmeta", error);
+        downLevel, producer / "InlineProducer-sample-12.nsmeta", error);
     tests.expect(wroteDownLevel,
-        "down-level writer can deliberately produce historical NSMETA 1.12 (" + error + ")");
+        "down-level writer can deliberately produce historical NSMETA (" + error + ")");
     LibraryMetadata decodedDownLevel;
     error.clear();
     const bool readDownLevel = codec.read(
-        producer / "InlineProducer-1.12.nsmeta", decodedDownLevel, error);
-    tests.expect(readDownLevel && std::ranges::all_of(
-            decodedDownLevel.members, [](const auto& member) {
-                return member.inlineSourceText.empty() &&
-                    (member.flags & nativesharp::interop::kMetadataMemberInliningMask) == 0U;
-            }),
-        "NSMETA 1.12 output drops 1.13 policy bits and inline bodies (" + error + ")");
+        producer / "InlineProducer-sample-12.nsmeta", decodedDownLevel, error);
+    // NSC-META-001: the reserved header bytes used to make the writer drop the policy bits and inline bodies.
+    // The label selects nothing now; the contract must survive it, byte for byte.
+    const auto keptPolicy = std::ranges::count_if(
+        decodedDownLevel.members, [](const auto& member) {
+            return (member.flags & nativesharp::interop::kMetadataMemberInliningMask) != 0U;
+        });
+    const auto expectedPolicy = std::ranges::count_if(
+        metadata.members, [](const auto& member) {
+            return (member.flags & nativesharp::interop::kMetadataMemberInliningMask) != 0U;
+        });
+    const auto keptBodies = std::ranges::count_if(
+        decodedDownLevel.members, [](const auto& member) { return !member.inlineSourceText.empty(); });
+    const auto expectedBodies = std::ranges::count_if(
+        metadata.members, [](const auto& member) { return !member.inlineSourceText.empty(); });
+    tests.expect(readDownLevel && expectedPolicy > 0 && keptPolicy == expectedPolicy &&
+            expectedBodies > 0 && keptBodies == expectedBodies &&
+            decodedDownLevel.members.size() == metadata.members.size(),
+        "a reserved header bytes keeps the inlining policy bits and inline bodies (" + error + ")");
+    tests.expect(nativesharp::tests::metadataReservedBytesPreserveContent(
+            codec, downLevel, producer / "InlineProducer-sample-12.nsmeta", error),
+        "the reserved header bytes alone changes no written byte (" + error + ")");
 
     const std::filesystem::path consumer = root / "Consumer";
     writeFile(consumer / "InlineConsumer.nsproj",

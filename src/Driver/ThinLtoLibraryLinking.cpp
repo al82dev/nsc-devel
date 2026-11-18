@@ -7,6 +7,8 @@
 #include "nativesharp/LLVM/ThinLtoLibrarySidecarCodec.h"
 
 #include <chrono>
+#include <fstream>
+#include <iterator>
 #include <cstdint>
 #include <fstream>
 #include <iterator>
@@ -80,9 +82,13 @@ std::string thinLtoDependencyText(const frontend::ProjectCompilation& compilatio
 
 // Every dependency of a sidecar must be referenced by this build with the same metadata bytes.
 // Toda dependencia de un sidecar debe estar referenciada por este build con los mismos bytes.
+// EN: LKF-276: the sidecar records a dependency by file name, so every referenced metadata with that
+//     name is a candidate; the first one no longer hides a homonym whose bytes do match.
+// ES: LKF-276: el sidecar registra una dependencia por nombre de archivo, así que toda metadata
+//     referenciada con ese nombre es candidata; la primera ya no oculta a un homónimo cuyos bytes coinciden.
 bool dependenciesMatch(
     const std::string& dependencies,
-    const std::unordered_map<std::string, std::filesystem::path>& metadataByName,
+    const std::unordered_multimap<std::string, std::filesystem::path>& metadataByName,
     std::string& reason)
 {
     std::size_t begin = 0;
@@ -99,13 +105,17 @@ bool dependenciesMatch(
             return false;
         }
         const std::string name = line.substr(0, separator);
-        const auto found = metadataByName.find(name);
-        if (found == metadataByName.end())
+        const auto [first, last] = metadataByName.equal_range(name);
+        if (first == last)
         {
             reason = "dependency " + name + " is not referenced by this build";
             return false;
         }
-        if (fileDigest(found->second) != line.substr(separator + 1))
+        const std::string expected = line.substr(separator + 1);
+        bool matched = false;
+        for (auto candidate = first; candidate != last && !matched; ++candidate)
+            matched = fileDigest(candidate->second) == expected;
+        if (!matched)
         {
             reason = "dependency " + name + " differs from the one the library was built with";
             return false;
@@ -120,7 +130,7 @@ bool acceptSidecar(
     const compilation::LibraryReference& reference,
     const std::filesystem::path& sidecarPath,
     const std::string& compatibility,
-    const std::unordered_map<std::string, std::filesystem::path>& metadataByName,
+    const std::unordered_multimap<std::string, std::filesystem::path>& metadataByName,
     llvm_backend::ThinLtoLibrarySidecar& sidecar,
     std::string& reason)
 {
@@ -172,6 +182,44 @@ bool usableArchive(const std::filesystem::path& archive)
     return verifier.verify(archive);
 }
 
+// EN: LKF-275: an archive is reused only when the stamp beside it names the same objects and the digest
+//     of the archive bytes still matches, so neither a key collision nor an external rewrite is reused.
+// ES: LKF-275: un archivo se reutiliza solo si el sello a su lado nombra los mismos objetos y el digest de
+//     sus bytes sigue coincidiendo, así no se reutiliza una colisión de clave ni una reescritura externa.
+std::string archiveStampText(const std::string& material, const std::filesystem::path& archive)
+{
+    const std::string digest = fileDigest(archive);
+    return digest.empty() ? std::string() : material + "archive " + digest + "\n";
+}
+
+bool archiveMatchesStamp(const std::filesystem::path& archive, const std::filesystem::path& stamp,
+                         const std::string& material)
+{
+    if (!usableArchive(archive)) return false;
+    std::ifstream stream(stamp, std::ios::binary);
+    if (!stream) return false;
+    const std::string recorded((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    const std::string expected = archiveStampText(material, archive);
+    return !expected.empty() && recorded == expected;
+}
+
+void writeArchiveStamp(const std::filesystem::path& archive, const std::filesystem::path& stamp,
+                       const std::string& material, const std::string& uniqueSuffix)
+{
+    const std::string text = archiveStampText(material, archive);
+    if (text.empty()) return;
+    std::filesystem::path partial = stamp;
+    partial += ".partial-" + uniqueSuffix;
+    {
+        std::ofstream stream(partial, std::ios::binary | std::ios::trunc);
+        stream.write(text.data(), static_cast<std::streamsize>(text.size()));
+        if (!stream) return;
+    }
+    std::error_code error;
+    std::filesystem::rename(partial, stamp, error);
+    if (error) std::filesystem::remove(partial, error);
+}
+
 // Packs the objects of one consumed library into
 // %TEMP%/nativesharp-thinlto-libraries/<digest>/<library file name>. NSLink spells every archive
 // path into the PDB module table and its GUID, so a path that depends only on the objects keeps -g
@@ -198,8 +246,10 @@ bool publishLibraryArchive(
         if (!basic::sha256File(object, digest, size, error)) return false;
         material += std::to_string(size) + ":" + basic::sha256Hex(digest) + "\n";
     }
+    // EN: LKF-275: the full digest names the directory (it was the first 16 hex digits).
+    // ES: LKF-275: el digest completo nombra el directorio (eran los primeros 16 dígitos hexadecimales).
     const std::string digest = basic::sha256Hex(basic::sha256(std::span<const std::uint8_t>(
-        reinterpret_cast<const std::uint8_t*>(material.data()), material.size()))).substr(0, 16);
+        reinterpret_cast<const std::uint8_t*>(material.data()), material.size())));
     std::error_code filesystemError;
     const std::filesystem::path root =
         std::filesystem::temp_directory_path(filesystemError) / "nativesharp-thinlto-libraries";
@@ -210,7 +260,8 @@ bool publishLibraryArchive(
     }
     const std::filesystem::path directory = root / digest;
     archive = directory / library.libraryPath.filename();
-    if (usableArchive(archive))
+    const std::filesystem::path stamp = directory / "archive.stamp";
+    if (archiveMatchesStamp(archive, stamp, material))
     {
         std::filesystem::last_write_time(
             directory, std::filesystem::file_time_type::clock::now(), filesystemError);
@@ -244,10 +295,18 @@ bool publishLibraryArchive(
         std::filesystem::remove(partial, cleanupError);
         // Another build may have published the same content first.
         // Otro build pudo publicar primero el mismo contenido.
-        if (usableArchive(archive)) return true;
+        if (archiveMatchesStamp(archive, stamp, material)) return true;
+        // EN: LKF-275: an archive whose stamp is not written yet is not trusted; this build links its own.
+        // ES: LKF-275: un archivo cuyo sello aún no existe no se confía; este build enlaza el suyo.
+        if (usableArchive(archive))
+        {
+            archive = staged;
+            return true;
+        }
         error = "cannot publish the ThinLTO archive '" + archive.string() + "': " + filesystemError.message();
         return false;
     }
+    writeArchiveStamp(archive, stamp, material, objectDirectory.filename().string());
     return true;
 }
 }
@@ -268,7 +327,7 @@ bool ThinLtoLibraryLinking::collect(
     if (!llvm_backend::ProjectOopObjectGenerator::thinLtoCompatibility(level, debugInformation, compatibility, error))
         return false;
     compatibility += thinLtoRuntimeIdentity();
-    std::unordered_map<std::string, std::filesystem::path> metadataByName;
+    std::unordered_multimap<std::string, std::filesystem::path> metadataByName;
     for (const compilation::Project& project : compilation.projectGraph()->projects())
     {
         for (const compilation::LibraryReference& reference : project.libraryReferences())

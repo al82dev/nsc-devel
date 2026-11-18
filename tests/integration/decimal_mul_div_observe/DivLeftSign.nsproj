@@ -1,0 +1,9 @@
+<Project>
+<PropertyGroup>
+<Name>DivLeftSign</Name>
+<OutputType>Exe</OutputType>
+</PropertyGroup>
+<ItemGroup>
+<Compile Include="DivLeftSign.ns"/>
+</ItemGroup>
+</Project>

@@ -1,0 +1,7 @@
+int Main()
+{
+    BinaryGeneric.Box<int> value = default(BinaryGeneric.Box<int>);
+    value.Value = 7;
+    value.Count = 3;
+    return value.Value + value.Count == 10 ? 0 : 1;
+}

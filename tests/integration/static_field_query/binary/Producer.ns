@@ -1,0 +1,9 @@
+namespace FieldProducer
+{
+    public struct Record
+    {
+        public int Count;
+        private int Hidden;
+        public long Balance;
+    }
+}
