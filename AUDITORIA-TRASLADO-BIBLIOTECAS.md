@@ -79,18 +79,27 @@ Fecha: 2026-11-18. Rama: `development_cpp__clang_integracion` (merge `61eb49519`
   `nsc.selfhost.metadata-content`, `callable-graph` y `source-graph-overlap` pasan.
 - `--verify-bootstrap-dependencies` contaba los nodos del grafo (8, con las redirecciones de `lib/`).
   `SourceGraph.SourceProjectCount()` cuenta los proyectos que aportan unidades (5).
-- **Pendiente: deuda del selfhost en `development`.** Antes estas pruebas ni siquiera llegaban a ejecutarse,
-  porque el selfhost no compilaba. De las 63 `nsc.selfhost.*`, 27 pasan y 36 no:
-  - 13 exigen `NS_ROOT` o un prefijo instalado (SH03, SH08, SH09, SH10, SH16, SH17-SH24);
-  - 11 esperan la imagen `nsc2` de `self-hosted-generation`, que superó los 30 minutos;
-  - `nsc-next-skeleton`, `frontend`, `semantics` e `ir` comparan con salidas de `nsc0` que `development`
-    cambió;
-  - `bootstrap-dependencies`, `source-graph` y `module-set`: el compilador autoalojado no resuelve símbolos de
-    Core, IO y Collections («unresolved identifier: Number/String/File»), porque su carga de metadatos externos
-    no siguió el traslado de las bibliotecas;
-  - `compiler-host-workload` choca con las reglas de excepciones («'SetValue' throws»);
-  - `image-replay-retired` no falla de forma cerrada;
-  - `file-directory-exists` encuentra `_fltused` duplicado al enlazar con lld.
+- **Estado tras las correcciones (commits `a063d8758`, `ca71c3cfe`, `de7eb1ae5`, `cbc34b0c8`).** Las 63 pruebas
+  `nsc.selfhost.*` quedan así:
+  - 34 aprobadas en las pruebas dirigidas. A las 27 que ya pasaban se suman `bootstrap-dependencies`,
+    `source-graph`, `module-set`, `nsc-next-skeleton`, `compiler-host-workload`, `file-directory-exists` e
+    `image-replay-retired`.
+  - 13 bloqueadas por el entorno: requieren `NS_ROOT` o un prefijo instalado (SH03, SH08, SH09, SH10, SH16,
+    SH17-SH24).
+  - `self-hosted-generation` (SH41) sigue fallando. La emisión de `nsc2` ya no se queda colgada: pasa el análisis
+    semántico del compilador y de sus bibliotecas, y se detiene en el backend del selfhost por una comparación de
+    `long` en `NativeSharp.Compiler.Source.SourceBuffer.Load` («comparison operand type normalization»). En un
+    archivo aislado la misma comparación funciona.
+  - 12 bloqueadas por esa misma dependencia, porque esperan la imagen `nsc2`: cross-machine-determinism,
+    repeated-fixed-point, functional-equivalence, low-level-parity, interop-parity, runtime-library,
+    advanced-toolchain, performance, developer-experience, robustness-final, distribution-final y
+    final-certification.
+  - `frontend` falla. La paridad de tokens se cumple en 1156 de 1158 archivos; los otros dos
+    (`derive_ignore_equality`, `run73_original_fixture`) los vuelca `nsc0` después de su paso de metaprogramación.
+    Excluirlos del contrato queda pendiente de la decisión del propietario.
+  - `semantics` e `ir` quedan bloqueadas por un cambio de diseño en `development`: desde `2e154f127` un archivo
+    suelto se compila como proyecto implícito con Core, así que `--dump-symbols`, `--dump-sema` y `--dump-hir`/`mir`
+    de `nsc0` vuelcan el proyecto entero y ya no son comparables con el selfhost.
 
 ## No verificado
 
