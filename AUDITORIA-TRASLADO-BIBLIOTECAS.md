@@ -71,6 +71,27 @@ Fecha: 2026-11-18. Rama: `development_cpp__clang_integracion` (merge `61eb49519`
    compilador usado. No es un defecto.
 7. **`precompiled-syntax-node-index`.** Corregido en `01b1974f3`: el corpus incluye `stdlib`. La prueba pasa.
 
+## Selfhost
+
+- `selfhost/nsc` no compilaba con el compilador de `development`: tres errores de la regla conservadora de
+  préstamos M2-06 en `Sema/ModuleSet.ns`. Ahora compila. El análisis de cada unidad pasó a `ParseUnit`, de modo
+  que el lexer, el parser y los buffers que se destruyen viven en su propio flujo. La regla no cambia.
+  `nsc.selfhost.metadata-content`, `callable-graph` y `source-graph-overlap` pasan.
+- `--verify-bootstrap-dependencies` contaba los nodos del grafo (8, con las redirecciones de `lib/`).
+  `SourceGraph.SourceProjectCount()` cuenta los proyectos que aportan unidades (5).
+- **Pendiente: deuda del selfhost en `development`.** Antes estas pruebas ni siquiera llegaban a ejecutarse,
+  porque el selfhost no compilaba. De las 63 `nsc.selfhost.*`, 27 pasan y 36 no:
+  - 13 exigen `NS_ROOT` o un prefijo instalado (SH03, SH08, SH09, SH10, SH16, SH17-SH24);
+  - 11 esperan la imagen `nsc2` de `self-hosted-generation`, que superó los 30 minutos;
+  - `nsc-next-skeleton`, `frontend`, `semantics` e `ir` comparan con salidas de `nsc0` que `development`
+    cambió;
+  - `bootstrap-dependencies`, `source-graph` y `module-set`: el compilador autoalojado no resuelve símbolos de
+    Core, IO y Collections («unresolved identifier: Number/String/File»), porque su carga de metadatos externos
+    no siguió el traslado de las bibliotecas;
+  - `compiler-host-workload` choca con las reglas de excepciones («'SetValue' throws»);
+  - `image-replay-retired` no falla de forma cerrada;
+  - `file-directory-exists` encuentra `_fltused` duplicado al enlazar con lld.
+
 ## No verificado
 
 - La revisión semántica de cada cambio en los 22 archivos modificados.

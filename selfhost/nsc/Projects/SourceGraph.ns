@@ -79,6 +79,29 @@ namespace NativeSharp.Compiler.Projects
         public int UnitCount() { return units.Count(); }
         public SourceUnit UnitAt(int index) { return units[index]; }
         public int ProjectCount() { return projects.Count(); }
+
+        // EN: Projects that own at least one unit. A project that only forwards to another one (the lib/
+        //     projects that point at NativeSharp Libraries) is a node of the graph but contributes no source.
+        // ES: Proyectos duenos de al menos una unidad. Un proyecto que solo redirige a otro (los proyectos de
+        //     lib/ que apuntan a NativeSharp Libraries) es un nodo del grafo pero no aporta fuentes.
+        public int SourceProjectCount()
+        {
+            int count = 0;
+            int index = 0;
+            while (index < units.Count())
+            {
+                bool seen = false;
+                int earlier = 0;
+                while (earlier < index && !seen)
+                {
+                    if (units[earlier].Owner() == units[index].Owner()) { seen = true; }
+                    earlier = earlier + 1;
+                }
+                if (!seen) { count = count + 1; }
+                index = index + 1;
+            }
+            return count;
+        }
         public string ProjectAt(int index) { return projects[index]; }
         public string Diagnostic() { return diagnostic; }
         public bool Failed() { return diagnostic.Length != 0; }

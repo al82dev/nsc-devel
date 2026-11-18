@@ -526,7 +526,9 @@ namespace NativeSharp.Compiler.Driver
             output.Append("\nexternal-resolutions="); output.Append(modules.ExternalResolutionCount());
             output.Append("\nstatus=source-verified\n");
             raii string rendered = output.ToOwnedString(); Console.Write(rendered);
-            return graph.ProjectCount() == 5 && graph.UnitCount() >= 90 &&
+            // EN: The compiler and its four libraries; forwarding projects add graph nodes without sources.
+            // ES: El compilador y sus cuatro bibliotecas; los proyectos que redirigen agregan nodos sin fuentes.
+            return graph.SourceProjectCount() == 5 && graph.UnitCount() >= 90 &&
                 modules.ExternalProjectCount() == 4 ? 0 : 1;
         }
 
