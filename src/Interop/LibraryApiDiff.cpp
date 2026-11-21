@@ -184,9 +184,19 @@ void appendSourceTypes(const LibraryMetadata& metadata, Surface& result)
         for (const std::uint8_t dynamicTrait : type.delegateParameterDynamicTraits)
             number(contract, dynamicTrait);
         number(contract, type.delegateReturnPointeeQualifiers);
-        number(contract, type.delegateParameterPointeeQualifiers.size());
-        for (const std::uint8_t qualifiers : type.delegateParameterPointeeQualifiers)
-            number(contract, qualifiers);
+        // EN: The payload writes pointee qualifiers only when some value of the library is non-zero, so a
+        //     delegate reads back either an empty list or one zero per parameter for the same declaration.
+        //     The contract records one value per declared parameter, a missing entry being zero, as
+        //     PublicSurfaceBuilder reads it; a real qualifier change still changes the contract.
+        // ES: El payload escribe los calificadores solo si algun valor de la biblioteca no es cero, asi que un
+        //     delegado se lee con una lista vacia o con un cero por parametro para la misma declaracion. El
+        //     contrato registra un valor por parametro declarado, cero si falta, como lo lee
+        //     PublicSurfaceBuilder; un cambio real de calificador sigue cambiando el contrato.
+        number(contract, type.delegateParameterTypeKeys.size());
+        for (std::size_t index = 0; index < type.delegateParameterTypeKeys.size(); ++index)
+            number(contract, index < type.delegateParameterPointeeQualifiers.size()
+                                 ? type.delegateParameterPointeeQualifiers[index]
+                                 : std::uint8_t{0});
         strings(contract, type.lifetimeParameters, false);
         number(contract, type.lifetimeOutlivesConstraints.size());
         for (const auto& [longer, shorter] : type.lifetimeOutlivesConstraints)
