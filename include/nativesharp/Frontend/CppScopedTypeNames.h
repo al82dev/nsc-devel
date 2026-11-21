@@ -75,7 +75,14 @@ inline std::optional<parser::ScopedKnownTypeNames> cppScopedTypeNames(
             for (const auto& rung : qualifiedNameLadder(declarationSite, target))
                 for (const auto& candidate : rung.spellings)
                     typeTarget |= types.contains(candidate);
-            if (!typeTarget) return std::nullopt;
+            // EN: A target that is neither a visible namespace nor a C/C++ type names a NativeSharp type
+            // (or nothing). These scoped names only add C/C++ spellings to the parser's ordinary
+            // NativeSharp index, so the alias is left to that index and to ordinary name lookup, which
+            // validate it exactly as in a project without C headers.
+            // ES: Un destino que no es namespace visible ni tipo C/C++ nombra un tipo NativeSharp (o nada).
+            // Estos nombres solo agregan grafías C/C++ al índice NativeSharp ordinario del parser; el
+            // alias queda a cargo de ese índice y de la búsqueda ordinaria, como en un proyecto sin headers C.
+            if (!typeTarget) continue;
             typeAliases.insert(alias.directive.alias);
         }
         QualifiedNameSite site;
