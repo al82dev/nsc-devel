@@ -107,6 +107,11 @@ std::optional<std::size_t> ProjectVirtualDispatchModel::slotForMember(std::size_
     return info != nullptr ? std::optional<std::size_t>(info->slotOrdinal) : std::nullopt;
 }
 
+bool ProjectVirtualDispatchModel::isDirectGenericVirtualSpecialization(std::size_t memberOrdinal) const noexcept
+{
+    return directGenericVirtualSpecializations_.contains(memberOrdinal);
+}
+
 bool ProjectVirtualDispatchModel::isBuilt() const noexcept
 {
     return built_;
@@ -363,6 +368,21 @@ bool ProjectVirtualDispatchModel::processNewVirtualMethod(
                 : "virtual method hides an inherited non-virtual signature; explicit new-slot "
                     "hiding is outside Macro A");
         return false;
+    }
+    // EN: The vtable of a precompiled class was emitted by its producer with the slots it knew; a slot
+    //     appended here for a specialization of a generic method would index past that table. An override
+    //     of such a specialization cannot be registered either (its name carries its own template), so the
+    //     declaring specialization is the only target and is called directly.
+    // ES: La vtable de una clase precompilada la emitió su productor con los slots que conocía; un slot
+    //     añadido aquí para una especialización de un método genérico indexaría más allá de esa tabla.
+    //     Tampoco puede registrarse un override de esa especialización (su nombre lleva su propia
+    //     plantilla), así que la especialización declarante es el único destino y se llama directamente.
+    if (method.genericTemplateOrdinal.has_value() && !method.isAbstract &&
+        method.declaringTypeOrdinal < nameLookup_->namedTypes().size() &&
+        nameLookup_->namedTypes()[method.declaringTypeOrdinal].isPrecompiled)
+    {
+        directGenericVirtualSpecializations_.insert(memberOrdinal);
+        return true;
     }
     VirtualMethodInfo info;
     info.memberOrdinal = memberOrdinal;

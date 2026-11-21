@@ -13,6 +13,7 @@
 #include <span>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -43,6 +44,13 @@ public:
     const ClassVirtualTable* classTable(std::size_t typeOrdinal) const noexcept;
     bool isVirtualMethod(std::size_t memberOrdinal) const noexcept;
     std::optional<std::size_t> slotForMember(std::size_t memberOrdinal) const noexcept;
+    // EN: A virtual specialization of a generic method declared in a precompiled class. Its vtable is
+    //     emitted by the producer, which cannot hold slots for specializations created by a consumer, so
+    //     the specialization gets no slot and is called directly.
+    // ES: Especialización virtual de un método genérico declarado en una clase precompilada. Su vtable la
+    //     emite el productor, que no puede tener slots para especializaciones creadas por un consumidor;
+    //     la especialización no recibe slot y se llama directamente.
+    bool isDirectGenericVirtualSpecialization(std::size_t memberOrdinal) const noexcept;
     bool isBuilt() const noexcept;
 
     // EN: Plan item 3.9. Accepted snapshots, set before build(). A class whose parts are all in a
@@ -123,6 +131,7 @@ private:
     const ProjectInheritanceModel* inheritanceModel_ = nullptr;
     std::vector<VirtualMethodInfo> virtualMethods_;
     std::vector<std::optional<std::size_t>> virtualInfoByMember_;
+    std::unordered_set<std::size_t> directGenericVirtualSpecializations_;
     std::vector<ClassVirtualTable> classTables_;
     std::vector<std::optional<std::size_t>> tableByType_;
     std::vector<bool> buildingType_;

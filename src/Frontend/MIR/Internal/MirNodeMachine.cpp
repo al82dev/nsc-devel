@@ -1372,7 +1372,13 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup12(
             const std::optional<std::size_t> slot = node->booleanValue && model_.virtualDispatchModel_ != nullptr
                 ? model_.virtualDispatchModel_->slotForMember(*node->memberOrdinal)
                 : std::nullopt;
-            if (node->booleanValue && !slot.has_value())
+            // EN: A virtual specialization of a generic method of a precompiled class has no slot and binds
+            //     its declaring specialization directly (see ProjectVirtualDispatchModel).
+            // ES: Una especialización virtual de un método genérico de una clase precompilada no tiene slot
+            //     y enlaza directamente su especialización declarante (ver ProjectVirtualDispatchModel).
+            const bool directGenericVirtual = node->booleanValue && model_.virtualDispatchModel_ != nullptr &&
+                model_.virtualDispatchModel_->isDirectGenericVirtualSpecialization(*node->memberOrdinal);
+            if (node->booleanValue && !slot.has_value() && !directGenericVirtual)
             {
                 error = "T08-F05 virtual method value has no vtable slot";
                 return -1;
