@@ -129,3 +129,56 @@ Ver el commit de `A:\nslink-devel`: `ImportDescription.ordinals`, `ArchiveResolv
   de sintaxis poco claros (`expected expression`).
 - `nsc.cpp-interop.session` necesita `cpp-fixtures/project/CppProbe.nsproj`, que no existe en este checkout.
 - `nsc.compiler.pass-kind-overloads` exige `nslink.exe` en `PATH`.
+
+## Entrega: qué se pidió y qué se hizo
+
+Petición: corregir en NSC y NSLink las limitaciones de interoperabilidad C halladas en la migración (alias con
+headers C, consumidor con tipos C, `--api-diff`, genéricos desde bibliotecas, retorno de puntero a función,
+macros, ordinales en NSLink), con correcciones generales, commits separados, pruebas O0-O3 y productor/consumidor
+separados, sin presentar las pruebas locales como validación del framework.
+
+Checkouts usados: `A:\nsc-devel-fixes` (rama `development_cpp__clang_integracion`, base `0263515ea`) y
+`A:\nslink-devel` (rama `development`, base `7b3daca`); ambos limpios al empezar.
+
+| Repo | Commit | Problema |
+|------|--------|----------|
+| NSLink | `9157d69` | 7. Importación por ordinal |
+| NSC | `abb77262c` | 1. Alias de tipo con header C |
+| NSC | `450f625a9` | 2. Consumidor con campo `struct` C |
+| NSC | `7a4e8b7da` | 3. `--api-diff` en delegados |
+| NSC | `a61d07516` | 5. `FARPROC` |
+| NSC | `643ed45bb` | 4. Genéricos por receptor valor |
+| NSC | `e70515671` | Este documento |
+
+### Resultados por perfil
+
+| Prueba | O0 | O1 | O2 | O3 |
+|--------|----|----|----|----|
+| `pruebas-interop-alias-tipo-ns` | ✓ | ✓ | ✓ | ✓ |
+| `pruebas-interop-consumidor-campo-c` | ✓ | ✓ | ✓ | ✓ |
+| `pruebas-interop-api-diff-delegados` | ✓ | ✓ | ✓ | ✓ |
+| `pruebas-interop-genericos-receptor` | ✓ | ✓ | ✓ | ✓ |
+| `pruebas-interop-farproc` | ✓ | ✓ | ✓ | ✓ |
+| `tanda-19-alias` (estática y DLL), `tanda-09-precompilado`, `tanda-08-callback` | ✓ | ✓ | ✓ | ✓ |
+
+ctest dirigidas: 11 de 12 pasan; `nsc.compiler.pass-kind-overloads` exige `nslink.exe` en `PATH` (entorno).
+NSLink: `nsl22.import-ordinal`, `nsl15`, `nsl20`, `nsl22.import-libs`, `nsl32` pasan; con la `xinput.lib` del SDK
+NSLink y LLD emiten `XINPUT1_4.dll` ordinal 2 y ambos ejecutables devuelven 20 (`ERROR_DEVICE_NOT_CONNECTED`).
+
+Uso de cada fixture: `python validar.py --nsc <nsc.exe> --clang-root <Clang> [--nslink <nslink.exe>]
+[--core-root <dir O0..O3>]`; `pruebas-interop-farproc` pide además `--sdk-include`, `--sdk-lib` y `--msvc-include`.
+
+### Formato de metadatos
+
+No cambia; no hay que regenerar bibliotecas precompiladas. Cambian las huellas `source-fingerprint` impresas por
+`--api-diff` para bibliotecas con delegados (no se persisten).
+
+### Reconstrucción en la máquina con el framework
+
+1. NSC: Ninja + `clang-cl`, `CMAKE_BUILD_TYPE=Release`; `cmake --build <build> --target nsc`; instalar con el flujo
+   habitual de empaquetado (no ejecutado aquí).
+2. NSLink: `cmake --build build-release`; el ejecutable queda en `bin\release\nslink.exe` (no en
+   `build-release\bin`); `ctest --test-dir build-release -R nsl22`.
+3. Restaurar los alias originales del framework, recompilar y repetir `--api-diff` y los consumidores.
+
+Pendiente: problema 6 (macros de headers de sistema), con el diseño descrito arriba.
