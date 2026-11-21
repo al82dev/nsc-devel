@@ -892,7 +892,22 @@ bool ProjectGenericModel::processGenericCall(
         std::string receiverNamespace = namespaceName;
         GenericLookupScope fieldScope;
         const GenericLookupScope* receiverScope = &scope;
-        ast::TypeSyntax* actual = hasGenericOwner ? inferExpressionType(unit, callee->first(), scope) : nullptr;
+        // EN: A value receiver of a non-generic owner (`device.Draw<T>(...)`) is spelled as the variable, so the
+        //     lexical resolution above can only search every visible template by name and argument count. That
+        //     search fails when the receiver type has overloads with the same argument count, or when another
+        //     type declares a generic method of the same name and count (`Texture2D.SetData<T>(T[])` and
+        //     `VertexBuffer.SetData<T>(T[])`). Only when it has already failed, the receiver's static type selects
+        //     the owner below, as it does for generic owners; a call it resolves keeps its resolution.
+        // ES: Un receptor valor de un dueno no generico (`device.Draw<T>(...)`) se escribe como la variable, asi que
+        //     la resolucion lexica de arriba solo puede buscar entre todas las plantillas visibles por nombre y
+        //     numero de argumentos. Falla si el tipo del receptor tiene sobrecargas con el mismo numero de
+        //     argumentos, o si otro tipo declara un metodo generico con el mismo nombre y numero. Solo cuando ya
+        //     fallo, el tipo estatico del receptor elige abajo el dueno, como con duenos genericos; una llamada que
+        //     resuelve conserva su resolucion.
+        const bool unresolvedValueReceiver = !hasGenericOwner && bucket != methodsByName_.end() &&
+            resolution.unique == nullptr && resolution.shared.size() <= 1U && callee->first() != nullptr;
+        ast::TypeSyntax* actual = hasGenericOwner || unresolvedValueReceiver
+            ? inferExpressionType(unit, callee->first(), scope) : nullptr;
         if (actual == nullptr && hasGenericOwner && callee->first() != nullptr &&
             callee->first()->kind() == ast::AstNodeKind::IndexExpression)
         {
@@ -1575,6 +1590,12 @@ bool ProjectGenericModel::processGenericCall(
             if (resolution.named.empty() && sameOwnerAndArguments.empty() &&
                 lexicalResolution.unique != nullptr && lexicalResolution.unique->parent != nullptr &&
                 lexicalResolution.unique->parent->kind() == ast::AstNodeKind::ExtensionDeclaration)
+                resolution = lexicalResolution;
+            // EN: A value receiver whose type declares no candidate (an inherited method, for instance) keeps the
+            //     lexical result and its diagnostic, exactly as before the receiver type was consulted.
+            // ES: Un receptor valor cuyo tipo no declara candidatos (un metodo heredado, por ejemplo) conserva el
+            //     resultado lexico y su diagnostico, exactamente como antes de consultar el tipo del receptor.
+            if (unresolvedValueReceiver && resolution.named.empty() && sameOwnerAndArguments.empty())
                 resolution = lexicalResolution;
         }
     }
