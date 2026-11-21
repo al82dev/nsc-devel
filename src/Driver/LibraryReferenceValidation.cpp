@@ -337,10 +337,13 @@ bool validateLibraryReferenceSymbols(const compilation::LibraryReference &refere
             receiverCandidates.insert(generic.candidateReceiverTypeKeys.begin(),
                                       generic.candidateReceiverTypeKeys.end());
         }
+        // EN: A template body reaches the methods of the types of its owner's fields, static or instance
+        //     (`this.store.Read(...)` through a private instance field), so both kinds are collected.
+        // ES: El cuerpo de una plantilla alcanza los métodos de los tipos de los campos de su dueño, estáticos o
+        //     de instancia (`this.store.Read(...)` mediante un campo privado de instancia); se recogen ambos.
         std::unordered_set<std::string> templateFieldTypes;
         for (const auto& field : metadata.members)
-            if (field.kind == kField && (field.flags & kStatic) != 0U &&
-                field.declaringTypeKey.starts_with("type:") &&
+            if (field.kind == kField && field.declaringTypeKey.starts_with("type:") &&
                 templateOwners.contains(field.declaringTypeKey.substr(5)))
                 templateFieldTypes.insert(field.declaredTypeKey);
         for (const auto &member : metadata.members)
