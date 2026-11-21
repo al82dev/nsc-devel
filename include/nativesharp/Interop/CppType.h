@@ -78,4 +78,16 @@ struct CppFunctionType
     bool hasPrototype = false;
     bool variadic = false;
 };
+
+// EN: A function type NativeSharp can call: a prototype, or an unprototyped C function (`R ()`, such as the
+//     target of the Windows `FARPROC`) under the rule a direct unprototyped C declaration follows: cdecl, no
+//     declared parameters, called with none. C makes `R (*)()` compatible with `R (*)(void)`.
+// ES: Un tipo de funcion que NativeSharp puede llamar: un prototipo, o una funcion C sin prototipo (`R ()`, como
+//     el destino del `FARPROC` de Windows) con la regla de una declaracion C directa sin prototipo: cdecl, sin
+//     parametros declarados, llamada sin argumentos. C hace compatibles `R (*)()` y `R (*)(void)`.
+inline bool cppFunctionTypeCallable(const CppFunctionType& signature) noexcept
+{
+    return signature.hasPrototype ||
+        (signature.callingConvention == "cdecl" && signature.parameterTypes.empty() && !signature.variadic);
+}
 }

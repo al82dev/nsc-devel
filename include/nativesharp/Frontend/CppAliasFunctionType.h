@@ -22,7 +22,7 @@ inline std::optional<CppAliasFunctionType> cppAliasFunctionType(const interop::C
         !type.element || type.element->kind != K::Function || !type.element->function)
         return std::nullopt;
     const auto& signature = *type.element->function;
-    if (!signature.hasPrototype) return std::nullopt;
+    if (!interop::cppFunctionTypeCallable(signature)) return std::nullopt;
     C convention;
     if (signature.callingConvention == "cdecl") convention = C::C;
     else if (signature.callingConvention == "stdcall") convention = C::StdCall;

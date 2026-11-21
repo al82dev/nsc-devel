@@ -887,7 +887,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
             underlying.kind == interop::CppTypeKind::Pointer && underlying.sizeBits == 64 &&
             !underlying.isConst && !underlying.isVolatile && underlying.element &&
             underlying.element->kind == interop::CppTypeKind::Function && underlying.element->function &&
-            underlying.element->function->hasPrototype && !syntax->isPointeeConst() &&
+            interop::cppFunctionTypeCallable(*underlying.element->function) && !syntax->isPointeeConst() &&
             std::all_of(syntax->modifiers().begin(), syntax->modifiers().end(), [](const auto& modifier) {
                 return modifier.kind == ast::TypeModifierSyntaxKind::Pointer;
             }))
@@ -921,7 +921,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
                 if (type.kind == interop::CppTypeKind::Pointer && type.sizeBits == 64 &&
                     !type.isConst && !type.isVolatile && type.element &&
                     type.element->kind == interop::CppTypeKind::Function && type.element->function &&
-                    type.element->function->hasPrototype)
+                    interop::cppFunctionTypeCallable(*type.element->function))
                 {
                     const auto& nested = *type.element->function;
                     auto nestedConvention = ast::FunctionCallingConventionSyntaxKind::NativeSharp;

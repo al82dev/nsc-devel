@@ -279,8 +279,13 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
     if (type.kind == CppTypeKind::Pointer && type.element && type.element->kind == CppTypeKind::Function)
     {
         if (type.isConst || type.isVolatile || type.sizeBits != 64 || type.canonicalSpelling.empty() ||
-            !type.element->function || !type.element->function->hasPrototype) return std::nullopt;
+            !type.element->function) return std::nullopt;
         const auto& signature = *type.element->function;
+        // EN: A pointer to an unprototyped C function, such as the Windows `FARPROC` (`INT_PTR (WINAPI*)()`), shares
+        //     the NativeSharp function type of `R (*)(void)` (cppFunctionTypeCallable); other forms stay rejected.
+        // ES: Un puntero a una funcion C sin prototipo, como el `FARPROC` de Windows (`INT_PTR (WINAPI*)()`), comparte
+        //     el tipo de funcion NativeSharp de `R (*)(void)` (cppFunctionTypeCallable); otras formas siguen fuera.
+        if (!cppFunctionTypeCallable(signature)) return std::nullopt;
         // EN: T19-004. A 128-bit integer is not mapped through a function pointer yet: the call would use LLVM's
         //     `i128` passing, not Clang's address and XMM0 (T19-044). A declared function keeps Clang's plan.
         // ES: T19-004. Un entero de 128 bits todavia no se mapea por un puntero a funcion: la llamada usaria el paso
