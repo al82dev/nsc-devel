@@ -106,6 +106,21 @@ inline std::vector<LexicalNamespaceScope> lexicalNamespaceScopes(std::span<const
                 next += 2;
             }
             bool hasTarget = qualified(next, directive.target);
+            // EN: `using A = Module::Ns.Type;` names a type through its module, the spelling public-API
+            //     sources rebuilt from library metadata use for base types. The parser reads every alias
+            //     target with the type grammar, so this is explicit type syntax, validated there.
+            // ES: `using A = Modulo::Ns.Tipo;` nombra un tipo por su módulo, la grafía que usan las fuentes
+            //     de API pública reconstruidas desde metadata para los tipos base. El parser lee todo destino
+            //     de alias con la gramática de tipos, así que es sintaxis explícita de tipo, validada ahí.
+            if (hasTarget && !directive.alias.empty() && directive.target.size() == 1 &&
+                next + 2 < tokens.size() && tokens[next].kind() == TokenKind::Colon &&
+                tokens[next + 1].kind() == TokenKind::Colon &&
+                tokens[next + 2].kind() == TokenKind::Identifier)
+            {
+                next += 2;
+                qualified(next, directive.target);
+                directive.explicitTypeSyntax = true;
+            }
             if (!hasTarget && !directive.alias.empty() && next < tokens.size() &&
                 lexer::isBuiltinTypeKeyword(tokens[next].kind()))
             {
