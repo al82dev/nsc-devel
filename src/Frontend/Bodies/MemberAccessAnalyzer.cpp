@@ -1371,8 +1371,11 @@ void ProjectMethodBodyModel::finishMemberLookup(
         if (reason == nullptr) reason = memberModel_->cppNotImportedFieldReason(key, expression->text());
         if (reason != nullptr)
         {
+            // The usual unknown-member text stays first; the reason follows. / El texto habitual de miembro
+            //     desconocido va primero; la razon lo sigue.
             diagnostics.report(diagnostics::DiagnosticId::UnknownMember, diagnostics::DiagnosticSeverity::Error,
-                expression->range(), *reason);
+                expression->range(), "receiver/type '" + receiver.typeKey + "' has no compatible member named '" +
+                    expression->text() + "': " + *reason);
             return;
         }
     }
