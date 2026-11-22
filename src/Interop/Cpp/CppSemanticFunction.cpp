@@ -634,9 +634,12 @@ bool projectedMethodAccess(const CppMethodDeclaration& method, bool dispatched)
 
 std::optional<CppType> cppReferenceCarrier(const CppType& type)
 {
+    // Item 12.6: a reference to a fixed array (`const int (&)[3]`) travels as a pointer to that array.
+    //     / Una referencia a un arreglo fijo viaja como puntero a ese arreglo.
     if (type.kind != CppTypeKind::LValueReference || !type.element ||
         type.element->kind == CppTypeKind::Void || type.element->kind == CppTypeKind::Function ||
-        type.element->kind == CppTypeKind::Array || type.element->kind == CppTypeKind::LValueReference ||
+        (type.element->kind == CppTypeKind::Array && (!type.element->arrayCount || *type.element->arrayCount == 0)) ||
+        type.element->kind == CppTypeKind::LValueReference ||
         type.element->kind == CppTypeKind::RValueReference || type.element->isVolatile ||
         type.element->canonicalSpelling.empty()) return std::nullopt;
     CppType carrier = type;
