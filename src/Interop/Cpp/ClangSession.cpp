@@ -5484,6 +5484,11 @@ private:
                 const auto type = builtinTemplateArgumentType(context, argument.builtin);
                 if (!type.isNull() && !type->isVoidType()) spelling = type.getAsString();
                 else if (!type.isNull() && argument.pointerDepth > 0) spelling = "void";
+                // EN: Item 5.5. A C `char` is imported as `sbyte`; in a C macro an `sbyte` value goes back as
+                //     `char`, so `_Generic` selects the `char` branch a C caller would select.
+                // ES: Item 5.5. Un `char` C se importa como `sbyte`; en una macro C un valor `sbyte` vuelve como
+                //     `char`, asi `_Generic` elige la rama `char` que elegiria un llamador C.
+                if (!cpp && spelling == "signed char") spelling = "char";
             }
             if (spelling.empty())
             {
