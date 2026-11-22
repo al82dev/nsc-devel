@@ -1181,7 +1181,9 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
         !projectedMethodAccess(method, dispatched) || method.isStatic ||
         ((method.isVirtual || method.isPureVirtual) && !dispatched) ||
         method.isDeleted || method.isVolatile || method.variadic ||
-        method.refQualifier != CppMethodRefQualifier::None || method.callingConvention != "cdecl" ||
+        // Item 12.1: an `&` / `const&` receiver is an lvalue receiver, as NativeSharp calls it; `&&` stays out.
+        //     / Un receptor `&` / `const&` es un receptor lvalue, como lo llama NativeSharp; `&&` queda fuera.
+        method.refQualifier == CppMethodRefQualifier::RValue || method.callingConvention != "cdecl" ||
         (!dispatched && (!method.externalSymbol || method.externalSymbol->empty())) || method.canonicalFunctionType.empty())
         return fail("C++ instance method contract is not yet mapped");
     RecordIndex recordIndex;
@@ -1444,7 +1446,9 @@ CppSemanticLifetimeMethodResult projectCppSemanticLifetimeMethod(
         // Un local se destruye con una llamada directa, tambien si el destructor es virtual, como en C++.
         ((method.isVirtual || method.isPureVirtual) && method.kind != CppMethodKind::Destructor) ||
         method.isDeleted || method.isVolatile || method.variadic ||
-        method.refQualifier != CppMethodRefQualifier::None || method.callingConvention != "cdecl" ||
+        // Item 12.1: an `&` / `const&` receiver is an lvalue receiver, as NativeSharp calls it; `&&` stays out.
+        //     / Un receptor `&` / `const&` es un receptor lvalue, como lo llama NativeSharp; `&&` queda fuera.
+        method.refQualifier == CppMethodRefQualifier::RValue || method.callingConvention != "cdecl" ||
         !method.externalSymbol || method.externalSymbol->empty() || method.canonicalFunctionType.empty() ||
         (method.kind == CppMethodKind::Destructor && !method.parameters.empty()))
         return fail("C++ lifetime method contract is not yet mapped");
