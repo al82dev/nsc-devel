@@ -661,6 +661,19 @@ LLVMValueRef OopLlvmImplementation::convertScalar(
             sourceEnum != nullptr ? sourceEnum->isSigned : isSignedInteger(source);
         const bool targetSigned =
             targetEnum != nullptr ? targetEnum->isSigned : isSignedInteger(target);
+        // EN: Item 3.4 (D3). A number becomes `bool` as C converts it to `_Bool`: any nonzero value is true. A
+        //     truncation to the low bit made `(bool)2` false.
+        // ES: Item 3.4 (D3). Un numero pasa a `bool` como C lo convierte a `_Bool`: todo valor distinto de cero es
+        //     verdadero. Truncar al bit bajo hacia que `(bool)2` fuera falso.
+        if (target == "builtin:bool" && source != "builtin:bool" &&
+            (sourceWidth != 0 || source == "builtin:float" || source == "builtin:double"))
+        {
+            LLVMValueRef truth = sourceWidth != 0
+                ? LLVMBuildICmp(builder_, LLVMIntNE, value, LLVMConstNull(LLVMTypeOf(value)), "to.bool")
+                : LLVMBuildFCmp(builder_, LLVMRealUNE, value, LLVMConstNull(LLVMTypeOf(value)), "to.bool");
+            return destination == LLVMInt1TypeInContext(context_)
+                ? truth : LLVMBuildZExt(builder_, truth, destination, "to.bool.storage");
+        }
         if (sourceWidth != 0 && targetWidth != 0)
         {
             // EN: A checked conversion between built-in integers traps when the value does not fit,
