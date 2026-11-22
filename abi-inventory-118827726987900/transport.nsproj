@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>AbiProbe</Name></PropertyGroup><ItemGroup><Compile Include="transport.ns"/></ItemGroup></Project>
