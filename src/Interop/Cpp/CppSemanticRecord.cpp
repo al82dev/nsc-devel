@@ -320,6 +320,13 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     const auto& field = record.fields[fieldIndex];
     if (identity && field.type.kind == CppTypeKind::Array && field.type.isIncompleteArray)
         return projectCFlexibleArrayField(record, fieldIndex, identity->key(), projectOrdinal, moduleName, lookup);
+    // EN: Item 4.5. A final `T x[0]` (GNU and Microsoft extension) is the old spelling of a flexible array member:
+    //     same offset, no storage, indexed past its declared length.
+    // ES: Item 4.5. Un `T x[0]` final (extension GNU y Microsoft) es la forma antigua de un miembro flexible: mismo
+    //     offset, sin almacenamiento, indexado mas alla de su longitud declarada.
+    if (identity && field.type.kind == CppTypeKind::Array && field.type.arrayCount && *field.type.arrayCount == 0 &&
+        fieldIndex + 1 == record.fields.size())
+        return projectCFlexibleArrayField(record, fieldIndex, identity->key(), projectOrdinal, moduleName, lookup);
     if (field.bitWidth)
     {
         // EN: T19-004. A bit-field of enum type (C or C++, scoped or not) is read and written through the enum's
