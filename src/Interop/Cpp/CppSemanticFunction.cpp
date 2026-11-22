@@ -934,7 +934,8 @@ CppSemanticFunctionResult projectFunction(
             ? invocationTypeForC(sourceType, true) : carrier ? *carrier : input.type;
         // Top-level qualifiers on a by-value pointer describe the callee's
         // local parameter, not the pointer expression at the call site.
-        if (input.objectSizeMode && mappedInput.kind == CppTypeKind::Pointer)
+        // Item 2.6: with or without an object size contract (`int *const p`, `int a[const 4]`).
+        if (mappedInput.kind == CppTypeKind::Pointer && !reference)
         {
             mappedInput.isConst = false;
             mappedInput.isVolatile = false;
@@ -1160,6 +1161,13 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
             type.isVolatile = false;
         }
         else if (parameter.objectSizeDynamic) return fail("C++ instance method object size contract is invalid");
+        // Item 2.6: top-level qualifiers of a by-value pointer describe the callee's local. / Los calificadores
+        //     superiores de un puntero por valor describen el local del llamado.
+        else if (!reference && type.kind == CppTypeKind::Pointer)
+        {
+            type.isConst = false;
+            type.isVolatile = false;
+        }
         auto mapped = mapFunctionType(type, true, records ? &recordIndex : nullptr, moduleName, 0, lookup,
                                       projectOrdinal, false, false, lookup != nullptr);
         if (!mapped || parameter.type.kind == CppTypeKind::Void)
@@ -1275,6 +1283,12 @@ CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
             type.isVolatile = false;
         }
         else if (parameter.objectSizeDynamic) return fail("C++ static method object size contract is invalid");
+        // Item 2.6: top-level qualifiers of a by-value pointer. / Calificadores superiores de un puntero por valor.
+        else if (!reference && type.kind == CppTypeKind::Pointer)
+        {
+            type.isConst = false;
+            type.isVolatile = false;
+        }
         auto mapped = mapFunctionType(type, true, records ? &recordIndex : nullptr, moduleName, 0, lookup,
                                       projectOrdinal, false, false, true);
         if (!mapped || parameter.type.kind == CppTypeKind::Void)
