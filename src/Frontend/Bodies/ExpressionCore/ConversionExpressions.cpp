@@ -394,6 +394,17 @@ ProjectMethodBodyModel::analyzeExpressionKindCastExpression(
     if (memberModel_ == nullptr || nameLookup_ == nullptr) return result;
     result.typeKey = memberModel_->canonicalTypeKey(expression->typeSyntax(), *nameLookup_);
     result.valid = operand.valid && !isErrorType(result.typeKey);
+    // EN: C2-06. A `void` expression has no value to convert (a C function or macro that returns nothing); before,
+    //     the cast reached the backend and failed there.
+    // ES: C2-06. Una expresion `void` no tiene valor que convertir (una funcion o macro C que no devuelve nada);
+    //     antes, el cast llegaba al backend y fallaba ahi.
+    if (operand.valid && operand.typeKey == "builtin:void" && result.typeKey != "builtin:void")
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion, diagnostics::DiagnosticSeverity::Error,
+            expression->range(), "cannot convert a 'void' expression to '" + result.typeKey + "': it has no value");
+        result.valid = false;
+        return result;
+    }
     result.objectLifetimeOwnership = operand.objectLifetimeOwnership;
     result.storageOwnership = operand.storageOwnership;
     const bool targetPointeeReadonly =

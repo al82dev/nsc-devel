@@ -1817,6 +1817,15 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
         }
         bool deduced = false;
         std::vector<std::string> notes;
+        // C2-06: the NativeSharp site of a macro call, for __FILE__ and __LINE__. / El sitio NativeSharp de una
+        //     llamada a macro, para __FILE__ y __LINE__.
+        interop::CppMacroCallSite site;
+        if (request.functionMacro && request.syntax)
+        {
+            const auto begin = request.syntax->range().begin();
+            site.file = std::string(sourceManager_.getPath(begin));
+            site.line = sourceManager_.getPosition(begin).line;
+        }
         if (mapped && request.projectOrdinal < projectGraph_->projects().size())
             for (const auto& group : cppProjectSessions_)
             {
@@ -1825,7 +1834,9 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
                         projectGraph_->projects()[request.projectOrdinal].projectFile(), ec) || ec) continue;
                 for (const auto& session : group.sessions)
                     for (const auto& name : request.qualifiedNames)
-                        if (const auto result = session ? session->deduceFunctionTemplateCall(name, arguments) : std::nullopt)
+                        if (const auto result = !session ? std::nullopt
+                                : request.functionMacro ? session->deduceFunctionMacroCall(name, arguments, site)
+                                : session->deduceFunctionTemplateCall(name, arguments))
                         {
                             if (result->instantiated) deduced = true;
                             // T19-040: this call calls its own wrapper. / Esta llamada llama a su propio envoltorio.

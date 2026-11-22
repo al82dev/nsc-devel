@@ -128,4 +128,43 @@ rechazo(c5, 'return SQUARE(next());', 'may have side effects')
 rechazo(c5, 'int a = 1; return MAX(a, next());', 'may have side effects')
 rechazo(c5, 'return SQUARE(shared);', 'may have side effects')
 rechazo(c5, 'int a = 1; return SQUARE(a++);', 'may have side effects')
+
+# C2-06: `#__VA_ARGS__` and `a##__VA_ARGS__` take the written tokens; type arguments, statement macros that modify
+# lvalues and macros that expand __FILE__/__LINE__ describe the NativeSharp call site, as C describes the invocation.
+H6 = r'''
+#define STR(...) #__VA_ARGS__
+#define CAT(a, ...) a##__VA_ARGS__
+#define FIRST(a, ...) (a)
+#define COUNT(...) (sizeof((int[]){__VA_ARGS__}) / sizeof(int))
+#define SIZE(T) ((int)sizeof(T))
+#define SWAP(a, b) do { int t_ = (a); (a) = (b); (b) = t_; } while (0)
+#define WHERE() __LINE__
+#define FILE_OF() __FILE__
+#define NAME_OF() __func__
+int value12;
+int str_len(const char* s);
+int ends_main(const char* s);
+'''
+S6 = r'''
+int value12 = 12;
+int str_len(const char* s) { int n = 0; while (s[n]) n++; return n; }
+int ends_main(const char* s) { int n = str_len(s); return n >= 7 && s[n - 7] == 'M' && s[n - 1] == 's'; }
+'''
+# The body starts at line 4 of Main.ns in direct mode (using, preludio, `int Main()`, `{`), so WHERE() on the first
+# body line is 5.
+BODY6 = r'''    int line = WHERE();
+    if (str_len(STR(a, b)) != 4 || CAT(value, 12) != 12 || FIRST(40, 1, 2) != 40) return 1;
+    if ((int)COUNT(1, 2, 3) != 3 || SIZE(long) != 8) return 2;
+    int a = 1; int b = 2; SWAP(ref a, ref b);
+    if (a != 2 || b != 1) return 3;
+    if (line != 5 || ends_main(FILE_OF()) != 1) return 4;
+    return 42;
+'''
+c6 = Caso('c2-preprocesador', H6, S6)
+positivo(c6, BODY6, modes=['directo'])
+positivo(Caso('c2-preprocesador-bib', H6, S6), BODY6.replace('if (line != 5 || ends_main(FILE_OF()) != 1) return 4;',
+                                                           'if (line <= 0 || str_len(FILE_OF()) == 0) return 4;'),
+         modes=['lib', 'dll'])
+rechazo(c6, 'return str_len(NAME_OF());', 'names the enclosing C function')
+rechazo(c6, 'int a = 1; int b = 2; return (int)SWAP(ref a, ref b);', 'it has no value')
 fin()

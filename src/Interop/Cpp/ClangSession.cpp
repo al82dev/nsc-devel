@@ -538,6 +538,9 @@ std::vector<unsigned> macroTokenParameters(const clang::MacroInfo& info)
     const unsigned named = info.isVariadic() ? info.getNumParams() - 1 : info.getNumParams();
     for (unsigned parameter = 0; parameter < named; ++parameter)
         if (!uses.value[parameter]) result.push_back(parameter);
+    // C2-06: variable arguments used only with `#` or `##`. / Argumentos variables usados solo con `#` o `##`.
+    if (info.isVariadic() && !uses.value.back() && (uses.stringified.back() || uses.pasted.back()))
+        result.push_back(kCppVariadicTokenParameters + named);
     return result;
 }
 
@@ -4170,6 +4173,17 @@ public:
     //     nombre deduce sus argumentos de los tipos de los argumentos de la llamada (un escalar como prvalue,
     //     un record como lvalue, como una variable NativeSharp), como la deduccion de C++; Sema instancia cada
     //     especializacion deducida y la resolucion de sobrecarga de NativeSharp elige entre ellas.
+    std::optional<CppTemplateInstantiation> deduceFunctionMacroCall(
+        std::string_view name, std::span<const CppTemplateArgument> argumentTypes,
+        const CppMacroCallSite& site) const override
+    {
+        {
+            std::lock_guard lock(mutex_);
+            if (ast_)
+                if (auto expanded = expandCFunctionMacroCall(name, argumentTypes, &site)) return expanded;
+        }
+        return deduceFunctionTemplateCall(name, argumentTypes);
+    }
     std::optional<CppTemplateInstantiation> deduceFunctionTemplateCall(
         std::string_view qualifiedName, std::span<const CppTemplateArgument> argumentTypes) const override
     {
@@ -5843,7 +5857,8 @@ private:
     //     macro (cMacroWrapper). Un envoltorio que Clang rechaza deja la sesion como estaba y devuelve los
     //     diagnosticos de Clang. Quien llama tiene el mutex.
     std::optional<CppTemplateInstantiation> expandCFunctionMacroCall(
-        std::string_view name, std::span<const CppTemplateArgument> argumentTypes) const
+        std::string_view name, std::span<const CppTemplateArgument> argumentTypes,
+        const CppMacroCallSite* site = nullptr) const
     {
         auto& preprocessor = ast_->getPreprocessor();
         const auto& sources = ast_->getSourceManager();
@@ -5866,19 +5881,39 @@ private:
         //     uno usado tambien como valor recibe el valor, y su `#x` el texto de la llamada. Los argumentos
         //     variables siguen pasandose solo como valores.
         const auto uses = macroParameterUses(*info);
-        // Item 16.8: a site-sensitive macro would report the wrapper's location. / Una macro sensible al sitio
-        //     informaria la ubicacion del envoltorio.
+        // EN: Item 16.8, C2-06. __FILE__ and __LINE__ describe the invocation: with the NativeSharp call site the
+        //     wrapper of that call is generated under `#line <line> "<file>"`, so they expand to the call's file and
+        //     line, as in C. __func__ names the enclosing C function, and a NativeSharp call has none: rejected.
+        // ES: Item 16.8, C2-06. __FILE__ y __LINE__ describen la invocacion: con el sitio de la llamada NativeSharp
+        //     el envoltorio de esa llamada se genera bajo `#line <linea> "<archivo>"`, asi se expanden al archivo y
+        //     la linea de la llamada, como en C. __func__ nombra la funcion C que la contiene, y una llamada
+        //     NativeSharp no tiene: se rechaza.
+        bool siteSensitive = false;
         for (const auto& token : info->tokens())
             if (const auto* identifier = token.getIdentifierInfo())
-                if (const auto spelled = identifier->getName(); spelled == "__FILE__" || spelled == "__LINE__" ||
-                    spelled == "__func__" || spelled == "__FUNCTION__" || spelled == "__builtin_FILE" ||
-                    spelled == "__builtin_LINE" || spelled == "__builtin_FUNCTION")
+            {
+                const auto spelled = identifier->getName();
+                if (spelled == "__func__" || spelled == "__FUNCTION__" || spelled == "__builtin_FUNCTION")
                 {
-                    result.diagnostics.push_back("the macro uses " + spelled.str() + ", which would describe the "
-                        "wrapper NativeSharp generates instead of the call site");
+                    result.diagnostics.push_back("the macro uses " + spelled.str() + ", which names the enclosing C "
+                        "function, and a NativeSharp call is not inside one");
                     return result;
                 }
-        if (info->isVariadic() && info->getNumParams() > 0 &&
+                if (spelled == "__FILE__" || spelled == "__LINE__" || spelled == "__builtin_FILE" ||
+                    spelled == "__builtin_LINE")
+                {
+                    if (!site || site->line == 0 || site->file.empty())
+                    {
+                        result.diagnostics.push_back("the macro uses " + spelled.str() + ", which would describe the "
+                            "wrapper NativeSharp generates instead of the call site");
+                        return result;
+                    }
+                    siteSensitive = true;
+                }
+            }
+        // C2-06: only variable arguments used both as values and with `#`/`##` remain out. / Solo quedan fuera los
+        //     argumentos variables usados como valor y con `#`/`##`.
+        if (info->isVariadic() && info->getNumParams() > 0 && uses.value.back() &&
             (uses.stringified.back() || uses.pasted.back()))
         {
             result.diagnostics.push_back("the macro turns its variable arguments into a string (#) or pastes them "
@@ -5911,8 +5946,11 @@ private:
             const std::size_t parameterIndex = variadic && index + 1 >= parameters ? parameters - 1 : index;
             // T19-042: a type argument is always passed as written. / Un argumento de tipo siempre se pasa como se
             //     escribio.
-            const bool tokenArgument = argument.token || (!(variadic && parameterIndex + 1 == parameters) &&
-                parameterIndex < uses.value.size() && !uses.value[parameterIndex]);
+            // C2-06: variable arguments that are only stringified or pasted are tokens too. / Los argumentos
+            //     variables que solo se convierten en cadena o se pegan tambien son tokens.
+            const bool variadicPart = variadic && parameterIndex + 1 == parameters;
+            const bool tokenArgument = argument.token || (parameterIndex < uses.value.size() &&
+                !uses.value[parameterIndex] && (!variadicPart || uses.stringified.back() || uses.pasted.back()));
             if (tokenArgument)
             {
                 if (!argument.token || argument.sourceSpelling.empty())
@@ -6021,6 +6059,13 @@ private:
             passed += (passed.empty() ? "" : ", ") + value;
         }
         key += ")";
+        // C2-06: a site-sensitive macro has one wrapper per call site. / Una macro sensible al sitio tiene un
+        //     envoltorio por sitio de llamada.
+        if (siteSensitive)
+        {
+            key += "@" + site->file + ":" + std::to_string(site->line);
+            callSpecific = true;
+        }
         if (macroWrapperByCall_.contains(key))
         {
             result.instantiated = true;
@@ -6049,9 +6094,72 @@ private:
             "\nstatic inline __typeof__((0, " + std::string(name) + "(" + unevaluated + "))) " + wrapper + "(" +
                 parameterList + ")\n{ return " + call + "; }\n",
             "\nstatic inline void " + wrapper + "(" + parameterList + ")\n{ " + call + "; }\n"};
-        std::vector<std::string> rejected;
-        for (const auto& form : cpp ? cppForms : cForms)
+        // EN: C2-06. A result type that only exists at block scope (a compound literal built from the arguments,
+        //     `sizeof((int[]){__VA_ARGS__})`) cannot be written as `__typeof__` of the file-scope return type: a probe
+        //     function deduces it at block scope and the wrapper names it explicitly, before the `void` form.
+        // ES: C2-06. Un tipo de resultado que solo existe en ambito de bloque (un literal compuesto hecho con los
+        //     argumentos) no se puede escribir como `__typeof__` del tipo de retorno de archivo: una funcion de sondeo
+        //     lo deduce en ambito de bloque y el envoltorio lo nombra explicitamente, antes de la forma `void`.
+        std::vector<std::string> forms = cpp ? cppForms : cForms;
+        if (!cpp)
         {
+            const std::string probeName = "__nsc_type_probe_" + wrapper;
+            std::string probe = source_ + "\nstatic inline void " + probeName + "(" + parameterList +
+                ")\n{ __typeof__(" + call + ") __nsc_result = " + call + "; (void)__nsc_result; }\n";
+            llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> probeFilesystem(
+                llvm::vfs::createPhysicalFileSystem().release());
+            if (!probeFilesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory)))
+            {
+                std::vector<CppSessionDiagnostic> probeDiagnostics;
+                detail::DiagnosticCollector probeCollector(probeDiagnostics);
+                auto probeUnit = detail::runClangSessionAction(probe, detail::buildClangInvocationArguments(options_),
+                    inputPath_, utf8(options_.driverReferencePath), &probeCollector, std::move(probeFilesystem),
+                    CppCancellationToken{});
+                if (probeUnit && !probeUnit->getDiagnostics().hasErrorOccurred())
+                    for (const auto* declaration : probeUnit->getASTContext().getTranslationUnitDecl()->decls())
+                        if (const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration);
+                            function && function->getIdentifier() && function->getName() == probeName &&
+                            function->getBody())
+                            for (const auto* statement : function->getBody()->children())
+                                if (const auto* declarations = llvm::dyn_cast<clang::DeclStmt>(statement))
+                                    for (const auto* item : declarations->decls())
+                                        if (const auto* variable = llvm::dyn_cast<clang::VarDecl>(item);
+                                            variable && variable->getName() == "__nsc_result")
+                                        {
+                                            const auto type = variable->getType().getCanonicalType()
+                                                .getUnqualifiedType();
+                                            if (!type->isVoidType() && !type->isArrayType() &&
+                                                !type->isFunctionType() && (type->isScalarType() ||
+                                                    (type->isRecordType() && !type->getAsRecordDecl()
+                                                        ->getDeclName().isEmpty())))
+                                            {
+                                                clang::PrintingPolicy policy(
+                                                    probeUnit->getASTContext().getLangOpts());
+                                                forms.insert(forms.end() - 1, "\nstatic inline " +
+                                                    type.getAsString(policy) + " " + wrapper + "(" + parameterList +
+                                                    ")\n{ return " + call + "; }\n");
+                                            }
+                                        }
+            }
+        }
+        std::vector<std::string> rejected;
+        for (const auto& baseForm : forms)
+        {
+            // C2-06: the wrapper of a site-sensitive call sits, on one line, at the call's file and line. / El
+            //     envoltorio de una llamada sensible al sitio queda, en una linea, en el archivo y linea de la llamada.
+            std::string form = baseForm;
+            if (siteSensitive)
+            {
+                std::string file;
+                for (const char c : site->file)
+                {
+                    if (c == '\\' || c == '"') file.push_back('\\');
+                    file.push_back(c);
+                }
+                std::string oneLine = form.substr(1);
+                std::replace(oneLine.begin(), oneLine.end(), '\n', ' ');
+                form = "\n#line " + std::to_string(site->line) + " \"" + file + "\"\n" + oneLine + "\n";
+            }
             std::string code = source_ + form;
             llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(
                 llvm::vfs::createPhysicalFileSystem().release());

@@ -249,6 +249,8 @@ struct CppTemplateInstantiation
 //     constant is imported as one; a function-like macro or any other expansion is not.
 // ES: T14-001. Una macro que define el encabezado, segun la puede usar NativeSharp: una macro de objeto que se
 //     expande a una constante se importa como tal; una macro de funcion u otra expansion no.
+inline constexpr unsigned kCppVariadicTokenParameters = 0x40000000U;
+
 struct CppMacroName
 {
     std::string name;
@@ -259,6 +261,10 @@ struct CppMacroName
     // ES: T19-040. Los parametros que una macro de funcion usa solo con `#` o `##`, o que no usa: C no evalua sus
     //     argumentos, asi que NativeSharp los pasa como tokens.
     std::vector<unsigned> tokenParameters{};
+    // EN: C2-06. In tokenParameters, kCppVariadicTokenParameters + n marks every argument from position n on (the
+    //     variable arguments of a macro that only stringifies or pastes __VA_ARGS__) as tokens.
+    // ES: C2-06. En tokenParameters, kCppVariadicTokenParameters + n marca como tokens todos los argumentos desde la
+    //     posicion n (los argumentos variables de una macro que solo convierte en cadena o pega __VA_ARGS__).
     // EN: C2-02. An object-like macro that expands to a list of arguments (`"$clr.diffuse", 0, 0`): its element
     //     count. Each element is imported as the macro `<name>__nsc_arg<i>`, and a call argument that names the
     //     macro stands for all of them, in order, as the C preprocessor expands it.
@@ -271,6 +277,13 @@ struct CppMacroName
     // ES: C2-03. Una macro cuya expansion es una lista entre llaves: los tipos record (como los escribe NativeSharp)
     //     para los que Clang la acepta. Cada uno se importa como `<nombre>__nsc_init_<tipo>`.
     std::vector<std::string> braceInitializerTypes{};
+};
+
+// C2-06: the NativeSharp site of a macro call. / El sitio NativeSharp de una llamada a macro.
+struct CppMacroCallSite
+{
+    std::string file;
+    std::uint32_t line = 0;
 };
 
 struct CppTemplateName
@@ -388,6 +401,15 @@ public:
     // los tipos de los argumentos de una llamada; las especializaciones deducidas se importan con su nombre.
     virtual std::optional<CppTemplateInstantiation> deduceFunctionTemplateCall(
         std::string_view, std::span<const CppTemplateArgument>) const { return std::nullopt; }
+    // EN: C2-06. The same request for a call to a C function-like macro, with the NativeSharp call site: a macro that
+    //     expands __FILE__ or __LINE__ describes the site of its invocation, as in C.
+    // ES: C2-06. La misma peticion para una llamada a una macro de funcion C, con el sitio de la llamada
+    //     NativeSharp: una macro que expande __FILE__ o __LINE__ describe el sitio de su invocacion, como en C.
+    virtual std::optional<CppTemplateInstantiation> deduceFunctionMacroCall(
+        std::string_view name, std::span<const CppTemplateArgument> arguments, const CppMacroCallSite&) const
+    {
+        return deduceFunctionTemplateCall(name, arguments);
+    }
     // Experimental structural comparison only; nullopt means no reliable comparison was possible.
     // A true result is not proof of full ODR or ABI equivalence.
     virtual std::optional<bool> structurallyEquivalentRecord(

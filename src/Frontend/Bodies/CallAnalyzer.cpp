@@ -4381,7 +4381,13 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                     if ((argument != nullptr && argument->kind() == ast::AstNodeKind::TypeArgumentExpression) ||
                         importedTypeName ||
                         std::find(site->tokenParameters.begin(), site->tokenParameters.end(), position) !=
-                        site->tokenParameters.end())
+                        site->tokenParameters.end() ||
+                        // C2-06: every variable argument of a macro that stringifies or pastes them. / Cada
+                        //     argumento variable de una macro que los convierte en cadena o los pega.
+                        std::any_of(site->tokenParameters.begin(), site->tokenParameters.end(), [&](unsigned value) {
+                            return value >= interop::kCppVariadicTokenParameters &&
+                                position >= value - interop::kCppVariadicTokenParameters;
+                        }))
                     {
                         request.argumentTypeKeys.push_back("token:");
                         continue;
