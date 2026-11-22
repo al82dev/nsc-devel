@@ -99,6 +99,26 @@ inline bool cppRecordValueOperationsEligible(const CppRecordValueTraits& traits,
         valid(operations.assignFromConst) && valid(operations.assignFromMutable);
 }
 
+// EN: Item 10.1 (T16). Passing, returning and copying a value only needs its bytes to be the object: trivially
+//     copyable with trivial copy, assignment and destruction. A non-trivial default constructor (`ImVec2() : x(0),
+//     y(0) {}`) matters only when NativeSharp default-initializes a local, which still requires construction.
+// ES: Item 10.1 (T16). Pasar, devolver y copiar un valor solo necesita que sus bytes sean el objeto: trivialmente
+//     copiable con copia, asignacion y destruccion triviales. Un constructor por defecto no trivial solo importa
+//     cuando NativeSharp inicializa por defecto un local, que sigue exigiendo construccion.
+inline bool cppRecordValueTransportEligible(const CppRecordValueTraits& traits,
+                                            const CppRecordValueOperations& operations) noexcept
+{
+    if (traits.hasNonLiteralOrVolatileFieldsOrBases || !traits.triviallyCopyable || !traits.trivialDestructor)
+        return false;
+    const auto valid = [](const CppSpecialMemberSelection& operation) {
+        return operation.status == CppSpecialMemberSelectionStatus::Selected &&
+            operation.access == CppAccess::Public && operation.isDeleted == false &&
+            operation.isTrivial == true;
+    };
+    return valid(operations.copyFromConst) && valid(operations.copyFromMutable) &&
+        valid(operations.destructor) && valid(operations.assignFromConst) && valid(operations.assignFromMutable);
+}
+
 struct CppCInlineIRExport
 {
     std::string name;

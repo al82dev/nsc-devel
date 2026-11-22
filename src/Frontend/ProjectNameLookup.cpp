@@ -374,7 +374,23 @@ bool ProjectNameLookup::cppTrivialValueEligible(std::size_t typeOrdinal) const n
         !imported->deferredImportError.empty() || !imported->objectLayout ||
         imported->targetTriple != "x86_64-pc-windows-msvc" || !imported->cppValueTraits ||
         !imported->cppValueOperations) return false;
-    return interop::cppRecordValueOperationsEligible(*imported->cppValueTraits, *imported->cppValueOperations);
+    // EN: Item 10.1 (T16). A value is passed, returned, copied and stored as bytes when its copy, assignment and
+    //     destruction are trivial; a non-trivial default constructor only forbids default-initializing a local
+    //     (checked where a local is declared).
+    // ES: Item 10.1 (T16). Un valor se pasa, devuelve, copia y almacena como bytes si su copia, asignacion y
+    //     destruccion son triviales; un constructor por defecto no trivial solo impide inicializar por defecto un
+    //     local (se comprueba donde se declara).
+    return interop::cppRecordValueTransportEligible(*imported->cppValueTraits, *imported->cppValueOperations);
+}
+
+bool ProjectNameLookup::cppTransportValueEligible(std::size_t typeOrdinal) const noexcept
+{
+    const auto* imported = cppImportedType(typeOrdinal);
+    if (!imported || imported->origin != CppImportedTypeOrigin::CppRecord || imported->isIncomplete ||
+        !imported->deferredImportError.empty() || !imported->objectLayout ||
+        imported->targetTriple != "x86_64-pc-windows-msvc" || !imported->cppValueTraits ||
+        !imported->cppValueOperations) return false;
+    return interop::cppRecordValueTransportEligible(*imported->cppValueTraits, *imported->cppValueOperations);
 }
 
 std::span<const std::size_t> ProjectNameLookup::typeOrdinalsForName(

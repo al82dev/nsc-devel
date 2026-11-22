@@ -2065,6 +2065,22 @@ bool ProjectCompilation::compileProjectOopHir(
                 const auto* importedValue = valueOrdinal ? nameLookup_->cppImportedType(*valueOrdinal) : nullptr;
                 const bool cppValue = importedValue && importedValue->origin != CppImportedTypeOrigin::CppEnum;
                 const bool guardedCppValue = cppValue && !nameLookup_->cppTrivialValueEligible(*valueOrdinal);
+                // EN: Item 10.1. A local of a C++ type whose default constructor is not trivial
+                //     (`ImVec2() : x(0), y(0) {}`) cannot be default-initialized as bytes: it is constructed
+                //     explicitly (`V v = new V();`) or initialized from a value.
+                // ES: Item 10.1. Un local de un tipo C++ cuyo constructor por defecto no es trivial no se puede
+                //     inicializar por defecto como bytes: se construye explicitamente o se inicializa con un valor.
+                if (cppValue && !guardedCppValue && importedValue->cppValueTraits &&
+                    !importedValue->cppValueTraits->trivialDefaultConstructor &&
+                    node->kind == ProjectOopHirNodeKind::LocalDeclaration && !node->referenceLocal &&
+                    (node->children.empty() || !node->children[0] ||
+                     node->children[0]->kind == ProjectOopHirNodeKind::DefaultValue))
+                {
+                    loadError = "C++ type '" + importedValue->identity.fullyQualifiedName() + "' has a non-trivial "
+                        "default constructor; initialize the local with 'new " +
+                        importedValue->identity.fullyQualifiedName() + "()' or with a value";
+                    return false;
+                }
                 if (experimentalCppLocalLifetimeAnalysisForTests_ && guardedCppValue &&
                     node->kind == ProjectOopHirNodeKind::LocalDeclaration && !node->referenceLocal)
                 {

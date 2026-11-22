@@ -202,6 +202,9 @@ public:
     const CppImportedTypeDeclaration* cppImportedType(std::size_t typeOrdinal) const noexcept;
     // This conservative live observation does not provide an NSMeta contract.
     bool cppTrivialValueEligible(std::size_t typeOrdinal) const noexcept;
+    // Item 10.1: a value NativeSharp may pass, return and copy (its default constructor may be non-trivial).
+    // Item 10.1: un valor que NativeSharp puede pasar, devolver y copiar (su constructor por defecto puede no ser trivial).
+    bool cppTransportValueEligible(std::size_t typeOrdinal) const noexcept;
     // EN: T13-007. The NativeSharp structs a C++ session mirrors for a template argument, by identity key.
     // ES: T13-007. Los structs NativeSharp que una sesion C++ refleja para un argumento de plantilla, por clave.
     void setCppNativeMirrorTypes(std::set<std::string, std::less<>> identityKeys);
