@@ -54,6 +54,8 @@
 #include <process.h>
 #endif
 
+// The backend cache helpers only serve the LLVM ThinLTO path. / Solo los usa la ruta ThinLTO de LLVM.
+#if !defined(NSC_THINLTO_UNAVAILABLE)
 namespace
 {
 // EN: LKF-437: a backend cache entry is a raw COFF object for x64. An entry that is empty, truncated or
@@ -81,6 +83,7 @@ std::string thinLtoCacheProcessTag()
 #endif
 }
 }
+#endif
 
 namespace nativesharp::llvm_backend
 {
