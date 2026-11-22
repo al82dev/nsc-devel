@@ -2268,10 +2268,21 @@ CppSemanticInventoryResult collectCppSemanticFunctions(
                 const bool hasRecordValue = declaration.returnType.kind == CppTypeKind::Record ||
                     std::any_of(declaration.parameters.begin(), declaration.parameters.end(),
                         [](const CppFunctionParameter& parameter) { return parameter.type.kind == CppTypeKind::Record; });
-                if (options.language == CppLanguageMode::C && declaration.externalLinkage &&
+                // EN: C3-08. A C `static inline` definition keeps Clang's plan too, under the symbol of its link wrapper
+                //     (the definition is emitted with its own attributes and that name).
+                // ES: C3-08. Una definicion C `static inline` tambien conserva el plan de Clang, con el simbolo de su
+                //     envoltorio de enlace (la definicion se emite con sus atributos y ese nombre).
+                const bool staticInline = declaration.isCStaticInlineDefinition && !declaration.externalLinkage;
+                if (options.language == CppLanguageMode::C && (declaration.externalLinkage || staticInline) &&
                     (declaration.callingConvention == "sysv_abi" || declaration.callingConvention == "regcall") && hasRecordValue)
                 {
                     auto plan = session->cFunctionAbiPlan(declaration.name, declaration.canonicalFunctionType);
+                    if (plan && staticInline)
+                    {
+                        if (plan->symbol != declaration.name) plan.reset();
+                        else plan->symbol = cppCInlineLinkSymbol(group.projectFile, index,
+                            declaration.cMacroWrapper.empty() ? declaration.name : declaration.cMacroWrapper);
+                    }
                     if (plan) declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
                 }
                 if (options.language == CppLanguageMode::C)

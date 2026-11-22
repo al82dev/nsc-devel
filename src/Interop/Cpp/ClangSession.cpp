@@ -2837,7 +2837,11 @@ public:
         for (const auto* declaration : context.getTranslationUnitDecl()->decls())
         {
             const auto* candidate = llvm::dyn_cast<clang::FunctionDecl>(declaration);
-            if (!candidate || candidate->isImplicit() || !candidate->isExternallyVisible() ||
+            // C3-08: also a `static inline` definition, whose plan its link wrapper keeps. / Tambien una definicion
+            //     `static inline`, cuyo plan conserva su envoltorio de enlace.
+            if (!candidate || candidate->isImplicit() ||
+                (!candidate->isExternallyVisible() &&
+                 !(candidate->getStorageClass() == clang::SC_Static && candidate->isInlineSpecified())) ||
                 candidate->getNameAsString() != name || candidate->isDependentContext()) continue;
             candidate = candidate->getMostRecentDecl();
             if (candidate->getType().getCanonicalType().getAsString() != canonicalType) continue;

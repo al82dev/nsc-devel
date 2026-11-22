@@ -243,4 +243,49 @@ c7 = Caso('c3-flexible-arreglos', H7, S7)
 positivo(c7, BODY7)
 rechazo(c7, 'var o = one(); return o->data[1];', 'outside [0, 1)')
 rechazo(c7, 'var g = grid(); return g->rows[0][4];', 'outside [0, 4)')
+
+# C3-08: a pointer to an unprototyped C function (`int (*)()`) takes any arguments with C's default promotions
+# (`1.5f` reaches a `double` parameter); `static inline` `sysv_abi` functions with record values keep Clang's plan
+# under their link wrapper, as external ones do; and a record built from scalars (`P make(int, int)`) survives the
+# precompiled metadata. An unprototyped pointer of another convention stays unmapped.
+H8 = r'''
+typedef struct P { int x; int y; } P;
+typedef struct Big { long long a, b, c; } Big;
+typedef int (*kr)();
+typedef int (__attribute__((sysv_abi)) *krs)();
+kr get_kr(void);
+kr get_krd(void);
+krs get_krs(void);
+__attribute__((sysv_abi)) P exm(int x, int y);
+static inline __attribute__((sysv_abi)) int sx(P p) { return p.x * 10 + p.y; }
+static inline __attribute__((sysv_abi)) Big sbig(Big b) { Big r = {b.a + 1, b.b + 1, b.c + 1}; return r; }
+static inline __attribute__((sysv_abi)) P smk(int x, int y) { P p = {x, y}; return p; }
+'''
+S8 = r'''
+static int kr_impl(int a, int b) { return a + b; }
+static int krd_impl(double d, int k) { return (int)(d * 4.0) + k; }
+static int __attribute__((sysv_abi)) krs_impl(void) { return 1; }
+kr get_kr(void) { return (kr)kr_impl; }
+kr get_krd(void) { return (kr)krd_impl; }
+krs get_krs(void) { return (krs)krs_impl; }
+P exm(int x, int y) { P p = {x, y}; return p; }
+'''
+BODY8 = r'''
+    var f = get_kr();
+    if (f(40, 2) != 42) return 1;
+    var d = get_krd();
+    if (d(1.5f, 36) != 42 || d(2.5, 32) != 42) return 2;
+    P p; p.x = 4; p.y = 2;
+    if (sx(p) != 42) return 3;
+    Big b; b.a = 1; b.b = 2; b.c = 36;
+    var r = sbig(b);
+    if (r.a + r.b + r.c != 42) return 4;
+    var m = smk(4, 2);
+    var e = exm(4, 2);
+    if (m.x * 10 + m.y != 42 || e.x * 10 + e.y != 42) return 5;
+    return 42;
+'''
+c8 = Caso('c3-sin-prototipo-sysv', H8, S8)
+positivo(c8, BODY8)
+rechazo(c8, 'var f = get_krs(); return f();', 'get_krs')
 fin()

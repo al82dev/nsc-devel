@@ -491,7 +491,15 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         if (std::all_of(function.parameterPointerLevelQualifiers.begin(), function.parameterPointerLevelQualifiers.end(),
                         [](std::uint8_t mask) { return mask == 0U; }))
             function.parameterPointerLevelQualifiers.clear();
-        function.variadic = signature.variadic;
+        // EN: C3-08. A pointer to an unprototyped C function (`int (*)()`) is a C function type with no fixed
+        //     parameters that takes any arguments: a call applies C's default argument promotions and passes them in
+        //     their positions (floating values also in the general registers), which serves both a prototyped and a
+        //     variadic callee, as C allows. Converting it to a typed pointer stays an explicit cast.
+        // ES: C3-08. Un puntero a una funcion C sin prototipo (`int (*)()`) es un tipo de funcion C sin parametros
+        //     fijos que toma cualquier argumento: una llamada aplica las promociones por defecto de C y los pasa en sus
+        //     posiciones (los flotantes tambien en registros generales), lo que sirve a un destino con prototipo o
+        //     variadico, como C lo permite. Convertirlo a un puntero tipado sigue siendo un cast explicito.
+        function.variadic = signature.variadic || !signature.hasPrototype;
         // EN: C3-01. A callback with a `_Float16` value would pass it through a NativeSharp thunk in a general
         //     register, while C uses XMM: it stays unmapped (a direct call adapts it).
         // ES: C3-01. Un callback con un valor `_Float16` lo pasaria por un thunk NativeSharp en un registro general,

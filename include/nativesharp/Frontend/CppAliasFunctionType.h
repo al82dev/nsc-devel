@@ -32,7 +32,8 @@ inline std::optional<CppAliasFunctionType> cppAliasFunctionType(const interop::C
     else return std::nullopt;
     const auto result = cppAliasBuiltinType(signature.returnType);
     if (!result) return std::nullopt;
-    CppAliasFunctionType mapped{*result, {}, convention, signature.variadic};
+    // C3-08: an unprototyped pointer takes any arguments. / Un puntero sin prototipo toma cualquier argumento.
+    CppAliasFunctionType mapped{*result, {}, convention, signature.variadic || !signature.hasPrototype};
     for (const auto& parameter : signature.parameterTypes)
     {
         const auto value = cppAliasBuiltinType(parameter);

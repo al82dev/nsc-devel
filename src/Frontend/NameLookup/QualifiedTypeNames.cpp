@@ -957,7 +957,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     value->setFunctionCarrier(ast::FunctionTypeCarrierSyntaxKind::Pointer);
                     value->setFunctionCallingConvention(nestedConvention);
                     value->setFunctionReturnType(returnType);
-                    value->setFunctionVariadic(nested.variadic);
+                    value->setFunctionVariadic(nested.variadic || !nested.hasPrototype); // C3-08
                     for (auto* argument : arguments) value->addTypeArgument(argument);
                     return value;
                 }
@@ -1059,7 +1059,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
             mutableSyntax->setFunctionCarrier(ast::FunctionTypeCarrierSyntaxKind::Pointer);
             mutableSyntax->setFunctionCallingConvention(convention);
             mutableSyntax->setFunctionReturnType(result);
-            mutableSyntax->setFunctionVariadic(signature.variadic);
+            mutableSyntax->setFunctionVariadic(signature.variadic || !signature.hasPrototype); // C3-08
             for (auto* parameter : parameters) mutableSyntax->addTypeArgument(parameter);
             return true;
         }

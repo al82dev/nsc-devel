@@ -603,7 +603,13 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     // The current contract stores the direct aggregate plans the backend can consume.
     // A missing observation is never interpreted as an ABI classification.
     const bool directRecord = f.abiPlan && abi_plan::isSysVSmallRecordRoundTrip(*f.abiPlan, value.linkSymbol);
-    const bool manyRecords = f.abiPlan && abi_plan::isSysVSmallRecordsRoundTrip(*f.abiPlan, value.linkSymbol);
+    // EN: C3-08. The small-records class needs a record argument; a record built from scalars (`P make(int, int)`)
+    //     is a direct return with arguments. Before, it was classified here and then refused.
+    // ES: C3-08. La clase de records pequenos necesita un argumento record; un record formado por escalares
+    //     (`P make(int, int)`) es un retorno directo con argumentos. Antes se clasificaba aqui y luego se rechazaba.
+    const bool manyRecords = f.abiPlan && abi_plan::isSysVSmallRecordsRoundTrip(*f.abiPlan, value.linkSymbol) &&
+        std::any_of(f.parameters.begin(), f.parameters.end(),
+            [](const auto& parameter) { return parameter.type.kind == CppTypeKind::Record; });
     const bool singleVector = f.abiPlan && abi_plan::isSysVSingleVector2FRecordRoundTrip(*f.abiPlan, value.linkSymbol);
     const bool singleFloating = f.abiPlan && abi_plan::isSysVSingleFloatingRecordRoundTrip(*f.abiPlan, value.linkSymbol);
     const bool singleFloat = singleFloating && f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Float;
