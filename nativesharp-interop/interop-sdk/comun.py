@@ -61,7 +61,8 @@ def core(opt):
 class Caso:
     """header: text of api.h. source: C/C++ implementation (None = header only). language: C or C++."""
 
-    def __init__(self, nombre, header, source=None, language='C', standard=None, extra_ref='', clang_args=()):
+    def __init__(self, nombre, header, source=None, language='C', standard=None, extra_ref='', clang_args=(),
+                 shared=False):
         self.nombre = nombre
         self.header = header
         self.source = source
@@ -69,6 +70,8 @@ class Caso:
         self.standard = standard or ('c17' if language == 'C' else 'c++20')
         self.extra_ref = extra_ref
         self.clang_args = list(clang_args)
+        # shared: the C/C++ source becomes capi.dll with its import library capi.lib (no CRT, no entry point).
+        self.shared = shared
 
     def native(self, folder):
         folder.mkdir(parents=True, exist_ok=True)
@@ -83,6 +86,12 @@ class Caso:
                       'api.obj'], folder, 'clang')
         if result.returncode:
             raise SystemExit(f'{self.nombre}: clang fallo:\n{result.stdout}')
+        if self.shared:
+            result = run([CLANG, '--target=x86_64-pc-windows-msvc', '-shared', '-fuse-ld=lld', '-nostdlib',
+                          '-Wl,/noentry', 'api.obj', '-o', 'capi.dll', '-Wl,/implib:capi.lib'], folder, 'link-dll')
+            if result.returncode:
+                raise SystemExit(f'{self.nombre}: enlace de la DLL C fallo:\n{result.stdout}')
+            return ' Library="capi.lib" Runtime="capi.dll"'
         result = run([LLVM_LIB, '/nologo', '/out:capi.lib', 'api.obj'], folder, 'llvm-lib')
         if result.returncode:
             raise SystemExit(f'{self.nombre}: llvm-lib fallo:\n{result.stdout}')
