@@ -219,7 +219,12 @@ std::vector<std::string> namespaceFunctionCandidateNotes(
                 if (failed != candidate->conversions.end())
                     note += ": argument " + std::to_string(failed - candidate->conversions.begin() + 1) +
                             " of type '" + readableTypeKey(failed->sourceTypeKey) + "' does not convert to '" +
-                            readableTypeKey(failed->targetTypeKey) + "'";
+                            readableTypeKey(failed->targetTypeKey) + "'" +
+                            // Item 3.2b (D2): a literal is never handed over as writable memory.
+                            (failed->sourceTypeKey == "string-literal" && failed->targetTypeKey.ends_with('*')
+                                 ? std::string(" (a string literal is read-only and this C/C++ parameter may write "
+                                               "through the pointer; pass a writable buffer)")
+                                 : std::string{});
                 else
                     note += " does not accept these arguments";
             }
@@ -1174,6 +1179,12 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
     }
     ProjectImplicitConversion conversion =
         classifyImportedFlexibleConversion(arguments[argumentOrdinal], conversionTarget);
+    // Items 3.2 and 3.3: the C conversions at a C/C++ boundary. / Las conversiones C en una frontera C/C++.
+    const bool cBoundary = candidate.isImportedC || candidate.isCppExternal ||
+        (namespaceFunctionModel_ != nullptr && evaluated.memberOrdinal < namespaceFunctionModel_->functions().size() &&
+         namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppReturnType.has_value());
+    if (!conversion.exists() && !packElement && cBoundary)
+        conversion = classifyCFrontierConversion(arguments[argumentOrdinal], parameter, conversionTarget);
     // EN: Freeze P3: an `in` parameter only reads its argument, so a readonly place (another
     //     `in` parameter, a readonly field, a `ref readonly` result) may be lent to it.
     // ES: Congelamiento P3: un parametro `in` solo lee su argumento, asi que se le puede prestar
@@ -6195,6 +6206,9 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     }
     ProjectImplicitConversion conversion = classifyImportedFlexibleConversion(argument, conversionTarget);
     const MethodParameterSymbol& parameter = candidate.parameters[parameterOrdinal];
+    // Items 3.2 and 3.3: the C conversions at a C/C++ boundary. / Las conversiones C en una frontera C/C++.
+    if (!conversion.exists() && !packElement && (candidate.isImportedC || candidate.isCppExternal))
+        conversion = classifyCFrontierConversion(argument, parameter, conversionTarget);
     const bool boundLvalue = rvalueArgument && conversion.exists() &&
         conversion.kind == ProjectConversionKind::Identity && argument.addressable;
     // EN: Freeze P3: as above, an `in` parameter accepts a readonly place.

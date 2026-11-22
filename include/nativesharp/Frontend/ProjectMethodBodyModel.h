@@ -5152,6 +5152,12 @@ private:
         std::optional<ProjectIntegerConstant> integerConstant = std::nullopt) const;
     ProjectImplicitConversion classifyImportedFlexibleConversion(
         const ExpressionResult& source, std::string_view targetTypeKey) const;
+    // EN: Items 3.2 and 3.3. The conversions C applies when a NativeSharp argument reaches a C/C++ parameter and
+    //     no NativeSharp conversion exists: a string literal to a `const char*`, and C's arithmetic conversions.
+    // ES: Items 3.2 y 3.3. Las conversiones que C aplica cuando un argumento NativeSharp llega a un parametro
+    //     C/C++ y no existe conversion NativeSharp: un literal de cadena a `const char*`, y las aritmeticas de C.
+    ProjectImplicitConversion classifyCFrontierConversion(
+        const ExpressionResult& source, const MethodParameterSymbol& parameter, std::string_view targetTypeKey) const;
     bool reportTupleConversionFailure(
         std::string_view sourceTypeKey,
         std::string_view targetTypeKey,

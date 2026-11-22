@@ -1,4 +1,6 @@
 #include "../CComplexConversion.h"
+#include <algorithm>
+#include <iterator>
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 #include "Support/OwnershipArgumentClassification.h"
 #include "Support/OperatorClassification.h"
@@ -64,6 +66,21 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyImportedFlexibleConver
         return {ProjectConversionKind::CFlexibleArrayToPointer, 1, source.typeKey,
                 std::string(targetTypeKey), std::nullopt};
     return classifyImplicit(source.typeKey, targetTypeKey, source.integerConstant);
+}
+
+ProjectImplicitConversion ProjectMethodBodyModel::classifyCFrontierConversion(
+    const ExpressionResult& source, const MethodParameterSymbol& parameter, std::string_view targetTypeKey) const
+{
+    const std::string target(targetTypeKey);
+    // EN: Item 3.2 (D2). A literal reaches a C `const char*` (or `const unsigned char*`) as its NUL-terminated
+    //     UTF-8 bytes. A parameter that may write through the pointer does not receive the literal.
+    // ES: Item 3.2 (D2). Un literal llega a un `const char*` C (o `const unsigned char*`) como sus bytes UTF-8 con
+    //     terminador NUL. Un parametro que puede escribir a traves del puntero no recibe el literal.
+    if (source.typeKey == "string-literal" &&
+        (target == "builtin:sbyte*" || target == "builtin:byte*" || target == "builtin:char*") &&
+        parameter.passKind == ParameterPassKind::Value && parameter.pointerPointeeReadonly)
+        return {ProjectConversionKind::StringLiteralToCharPointer, 4, source.typeKey, target, std::nullopt};
+    return {ProjectConversionKind::None, 1000, source.typeKey, target, std::nullopt};
 }
 
 ProjectImplicitConversion ProjectMethodBodyModel::classifyImplicit(
