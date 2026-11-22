@@ -283,7 +283,8 @@ LLVMValueRef OopLlvmImplementation::convert(
                 language::parseFunctionTypeIdentity(target);
             if (!targetFunction.has_value() ||
                 targetFunction->carrier != language::FunctionCarrier::Pointer ||
-                !language::functionTypesAssignable(lambdaType->signature, *targetFunction))
+                !language::functionTypesAssignable(
+                    language::lambdaSignatureForTarget(lambdaType->signature, *targetFunction), *targetFunction))
                 return failValue(error, "invalid T08-F02 anonymous lambda function-pointer conversion");
             return callbackGuardThunk(
                 language::anonymousLambdaGeneratedName(*lambdaType), error,

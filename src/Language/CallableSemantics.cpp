@@ -381,6 +381,25 @@ std::string anonymousLambdaGeneratedName(const AnonymousLambdaType& type)
         std::to_string(type.lambdaOrdinal);
 }
 
+// EN: Item 7.1. A non-capturing NativeSharp lambda reaches a C function pointer through its generated thunk. On
+//     Windows x64 the NativeSharp, C, stdcall, fastcall and ms_abi conventions are the same physical one, so the
+//     lambda takes the target's convention; vectorcall and the others keep the exact match.
+// ES: Item 7.1. Una lambda NativeSharp sin capturas llega a un puntero a funcion C por su thunk generado. En
+//     Windows x64 las convenciones NativeSharp, C, stdcall, fastcall y ms_abi son la misma fisica, asi que la
+//     lambda toma la convencion del destino; vectorcall y las demas conservan la igualdad exacta.
+FunctionType lambdaSignatureForTarget(const FunctionType& lambda, const FunctionType& target) noexcept
+{
+    const auto win64 = [](CallingConvention convention) {
+        return convention == CallingConvention::NativeSharp || convention == CallingConvention::C ||
+            convention == CallingConvention::StdCall || convention == CallingConvention::FastCall ||
+            convention == CallingConvention::Win64;
+    };
+    FunctionType adapted = lambda;
+    if (lambda.callingConvention == CallingConvention::NativeSharp && win64(target.callingConvention))
+        adapted.callingConvention = target.callingConvention;
+    return adapted;
+}
+
 bool functionTypesAssignable(const FunctionType& source, const FunctionType& target) noexcept
 {
     return source.parameters == target.parameters && source.result == target.result &&

@@ -23,6 +23,8 @@ namespace nativesharp::language
 std::string functionTypeIdentity(const FunctionType& type);
 std::optional<FunctionType> parseFunctionTypeIdentity(std::string_view identity);
 bool isFunctionTypeIdentity(std::string_view identity) noexcept;
+// Item 7.1: the signature of a lambda converted to `target`. / La firma de una lambda convertida a `target`.
+FunctionType lambdaSignatureForTarget(const FunctionType& lambda, const FunctionType& target) noexcept;
 bool functionTypesAssignable(const FunctionType& source, const FunctionType& target) noexcept;
 bool functionParameterPointeeVolatile(const FunctionType& type, std::size_t parameterIndex) noexcept;
 bool functionHasPointeeVolatile(const FunctionType& type) noexcept;
