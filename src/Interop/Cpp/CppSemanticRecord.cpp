@@ -284,6 +284,12 @@ std::optional<CppSemanticInstanceField> projectCFlexibleArrayField(const CppReco
         mapped = mapCppScalarType(unqualified);
     else if (element->kind == CppTypeKind::Enumeration)
         mapped = projectCppSemanticEnumType(unqualified, projectOrdinal, moduleName, lookup);
+    // Item 4.3: a flexible array of pointers (`void* caps[]`). / Un arreglo flexible de punteros.
+    else if (element->kind == CppTypeKind::Pointer)
+    {
+        if (const auto key = cArrayPointerElementKey(unqualified, projectOrdinal, moduleName, lookup))
+            mapped = CppScalarTypeMapping{*key, element->canonicalSpelling, false, false};
+    }
     else if (element->kind == CppTypeKind::Record && lookup)
     {
         const auto target = projectCppRecordTypeIdentity(*element, moduleName);
