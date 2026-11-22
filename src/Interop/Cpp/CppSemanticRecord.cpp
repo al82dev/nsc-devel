@@ -84,6 +84,42 @@ std::optional<std::string> nativeStructMirrorFieldKey(const CppType& type, const
     return "type:" + identity->key();
 }
 
+// EN: Items 4.1 and 4.3. The NativeSharp key of an unqualified C pointer used as an array element: `void*`,
+//     `T*` of a scalar, enum or imported record, with any number of unqualified levels.
+// ES: Items 4.1 y 4.3. La clave NativeSharp de un puntero C sin calificar usado como elemento de arreglo: `void*`,
+//     `T*` de un escalar, enum o record importado, con cualquier numero de niveles sin calificar.
+std::optional<std::string> cArrayPointerElementKey(const CppType& pointer, std::size_t projectOrdinal,
+    std::string_view moduleName, const frontend::ProjectNameLookup* lookup)
+{
+    if (pointer.kind != CppTypeKind::Pointer || pointer.sizeBits != 64) return std::nullopt;
+    const CppType* base = &pointer;
+    std::string stars;
+    while (base->kind == CppTypeKind::Pointer && base->element && stars.size() < 8)
+    {
+        if (base->isConst || base->isVolatile) return std::nullopt;
+        stars += '*';
+        base = base->element.get();
+    }
+    if (base->isConst || base->isVolatile) return std::nullopt;
+    if (base->kind == CppTypeKind::Void) return "builtin:void" + stars;
+    if (base->kind == CppTypeKind::Boolean || base->kind == CppTypeKind::SignedInteger ||
+        base->kind == CppTypeKind::UnsignedInteger || base->kind == CppTypeKind::Floating)
+        if (const auto scalar = mapCppScalarType(*base)) return scalar->nativeSharpTypeKey + stars;
+    if (base->kind == CppTypeKind::Enumeration)
+        if (const auto mapped = projectCppSemanticEnumType(*base, projectOrdinal, moduleName, lookup))
+            return mapped->nativeSharpTypeKey + stars;
+    if (base->kind == CppTypeKind::Record && lookup)
+    {
+        const auto target = projectCppRecordTypeIdentity(*base, moduleName);
+        const auto* imported = fieldRecordType(*lookup, target, projectOrdinal);
+        if (target && imported &&
+            (!base->recordIdentity || !base->recordIdentity->clangUsr || !imported->clangUsr ||
+             base->recordIdentity->clangUsr == imported->clangUsr))
+            return "type:" + imported->identity.key() + stars;
+    }
+    return std::nullopt;
+}
+
 std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type, std::size_t projectOrdinal,
     std::string_view moduleName, const frontend::ProjectNameLookup* lookup)
 {
@@ -124,7 +160,9 @@ std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type, std:
     bool aggregateVolatile = false;
     if (array)
     {
-        if (array->element.token == lexer::TokenKind::KwVoid || array->element.pointeeConst) return std::nullopt;
+        // Item 4.1: `void*` elements are pointers. / Los elementos `void*` son punteros.
+        if ((array->element.token == lexer::TokenKind::KwVoid && array->element.pointerDepth == 0) ||
+            array->element.pointeeConst) return std::nullopt;
         key = "builtin:" + std::string(array->element.name) + std::string(array->element.pointerDepth, '*');
         dimensions = array->dimensions;
     }
@@ -148,6 +186,9 @@ std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type, std:
         unqualified.isVolatile = false;
         const auto mapped = projectCppSemanticEnumType(unqualified, projectOrdinal, moduleName, lookup);
         if (mapped) key = mapped->nativeSharpTypeKey;
+        // Item 4.1: an array of pointers (`void* pad[2]`). / Un arreglo de punteros.
+        else if (const auto pointer = cArrayPointerElementKey(unqualified, projectOrdinal, moduleName, lookup))
+            key = *pointer;
         else if (lookup && element->kind == CppTypeKind::Record)
         {
             const auto target = projectCppRecordTypeIdentity(*element, moduleName);
