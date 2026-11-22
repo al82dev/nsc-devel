@@ -6,6 +6,7 @@
 #include "nativesharp/Basic/Sha256.h"
 
 #include <clang/AST/DeclFriend.h>
+#include <llvm/IR/Constants.h>
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/ASTStructuralEquivalence.h>
 #include <clang/AST/Attr.h>
@@ -4273,6 +4274,7 @@ public:
         generator->Initialize(context);
         std::vector<std::pair<clang::GlobalDecl, std::string>> selected;
         std::set<std::string> seen;
+        std::map<std::string, llvm::APSInt> inClassConstants;
         // Microsoft names of plain identifiers start with "?name@" and C names are the identifier itself;
         // only declarations with one of those identifiers are mangled, unless an operator or special name is asked.
         std::set<std::string> identifiers;
@@ -4393,6 +4395,26 @@ public:
                         !variable->getType()->isDependentType() && variable->isExternallyVisible() &&
                         !variable->hasAttr<clang::DLLImportAttr>() && variable->hasInit())
                         consider(clang::GlobalDecl(variable));
+                    // EN: Item 9.7. A `static const` integral member initialized in its class
+                    //     (`static const int kSize = 40;`) has no definition unless some translation unit writes
+                    //     one; NSC defines it as weak_odr with the constant Clang evaluates.
+                    // ES: Item 9.7. Un miembro `static const` entero inicializado en su clase no tiene definicion si
+                    //     ninguna unidad la escribe; NSC lo define como weak_odr con la constante que evalua Clang.
+                    else if (variable->isStaticDataMember() && !variable->isInline() &&
+                             !variable->getType()->isDependentType() &&
+                             variable->getType().isConstQualified() &&
+                             variable->getType()->isIntegralOrEnumerationType() && variable->getInit() &&
+                             variable->isExternallyVisible() && !variable->hasAttr<clang::DLLImportAttr>() &&
+                             !variable->getDefinition())
+                    {
+                        if (const auto* evaluated = variable->evaluateValue(); evaluated && evaluated->isInt())
+                        {
+                            const auto before = selected.size();
+                            consider(clang::GlobalDecl(variable));
+                            if (selected.size() != before)
+                                inClassConstants.emplace(selected.back().second, evaluated->getInt());
+                        }
+                    }
                     // EN: T13-021. A static data member of a class template specialization has vague linkage; Sema
                     //     instantiates its definition below.
                     // ES: T13-021. Un miembro de datos static de una especializacion tiene enlace vago; Sema
@@ -4510,6 +4532,17 @@ public:
         generator->HandleTranslationUnit(context);
         auto module = generator->ReleaseModule();
         if (!module) return std::nullopt;
+        // Item 9.7: the definitions of in-class `static const` members. / Las definiciones de miembros en clase.
+        for (const auto& [name, constant] : inClassConstants)
+            if (auto* variable = module->getGlobalVariable(name, true); variable && variable->isDeclaration())
+            {
+                auto* type = llvm::dyn_cast<llvm::IntegerType>(variable->getValueType());
+                if (!type) continue;
+                variable->setInitializer(llvm::ConstantInt::get(type, constant.extOrTrunc(type->getBitWidth())));
+                variable->setConstant(true);
+                variable->setLinkage(llvm::GlobalValue::WeakODRLinkage);
+                variable->setComdat(module->getOrInsertComdat(name));
+            }
         for (const auto& [declaration, name] : selected)
         {
             auto* value = module->getNamedValue(name);
