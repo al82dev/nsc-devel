@@ -416,6 +416,20 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         return CppScalarTypeMapping{language::functionTypeIdentity(function), type.canonicalSpelling, false, false};
     }
     if (type.kind != CppTypeKind::Pointer) return mapCppScalarType(type);
+    // EN: Item 2.1. `const` below the top of a pointer to pointer: the carrier keeps the levels and the base
+    //     `const` becomes the readonly mark (`T const**`). Only where a readonly pointee may be expressed.
+    // ES: Item 2.1. `const` bajo el nivel superior de un puntero a puntero: el portador conserva los niveles y el
+    //     `const` base pasa a ser la marca de solo lectura (`T const**`). Solo donde se puede expresar.
+    if (allowReadonlyPointee && !type.isConst && !type.isVolatile)
+        if (const auto stripped = cppPointerChainWithoutInnerConst(type))
+        {
+            auto mapped = mapFunctionType(*stripped, false, records, moduleName, depth, lookup, owner,
+                                          allowCRecordValue, allowCStoredRecordPointer, allowCppRecordValue);
+            if (!mapped) return std::nullopt;
+            mapped->isConst = cppPointeeReadonlyForNativeSharp(type);
+            mapped->canonicalCppType = type.canonicalSpelling;
+            return mapped;
+        }
     const bool readonlyScalar = allowReadonlyPointee && type.element && type.element->isConst &&
         type.element->kind != CppTypeKind::Pointer;
     if (type.canonicalSpelling.empty() || type.sizeBits != 64 || !type.element ||
@@ -922,8 +936,8 @@ CppSemanticFunctionResult projectFunction(
         frontend::MethodParameterSymbol parameter;
         parameter.name = input.name;
         parameter.typeKey = parameterType->nativeSharpTypeKey;
-        parameter.pointerPointeeReadonly = sourceType.kind == CppTypeKind::Pointer &&
-            sourceType.element && sourceType.element->isConst;
+        // Item 2.1: the base const of a pointer to pointer. / El const base de un puntero a puntero.
+        parameter.pointerPointeeReadonly = cppPointeeReadonlyForNativeSharp(sourceType);
         parameter.pointerPointeeVolatile = sourceType.kind == CppTypeKind::Pointer &&
             sourceType.element && sourceType.element->isVolatile;
         parameter.cppPointerPointeeAtomic = atomicPointee.has_value();
