@@ -1146,6 +1146,7 @@ add_library(nsc_llvm STATIC
     src/LLVM/ProjectOopFunctionReachability.cpp
     src/LLVM/ProjectOopMirCacheIdentity.cpp
     src/LLVM/ProjectOopObjectGenerator.cpp
+    src/LLVM/ProjectOopObjectInspection.cpp
     src/LLVM/ProjectOopLlvmLowerer.cpp
     src/LLVM/SignedDivisionCorrection.cpp
     src/LLVM/LlvmTargetMachine.cpp
@@ -1285,6 +1286,7 @@ add_library(nsc_driver STATIC
     src/Driver/PromotionAct.cpp
     src/Driver/ReleaseCandidateFreeze.cpp
     src/Driver/RuntimeClosurePackaging.cpp
+    src/Driver/DriverPathSupport.cpp
     src/Driver/ThinLtoLibraryLinking.cpp
     src/Driver/ToolchainContract.cpp
     src/Interop/CHeaderGenerator.cpp

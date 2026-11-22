@@ -1193,52 +1193,6 @@ void ProjectOopObjectGenerator::setThinLtoPreservedSymbols(std::optional<std::ve
     thinLtoPreservedSymbols_ = std::move(symbols);
 }
 
-bool ProjectOopObjectGenerator::collectUndefinedSymbols(
-    const std::filesystem::path& file,
-    std::vector<std::string>& symbols,
-    std::string& error)
-{
-    return ThinLtoBackend::collectUndefinedSymbols(file, symbols, error);
-}
-
-bool ProjectOopObjectGenerator::validateThinLtoNativeObject(std::string_view bytes, std::string& error)
-{
-    return ThinLtoBackend::validateNativeObject(bytes, error);
-}
-
-bool ProjectOopObjectGenerator::requiresLldForStaticInput(
-    const std::filesystem::path& file, bool& found, std::string& error)
-{
-    return ThinLtoBackend::requiresLldForStaticInput(file, found, error);
-}
-
-bool ProjectOopObjectGenerator::findLinkedCrtInitializers(std::span<const std::filesystem::path> objects,
-                                                          std::span<const std::filesystem::path> libraries,
-                                                          std::string& input, std::string& member, std::string& error)
-{
-    return ThinLtoBackend::findLinkedCrtInitializers(objects, libraries, input, member, error);
-}
-
-bool ProjectOopObjectGenerator::findMissingLinkSymbols(
-    std::span<const std::filesystem::path> objects, std::span<const std::filesystem::path> libraries,
-    std::span<const std::string> symbols,
-    std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>>& missing,
-    std::string& error)
-{
-    return ThinLtoBackend::findMissingLinkSymbols(objects, libraries, symbols, missing, error);
-}
-
-std::string ProjectOopObjectGenerator::demangleSymbol(std::string_view symbol)
-{
-    return ThinLtoBackend::demangleSymbol(symbol);
-}
-
-bool ProjectOopObjectGenerator::thinLtoRuns(LinkTimeOptimizationMode mode, LlvmOptimizationLevel level) noexcept
-{
-    return mode == LinkTimeOptimizationMode::Thin && level != LlvmOptimizationLevel::O0 &&
-        ThinLtoBackend::available();
-}
-
 bool ProjectOopObjectGenerator::thinLtoCompatibility(
     LlvmOptimizationLevel level,
     DebugInformationKind debugInformation,
