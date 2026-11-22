@@ -630,7 +630,22 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     // EN: T19-038. A C field `_Atomic T*` is mapped as its carrier, a pointer to T with the atomic mark.
     // ES: T19-038. Un campo C `_Atomic T*` se mapea como su portador, un puntero a T con la marca atomica.
     const auto atomicPointee = !record.isCxx ? cAtomicPointeeCarrier(field.type) : std::nullopt;
-    const CppType& pointerType = atomicPointee ? *atomicPointee : field.type;
+    const CppType& qualifiedPointerType = atomicPointee ? *atomicPointee : field.type;
+    // EN: Item 2.3. `const` below the top of a pointer to pointer field (`const char** mime_types`,
+    //     `char const* const* searchPaths`): the carrier keeps the levels and the base `const` becomes the field's
+    //     readonly pointee mark (`T const**`), as for parameters.
+    // ES: Item 2.3. `const` bajo el nivel superior de un campo puntero a puntero: el portador conserva los niveles y
+    //     el `const` base pasa a ser la marca de solo lectura del campo (`T const**`), como en los parametros.
+    const auto innerConstFree = cppPointerChainWithoutInnerConst(qualifiedPointerType);
+    const CppType& pointerType = innerConstFree ? *innerConstFree : qualifiedPointerType;
+    const bool scalarChainBase = [&]
+    {
+        const CppType* base = &pointerType;
+        while (base->kind == CppTypeKind::Pointer && base->element) base = base->element.get();
+        return base->kind == CppTypeKind::Boolean || base->kind == CppTypeKind::SignedInteger ||
+            base->kind == CppTypeKind::UnsignedInteger || base->kind == CppTypeKind::Floating ||
+            base->kind == CppTypeKind::Void;
+    }();
     // A C pointee may be `volatile`: the field keeps that qualification (C++ fields keep the previous rule).
     // Un apuntado C puede ser `volatile`: el campo conserva esa calificación (los campos C++ siguen la regla previa).
     if (pointerType.kind == CppTypeKind::Pointer && pointerType.sizeBits == 64 &&
@@ -647,7 +662,8 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         //     cada nivel intermedio solo agrega `*` a la clave del tipo.
         const CppType* recordPointee = pointerType.element.get();
         std::string extraLevels;
-        while (!record.isCxx && recordPointee->kind == CppTypeKind::Pointer && recordPointee->element &&
+        while ((!record.isCxx || scalarChainBase) && recordPointee->kind == CppTypeKind::Pointer &&
+               recordPointee->element &&
                !recordPointee->isConst && !recordPointee->isVolatile && extraLevels.size() < 8)
         {
             recordPointee = recordPointee->element.get();
@@ -678,7 +694,8 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         {
             mapped = CppScalarTypeMapping{element->nativeSharpTypeKey + "*", pointerType.canonicalSpelling,
                                           pointerType.isConst, pointerType.isVolatile};
-            pointeeReadonly = pointerType.element->isConst;
+            pointeeReadonly = innerConstFree ? cppPointeeReadonlyForNativeSharp(qualifiedPointerType)
+                                             : pointerType.element->isConst;
             pointeeVolatile = pointerType.element->isVolatile;
         }
     }
