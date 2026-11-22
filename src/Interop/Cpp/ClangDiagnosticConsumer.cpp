@@ -1,10 +1,13 @@
 #include "ClangSessionSupport.h"
 
 #include <clang/Basic/DiagnosticIDs.h>
+#include <clang/Basic/LangOptions.h>
 #include <clang/Basic/SourceManager.h>
+#include <clang/Lex/Lexer.h>
 #include <llvm/ADT/SmallString.h>
 
 #include <filesystem>
+#include <optional>
 #include <string_view>
 #include <utility>
 
@@ -66,6 +69,43 @@ void DiagnosticCollector::HandleDiagnostic(clang::DiagnosticsEngine::Level level
         if (location.isValid())
             diagnostic.location = CppSourcePoint{
                 pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
+        // EN: Item 1.8. The macro expansion chain and the include chain of the diagnostic, as Clang prints them.
+        // ES: Item 1.8. La cadena de expansion de macros y la de includes del diagnostico, como las imprime Clang.
+        if (level != clang::DiagnosticsEngine::Note)
+        {
+            const auto& sources = info.getSourceManager();
+            const auto point = [&](clang::SourceLocation at) -> std::optional<CppSourcePoint>
+            {
+                const auto presumed = sources.getPresumedLoc(at);
+                if (!presumed.isValid()) return std::nullopt;
+                return CppSourcePoint{pathFromUtf8(presumed.getFilename()), presumed.getLine(), presumed.getColumn()};
+            };
+            auto at = info.getLocation();
+            for (unsigned depth = 0; at.isMacroID() && depth < 16; ++depth)
+            {
+                static const clang::LangOptions languageOptions;
+                const auto name = clang::Lexer::getImmediateMacroName(at, sources, languageOptions);
+                CppSessionDiagnostic note;
+                note.severity = CppSessionDiagnosticSeverity::Note;
+                note.message = "expanded from macro '" + name.str() + "'";
+                note.location = point(sources.getSpellingLoc(at));
+                at = sources.getImmediateMacroCallerLoc(at);
+                if (!name.empty()) diagnostic.notes.push_back(std::move(note));
+            }
+            auto include = location.isValid() ? location.getIncludeLoc() : clang::SourceLocation{};
+            for (unsigned depth = 0; include.isValid() && depth < 64; ++depth)
+            {
+                const auto presumed = sources.getPresumedLoc(include);
+                if (!presumed.isValid()) break;
+                CppSessionDiagnostic note;
+                note.severity = CppSessionDiagnosticSeverity::Note;
+                note.message = "in file included from here";
+                note.location = CppSourcePoint{
+                    pathFromUtf8(presumed.getFilename()), presumed.getLine(), presumed.getColumn()};
+                diagnostic.notes.push_back(std::move(note));
+                include = presumed.getIncludeLoc();
+            }
+        }
     }
     if (level == clang::DiagnosticsEngine::Note && !diagnostics_.empty())
         diagnostics_.back().notes.push_back(std::move(diagnostic));
