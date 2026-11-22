@@ -27,7 +27,8 @@ llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> makeCancellationFileSystem(
 std::optional<std::string> preprocessClangSessionSource(
     std::string_view source, const std::vector<std::string>& arguments,
     std::string_view inputPath, std::string_view driverPath,
-    llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem);
+    llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem,
+    std::vector<CppSessionDiagnostic>* diagnosticsOut = nullptr);
 std::unique_ptr<clang::ASTUnit> runClangSessionAction(
     std::string_view source, const std::vector<std::string>& arguments,
     std::string_view inputPath, std::string_view driverPath,

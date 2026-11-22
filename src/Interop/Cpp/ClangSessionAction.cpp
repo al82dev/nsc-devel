@@ -162,7 +162,8 @@ private:
 std::optional<std::string> preprocessClangSessionSource(
     std::string_view source, const std::vector<std::string>& arguments,
     std::string_view inputPath, std::string_view driverPath,
-    llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem)
+    llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem,
+    std::vector<CppSessionDiagnostic>* diagnosticsOut)
 {
     const std::string input(inputPath);
     auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(std::move(filesystem));
@@ -180,7 +181,12 @@ std::optional<std::string> preprocessClangSessionSource(
     clang::tooling::ToolInvocation invocation(std::move(args), std::make_unique<PreprocessToStringAction>(output),
         files.get(), std::make_shared<clang::PCHContainerOperations>());
     invocation.setDiagnosticConsumer(&collector);
-    if (!invocation.run()) return std::nullopt;
+    // EN: Item 1.7. The caller receives the diagnostics of the auxiliary preprocessing, so a rejection explains
+    //     itself. / ES: Item 1.7. El llamador recibe los diagnosticos del preprocesado auxiliar, asi un rechazo se
+    //     explica.
+    const bool ran = invocation.run();
+    if (diagnosticsOut) diagnosticsOut->insert(diagnosticsOut->end(), diagnostics.begin(), diagnostics.end());
+    if (!ran) return std::nullopt;
     for (const auto& diagnostic : diagnostics)
         if (diagnostic.severity == CppSessionDiagnosticSeverity::Error ||
             diagnostic.severity == CppSessionDiagnosticSeverity::Fatal) return std::nullopt;

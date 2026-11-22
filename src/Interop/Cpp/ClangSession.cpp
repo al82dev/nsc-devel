@@ -5668,9 +5668,10 @@ private:
     {
         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(llvm::vfs::createPhysicalFileSystem().release());
         if (filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory))) return nullptr;
+        macroWrapperDiagnostics_.clear();
         const auto preprocessed = detail::preprocessClangSessionSource(code,
             detail::buildClangInvocationArguments(options_), inputPath_, utf8(options_.driverReferencePath),
-            std::move(filesystem));
+            std::move(filesystem), &macroWrapperDiagnostics_);
         if (!preprocessed) return nullptr;
         const auto at = preprocessed->rfind(wrapper);
         if (at == std::string::npos) return nullptr;
