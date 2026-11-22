@@ -24,6 +24,14 @@ struct ProjectDescriptor final
     std::optional<language::PanicProfile> panicProfile;
     std::optional<std::string> panicHandler;
     std::optional<CppConsumerVolatileMode> cppConsumerVolatileMode;
+    // EN: Item 18.14 (D12). The Include\<version> directory of the Windows SDK installed on this machine; its ucrt,
+    //     um and shared directories are system include directories of every C/C++ reference.
+    // ES: Item 18.14 (D12). El directorio Include\<version> del Windows SDK instalado; sus directorios ucrt, um y
+    //     shared son directorios de sistema de cada referencia C/C++.
+    std::optional<std::string> windowsSdkIncludeRoot;
+    // Item 18.14: the Visual C++ include directory (vcruntime.h) the UCRT headers include. / El directorio include de
+    //     Visual C++ (vcruntime.h) que incluyen los encabezados del UCRT.
+    std::optional<std::string> vcToolsIncludeRoot;
     ProjectBuildSettings buildSettings;
     std::vector<SourceIncludeRule> includes;
     std::vector<GlobPattern> removes;

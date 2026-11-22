@@ -241,6 +241,28 @@ std::optional<bool> parseIdentityProperty(
         descriptor.packageName = value;
         return true;
     }
+    if (property.name == "VcToolsIncludeRoot")
+    {
+        if (descriptor.vcToolsIncludeRoot.has_value())
+        {
+            error = "project property 'VcToolsIncludeRoot' is declared more than once";
+            return false;
+        }
+        if (value.empty()) { error = "VcToolsIncludeRoot requires a directory"; return false; }
+        descriptor.vcToolsIncludeRoot = value;
+        return true;
+    }
+    if (property.name == "WindowsSdkIncludeRoot")
+    {
+        if (descriptor.windowsSdkIncludeRoot.has_value())
+        {
+            error = "project property 'WindowsSdkIncludeRoot' is declared more than once";
+            return false;
+        }
+        if (value.empty()) { error = "WindowsSdkIncludeRoot requires a directory"; return false; }
+        descriptor.windowsSdkIncludeRoot = value;
+        return true;
+    }
     if (property.name == "OutputType")
     {
         if (descriptor.outputKind.has_value())
@@ -1646,6 +1668,40 @@ std::optional<std::vector<CppLibraryReference>> loadCppLibraryReferences(
                 return std::nullopt;
             }
             reference.includePaths.push_back({path, include.kind});
+        }
+        // EN: Items 18.14 and 18.15 (D12). The installed Windows SDK the project names: its ucrt, um and shared
+        //     include directories follow the reference's own, as system directories. A missing SDK, or one without
+        //     the UCRT headers, is a clear error instead of a later "file not found" from Clang.
+        // ES: Items 18.14 y 18.15 (D12). El Windows SDK instalado que nombra el proyecto: sus directorios ucrt, um y
+        //     shared siguen a los de la referencia, como de sistema. Un SDK ausente, o sin los encabezados del UCRT,
+        //     es un error claro en lugar de un "file not found" posterior de Clang.
+        if (descriptor.windowsSdkIncludeRoot)
+        {
+            ec.clear();
+            const auto root = std::filesystem::weakly_canonical(
+                projectDirectory / pathFromUtf8(*descriptor.windowsSdkIncludeRoot), ec);
+            if (ec || !std::filesystem::is_regular_file(root / "ucrt" / "stdio.h", ec) || ec ||
+                !std::filesystem::is_directory(root / "um", ec) || !std::filesystem::is_directory(root / "shared", ec))
+            {
+                error = "WindowsSdkIncludeRoot must be the Include\\<version> directory of an installed Windows SDK "
+                        "with ucrt, um and shared headers: '" + *descriptor.windowsSdkIncludeRoot + "'";
+                return std::nullopt;
+            }
+            for (const char* part : {"ucrt", "um", "shared"})
+                reference.includePaths.push_back({root / part, interop::CppIncludeKind::System});
+        }
+        if (descriptor.vcToolsIncludeRoot)
+        {
+            ec.clear();
+            const auto root = std::filesystem::weakly_canonical(
+                projectDirectory / pathFromUtf8(*descriptor.vcToolsIncludeRoot), ec);
+            if (ec || !std::filesystem::is_regular_file(root / "vcruntime.h", ec) || ec)
+            {
+                error = "VcToolsIncludeRoot must be the include directory of Visual C++ with vcruntime.h: '" +
+                        *descriptor.vcToolsIncludeRoot + "'";
+                return std::nullopt;
+            }
+            reference.includePaths.push_back({root, interop::CppIncludeKind::System});
         }
         result.push_back(std::move(reference));
     }
