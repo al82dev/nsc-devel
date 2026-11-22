@@ -5161,7 +5161,8 @@ private:
         const ExpressionResult& right, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal,
         ExpressionResult& out);
     ProjectImplicitConversion classifyCFrontierConversion(
-        const ExpressionResult& source, const MethodParameterSymbol& parameter, std::string_view targetTypeKey) const;
+        const ExpressionResult& source, const MethodParameterSymbol& parameter, std::string_view targetTypeKey,
+        bool cLinkage) const;
     bool reportTupleConversionFailure(
         std::string_view sourceTypeKey,
         std::string_view targetTypeKey,

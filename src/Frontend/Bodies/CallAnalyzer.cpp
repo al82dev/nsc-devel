@@ -1179,12 +1179,18 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
     }
     ProjectImplicitConversion conversion =
         classifyImportedFlexibleConversion(arguments[argumentOrdinal], conversionTarget);
-    // Items 3.2 and 3.3: the C conversions at a C/C++ boundary. / Las conversiones C en una frontera C/C++.
-    const bool cBoundary = candidate.isImportedC || candidate.isCppExternal ||
-        (namespaceFunctionModel_ != nullptr && evaluated.memberOrdinal < namespaceFunctionModel_->functions().size() &&
-         namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppReturnType.has_value());
-    if (!conversion.exists() && !packElement && cBoundary)
-        conversion = classifyCFrontierConversion(arguments[argumentOrdinal], parameter, conversionTarget);
+    // EN: Items 3.2 and 3.3 (D3): the C conversions only at a C boundary, a function with C linkage (its symbol is
+    //     not a decorated C++ name). A C++ function or method keeps NativeSharp's conversions, so a private better
+    //     overload still leaves no viable one (pruebas-tanda-10-acceso).
+    // ES: Items 3.2 y 3.3 (D3): las conversiones C solo en una frontera C, una funcion con enlace C (su simbolo no
+    //     es un nombre C++ decorado). Una funcion o metodo C++ conserva las conversiones de NativeSharp.
+    const auto* cFunction = namespaceFunctionModel_ != nullptr &&
+            evaluated.memberOrdinal < namespaceFunctionModel_->functions().size()
+        ? &namespaceFunctionModel_->functions()[evaluated.memberOrdinal] : nullptr;
+    const bool importedFunction = cFunction != nullptr && cFunction->cppReturnType.has_value();
+    const bool cLinkage = candidate.isImportedC || (importedFunction && !cFunction->mangledName.starts_with('?'));
+    if (!conversion.exists() && !packElement && (candidate.isImportedC || candidate.isCppExternal || importedFunction))
+        conversion = classifyCFrontierConversion(arguments[argumentOrdinal], parameter, conversionTarget, cLinkage);
     // EN: Freeze P3: an `in` parameter only reads its argument, so a readonly place (another
     //     `in` parameter, a readonly field, a `ref readonly` result) may be lent to it.
     // ES: Congelamiento P3: un parametro `in` solo lee su argumento, asi que se le puede prestar
@@ -6222,7 +6228,8 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     const MethodParameterSymbol& parameter = candidate.parameters[parameterOrdinal];
     // Items 3.2 and 3.3: the C conversions at a C/C++ boundary. / Las conversiones C en una frontera C/C++.
     if (!conversion.exists() && !packElement && (candidate.isImportedC || candidate.isCppExternal))
-        conversion = classifyCFrontierConversion(argument, parameter, conversionTarget);
+        conversion = classifyCFrontierConversion(argument, parameter, conversionTarget,
+            candidate.isImportedC || (candidate.isCppExternal && !candidate.cppExternalSymbol.starts_with('?')));
     const bool boundLvalue = rvalueArgument && conversion.exists() &&
         conversion.kind == ProjectConversionKind::Identity && argument.addressable;
     // EN: Freeze P3: as above, an `in` parameter accepts a readonly place.

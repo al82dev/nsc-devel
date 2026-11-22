@@ -69,7 +69,8 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyImportedFlexibleConver
 }
 
 ProjectImplicitConversion ProjectMethodBodyModel::classifyCFrontierConversion(
-    const ExpressionResult& source, const MethodParameterSymbol& parameter, std::string_view targetTypeKey) const
+    const ExpressionResult& source, const MethodParameterSymbol& parameter, std::string_view targetTypeKey,
+    bool cLinkage) const
 {
     const std::string target(targetTypeKey);
     // EN: Item 3.2 (D2). A literal reaches a C `const char*` (or `const unsigned char*`) as its NUL-terminated
@@ -93,7 +94,9 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyCFrontierConversion(
         "builtin:double"};
     const auto isArithmetic = [](std::string_view key)
     { return std::find(std::begin(arithmetic), std::end(arithmetic), key) != std::end(arithmetic); };
-    if (parameter.passKind == ParameterPassKind::Value && isArithmetic(source.typeKey) && isArithmetic(target))
+    // Only with C linkage: a C++ function keeps NativeSharp's conversions. / Solo con enlace C.
+    if (cLinkage && parameter.passKind == ParameterPassKind::Value && isArithmetic(source.typeKey) &&
+        isArithmetic(target))
         return {ProjectConversionKind::Numeric, 5, source.typeKey, target, std::nullopt};
     // EN: Item 4.7. A fixed array decays to a pointer to its first element at a C boundary, as in C: `int[2][4]`
     //     becomes `int (*)[4]` and `int[3]` becomes `int*`. Only for an addressable array place.
