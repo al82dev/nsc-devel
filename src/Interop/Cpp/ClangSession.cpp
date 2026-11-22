@@ -643,6 +643,8 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
     result.isVolatile = canonical.isVolatileQualified();
     result.isRestrict = canonical.isRestrictQualified();
     const clang::Type* raw = canonical.getTypePtr();
+    // C3-02: the width of `_BitInt(N)`. / El ancho de `_BitInt(N)`.
+    if (const auto* bitInt = raw->getAs<clang::BitIntType>()) result.bitIntWidth = bitInt->getNumBits();
     // EN: T19-001. A `_Complex T` is described as its synthetic struct `{ T real; T imag; }`, which has the
     //     representation C11 6.2.5p13 gives it and is passed like it in every calling convention of the target.
     //     In C++ (a Clang extension, usually a C header read as C++) the struct is a trivial C++ record.
@@ -688,8 +690,6 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
     }
     else if (raw->isSignedIntegerType()) result.kind = CppTypeKind::SignedInteger;
     else if (raw->isUnsignedIntegerType()) result.kind = CppTypeKind::UnsignedInteger;
-    // C3-02: the width of `_BitInt(N)`. / El ancho de `_BitInt(N)`.
-    if (const auto* bitInt = raw->getAs<clang::BitIntType>()) result.bitIntWidth = bitInt->getNumBits();
     else if (raw->isRealFloatingType())
     {
         result.kind = CppTypeKind::Floating;
@@ -765,6 +765,15 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
         std::reverse(identity.namespaceSegments.begin(), identity.namespaceSegments.end());
         std::reverse(identity.containingRecords.begin(), identity.containingRecords.end());
         result.recordIdentity = std::move(identity);
+        // C3-06: the members of a transparent union. / Los miembros de una union transparente.
+        if (record->isUnion() && record->hasAttr<clang::TransparentUnionAttr>() && depth < 64)
+        {
+            auto members = std::make_shared<std::vector<CppType>>();
+            if (const auto* unionDecl = llvm::dyn_cast<clang::RecordDecl>(record))
+            for (const auto* field : unionDecl->fields())
+                members->push_back(describeType(field->getType(), context, depth + 1));
+            if (!members->empty()) result.transparentUnionMembers = std::move(members);
+        }
     }
     else if (const auto* function = raw->getAs<clang::FunctionType>())
     {

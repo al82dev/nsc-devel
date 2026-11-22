@@ -72,6 +72,11 @@ struct CppType
     // ES: C3-02. El N de `_BitInt(N)`; su portador es el entero de `sizeBits`. Clang lo pasa y devuelve como un valor de
     //     N bits cuyos bits superiores del registro no estan definidos.
     std::optional<std::uint32_t> bitIntWidth;
+    // EN: C3-06. The member types of a `__attribute__((transparent_union))` union, in declaration order: a parameter
+    //     of that type takes an argument of any member type, passed with the ABI of the first member.
+    // ES: C3-06. Los tipos de los miembros de una union `transparent_union`, en orden: un parametro de ese tipo toma un
+    //     argumento de cualquier tipo miembro, pasado con el ABI del primer miembro.
+    std::shared_ptr<const std::vector<CppType>> transparentUnionMembers;
 };
 
 // A description of the Clang function type, not a promise that NSC can call it.

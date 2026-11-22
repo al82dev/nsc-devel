@@ -986,7 +986,14 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             return p.objectSizeDynamic && !p.objectSizeMode;
         }))
     { error = "invalid C dependency dynamic object size"; return false; }
-    if (std::any_of(f.parameters.begin(), f.parameters.end(), [](const auto& p) { return p.objectSizeMode.has_value(); }))
+    // EN: C3-06. A transparent union parameter keeps its member types in a trailing group, after the object size group
+    //     (written, possibly empty, whenever the transparent group follows).
+    // ES: C3-06. Un parametro union transparente conserva sus tipos miembro en un grupo final, tras el grupo de tamano
+    //     de objeto (escrito, quiza vacio, siempre que siga el grupo transparente).
+    const bool transparentUnions = std::any_of(f.parameters.begin(), f.parameters.end(),
+        [](const auto& p) { return p.type.transparentUnionMembers != nullptr; });
+    if (transparentUnions ||
+        std::any_of(f.parameters.begin(), f.parameters.end(), [](const auto& p) { return p.objectSizeMode.has_value(); }))
     {
         writer.u32(static_cast<std::uint32_t>(f.parameters.size()));
         for (const auto& parameter : f.parameters)
@@ -994,6 +1001,20 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             if (parameter.objectSizeMode && (*parameter.objectSizeMode > 3 || parameter.type.kind != CppTypeKind::Pointer))
             { error = "invalid C dependency object size parameter"; return false; }
             writer.u8(parameter.objectSizeMode ? 1 + *parameter.objectSizeMode + (parameter.objectSizeDynamic ? 4 : 0) : 0);
+        }
+    }
+    if (transparentUnions)
+    {
+        for (const auto& parameter : f.parameters)
+        {
+            const auto* members = parameter.type.transparentUnionMembers.get();
+            if (members && (members->empty() || members->size() > maxItems))
+            { error = "invalid C dependency transparent union"; return false; }
+            writer.u32(members ? static_cast<std::uint32_t>(members->size()) : 0U);
+            if (members)
+                for (const auto& member : *members)
+                    if (!putDependencyType(member))
+                    { if (error.empty()) error = "invalid C dependency transparent union member"; return false; }
         }
     }
     output = writer.takeBytes();
@@ -1458,6 +1479,19 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
             }
         }
     }
+    // C3-06: the transparent union group. / El grupo de uniones transparentes.
+    if (!reader.atEnd())
+        for (auto& parameter : f.parameters)
+        {
+            std::uint32_t count = 0;
+            if (!reader.u32(count) || count > maxItems || count > reader.remaining())
+            { error = "invalid C dependency transparent union"; return false; }
+            if (!count) continue;
+            auto members = std::make_shared<std::vector<CppType>>(count);
+            for (auto& member : *members)
+                if (!getDependencyType(member)) { error = "invalid C dependency transparent union member"; return false; }
+            parameter.type.transparentUnionMembers = std::move(members);
+        }
     std::vector<std::uint8_t> canonical;
     if (!reader.atEnd() || !encodeCDependencyFunction(value, canonical, error) ||
         canonical.size() != bytes.size() || !std::equal(canonical.begin(), canonical.end(), bytes.begin()))

@@ -186,4 +186,22 @@ if not ONLY or any('c3-bitfield-ir' in o for o in ONLY):
         _fail('c3-bitfield-ir', 'el acceso volatile no usa la unidad de 32 bits:\n' + '\n'.join(lines)[:2000])
     else:
         print('ok c3-bitfield-ir', flush=True)
+
+# C3-06: a parameter of a `transparent_union` type whose members are pointers takes an argument of any member type,
+# passed with the ABI of the first member, as Clang does (the `__SOCKADDR_ARG` pattern). Other types are rejected.
+H6 = r'''
+struct sockaddr { int family; };
+struct sockaddr_in { int family; int port; };
+typedef union { struct sockaddr* sa; struct sockaddr_in* in; } __attribute__((transparent_union)) SockArg;
+int family_of(SockArg arg);
+'''
+S6 = 'int family_of(SockArg arg) { return arg.sa->family; }\n'
+BODY6 = r'''
+    sockaddr_in a; a.family = 40; a.port = 1;
+    sockaddr b; b.family = 2;
+    return family_of(&a) + family_of(&b);
+'''
+c6 = Caso('c3-union-transparente', H6, S6)
+positivo(c6, BODY6)
+rechazo(c6, 'int x = 1; return family_of(&x);', 'family_of')
 fin()

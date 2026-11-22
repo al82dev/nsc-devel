@@ -80,5 +80,8 @@ struct MethodParameterSymbol final
     //     sintaxis de usuario.
     bool cppPointerPointeeAtomic = false;
     std::uint8_t pointerLevelQualifiers = 0; // C1-02: intermediate pointer level qualifiers (Language/PointerLevelQualifiers.h).
+    // C3-06: the other member types of a C transparent union parameter, accepted as arguments. / Los otros
+    //     tipos miembro de un parametro union transparente C, aceptados como argumentos.
+    std::vector<std::string> cppTransparentUnionAlternatives;
 };
 }

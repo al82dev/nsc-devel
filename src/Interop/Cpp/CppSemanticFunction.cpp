@@ -1044,6 +1044,32 @@ CppSemanticFunctionResult projectFunction(
         const auto atomicPointee = cLanguage ? cAtomicPointeeCarrier(input.type) : std::nullopt;
         const CppType& sourceType = atomicPointee ? *atomicPointee : input.type;
         CppType mappedInput = carrier ? *carrier : cLanguage ? invocationTypeForC(sourceType, true) : input.type;
+        // EN: C3-06. A transparent union whose members are all pointers is passed as its first member (Clang's ABI for
+        //     it); the other members are accepted arguments of the parameter.
+        // ES: C3-06. Una union transparente cuyos miembros son todos punteros se pasa como su primer miembro (el ABI
+        //     de Clang); los demas miembros son argumentos aceptados del parametro.
+        std::vector<std::string> transparentAlternatives;
+        if (!reference && input.type.transparentUnionMembers && !input.type.transparentUnionMembers->empty() &&
+            std::all_of(input.type.transparentUnionMembers->begin(), input.type.transparentUnionMembers->end(),
+                [](const CppType& member) { return member.kind == CppTypeKind::Pointer; }))
+        {
+            mappedInput = cLanguage ? invocationTypeForC(input.type.transparentUnionMembers->front(), true)
+                                    : input.type.transparentUnionMembers->front();
+            mappedInput.isConst = false;
+            mappedInput.isVolatile = false;
+            for (std::size_t member = 1; member < input.type.transparentUnionMembers->size(); ++member)
+            {
+                CppType alternative = (*input.type.transparentUnionMembers)[member];
+                if (cLanguage) alternative = invocationTypeForC(alternative, true);
+                alternative.isConst = false;
+                alternative.isVolatile = false;
+                const auto mapped = mapFunctionType(alternative, true, records, moduleName, 0, lookup, projectOrdinal,
+                                                    cRecordValues, false, cppRecordValues);
+                if (!mapped) return failure("C/C++ parameter " + std::to_string(index) + " ('" + input.type.spelling +
+                    "') is a transparent union with a member NativeSharp cannot map");
+                transparentAlternatives.push_back(mapped->nativeSharpTypeKey);
+            }
+        }
         // Top-level qualifiers on a by-value pointer describe the callee's
         // local parameter, not the pointer expression at the call site.
         // Item 2.6: with or without an object size contract (`int *const p`, `int a[const 4]`).
@@ -1063,6 +1089,7 @@ CppSemanticFunctionResult projectFunction(
         frontend::MethodParameterSymbol parameter;
         parameter.name = input.name;
         parameter.typeKey = parameterType->nativeSharpTypeKey;
+        parameter.cppTransparentUnionAlternatives = std::move(transparentAlternatives);
         // Item 2.1: the base const of a pointer to pointer. / El const base de un puntero a puntero.
         parameter.pointerPointeeReadonly = cppPointeeReadonlyForNativeSharp(sourceType);
         // Item 8.3: a non-null C pointer parameter. / Un parametro puntero C no nulo.

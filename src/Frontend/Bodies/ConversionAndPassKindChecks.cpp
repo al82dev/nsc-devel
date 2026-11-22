@@ -111,6 +111,12 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyCFrontierConversion(
                 language::functionTypesAssignable(language::lambdaSignatureForTarget(lambda->signature, *function),
                                                   *function))
                 return {ProjectConversionKind::Function, 1, source.typeKey, target, std::nullopt};
+    // EN: C3-06. An argument of a member type of a C transparent union parameter is that member, as C passes it.
+    // ES: C3-06. Un argumento de un tipo miembro de un parametro union transparente C es ese miembro, como lo pasa C.
+    if (parameter.passKind == ParameterPassKind::Value &&
+        std::find(parameter.cppTransparentUnionAlternatives.begin(), parameter.cppTransparentUnionAlternatives.end(),
+                  source.typeKey) != parameter.cppTransparentUnionAlternatives.end())
+        return {ProjectConversionKind::PointerToVoid, 2, source.typeKey, target, std::nullopt};
     // EN: Item 4.7. A fixed array decays to a pointer to its first element at a C boundary, as in C: `int[2][4]`
     //     becomes `int (*)[4]` and `int[3]` becomes `int*`. Only for an addressable array place.
     // ES: Item 4.7. Un arreglo fijo decae a puntero a su primer elemento en una frontera C, como en C: `int[2][4]`
