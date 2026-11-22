@@ -4481,6 +4481,35 @@ public:
         module->print(stream, nullptr);
         return ir;
     }
+    std::optional<std::string> emitCTranslationUnitIR() const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || ast_->getASTContext().getLangOpts().CPlusPlus) return std::nullopt;
+        auto& context = ast_->getASTContext();
+        llvm::LLVMContext llvmContext;
+        auto generator = clang::CreateLLVMCodeGen(ast_->getDiagnostics(), "nsc.c.implementation",
+            ast_->getVirtualFileSystemPtr(), ast_->getHeaderSearchOpts(), ast_->getPreprocessorOpts(),
+            ast_->getCodeGenOpts(), llvmContext);
+        if (!generator) return std::nullopt;
+        generator->Initialize(context);
+        const auto& sources = ast_->getSourceManager();
+        for (auto* declaration : context.getTranslationUnitDecl()->decls())
+        {
+            // Only the library's own definitions: system headers and NSC's synthetic helpers stay out.
+            // Solo las definiciones de la biblioteca: los encabezados de sistema y los auxiliares de NSC quedan fuera.
+            if (sources.isInSystemHeader(declaration->getLocation())) continue;
+            if (const auto* named = llvm::dyn_cast<clang::NamedDecl>(declaration);
+                named && named->getIdentifier() && named->getName().starts_with("__nsc_")) continue;
+            if (!generator->HandleTopLevelDecl(clang::DeclGroupRef(declaration))) return std::nullopt;
+        }
+        generator->HandleTranslationUnit(context);
+        auto module = generator->ReleaseModule();
+        if (!module || llvm::verifyModule(*module, &llvm::errs())) return std::nullopt;
+        std::string ir;
+        llvm::raw_string_ostream stream(ir);
+        module->print(stream, nullptr);
+        return ir;
+    }
     std::optional<std::string> emitCStaticInlineIR(
         const std::vector<CppCInlineIRExport>& requests,
         const std::vector<CppCInlineIRExport>& globals) const override

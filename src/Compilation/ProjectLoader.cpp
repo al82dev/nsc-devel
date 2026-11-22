@@ -703,7 +703,7 @@ bool parseCppLibraryReferenceItem(
     const SimpleXmlElement& item, ProjectDescriptor& descriptor, std::string& error)
 {
     if (!hasOnlyAttributes(item, {"Header", "Language", "Standard", "Library", "Runtime", "VolatileMode", "RuntimeTls",
-                                  "PublicTypes"}, error))
+                                  "PublicTypes", "Implementation"}, error))
         return false;
     if (!trim(item.text).empty())
     {
@@ -771,6 +771,13 @@ bool parseCppLibraryReferenceItem(
             return false;
         }
         reference.publicTypes = true;
+    }
+    if (const auto* implementation = attribute(item, "Implementation"))
+    {
+        if (trim(*implementation).empty())
+        { error = "CppLibraryReference Implementation requires a macro name"; return false; }
+        reference.implementationMacro = trim(*implementation);
+        reference.macros.push_back({interop::CppMacroAction::Define, reference.implementationMacro});
     }
     for (const auto& child : item.children)
     {
@@ -1608,6 +1615,12 @@ std::optional<std::vector<CppLibraryReference>> loadCppLibraryReferences(
         reference.languageStandard = input.languageStandard;
         reference.volatileMode = input.volatileMode;
         reference.macros = input.macros;
+        reference.implementationMacro = input.implementationMacro;
+        if (!reference.implementationMacro.empty() && input.language != interop::CppLanguageMode::C)
+        {
+            error = "CppLibraryReference Implementation requires Language=\"C\"";
+            return std::nullopt;
+        }
         for (const auto& include : input.includePaths)
         {
             ec.clear();

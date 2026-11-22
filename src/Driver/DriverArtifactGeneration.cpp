@@ -67,6 +67,50 @@ static std::string selectDirectLinkedProductLinker(
     return {};
 }
 
+// EN: Item 6.1. Each C reference with Implementation="MACRO" contributes the object of its whole translation unit,
+//     compiled once with MACRO defined: the definitions of a single-file library.
+// ES: Item 6.1. Cada referencia C con Implementation="MACRO" aporta el objeto de toda su unidad, compilada una vez
+//     con MACRO definida: las definiciones de una biblioteca de un archivo.
+static bool appendCImplementationObjects(frontend::ProjectCompilation &compilation,
+                                         llvm_backend::ProjectOopObjectBundle &bundle,
+                                         llvm_backend::LlvmOptimizationLevel level, std::string &error)
+{
+#ifdef NSC_ENABLE_CPP_INTEROP
+    std::vector<const interop::CppInteropSession *> sessions;
+    if (compilation.projectGraph())
+        for (const auto &project : compilation.projectGraph()->projects())
+        {
+            const auto &references = project.cppLibraryReferences();
+            for (const auto &group : compilation.cppProjectSessions())
+            {
+                if (group.projectFile != project.projectFile()) continue;
+                for (std::size_t index = 0; index < references.size() && index < group.sessions.size(); ++index)
+                    if (!references[index].implementationMacro.empty() && group.sessions[index])
+                        sessions.push_back(group.sessions[index].get());
+            }
+        }
+    if (sessions.empty()) { error.clear(); return true; }
+    return bundle.appendGeneratedObjects(sessions.size(),
+        [&](std::span<const std::filesystem::path> paths, std::string &emitError)
+        {
+            for (std::size_t i = 0; i < sessions.size(); ++i)
+            {
+                const auto ir = sessions[i]->emitCTranslationUnitIR();
+                if (!ir)
+                {
+                    emitError = "cannot compile the C implementation unit of a single-file library through Clang";
+                    return false;
+                }
+                if (!llvm_backend::emitCppInlineObject(*ir, level, paths[i], emitError)) return false;
+            }
+            return true;
+        }, error);
+#else
+    (void)compilation; (void)bundle; (void)level;
+    error.clear(); return true;
+#endif
+}
+
 static bool appendCStaticInlineObjects(frontend::ProjectCompilation &compilation,
                                        llvm_backend::ProjectOopObjectBundle &bundle,
                                        llvm_backend::LlvmOptimizationLevel level, std::string &error)
@@ -467,6 +511,8 @@ std::unique_ptr<llvm_backend::ProjectOopObjectBundle> generateProjectObjects(
                                           *objectBundle, optimizationLevel, error))
         return nullptr;
     if (!appendCStaticInlineObjects(compilation, *objectBundle, optimizationLevel, error))
+        return nullptr;
+    if (!appendCImplementationObjects(compilation, *objectBundle, optimizationLevel, error))
         return nullptr;
     if (!appendCppInlineObjects(compilation, *compilation.oopMirModel(), *objectBundle, optimizationLevel,
                                 debugInformation, error))

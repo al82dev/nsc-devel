@@ -290,6 +290,10 @@ public:
     // Experimental isolated IR only; no object, linkage, or lifetime integration is implied.
     virtual std::optional<std::string> emitImplicitLifetimeIR(
         std::string_view, CppImplicitLifetimeKind) const { return std::nullopt; }
+    // EN: Item 6.1. IR of every definition of this C translation unit, with their own symbols (a single-file
+    //     library compiled with its implementation macro). Nullopt for C++ or a failed code generation.
+    // ES: Item 6.1. IR de todas las definiciones de esta unidad C, con sus propios simbolos.
+    virtual std::optional<std::string> emitCTranslationUnitIR() const { return std::nullopt; }
     // Isolated C static-inline IR; the caller owns symbol uniqueness and linkage integration.
     virtual std::optional<std::string> emitCStaticInlineIR(
         const std::vector<CppCInlineIRExport>&,

@@ -25,5 +25,12 @@ struct CppLibraryReference final
     // EN: T08-D25. PublicTypes="Header": the library publishes this header's own C types in its NSMeta catalog.
     // ES: T08-D25. PublicTypes="Header": la biblioteca publica en su catalogo NSMeta los tipos C de este encabezado.
     bool publicTypes = false;
+    // EN: Item 6.1. Implementation="MACRO": the header is a single-file library (stb, cgltf, dr_mp3) whose
+    //     definitions appear with MACRO defined. NSC defines MACRO for the session, compiles that translation unit
+    //     once and links its object with the program or library.
+    // ES: Item 6.1. Implementation="MACRO": el encabezado es una biblioteca de un archivo (stb, cgltf, dr_mp3) cuyas
+    //     definiciones aparecen con MACRO definida. NSC define MACRO para la sesion, compila esa unidad una vez y
+    //     enlaza su objeto con el programa o la biblioteca.
+    std::string implementationMacro;
 };
 }

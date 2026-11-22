@@ -19,6 +19,9 @@ struct CppLibraryReferenceDescriptor final
     // EN: T08-D25. PublicTypes="Header": publish the header's own C types with the library.
     // ES: T08-D25. PublicTypes="Header": publicar con la biblioteca los tipos C propios del encabezado.
     bool publicTypes = false;
+    // EN: Item 6.1. Implementation="MACRO": compile the header's definitions (single-file library) with MACRO.
+    // ES: Item 6.1. Implementation="MACRO": compilar las definiciones del encabezado (biblioteca de un archivo).
+    std::string implementationMacro;
     interop::CppLanguageMode language = interop::CppLanguageMode::Cpp;
     std::string languageStandard;
     std::vector<interop::CppIncludePath> includePaths;
