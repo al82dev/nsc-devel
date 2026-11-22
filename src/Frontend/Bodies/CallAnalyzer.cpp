@@ -1459,16 +1459,9 @@ std::optional<std::size_t> ProjectMethodBodyModel::selectNamespaceFunctionCandid
     //     int, y `m(int, long)` frente a `m(long, int)` sigue ambigua. Una llamada que el orden NativeSharp ya
     //     resuelve conserva su eleccion (T10-009).
     const std::vector<std::size_t> nativeSharpBest = nonDominatedNamespaceFunctionCandidates(call, viable);
-    // EN: Item 9.15 (D10). When every viable candidate is a C++ function, C++'s arithmetic ranking decides from
-    //     all of them, as Clang does: `h(long)` and `h(long long)` with an int are ambiguous, even if NativeSharp
-    //     sees C `long` as its own `int`.
-    // ES: Item 9.15 (D10). Si todos los candidatos viables son funciones C++, decide el orden aritmetico de C++
-    //     entre todos ellos, como Clang: `h(long)` y `h(long long)` con un int son ambiguas, aunque NativeSharp vea
-    //     el `long` de C como su `int`.
-    CppArithmeticOverloadRanking cppRanking =
-        rankCppArithmeticOverloads(namespaceFunctionModel_, call.evaluatedCandidates, viable);
-    if (!cppRanking.applies && nativeSharpBest.size() > 1)
-        cppRanking = rankCppArithmeticOverloads(namespaceFunctionModel_, call.evaluatedCandidates, nativeSharpBest);
+    const CppArithmeticOverloadRanking cppRanking = nativeSharpBest.size() > 1
+        ? rankCppArithmeticOverloads(namespaceFunctionModel_, call.evaluatedCandidates, nativeSharpBest)
+        : CppArithmeticOverloadRanking{};
     std::vector<std::size_t> nonDominated = cppRanking.applies ? cppRanking.best : nativeSharpBest;
     // EN: T19-007. `ref x` names an lvalue, so where it binds a C++ `T&` in one overload and a `T&&` in another, the
     //     `T&` overload is better, as C++ prefers it for an lvalue ([over.ics.rank]).
