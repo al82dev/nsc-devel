@@ -4840,6 +4840,40 @@ public:
                 { return !value.macro || !value.cMacroStorage.empty() || !value.cMacroAccessor.empty(); });
         return result;
     }
+    std::optional<std::pair<std::uint64_t, bool>> evaluateIntegerConstantExpression(
+        std::string_view expression) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_) return std::nullopt;
+        // C2-04: a static initializer in C must be a constant expression, so Clang rejects anything else. / Un
+        //     inicializador static en C debe ser una expresion constante, asi que Clang rechaza lo demas.
+        const std::string code = source_ + "\nstatic const __auto_type __nsc_integer_constant_probe = (" +
+            std::string(expression) + ");\n";
+        llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(llvm::vfs::createPhysicalFileSystem().release());
+        if (filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory))) return std::nullopt;
+        std::vector<CppSessionDiagnostic> diagnostics;
+        detail::DiagnosticCollector collector(diagnostics);
+        auto arguments = detail::buildClangInvocationArguments(options_);
+        const bool cpp = ast_->getASTContext().getLangOpts().CPlusPlus;
+        std::string adjusted = code;
+        if (cpp)
+            adjusted = source_ + "\nconstexpr auto __nsc_integer_constant_probe = (" + std::string(expression) + ");\n";
+        auto unit = detail::runClangSessionAction(adjusted, arguments, inputPath_, utf8(options_.driverReferencePath),
+                                                  &collector, std::move(filesystem), CppCancellationToken{});
+        if (!unit || unit->getDiagnostics().hasErrorOccurred()) return std::nullopt;
+        auto& context = unit->getASTContext();
+        for (const auto* declaration : context.getTranslationUnitDecl()->decls())
+        {
+            const auto* variable = llvm::dyn_cast<clang::VarDecl>(declaration);
+            if (!variable || !variable->getIdentifier() ||
+                variable->getName() != "__nsc_integer_constant_probe" || !variable->getType()->isIntegerType())
+                continue;
+            const auto value = evaluateScalarConstant(*variable, context);
+            if (!value || value->kind != CppConstantValue::Kind::Integer) return std::nullopt;
+            return std::make_pair(value->integerBits, variable->getType()->isSignedIntegerType());
+        }
+        return std::nullopt;
+    }
     std::vector<CppMacroName> macrosSnapshot() const override
     {
         std::lock_guard lock(mutex_);
@@ -5209,6 +5243,9 @@ private:
         // C2-02: argument-list macros and the spelling of each element. / Macros lista de argumentos y la escritura
         //     de cada elemento.
         std::vector<std::pair<std::string, std::vector<std::string>>> argumentLists;
+        // C2-03: macros whose whole expansion is a brace initializer list. / Macros cuya expansion entera es una
+        //     lista de inicializacion entre llaves.
+        std::vector<std::string> braceInitializers;
         for (const auto& [identifier, state] : preprocessor.macros())
         {
             const auto* info = identifier ? preprocessor.getMacroInfo(identifier) : nullptr;
@@ -5260,7 +5297,109 @@ private:
                 if (list && !locationSensitive &&
                     std::none_of(elements.begin(), elements.end(), [](const std::string& item) { return item.empty(); }))
                     argumentLists.emplace_back(name, std::move(elements));
-                if (!list && !locationSensitive) objectLike.push_back(name);
+                const auto& tokens = info->tokens();
+                const bool braced = !tokens.empty() && tokens.front().is(clang::tok::l_brace) &&
+                    tokens.back().is(clang::tok::r_brace) && [&] {
+                        int level = 0;
+                        for (std::size_t index = 0; index < tokens.size(); ++index)
+                        {
+                            if (tokens[index].isOneOf(clang::tok::l_paren, clang::tok::l_square, clang::tok::l_brace))
+                                ++level;
+                            else if (tokens[index].isOneOf(clang::tok::r_paren, clang::tok::r_square,
+                                                           clang::tok::r_brace))
+                                --level;
+                            if (level == 0 && index + 1 != tokens.size()) return false;
+                        }
+                        return true;
+                    }();
+                if (braced && !locationSensitive) braceInitializers.push_back(name);
+                else if (!list && !locationSensitive) objectLike.push_back(name);
+            }
+        }
+        // EN: C2-03. A brace initializer list has no type of its own: Clang evaluates it for each record type of the
+        //     header as the compound literal `(T)M` (C) or `T M` (C++), and the pairs it accepts are imported as
+        //     `<M>__nsc_init_<T>`. A NativeSharp declaration `T v = M;` uses the pair of its type.
+        // ES: C2-03. Una lista entre llaves no tiene tipo propio: Clang la evalua para cada tipo record del
+        //     encabezado como el literal compuesto `(T)M` (C) o `T M` (C++), y los pares que acepta se importan como
+        //     `<M>__nsc_init_<T>`. Una declaracion NativeSharp `T v = M;` usa el par de su tipo.
+        std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>> braceCandidates;
+        if (!braceInitializers.empty())
+        {
+            const bool cppUnit = ast_->getASTContext().getLangOpts().CPlusPlus;
+            std::vector<std::pair<std::string, std::string>> types;
+            for (const auto* declaration : ast_->getASTContext().getTranslationUnitDecl()->decls())
+            {
+                if (declaration->isImplicit() || sources.isInSystemHeader(declaration->getLocation())) continue;
+                if (const auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(declaration))
+                {
+                    if (alias->getUnderlyingType().getCanonicalType()->isRecordType())
+                        types.emplace_back(alias->getName().str(), alias->getName().str());
+                }
+                else if (const auto* record = llvm::dyn_cast<clang::RecordDecl>(declaration))
+                    if (record->isCompleteDefinition() && record->getIdentifier())
+                        types.emplace_back(record->getName().str(),
+                                           cppUnit ? record->getName().str()
+                                                   : (record->isUnion() ? "union " : "struct ") + record->getName().str());
+            }
+            // One candidate per NativeSharp spelling; a typedef wins over its tag (`typedef struct P {...} P;`).
+            //     / Un candidato por escritura NativeSharp; un typedef gana sobre su etiqueta.
+            std::map<std::string, std::string> unique;
+            for (const auto& [spelled, cType] : types)
+                if (const auto [found, inserted] = unique.emplace(spelled, cType); !inserted && cType == spelled)
+                    found->second = cType;
+            types.assign(unique.begin(), unique.end());
+            source_ += '\n';
+            for (const auto& name : braceInitializers)
+            {
+                std::vector<std::pair<std::string, std::string>> elements;
+                for (const auto& [spelled, cType] : types)
+                {
+                    const std::string element = name + "__nsc_init_" + spelled;
+                    braceElements_[element] = {cType, name};
+                    objectLike.push_back(element);
+                    elements.emplace_back(spelled, element);
+                }
+                braceCandidates.emplace_back(name, std::move(elements));
+            }
+            // EN: C2-03. A pair Clang rejects with an error that does not invalidate the declaration (an integer to a
+            //     pointer field, -Wint-conversion) would make the whole value unit fail: one probe with a line per
+            //     pair drops every pair whose line reports an error.
+            // ES: C2-03. Un par que Clang rechaza con un error que no invalida la declaracion haria fallar toda la
+            //     unidad de valores: un sondeo con una linea por par descarta cada par cuya linea informa un error.
+            // A `#line` names the probe lines, so a preprocessed source with its own line markers maps them too.
+            //     / Un `#line` nombra las lineas del sondeo, asi tambien las mapea una fuente preprocesada.
+            std::string probe = source_ + "\n#line 1 \"__nsc_brace_probe\"\n";
+            const unsigned firstLine = 1U;
+            std::vector<std::string> ordered;
+            for (const auto& [element, value] : braceElements_)
+            {
+                probe += "static const " + value.first + " __nsc_brace_probe_" + element + " = " + value.second + ";\n";
+                ordered.push_back(element);
+            }
+            llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> probeFilesystem(
+                llvm::vfs::createPhysicalFileSystem().release());
+            std::vector<CppSessionDiagnostic> probeDiagnostics;
+            detail::DiagnosticCollector probeCollector(probeDiagnostics);
+            auto probeArguments = detail::buildClangInvocationArguments(options_);
+            probeArguments.push_back("-ferror-limit=0");
+            std::set<std::string> rejected(ordered.begin(), ordered.end());
+            if (!probeFilesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory)))
+                if (detail::runClangSessionAction(probe, probeArguments, inputPath_,
+                        utf8(options_.driverReferencePath), &probeCollector, std::move(probeFilesystem),
+                        CppCancellationToken{}))
+                {
+                    rejected.clear();
+                    for (const auto& diagnostic : probeDiagnostics)
+                        if (diagnostic.severity == CppSessionDiagnosticSeverity::Error && diagnostic.location &&
+                            diagnostic.location->file.filename() == "__nsc_brace_probe" &&
+                            diagnostic.location->line >= firstLine &&
+                            diagnostic.location->line < firstLine + ordered.size())
+                            rejected.insert(ordered[diagnostic.location->line - firstLine]);
+                }
+            for (const auto& element : rejected)
+            {
+                braceElements_.erase(element);
+                std::erase(objectLike, element);
             }
         }
         if (!argumentLists.empty())
@@ -5289,8 +5428,18 @@ private:
         const bool cpp = ast_->getASTContext().getLangOpts().CPlusPlus;
         std::string code = source_ + "\n";
         for (const auto& name : objectLike)
+        {
+            // C2-03: a brace initializer takes the type it initializes. / Una lista entre llaves toma el tipo que
+            //     inicializa.
+            if (const auto brace = braceElements_.find(name); brace != braceElements_.end())
+            {
+                code += "static const " + brace->second.first + " __nsc_macro_" + name + " = " +
+                    brace->second.second + ";\n";
+                continue;
+            }
             code += (cpp ? "constexpr auto __nsc_macro_" : "static const __auto_type __nsc_macro_") + name + " = (" +
                 name + ");\n";
+        }
         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(llvm::vfs::createPhysicalFileSystem().release());
         std::vector<CppSessionDiagnostic> macroDiagnostics;
         detail::DiagnosticCollector collector(macroDiagnostics);
@@ -5326,6 +5475,15 @@ private:
         for (const auto& name : objectLike)
             macroConstants_->names.push_back({name, false, constants.contains(name) ||
                 macroDeclaredValueOrType(name)});
+        for (const auto& [name, elements] : braceCandidates)
+        {
+            CppMacroName macro{name, false, false};
+            for (const auto& [spelled, element] : elements)
+                if (constants.contains(element) || macroDeclaredValueOrType(element))
+                    macro.braceInitializerTypes.push_back(spelled);
+            macro.constant = !macro.braceInitializerTypes.empty();
+            macroConstants_->names.push_back(std::move(macro));
+        }
         for (const auto& [name, elements] : argumentLists)
         {
             bool imported = true;
@@ -5580,8 +5738,16 @@ private:
         const bool cpp = probeContext.getLangOpts().CPlusPlus;
         std::string code = source_ + "\n";
         for (const auto& name : values)
+        {
+            if (const auto brace = braceElements_.find(name); brace != braceElements_.end())
+            {
+                code += std::string(cpp ? "inline const " : "static const ") + brace->second.first +
+                    " __nsc_macro_value_" + name + " = " + brace->second.second + ";\n";
+                continue;
+            }
             code += std::string(cpp ? "inline const auto" : "static const __auto_type") + " __nsc_macro_value_" +
                 name + " = (" + name + ");\n";
+        }
         for (const auto& name : types) code += "typedef " + name + " __nsc_macro_type_" + name + ";\n";
         for (const auto& [name, lvalue] : accessors) code += macroAccessorSource(name, lvalue);
         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(llvm::vfs::createPhysicalFileSystem().release());
@@ -6168,6 +6334,8 @@ private:
     // T12-004: the analyzed source, reparsed with the member adapters appended.
     // T19-003: also with the macro wrappers. / Tambien con los envoltorios de macros.
     mutable std::string source_;
+    // C2-03: brace-initializer elements: element name -> (C type, macro). / Elementos de listas entre llaves.
+    mutable std::map<std::string, std::pair<std::string, std::string>> braceElements_;
     // T19-003: the input as read, without wrappers. / La entrada como se leyo, sin envoltorios.
     std::string originalSource_;
     // EN: T19-003. The wrapper of each expanded C function-like macro call, by macro name and argument types, and

@@ -409,6 +409,9 @@ private:
     // C2-02: argument-list macros of each project and their element counts. / Macros lista de cada proyecto y su
     //     numero de elementos.
     std::map<std::size_t, std::map<std::string, std::size_t, std::less<>>> cppArgumentListMacros_;
+    // C2-03: brace-initializer macros of each project and the record types Clang accepts them for. / Macros de
+    //     inicializacion entre llaves de cada proyecto y los tipos record para los que Clang las acepta.
+    std::map<std::size_t, std::map<std::string, std::vector<std::string>, std::less<>>> cppBraceInitializerMacros_;
     // T19-040: the token parameters of each function-like macro, and the per-call wrappers. / Los parametros de
     //     tokens de cada macro de funcion, y los envoltorios por llamada.
     std::map<std::size_t, std::map<std::string, std::vector<unsigned>, std::less<>>> cppFunctionMacroTokens_;

@@ -3594,6 +3594,47 @@ void expandArgumentListCalls(ast::AstNode& node, ast::AstArena& arena,
         if (child) expandArgumentListCalls(*child, arena, macros, visited, misplaced);
 }
 
+// EN: C2-03. `T v = M;` with M a brace-initializer macro takes the value Clang built for T; any other use of M is
+//     reported with the types it fits.
+// ES: C2-03. `T v = M;` con M una macro de llaves toma el valor que Clang construyo para T; cualquier otro uso de M
+//     se informa con los tipos a los que se ajusta.
+void applyBraceInitializerMacros(ast::AstNode& node, ast::AstArena& arena,
+    const std::map<std::string, std::vector<std::string>, std::less<>>& macros,
+    std::set<const ast::AstNode*>& visited, std::vector<MisplacedArgumentList>& misplaced,
+    std::vector<std::string>& reasons)
+{
+    if (!visited.insert(&node).second) return;
+    if (node.kind() == ast::AstNodeKind::VariableDeclarationStatement && node.first() &&
+        node.first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        if (const auto macro = macros.find(node.first()->text()); macro != macros.end())
+        {
+            const ast::TypeSyntax* type = node.typeSyntax();
+            const bool plain = type && type->modifiers().empty() && type->typeArguments().empty();
+            const std::string spelled = plain ? std::string(type->baseName()) : std::string{};
+            if (plain && std::find(macro->second.begin(), macro->second.end(), spelled) != macro->second.end())
+            {
+                auto* value = arena.make<ast::AstNode>(ast::AstNodeKind::IdentifierExpression, node.first()->range());
+                value->setText(macro->first + "__nsc_init_" + spelled);
+                node.setFirst(value);
+                visited.insert(value);
+            }
+        }
+    if (node.kind() == ast::AstNodeKind::IdentifierExpression)
+        if (const auto macro = macros.find(node.text()); macro != macros.end())
+        {
+            std::string types;
+            for (const auto& type : macro->second) types += (types.empty() ? "'" : ", '") + type + "'";
+            misplaced.push_back({node.range(), macro->first, 0});
+            reasons.push_back("unknown identifier '" + macro->first + "': the C macro is a brace initializer list, "
+                "which C gives a value only as the initializer of a declaration of a record type Clang accepts it "
+                "for: " + types);
+        }
+    for (ast::AstNode* child : {node.first(), node.second(), node.third()})
+        if (child) applyBraceInitializerMacros(*child, arena, macros, visited, misplaced, reasons);
+    for (ast::AstNode* child : std::vector<ast::AstNode*>(node.children()))
+        if (child) applyBraceInitializerMacros(*child, arena, macros, visited, misplaced, reasons);
+}
+
 std::vector<MisplacedArgumentList> expandCppArgumentListMacros(ast::AstNode& root, ast::AstArena& arena,
                                  const std::map<std::string, std::size_t, std::less<>>& macros)
 {
@@ -3619,6 +3660,7 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
     cppFunctionMacros_.clear();
     cppFunctionMacroTokens_.clear();
     cppArgumentListMacros_.clear();
+    cppBraceInitializerMacros_.clear();
     if (cppProjectSessions_.empty() || !projectGraph_) return true;
     // EN: T14-001, T14-003. The macros of each project that are not imported as constants, so a call to one says
     //     why: NativeSharp does not run the C preprocessor over its own code.
@@ -3638,6 +3680,13 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
                         // ES: T19-003. Una macro de funcion se expande en cada llamada con un envoltorio de Clang.
                         // C2-02: an argument-list macro whose elements were all imported. / Una macro lista cuyos
                         //     elementos se importaron todos.
+                        // C2-03: a brace-initializer macro with at least one accepted record type. / Una macro
+                        //     de llaves con al menos un tipo record aceptado.
+                        if (!macro.braceInitializerTypes.empty())
+                        {
+                            cppBraceInitializerMacros_[ordinal][macro.name] = macro.braceInitializerTypes;
+                            continue;
+                        }
                         if (macro.argumentListCount != 0 && macro.constant)
                         {
                             cppArgumentListMacros_[ordinal][macro.name] = macro.argumentListCount;
@@ -4068,6 +4117,23 @@ bool ProjectCompilation::parseSyntaxUnits(
     for (auto& unit : units_)
     {
         if (!unit || !unit->syntaxTree()) continue;
+        if (const auto braces = cppBraceInitializerMacros_.find(unit->projectOrdinal());
+            braces != cppBraceInitializerMacros_.end())
+        {
+            std::set<std::string, std::less<>> declared;
+            collectDeclaredNames(*unit->syntaxTree(), declared);
+            std::map<std::string, std::vector<std::string>, std::less<>> visible;
+            for (const auto& [name, types] : braces->second)
+                if (!declared.contains(name)) visible.emplace(name, types);
+            std::set<const ast::AstNode*> visited;
+            std::vector<MisplacedArgumentList> misplaced;
+            std::vector<std::string> reasons;
+            if (!visible.empty())
+                applyBraceInitializerMacros(*unit->syntaxTree(), unit->arena(), visible, visited, misplaced, reasons);
+            for (std::size_t index = 0; index < misplaced.size(); ++index)
+                diagnostics_.report(diagnostics::DiagnosticId::UnknownIdentifier,
+                    diagnostics::DiagnosticSeverity::Error, misplaced[index].range, reasons[index]);
+        }
         const auto lists = cppArgumentListMacros_.find(unit->projectOrdinal());
         if (lists == cppArgumentListMacros_.end()) continue;
         for (const auto& use : expandCppArgumentListMacros(*unit->syntaxTree(), unit->arena(), lists->second))

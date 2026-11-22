@@ -55,4 +55,29 @@ BODY8 = r'''
     return twice(ANSWER / 2) + 2;
 '''
 positivo(Caso('c2-constantes', H8, S8), BODY8)
+
+# C2-03: brace-initializer macros (LZ4F_INIT_PREFERENCES, DBUS_ERROR_INIT) initialize a declaration of a record type
+# Clang accepts them for, with nested fields; any other use, or a type Clang rejects, is reported.
+H3 = r'''
+typedef struct Prefs { int level; int flags; struct { int a; int b; } inner; } Prefs;
+typedef struct Err { const char* name; const char* message; unsigned dummy1; } Err;
+#define PREFS_INIT { 3, 0, { 7, 9 } }
+#define ERR_INIT { 0, 0, 1u }
+int prefs_sum(const Prefs* p);
+'''
+S3 = 'int prefs_sum(const Prefs* p) { return p->level + p->flags + p->inner.a + p->inner.b; }\n'
+BODY3 = r'''
+    Prefs p = PREFS_INIT;
+    if (prefs_sum(&p) != 19) return 1;
+    Err e = ERR_INIT;
+    if (e.name != null || e.message != null || e.dummy1 != 1u) return 2;
+    p.level = 26;
+    return prefs_sum(&p) - p.level + 26 + 0 * (int)e.dummy1 + 0;
+'''
+c3 = Caso('c2-llaves', H3, S3)
+positivo(c3, BODY3.replace('return prefs_sum(&p) - p.level + 26 + 0 * (int)e.dummy1 + 0;', 'return prefs_sum(&p) - 0;')
+         .replace('if (prefs_sum(&p) != 19) return 1;', 'if (prefs_sum(&p) != 19) return 1;'), )
+rechazo(c3, 'int x = PREFS_INIT; return x;', "brace initializer list")
+rechazo(c3, 'Prefs p = PREFS_INIT; p = PREFS_INIT; return 0;', "brace initializer list")
+rechazo(c3, 'Err e = PREFS_INIT; return 0;', "'Prefs'")
 fin()

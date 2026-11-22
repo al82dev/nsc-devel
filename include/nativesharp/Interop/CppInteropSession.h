@@ -259,6 +259,11 @@ struct CppMacroName
     //     elemento se importa como la macro `<nombre>__nsc_arg<i>`, y un argumento de llamada que nombra la macro
     //     equivale a todos ellos, en orden, como los expande el preprocesador C.
     std::size_t argumentListCount = 0;
+    // EN: C2-03. A macro whose expansion is a brace initializer list: the record types (as NativeSharp spells them)
+    //     that Clang accepts it for. Each is imported as `<name>__nsc_init_<type>`.
+    // ES: C2-03. Una macro cuya expansion es una lista entre llaves: los tipos record (como los escribe NativeSharp)
+    //     para los que Clang la acepta. Cada uno se importa como `<nombre>__nsc_init_<tipo>`.
+    std::vector<std::string> braceInitializerTypes{};
 };
 
 struct CppTemplateName
@@ -358,6 +363,15 @@ public:
     virtual std::vector<CppTemplateName> templatesSnapshot() const { return {}; }
     // T14-001: the macros of the header and whether each is an imported constant. / Las macros del encabezado.
     virtual std::vector<CppMacroName> macrosSnapshot() const { return {}; }
+    // EN: C2-04. Evaluates a C/C++ expression written with the header's macros (`LZ4_COMPRESSBOUND(64)`) as an integer
+    //     constant expression of the session's language, with the session's options; null when Clang does not accept
+    //     it as one. The value is the two's complement bits with the expression's signedness.
+    // ES: C2-04. Evalua una expresion C/C++ escrita con las macros del encabezado como expresion constante entera del
+    //     lenguaje de la sesion, con sus opciones; nulo si Clang no la acepta como tal.
+    virtual std::optional<std::pair<std::uint64_t, bool>> evaluateIntegerConstantExpression(std::string_view) const
+    {
+        return std::nullopt;
+    }
     // T13-010: Sema instantiates the template with the arguments; nullopt when it is not a template here.
     virtual std::optional<CppTemplateInstantiation> instantiateTemplate(
         std::string_view, bool, std::span<const CppTemplateArgument>) const { return std::nullopt; }
