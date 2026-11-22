@@ -70,7 +70,7 @@ class Caso:
         self.standard = standard or ('c17' if language == 'C' else 'c++20')
         self.extra_ref = extra_ref
         # C++ test libraries link without the C++ runtime: no exception tables unless a case asks for them.
-        self.clang_args = list(clang_args) if clang_args or language == 'C' else ['-fno-exceptions']
+        self.clang_args = list(clang_args) if clang_args or language == 'C' else ['-fno-exceptions', '-fno-rtti']
         # shared: the C/C++ source becomes capi.dll with its import library capi.lib (no CRT, no entry point).
         self.shared = shared
 
