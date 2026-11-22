@@ -560,12 +560,17 @@ bool ThinLtoBackend::findMissingLinkSymbols(
     missing.clear();
     llvm::LLVMContext context;
     std::unordered_set<std::string> defined;
+    std::unordered_set<std::string> referenced;
     std::vector<llvm::object::OwningBinary<llvm::object::Binary>> archives;
     std::vector<std::filesystem::path> archivePaths;
+    // EN: Item 1.9. Any symbolic file counts, COFF objects and the bitcode objects NSC generates for C/C++ inline
+    //     code alike; reading only COFF reported symbols that a bitcode object defines as missing.
+    // ES: Item 1.9. Cuenta cualquier archivo simbolico, objetos COFF y los objetos bitcode que NSC genera para el
+    //     codigo inline C/C++; leer solo COFF informaba como ausentes simbolos que define un objeto bitcode.
     const auto addDefined = [&](const llvm::object::Binary& binary) {
-        const auto* object = llvm::dyn_cast<llvm::object::COFFObjectFile>(&binary);
+        const auto* object = llvm::dyn_cast<llvm::object::SymbolicFile>(&binary);
         if (object == nullptr) return true;
-        for (const llvm::object::SymbolRef& symbol : object->symbols())
+        for (const llvm::object::BasicSymbolRef& symbol : object->symbols())
         {
             auto flags = symbol.getFlags();
             if (!flags)
@@ -573,15 +578,19 @@ bool ThinLtoBackend::findMissingLinkSymbols(
                 error = llvm::toString(flags.takeError());
                 return false;
             }
-            if ((*flags & llvm::object::SymbolRef::SF_Global) == 0 ||
-                (*flags & llvm::object::SymbolRef::SF_Undefined) != 0) continue;
-            auto name = symbol.getName();
-            if (!name)
+            if ((*flags & llvm::object::SymbolRef::SF_Global) == 0) continue;
+            std::string name;
+            llvm::raw_string_ostream stream(name);
+            if (auto printed = symbol.printName(stream))
             {
-                error = llvm::toString(name.takeError());
+                error = llvm::toString(std::move(printed));
                 return false;
             }
-            defined.insert(name->str());
+            stream.flush();
+            // Item 1.9: only a symbol some object refers to can be missing. / Solo puede faltar un simbolo que algun
+            //     objeto referencia.
+            if ((*flags & llvm::object::SymbolRef::SF_Undefined) != 0) referenced.insert(name);
+            else defined.insert(name);
         }
         return true;
     };
@@ -620,6 +629,7 @@ bool ThinLtoBackend::findMissingLinkSymbols(
     for (const std::string& symbol : symbols)
     {
         const std::string imported = "__imp_" + symbol;
+        if (!referenced.contains(symbol) && !referenced.contains(imported)) continue;
         if (defined.contains(symbol) || defined.contains(imported) || provided(symbol) || provided(imported))
             continue;
         std::vector<std::pair<std::string, std::string>> sameName;
