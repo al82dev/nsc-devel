@@ -3015,6 +3015,19 @@ bool reconstructCImportedFields(std::span<const CppCRecordSnapshot> records,
             // verified complete layout for value copies; reconstruction must do the same.
             if (!field && record.isCxx && (record.fields[i].type.kind == CppTypeKind::Unsupported ||
                                            record.fields[i].type.kind == CppTypeKind::FixedVector)) continue;
+            // EN: Item 1.4 (CS 13). A C field without a NativeSharp mapping is left out, as the live import does; a
+            //     use of it reports why. The layout of the record stays the verified one.
+            // ES: Item 1.4 (CS 13). Un campo C sin proyeccion NativeSharp se omite, como en la importacion en vivo;
+            //     su uso informa el motivo. El layout del record sigue siendo el verificado.
+            if (!field && !record.fields[i].name.empty() && !record.fields[i].isAnonymousCarrier)
+            {
+                frontend::CppImportedInstanceField omitted{projectOrdinal, snapshot.identityKey,
+                    record.fields[i].name, std::string{}, 0, false, false};
+                omitted.notImportedReason = "C/C++ field '" + record.fields[i].name + "' of type '" +
+                    record.fields[i].type.spelling + "' was not imported: NativeSharp has no mapping for that field type";
+                result.push_back(std::move(omitted));
+                continue;
+            }
             if (!field || field->ownerIdentityKey != snapshot.identityKey)
             { error = "C record field cannot be reconstructed: " + snapshot.identityKey + "." + record.fields[i].name; return false; }
             auto projected = toCppImportedInstanceField(*field);
