@@ -5976,20 +5976,24 @@ private:
                     argument.sourceSpelling + "') instead of a copy");
                 return result;
             }
+            // EN: C2-05. Only an argument without side effects gives the same result evaluated once: the frontend
+            //     classifies it from its syntax, and a name of volatile storage of the header is a read per evaluation.
+            // ES: C2-05. Solo un argumento sin efectos da el mismo resultado evaluado una vez: el frontend lo
+            //     clasifica por su sintaxis, y un nombre de almacenamiento volatile del encabezado es una lectura por
+            //     evaluacion.
             if (parameterIndex < uses.valueCount.size() && !argument.lvalue &&
                 (uses.valueCount[parameterIndex] > 1 || (uses.conditional && uses.valueCount[parameterIndex] > 0)))
             {
                 const auto& text = argument.sourceSpelling;
-                bool assignment = false;
-                for (std::size_t at = text.find('='); at != std::string::npos; at = text.find('=', at + 1))
-                {
-                    const char before = at > 0 ? text[at - 1] : ' ';
-                    const char after = at + 1 < text.size() ? text[at + 1] : ' ';
-                    if (after != '=' && before != '=' && before != '!' && before != '<' && before != '>')
-                        assignment = true;
-                }
-                if (text.find('(') != std::string::npos || text.find("++") != std::string::npos ||
-                    text.find("--") != std::string::npos || assignment)
+                bool volatileName = false;
+                if (!text.empty() && std::all_of(text.begin(), text.end(), [](char c)
+                        { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; }))
+                    for (const auto* declaration : ast_->getASTContext().getTranslationUnitDecl()->decls())
+                        if (const auto* variable = llvm::dyn_cast<clang::VarDecl>(declaration))
+                            if (variable->getIdentifier() && variable->getName() == text &&
+                                (variable->getType().isVolatileQualified() || variable->getType()->isAtomicType()))
+                                volatileName = true;
+                if (!argument.sideEffectFree || volatileName)
                 {
                     result.diagnostics.push_back("the macro evaluates argument " + std::to_string(index + 1) + " " +
                         (uses.valueCount[parameterIndex] > 1 ? "more than once" : "conditionally") +

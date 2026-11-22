@@ -394,6 +394,9 @@ private:
     std::set<const ast::AstNode*> cppDeducedTemplateCalls_;
     // T19-040. / T19-040.
     std::string argumentSpelling(const ast::AstNode* argument) const;
+    // C2-05: whether a macro argument has no side effects (see CppTemplateArgument::sideEffectFree). / Si un
+    //     argumento de macro no tiene efectos.
+    bool macroArgumentSideEffectFree(const ast::AstNode* argument) const;
     bool cppTemplateCallPending(const ast::AstNode* syntax) const
     {
         return cppTemplateDeductionRound_ < kCppTemplateDeductionRounds && !cppDeducedTemplateCalls_.contains(syntax);

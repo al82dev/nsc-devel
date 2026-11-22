@@ -102,4 +102,30 @@ BODY4 = r'''
 c4 = Caso('c2-dimension', H4, S4)
 positivo(c4, BODY4)
 rechazo(c4, 'int[RUNTIME(2)] c; return 0;', 'RUNTIME')
+
+# C2-05: a macro that evaluates an argument several times or conditionally accepts an argument without side effects
+# (C gives the same result when it is evaluated once); calls and volatile reads keep the rejection.
+H5 = r'''
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define SQUARE(x) ((x) * (x))
+typedef struct Pt { int x; int y; } Pt;
+extern volatile int shared;
+int next(void);
+'''
+S5 = 'volatile int shared = 3;\nstatic int counter = 0;\nint next(void) { return ++counter; }\n'
+BODY5 = r'''
+    int a = 3; int b = 5;
+    Pt p; p.x = 2; p.y = 7;
+    if (MAX(a + 1, b * 2) != 10) return 1;
+    if (SQUARE((a + b)) != 64) return 2;
+    if (MAX(p.x, p.y) != 7 || SQUARE((long)a) != 9) return 3;
+    if (MAX(a > b ? a : b, 4) != 5) return 4;
+    return 42;
+'''
+c5 = Caso('c2-efectos', H5, S5)
+positivo(c5, BODY5)
+rechazo(c5, 'return SQUARE(next());', 'may have side effects')
+rechazo(c5, 'int a = 1; return MAX(a, next());', 'may have side effects')
+rechazo(c5, 'return SQUARE(shared);', 'may have side effects')
+rechazo(c5, 'int a = 1; return SQUARE(a++);', 'may have side effects')
 fin()

@@ -1649,6 +1649,54 @@ bool ProjectCompilation::compileProjectGenericConstraints(
 //     separated them, as C writes an argument for `#`.
 // ES: T19-040. El texto de un argumento tal como lo escribio la llamada: sus tokens, con un espacio donde la fuente
 //     los separaba, como C escribe un argumento para `#`.
+bool ProjectCompilation::macroArgumentSideEffectFree(const ast::AstNode* argument) const
+{
+    if (!argument) return false;
+    switch (argument->kind())
+    {
+        case ast::AstNodeKind::IntegerLiteralExpression:
+        case ast::AstNodeKind::FloatingLiteralExpression:
+        case ast::AstNodeKind::CharacterLiteralExpression:
+        case ast::AstNodeKind::StringLiteralExpression:
+        case ast::AstNodeKind::BooleanLiteralExpression:
+        case ast::AstNodeKind::NullLiteralExpression:
+        case ast::AstNodeKind::SizeofTypeExpression:
+        case ast::AstNodeKind::AlignofTypeExpression:
+        case ast::AstNodeKind::OffsetofExpression:
+            return true;
+        case ast::AstNodeKind::IdentifierExpression:
+            // A volatile C/C++ global is read once per evaluation in C. / Una global C/C++ volatile se lee una vez
+            //     por evaluacion en C.
+            if (namespaceFunctionModel_)
+                for (const auto& state : namespaceFunctionModel_->states())
+                    if (state.isCppExternal && state.name == argument->text() &&
+                        (state.isVolatile || state.cppAtomicStorage))
+                        return false;
+            return true;
+        case ast::AstNodeKind::UnaryExpression:
+            if (argument->tokenKind() == lexer::TokenKind::PlusPlus ||
+                argument->tokenKind() == lexer::TokenKind::MinusMinus ||
+                argument->tokenKind() == lexer::TokenKind::Star)
+                return false;
+            return macroArgumentSideEffectFree(argument->first());
+        case ast::AstNodeKind::BinaryExpression:
+            return macroArgumentSideEffectFree(argument->first()) && macroArgumentSideEffectFree(argument->second());
+        case ast::AstNodeKind::ConditionalExpression:
+            return macroArgumentSideEffectFree(argument->first()) && macroArgumentSideEffectFree(argument->second()) &&
+                macroArgumentSideEffectFree(argument->third());
+        case ast::AstNodeKind::CastExpression:
+        case ast::AstNodeKind::MemberExpression:
+            return macroArgumentSideEffectFree(argument->first());
+        case ast::AstNodeKind::IndexExpression:
+            if (!macroArgumentSideEffectFree(argument->first())) return false;
+            for (const ast::AstNode* index : argument->children())
+                if (!macroArgumentSideEffectFree(index)) return false;
+            return true;
+        default:
+            return false;
+    }
+}
+
 std::string ProjectCompilation::argumentSpelling(const ast::AstNode* argument) const
 {
     if (argument == nullptr || !argument->range().isValid()) return {};
@@ -1738,7 +1786,10 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
             interop::CppTemplateArgument argument;
             // T19-040: the text of the argument, for `#` and `##`. / El texto del argumento, para `#` y `##`.
             if (request.functionMacro && request.syntax && index < request.syntax->children().size())
+            {
                 argument.sourceSpelling = argumentSpelling(request.syntax->children()[index]);
+                argument.sideEffectFree = macroArgumentSideEffectFree(request.syntax->children()[index]);
+            }
             if (key == "token:")
             {
                 argument.token = true;

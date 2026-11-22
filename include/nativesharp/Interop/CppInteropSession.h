@@ -205,6 +205,13 @@ struct CppTemplateArgument
     //     pega (`token`), asi que no tiene tipo ni se pasa como valor.
     std::string sourceSpelling;
     bool token = false;
+    // EN: C2-05. The argument has no side effects (literals, names that are not volatile C/C++ storage, operators
+    //     without assignment or increment, casts, member and index reads): evaluating it once is what C does when the
+    //     macro evaluates it several times or conditionally.
+    // ES: C2-05. El argumento no tiene efectos (literales, nombres que no son almacenamiento C/C++ volatile,
+    //     operadores sin asignacion ni incremento, casts, lecturas de miembros e indices): evaluarlo una vez es lo que
+    //     hace C cuando la macro lo evalua varias veces o de forma condicional.
+    bool sideEffectFree = false;
 };
 
 // T13-010: the specialization Sema produced, or Clang's diagnostics. / La especializacion de Sema, o sus diagnosticos.
