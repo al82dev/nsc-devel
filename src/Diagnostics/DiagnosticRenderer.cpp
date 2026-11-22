@@ -4,6 +4,8 @@
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <fstream>
 #include <ostream>
 #include <string>
 
@@ -19,6 +21,23 @@ void DiagnosticRenderer::render(const Diagnostic& diagnostic, std::ostream& outp
     if (diagnostic.id() == DiagnosticId::CppInteropDiagnostic && !diagnostic.location().isValid())
     {
         output << diagnosticSeverityName(diagnostic.severity()) << ": " << diagnostic.message() << '\n';
+        // EN: Item 1.10. A C/C++ location shows its header line and a caret, like a NativeSharp one.
+        // ES: Item 1.10. Una ubicacion C/C++ muestra su linea del encabezado y el subrayado, como una NativeSharp.
+        if (const auto& external = diagnostic.externalLocation(); external && external->line > 0)
+        {
+            std::ifstream file(external->file, std::ios::binary);
+            std::string text;
+            for (std::uint32_t current = 1; std::getline(file, text); ++current)
+                if (current == external->line)
+                {
+                    if (!text.empty() && text.back() == '\r') text.pop_back();
+                    output << "    " << text << "\n    ";
+                    for (std::size_t index = 0; index + 1 < external->column && index < text.size(); ++index)
+                        output << (text[index] == '\t' ? '\t' : ' ');
+                    output << "^\n";
+                    break;
+                }
+        }
         for (const std::string& note : diagnostic.notes()) output << "note: " << note << '\n';
         return;
     }
