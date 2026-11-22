@@ -563,7 +563,17 @@ const clang::RecordDecl* complexCarrierRecord(clang::ASTContext& context, clang:
         if (fields.size() == 2 && fields[0]->getName() == "real" && fields[1]->getName() == "imag" &&
             !fields[0]->isBitField() && !fields[1]->isBitField() &&
             fields[0]->getType().getCanonicalType() == expected && fields[1]->getType().getCanonicalType() == expected)
+        {
+            // EN: Item 3.13. The name and fields are not enough: the carrier must have the size and alignment of
+            //     `_Complex T` (a `#pragma pack` or an attribute in the header could change them).
+            // ES: Item 3.13. El nombre y los campos no bastan: el portador debe tener el tamano y la alineacion de
+            //     `_Complex T` (un `#pragma pack` o un atributo del encabezado podria cambiarlos).
+            const clang::QualType complex = context.getComplexType(expected);
+            const clang::QualType carrier = context.getCanonicalTagType(record);
+            if (context.getTypeSize(carrier) != context.getTypeSize(complex) ||
+                context.getTypeAlign(carrier) != context.getTypeAlign(complex)) continue;
             return record;
+        }
     }
     return nullptr;
 }
