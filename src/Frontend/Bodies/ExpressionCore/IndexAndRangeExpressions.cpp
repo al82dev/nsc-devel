@@ -604,9 +604,22 @@ bool ProjectMethodBodyModel::analyzeUserIndexer(
     if (indices.size() == 1 && analyzeRangeIndexer(
             result, expression, base, *receiverType, accessingTypeOrdinal,
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return true;
-    const std::vector<std::size_t> getters = stage38AccessorCandidates(
+    std::vector<std::size_t> getters = stage38AccessorCandidates(
         *receiverType, "get_Item", false, true, false,
         accessingTypeOrdinal, *receiverType);
+    // EN: Item 11.1. A C++ record with `operator[]` and `operator[] const` offers both getters: as for a method,
+    //     the receiver's constness selects one (the mutable reference for a mutable receiver).
+    // ES: Item 11.1. Un record C++ con `operator[]` y `operator[] const` ofrece ambos getters: como en un metodo,
+    //     la constancia del receptor elige uno (la referencia mutable para un receptor mutable).
+    if (getters.size() > 1 && memberModel_ != nullptr)
+    {
+        std::vector<std::size_t> matching;
+        for (const std::size_t getter : getters)
+            if (getter < memberModel_->members().size() && memberModel_->members()[getter].isCppExternal &&
+                memberModel_->members()[getter].isReadonly == base.readonlyReceiver)
+                matching.push_back(getter);
+        if (!matching.empty() && matching.size() < getters.size()) getters = std::move(matching);
+    }
     if (getters.empty())
     {
         diagnostics.report(

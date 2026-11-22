@@ -516,6 +516,13 @@ bool ProjectMemberModel::build(
         member.cppExternalSymbol = imported.externalSymbol;
         member.cppDllImport = imported.dllImport;
         member.cppObjectSizeModes = imported.objectSizeModes;
+        // EN: Item 11.1. A C++ `operator[]` arrives as `get_Item`: it is the indexer getter of the record.
+        // ES: Item 11.1. Un `operator[]` de C++ llega como `get_Item`: es el getter de indexador del record.
+        if (member.name == "get_Item" && imported.parameterTypeKeys.size() == 1)
+        {
+            member.isIndexerAccessor = true;
+            member.isGetter = true;
+        }
         // T11-005: a ref return of a C++ method is bound to the receiver, as for a NativeSharp method.
         member.isReferenceReturn = imported.returnsReference;
         member.cppReadonlyReferenceReturn = imported.returnsReadonlyReference;

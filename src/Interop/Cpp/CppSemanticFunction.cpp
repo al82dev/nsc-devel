@@ -1154,8 +1154,14 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
     //     el simbolo del adaptador de Clang (`dispatchSymbol`), que se llama en lugar del metodo: el adaptador
     //     aplica el ajuste de this y el despacho virtual. Sin adaptador ninguno se mapea.
     const bool dispatched = method.dispatchSymbol && !method.dispatchSymbol->empty();
+    // EN: Item 11.1. `T& operator[](I)` and `T operator[](I) const` are NativeSharp's indexer getter `get_Item`:
+    //     a reference result makes `v[i]` an assignable place, and the receiver's constness selects the overload.
+    // ES: Item 11.1. `T& operator[](I)` y `T operator[](I) const` son el getter de indexador `get_Item` de
+    //     NativeSharp: un resultado referencia hace de `v[i]` un lugar asignable, y la constancia del receptor elige
+    //     la sobrecarga.
+    const bool subscript = method.name == "operator[]" && method.parameters.size() == 1;
     if (method.kind != CppMethodKind::Method || method.name.empty() ||
-        cppOperatorName(method.name) ||
+        (cppOperatorName(method.name) && !subscript) ||
         (method.inherited ? !dispatched : method.qualifiedName != record.qualifiedName + "::" + method.name) ||
         !projectedMethodAccess(method, dispatched) || method.isStatic ||
         ((method.isVirtual || method.isPureVirtual) && !dispatched) ||
@@ -1231,7 +1237,8 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
     // The adapter is defined by NSC's own Clang emission, never imported from a DLL.
     // El adaptador lo define la emision Clang de NSC; nunca se importa de una DLL.
     CppSemanticInstanceMethod projected{projectOrdinal, identity->key(),
-        method.inherited ? record.qualifiedName + "::" + method.name : method.qualifiedName,
+        subscript ? record.qualifiedName + "::get_Item"
+                  : method.inherited ? record.qualifiedName + "::" + method.name : method.qualifiedName,
         dispatched ? *method.dispatchSymbol : *method.externalSymbol, method.canonicalFunctionType, method.isConst,
         std::move(*result), std::move(parameters), dispatched ? false : method.dllImport, std::move(objectSizeModes),
         std::move(passKinds), referenceReturn};
