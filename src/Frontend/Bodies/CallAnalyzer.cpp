@@ -4342,7 +4342,21 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                     const auto position = static_cast<unsigned>(request.argumentTypeKeys.size());
                     // T19-042: a type argument is passed as tokens too. / Un argumento de tipo tambien se pasa como
                     //     tokens.
+                    // EN: Item 5.9. A name that is not a value in scope but names an imported C/C++ type (`SIZE(Pt)`)
+                    //     is a type argument too; the header spells it the same way.
+                    // ES: Item 5.9. Un nombre que no es un valor en el ambito pero nombra un tipo C/C++ importado
+                    //     (`SIZE(Pt)`) tambien es un argumento de tipo; el encabezado lo escribe igual.
+                    const bool importedTypeName = argument != nullptr &&
+                        argument->kind() == ast::AstNodeKind::IdentifierExpression &&
+                        !lookupScopeName(scopeOrdinal, argument->text()).has_value() && [&] {
+                            const auto& types = nameLookup_->namedTypes();
+                            for (std::size_t ordinal = 0; ordinal < types.size(); ++ordinal)
+                                if (types[ordinal].identity.name() == argument->text() &&
+                                    nameLookup_->cppImportedType(ordinal) != nullptr) return true;
+                            return false;
+                        }();
                     if ((argument != nullptr && argument->kind() == ast::AstNodeKind::TypeArgumentExpression) ||
+                        importedTypeName ||
                         std::find(site->tokenParameters.begin(), site->tokenParameters.end(), position) !=
                         site->tokenParameters.end())
                     {
