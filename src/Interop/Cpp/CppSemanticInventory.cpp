@@ -320,6 +320,9 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
         }
         if (type.kind == CppTypeKind::Enumeration)
         {
+            // C3-03: an enum over a 128-bit integer is carried as that integer. / Un enum sobre un entero de 128 bits
+            //     se lleva como ese entero.
+            if (type.sizeBits == 128U) return mapCppScalarType(type);
             // Top-level volatile applies to the global access; enum identity/layout are unqualified.
             CppType unqualified = type;
             unqualified.isVolatile = false;
@@ -1361,6 +1364,11 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
     {
         const auto& value = entry->declaration;
         const auto base = frontend::cppAliasBuiltinType(*value.underlyingType);
+        // EN: C3-03. NativeSharp enums have 8- to 64-bit bases; an enum over a 128-bit integer is not a NativeSharp
+        //     type (it would invalidate every declaration of the provider): its positions carry the integer.
+        // ES: C3-03. Los enums NativeSharp tienen bases de 8 a 64 bits; un enum sobre un entero de 128 bits no es un
+        //     tipo NativeSharp (invalidaria todas las declaraciones del proveedor): sus posiciones llevan el entero.
+        if (*value.sizeBits > 64U) continue;
         if (!base || base->pointerDepth || entry->targetTriple != "x86_64-pc-windows-msvc" ||
             *value.sizeBits == 0 || *value.alignmentBits == 0 || *value.sizeBits % 8 || *value.alignmentBits % 8 ||
             (value.underlyingType->kind != CppTypeKind::SignedInteger &&
@@ -1458,10 +1466,16 @@ static CppSemanticEnumConstantResult projectCppEnumConstantImpl(
     const auto& type = entry.declaration.isCxx || cFixedUnderlying ? *entry.declaration.underlyingType
                                                                    : value.valueType;
     const auto mapped = mapCppScalarType(type);
-    if (!mapped || value.name.empty() || !type.sizeBits || *type.sizeBits == 0 || *type.sizeBits > 64 ||
+    // EN: C3-03. An enumerator of an enum over a 128-bit integer is an i128/u128 constant when its value fits the
+    //     64 bits of an imported constant; a wider value is reported.
+    // ES: C3-03. Un enumerador de un enum sobre un entero de 128 bits es una constante i128/u128 si su valor cabe en
+    //     los 64 bits de una constante importada; un valor mas ancho se informa.
+    if (!mapped || value.name.empty() || !type.sizeBits || *type.sizeBits == 0 ||
+        (*type.sizeBits > 64 && *type.sizeBits != 128) ||
         (type.kind != CppTypeKind::SignedInteger && type.kind != CppTypeKind::UnsignedInteger))
         return CppSemanticEnumConstantFailure{"enum constant type cannot be represented"};
-    const auto width = static_cast<unsigned>(*type.sizeBits);
+    const auto width = static_cast<unsigned>(std::min<std::uint64_t>(*type.sizeBits, 64));
+    const bool wideEnum = *type.sizeBits == 128;
     const auto first = value.decimalValue.data();
     const auto last = first + value.decimalValue.size();
     std::uint64_t bits = 0;
@@ -1470,7 +1484,9 @@ static CppSemanticEnumConstantResult projectCppEnumConstantImpl(
         std::int64_t number = 0;
         const auto parsed = std::from_chars(first, last, number);
         if (parsed.ec != std::errc{} || parsed.ptr != last)
-            return CppSemanticEnumConstantFailure{"enum constant is outside signed 64-bit range"};
+            return CppSemanticEnumConstantFailure{wideEnum
+                ? "enum constant needs more than 64 bits; NativeSharp imports constants of up to 64 bits"
+                : "enum constant is outside signed 64-bit range"};
         if (width < 64)
         {
             const auto limit = std::int64_t{1} << (width - 1);
@@ -1482,6 +1498,9 @@ static CppSemanticEnumConstantResult projectCppEnumConstantImpl(
     else
     {
         const auto parsed = std::from_chars(first, last, bits);
+        if (wideEnum && (parsed.ec != std::errc{} || parsed.ptr != last))
+            return CppSemanticEnumConstantFailure{
+                "enum constant needs more than 64 bits; NativeSharp imports constants of up to 64 bits"};
         if (parsed.ec != std::errc{} || parsed.ptr != last ||
             (width < 64 && bits >= (std::uint64_t{1} << width)))
             return CppSemanticEnumConstantFailure{"enum constant is outside its unsigned type"};
@@ -1559,6 +1578,12 @@ static bool provideValuesWithLookup(
             continue;
         }
         auto& candidate = globals[found->second];
+        // EN: C3-03. A wide enumerator (more than 64 bits) that the macro `#define E E` imports as its value is that
+        //     value, not a conflict.
+        // ES: C3-03. Un enumerador ancho (mas de 64 bits) que la macro `#define E E` importa como su valor es ese
+        //     valor, no un conflicto.
+        if (!enumerator.cppImportError.empty() && !candidate.isCppEnumConstant)
+            continue;
         candidate.isCppExternal = true;
         candidate.isCppEnumConstant = false;
         candidate.isConst = false;
@@ -1642,6 +1667,9 @@ bool provideCppSemanticEnumConstants(
                     }
                     if (enumNamespace != ns) continue;
                 }
+                // C3-03: the enumerators of a C enum over a 128-bit integer come as macro values (`#define E E`).
+                //     / Los enumeradores de un enum C de 128 bits llegan como valores de macro.
+                if (!entry.declaration.isCxx && entry.declaration.sizeBits && *entry.declaration.sizeBits > 64U) continue;
                 for (std::size_t i = 0; i < entry.declaration.enumerators.size(); ++i)
                 {
                     if (entry.declaration.enumerators[i].name != demand.lookupName) continue;
@@ -2190,7 +2218,9 @@ static void attachCVectorPlan(const CppInteropSession& session, CppFunctionDecla
     //     devuelve en XMM0, lo que un valor LLVM `i128` no expresa.
     const auto planned = [](const CppType& type) {
         return type.kind == CppTypeKind::FixedVector ||
-            ((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) &&
+            ((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger ||
+              // C3-03: an enum over a 128-bit integer travels as that integer. / Un enum de 128 bits viaja como su entero.
+              type.kind == CppTypeKind::Enumeration) &&
              type.sizeBits == 128);
     };
     const bool vectorValue = planned(declaration.returnType) ||

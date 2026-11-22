@@ -87,4 +87,32 @@ c2 = Caso('c3-bitint', H2, S2, standard='c2x')
 positivo(c2, BODY2)
 rechazo(c2, 'return (int)wide();', 'wide')
 rechazo(c2, 'return with_bit_cb(null);', 'with_bit_cb')
+
+# C3-03: C23 enums with a fixed base (8-64 bits, signed and unsigned) are NativeSharp enums. An enum over a 128-bit
+# integer is carried as that integer (its positions pass like __int128); its enumerators are i128 constants when they
+# fit 64 bits, and a wider one reaches NativeSharp with its exact value through `#define E E`. Before, such an enum
+# made the whole header's type provider invalid.
+H3 = r'''
+enum Small : unsigned char { S_A = 1, S_B = 255 };
+enum Neg : short { N_A = -3, N_B = 4 };
+enum Big : __int128 { B_SMALL = 7, B_HUGE = (__int128)1 << 100, B_NEG = -((__int128)1 << 90) };
+int small_v(enum Small s);
+int neg_v(enum Neg n);
+int big_shift(enum Big b, int shift);
+enum Big big_make(int shift);
+'''
+S3 = r'''
+int small_v(enum Small s) { return (int)s; }
+int neg_v(enum Neg n) { return (int)n; }
+int big_shift(enum Big b, int shift) { return (int)(b >> shift); }
+enum Big big_make(int shift) { return (enum Big)((__int128)1 << shift); }
+'''
+BODY3 = r'''
+    if (small_v(S_B) != 255 || neg_v(N_A) != -3 || (int)N_B != 4) return 1;
+    if (big_shift(B_SMALL, 0) != 7) return 2;
+    if (big_shift(B_HUGE, 98) != 4 || big_shift(B_NEG, 89) != -2) return 3;
+    if (big_shift(big_make(70), 69) != 2) return 4;
+    return 42;
+'''
+positivo(Caso('c3-enums', H3, S3, standard='c2x'), BODY3)
 fin()

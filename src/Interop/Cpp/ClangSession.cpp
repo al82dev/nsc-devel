@@ -2726,7 +2726,9 @@ public:
         // T19-004: and one with a 128-bit integer. / Y una con un entero de 128 bits.
         const auto plannedType = [](const CppType& type) {
             return type.kind == CppTypeKind::FixedVector ||
-                ((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) &&
+                ((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger ||
+              // C3-03: an enum over a 128-bit integer travels as that integer. / Un enum de 128 bits viaja como su entero.
+              type.kind == CppTypeKind::Enumeration) &&
                  type.sizeBits == 128);
         };
         const auto vectorValue = [&](const auto& value) {
@@ -5346,6 +5348,30 @@ private:
         // ES: C2-03. Una lista entre llaves no tiene tipo propio: Clang la evalua para cada tipo record del
         //     encabezado como el literal compuesto `(T)M` (C) o `T M` (C++), y los pares que acepta se importan como
         //     `<M>__nsc_init_<T>`. Una declaracion NativeSharp `T v = M;` usa el par de su tipo.
+        // EN: C3-03. An enumerator of an enum over a 128-bit integer whose value needs more than 64 bits cannot be an
+        //     imported constant; in C, `#define E E` is a macro that expands to the enumerator itself, so its value
+        //     reaches NativeSharp through the macro value accessor (T19-041) as a read-only 128-bit value.
+        // ES: C3-03. Un enumerador de un enum sobre un entero de 128 bits cuyo valor necesita mas de 64 bits no puede
+        //     ser una constante importada; en C, `#define E E` es una macro que se expande al propio enumerador, asi
+        //     su valor llega a NativeSharp por la accesora de valores de macro (T19-041) como un valor de 128 bits.
+        if (!ast_->getASTContext().getLangOpts().CPlusPlus)
+        {
+            std::string wideEnumerators;
+            for (const auto* declaration : ast_->getASTContext().getTranslationUnitDecl()->decls())
+                if (const auto* enumeration = llvm::dyn_cast<clang::EnumDecl>(declaration);
+                    enumeration && enumeration->isComplete() && !sources.isInSystemHeader(enumeration->getLocation()) &&
+                    ast_->getASTContext().getTypeSize(enumeration->getIntegerType()) == 128)
+                    for (const auto* enumerator : enumeration->enumerators())
+                    {
+                        if (!preprocessor.isMacroDefined(enumerator->getName()))
+                        {
+                            const std::string name = enumerator->getName().str();
+                            wideEnumerators += "#define " + name + " " + name + "\n";
+                            objectLike.push_back(name);
+                        }
+                    }
+            if (!wideEnumerators.empty()) source_ += "\n" + wideEnumerators;
+        }
         std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>> braceCandidates;
         if (!braceInitializers.empty())
         {

@@ -13,6 +13,17 @@ std::optional<CppScalarTypeMapping> mapCppScalarType(const CppType& type)
     //     del portador de 128 bits: queda sin mapear. N <= 64 y N == 128 usan los portadores enteros de su tamano.
     if (type.bitIntWidth && *type.bitIntWidth > 64U && *type.bitIntWidth < 128U) return std::nullopt;
     std::string_view key;
+    // C3-03: an enum over a 128-bit integer is carried as that integer. / Un enum sobre un entero de 128 bits se
+    //     lleva como ese entero.
+    if (type.kind == CppTypeKind::Enumeration && type.enumUnderlying && type.sizeBits == 128U)
+    {
+        auto underlying = mapCppScalarType(*type.enumUnderlying);
+        if (!underlying) return std::nullopt;
+        underlying->canonicalCppType = type.canonicalSpelling;
+        underlying->isConst = type.isConst;
+        underlying->isVolatile = type.isVolatile;
+        return underlying;
+    }
     if (type.kind == CppTypeKind::Void) key = "builtin:void";
     else if (type.kind == CppTypeKind::Boolean && type.sizeBits == 8) key = "builtin:bool";
     else if (type.kind == CppTypeKind::SignedInteger)

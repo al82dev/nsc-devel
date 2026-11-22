@@ -3256,6 +3256,13 @@ bool reconstructPrecompiledCMembers(std::span<const frontend::PrecompiledSyntaxM
             if (!seenTypes.insert(enumeration.identityKey).second) continue;
             const auto ordinal = lookup.typeOrdinalForIdentity(enumeration.identityKey);
             const auto* owner = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+            // EN: C3-03. An enum over a 128-bit integer has no NativeSharp type; its enumerators belong to the project
+            //     named by the module of its identity.
+            // ES: C3-03. Un enum sobre un entero de 128 bits no tiene tipo NativeSharp; sus enumeradores pertenecen al
+            //     proyecto que nombra el modulo de su identidad.
+            //     They come as macro values (`#define E E`) evaluated by the consumer's macro session.
+            //     / Llegan como valores de macro evaluados por la sesion de macros del consumidor.
+            if (!owner && enumeration.declaration.sizeBits && *enumeration.declaration.sizeBits > 64U) continue;
             if (!owner) { error = "precompiled C enum is missing from name lookup"; return false; }
             std::vector<frontend::NamespaceStateSymbol> one;
             if (!reconstructCEnumConstants(std::span(&enumeration, 1), owner->projectOrdinal,

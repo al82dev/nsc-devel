@@ -949,8 +949,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         // T19-004: also a 128-bit integer value. / Tambien un valor entero de 128 bits.
         const auto planned = [](const CppType& type) {
             return type.kind == CppTypeKind::FixedVector ||
-                ((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) &&
-                 type.sizeBits == 128);
+                ((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger ||
+                  // C3-03: an enum over a 128-bit integer. / Un enum sobre un entero de 128 bits.
+                  type.kind == CppTypeKind::Enumeration) && type.sizeBits == 128);
         };
         const bool vectorValue = planned(f.returnType) ||
             std::any_of(f.parameters.begin(), f.parameters.end(),
@@ -3338,6 +3339,9 @@ bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
     for (const auto& item : enums)
     {
         const auto& enumeration = item.declaration;
+        // C3-03: an enum over a 128-bit integer is not a NativeSharp type, as on the direct path. / Un enum sobre un
+        //     entero de 128 bits no es un tipo NativeSharp, como en el camino directo.
+        if (enumeration.sizeBits && *enumeration.sizeBits > 64U) continue;
         auto identity = projectCppEnumDeclarationIdentity(enumeration, moduleName);
         const auto base = enumeration.underlyingType ? frontend::cppAliasBuiltinType(*enumeration.underlyingType) : std::nullopt;
         if (!identity || identity->key() != item.identityKey || item.targetTriple != targetTriple ||

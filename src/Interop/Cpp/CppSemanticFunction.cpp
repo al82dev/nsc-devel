@@ -205,6 +205,8 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
             key += "[" + std::to_string(*dimension) + "]";
         return CppScalarTypeMapping{std::move(key), type.canonicalSpelling, readonly, false};
     }
+    // C3-03: an enum over a 128-bit integer is carried as that integer. / Un enum de 128 bits se lleva como su entero.
+    if (type.kind == CppTypeKind::Enumeration && type.sizeBits == 128U) return mapCppScalarType(type);
     if (type.kind == CppTypeKind::Enumeration && lookup && !type.isVolatile)
     {
         return owner ? projectCppSemanticEnumType(type, *owner, moduleName, lookup) : std::nullopt;
