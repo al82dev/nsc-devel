@@ -115,4 +115,37 @@ BODY3 = r'''
     return 42;
 '''
 positivo(Caso('c3-enums', H3, S3, standard='c2x'), BODY3)
+
+# C3-04: a C `_Atomic T` field (T scalar or pointer) is imported: every load and store is atomic and its address is a
+# pointer to atomic storage (`atomic_fetch_add(&s->count, 1)`); ref/in/out cannot reach it.
+H4 = r'''
+#include <stdatomic.h>
+typedef struct Counter { int id; _Atomic int count; _Atomic long long total; _Atomic(int*) last; } Counter;
+Counter* counter(void);
+int bump(_Atomic int* value);
+int read_plain(int* value);
+'''
+S4 = r'''
+static Counter c = {1, 0, 0, 0};
+Counter* counter(void) { return &c; }
+int bump(_Atomic int* value) { return atomic_fetch_add(value, 1) + 1; }
+int read_plain(int* value) { return *value; }
+'''
+BODY4 = r'''
+    Counter* c = counter();
+    c->count = 10;
+    c->count += 5;
+    if (c->count != 15) return 1;
+    if (bump(&c->count) != 16 || c->count != 16) return 2;
+    c->total = 1L << 40;
+    if (c->total != 1099511627776L) return 3;
+    int x = 26;
+    c->last = &x;
+    if (*c->last + c->count != 42) return 4;
+    return 42;
+'''
+c4 = Caso('c3-atomico', H4, S4, standard='c11')
+positivo(c4, BODY4)
+rechazo(c4, 'Counter* c = counter(); return read_plain(&c->count);', 'read_plain')
+rechazo(c4, 'Counter* c = counter(); return bump(ref c->count);', 'ref')
 fin()

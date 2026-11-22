@@ -53,6 +53,12 @@ struct CppSemanticInstanceField
     // T19-012. C++ access of the field. / Acceso C++ del campo.
     CppAccess access = CppAccess::Public;
     std::uint8_t pointerLevelQualifiers = 0; // C1-02: intermediate pointer level qualifiers (Language/PointerLevelQualifiers.h).
+    bool atomicStorage = false; // C3-04: a C `_Atomic T` field. / Un campo C `_Atomic T`.
+    // C3-05: the Microsoft storage unit a volatile access uses (absent when it is the field window). / La
+    //     unidad de Microsoft que usa un acceso volatile (ausente si es la ventana del campo).
+    std::optional<std::uint64_t> volatileUnitByteOffset{};
+    std::optional<std::uint64_t> volatileUnitBitOffset{};
+    std::optional<std::uint64_t> volatileUnitBytes{};
 };
 std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     const CppRecordDeclaration& record, std::size_t fieldIndex, std::size_t projectOrdinal,

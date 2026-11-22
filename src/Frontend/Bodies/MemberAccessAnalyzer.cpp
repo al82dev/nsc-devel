@@ -977,8 +977,10 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
     //     que ya es puntero a `const` necesitaria un calificador anidado y sigue sin direccion.
     // T19-038: `&h.p` of a C `_Atomic T*` field would be a nested qualified pointer. / `&h.p` de un campo C
     //     `_Atomic T*` seria un puntero calificado anidado.
+    // C1-02: a pointer to volatile data has an address since pointer levels are qualified. / Un puntero a dato
+    //     volatile tiene direccion desde que los niveles se califican.
     result.addressable = !field.isBitField && !result.volatileStorage &&
-        !field.declaredPointerPointeeVolatile && !(field.isCppExternal && field.cppDeclaredPointerPointeeAtomic) &&
+        !(field.isCppExternal && field.cppDeclaredPointerPointeeAtomic) &&
         field.cppArrayElementStrides.empty() &&
         !unalignedImportedField && !unaddressableValueReceiver &&
         !(field.isCppExternal && (field.isReadonly || receiver.readonlyReceiver) &&
@@ -1009,6 +1011,15 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
         (result.cppFlexibleArrayMember && result.volatileStorage);
     // T19-038: a C `_Atomic T*` field points to atomic data. / Un campo C `_Atomic T*` apunta a dato atomico.
     result.cppPointerPointeeAtomic = field.isCppExternal && field.cppDeclaredPointerPointeeAtomic;
+    // C1-02: the qualifiers of the field's intermediate pointer levels. / Los calificadores de sus niveles.
+    result.pointerLevelQualifiers = field.declaredPointerLevelQualifiers;
+    // C3-04: a C `_Atomic T` field is atomic storage, without ref/in/out. / Un campo C `_Atomic T` es
+    //     almacenamiento atomico, sin ref/in/out.
+    if (field.cppAtomicStorage)
+    {
+        result.cppAtomicStorage = true;
+        result.addressable = false;
+    }
     result.pointerNullable = field.declaredPointerNullable;
     result.pointerHasProvenance = field.declaredPointerHasProvenance;
     result.pointerKnownAlignment = field.declaredPointerKnownAlignment;
@@ -1121,6 +1132,9 @@ bool ProjectMethodBodyModel::analyzePropertyMember(
         result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
         result.pointerPointeeVolatile = field.declaredPointerPointeeVolatile;
         result.pointerLevelQualifiers = field.declaredPointerLevelQualifiers;
+        // C3-04: a C `_Atomic T` field is atomic storage, without ref/in/out. / Un campo C `_Atomic T` es
+        //     almacenamiento atomico, sin ref/in/out.
+        if (field.cppAtomicStorage) { result.cppAtomicStorage = true; result.addressable = false; }
         result.pointerNullable = field.declaredPointerNullable;
         result.pointerHasProvenance = field.declaredPointerHasProvenance;
         result.pointerKnownAlignment = field.declaredPointerKnownAlignment;

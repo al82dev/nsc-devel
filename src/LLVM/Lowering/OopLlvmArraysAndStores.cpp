@@ -243,7 +243,9 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
             const auto atomicTargetKind = [](frontend::ProjectOopMirNodeKind kind) {
                 return kind == frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
                     kind == frontend::ProjectOopMirNodeKind::AddressValue ||
-                    kind == frontend::ProjectOopMirNodeKind::RawElementAddress;
+                    kind == frontend::ProjectOopMirNodeKind::RawElementAddress ||
+                    // C3-04: a C `_Atomic T` field. / Un campo C `_Atomic T`.
+                    kind == frontend::ProjectOopMirNodeKind::FieldAddress;
             };
             if (const auto* enumInfo = findEnumUnderlyingInfo(nameLookup_, target->typeKey))
             {

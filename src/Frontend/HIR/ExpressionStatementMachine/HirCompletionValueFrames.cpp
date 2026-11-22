@@ -18,6 +18,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include "CppVolatileAliasAlignment.h"
 
 namespace nativesharp::frontend
 {
@@ -161,6 +162,14 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledInstanceFieldFrame(
             memberModel_->members()[*field->memberOrdinal].isVolatile;
         if (memberModel_ != nullptr && *field->memberOrdinal < memberModel_->members().size())
             field->cppMicrosoftVolatileSemantics = memberModel_->members()[*field->memberOrdinal].cppMicrosoftVolatileSemantics;
+        // C3-04: a C `_Atomic T` field is loaded and stored atomically with its width. / Un campo C `_Atomic T`
+        //     se carga y escribe atomicamente con su ancho.
+        if (memberModel_ != nullptr && *field->memberOrdinal < memberModel_->members().size() &&
+            memberModel_->members()[*field->memberOrdinal].cppAtomicStorage)
+        {
+            field->cppAtomicAccess = true;
+            field->cppAtomicAlignmentBytes = internal::cAtomicPointeeWidth(nameLookup_, binding.typeKey);
+        }
         // Propagate the qualification only from the receiver's storage address.
         // A volatile pointer load does not qualify the pointed-to record.
         if (lowered && lowered->volatileAccess &&

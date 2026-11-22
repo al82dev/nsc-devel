@@ -622,6 +622,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeImplicit
     result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
     result.pointerPointeeVolatile = field.declaredPointerPointeeVolatile;
     result.pointerLevelQualifiers = field.declaredPointerLevelQualifiers;
+    // C3-04: a C `_Atomic T` field is atomic storage, without ref/in/out. / Un campo C `_Atomic T` es
+    //     almacenamiento atomico, sin ref/in/out.
+    if (field.cppAtomicStorage) { result.cppAtomicStorage = true; result.addressable = false; }
     result.pointerNullable = field.declaredPointerNullable;
     result.pointerHasProvenance = field.declaredPointerHasProvenance;
     result.pointerKnownAlignment = field.declaredPointerKnownAlignment;
@@ -717,6 +720,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeProperty
         result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
         result.pointerPointeeVolatile = field.declaredPointerPointeeVolatile;
         result.pointerLevelQualifiers = field.declaredPointerLevelQualifiers;
+        // C3-04: a C `_Atomic T` field is atomic storage, without ref/in/out. / Un campo C `_Atomic T` es
+        //     almacenamiento atomico, sin ref/in/out.
+        if (field.cppAtomicStorage) { result.cppAtomicStorage = true; result.addressable = false; }
         result.pointerNullable = field.declaredPointerNullable;
         result.pointerHasProvenance = field.declaredPointerHasProvenance;
         result.pointerKnownAlignment = field.declaredPointerKnownAlignment;

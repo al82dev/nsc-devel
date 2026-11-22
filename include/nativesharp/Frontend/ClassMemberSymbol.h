@@ -92,6 +92,9 @@ struct ClassMemberSymbol final
     bool declaredPointerPointeeVolatile = false;
     // T19-002: a C function returns `_Atomic T*`. / Una funcion C devuelve `_Atomic T*`.
     bool cppDeclaredPointerPointeeAtomic = false;
+    // C3-04: a C `_Atomic T` field: loads and stores are atomic. / Un campo C `_Atomic T`: cargas y escrituras
+    //     atomicas.
+    bool cppAtomicStorage = false;
     bool declaredPointerNullable = true;
     bool declaredPointerHasProvenance = true;
     std::size_t declaredPointerKnownAlignment = 1;

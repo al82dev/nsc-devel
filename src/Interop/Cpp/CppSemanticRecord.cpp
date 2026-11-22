@@ -369,7 +369,12 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         //     (the Microsoft rule below); the access window reaches 16 bytes.
         // ES: T19-044. Un bit-field volatile de un tipo entero de 128 bits usa su unidad de 16 bytes, como Clang (la
         //     regla de Microsoft de abajo); la ventana de acceso llega a 16 bytes.
-        if (field.type.isVolatile)
+        // EN: C3-05. The Microsoft storage unit of the bit-field: the unit of its declared type that begins at the first
+        //     field of its run. A volatile access uses it, as Clang does, also through a volatile receiver.
+        // ES: C3-05. La unidad de almacenamiento de Microsoft del bit-field: la unidad de su tipo declarado que empieza
+        //     en el primer campo de su secuencia. Un acceso volatile la usa, como Clang, tambien por un receptor volatile.
+        struct MsUnit { std::uint64_t byteOffset; std::uint64_t bitOffset; std::uint64_t bytes; };
+        const auto msUnit = [&]() -> std::optional<MsUnit>
         {
             // MS CodeGen uses discrete storage units beginning at the first
             // field in each run, not the minimum window around the member.
@@ -377,7 +382,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
             bool active = false;
             if (record.kind == CppRecordKind::Union)
             {
-                if (*field.offsetBits != 0) return std::nullopt;
+                if (*field.offsetBits != 0) return std::optional<MsUnit>{};
                 tail = *field.type.sizeBits;
                 active = true;
             }
@@ -387,24 +392,31 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
                 if (!candidate.bitWidth || !*candidate.bitWidth) { active = false; continue; }
                 if (!candidate.offsetBits || !candidate.type.sizeBits || !*candidate.type.sizeBits ||
                     *candidate.type.sizeBits > 128 || *candidate.type.sizeBits % 8 ||
-                    *candidate.offsetBits > *record.sizeBits) return std::nullopt;
+                    *candidate.offsetBits > *record.sizeBits) return std::optional<MsUnit>{};
                 if (!active || *candidate.offsetBits >= tail)
                 {
                     start = *candidate.offsetBits;
-                    if (*candidate.type.sizeBits > *record.sizeBits - start) return std::nullopt;
+                    if (*candidate.type.sizeBits > *record.sizeBits - start) return std::optional<MsUnit>{};
                     tail = start + *candidate.type.sizeBits;
                     active = true;
                 }
                 if (*candidate.offsetBits < start || *candidate.offsetBits > tail ||
-                    *candidate.bitWidth > tail - *candidate.offsetBits) return std::nullopt;
+                    *candidate.bitWidth > tail - *candidate.offsetBits) return std::optional<MsUnit>{};
             }
             if (!active || start % 8 || tail <= start || (tail - start) % 8 ||
                 *field.offsetBits < start || *field.offsetBits > tail ||
-                *field.bitWidth > tail - *field.offsetBits) return std::nullopt;
-            byteOffset = start / 8;
-            bitOffset = *field.offsetBits - start;
-            bytes = (tail - start) / 8;
-            if (bytes > widestWindow || (bytes & (bytes - 1)) != 0) return std::nullopt;
+                *field.bitWidth > tail - *field.offsetBits) return std::optional<MsUnit>{};
+            const MsUnit unit{start / 8, *field.offsetBits - start, (tail - start) / 8};
+            if (unit.bytes > widestWindow || (unit.bytes & (unit.bytes - 1)) != 0) return std::optional<MsUnit>{};
+            return std::optional<MsUnit>{unit};
+        };
+        const auto unit = msUnit();
+        if (field.type.isVolatile)
+        {
+            if (!unit) return std::nullopt;
+            byteOffset = unit->byteOffset;
+            bitOffset = unit->bitOffset;
+            bytes = unit->bytes;
             neededBits = bitOffset + *field.bitWidth;
         }
         else
@@ -486,6 +498,14 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         CppSemanticInstanceField bitField{projectOrdinal, identity->key(), field.name, *mapped,
             byteOffset, false, bytes, alignment, field.clangUsr, bitOffset, *field.bitWidth};
         bitField.access = field.access;
+        // C3-05: the unit a volatile access uses when it differs from the field's window. / La unidad que usa un
+        //     acceso volatile cuando difiere de la ventana del campo.
+        if (unit && (unit->byteOffset != byteOffset || unit->bytes != bytes))
+        {
+            bitField.volatileUnitByteOffset = unit->byteOffset;
+            bitField.volatileUnitBitOffset = unit->bitOffset;
+            bitField.volatileUnitBytes = unit->bytes;
+        }
         return bitField;
     }
     if (!identity || field.name.empty() || !projectedFieldAccess(record, field) || field.bitWidth ||
@@ -628,6 +648,42 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
                     arrayElementStrides = std::move(physicalStrides);
                 }
             }
+        }
+    }
+    // EN: C3-04. A C `_Atomic T` field (T a scalar or a pointer to a scalar, of the same size and alignment as T) is
+    //     a T field whose every load and store is atomic, as C accesses it; its address is a pointer to atomic storage.
+    // ES: C3-04. Un campo C `_Atomic T` (T escalar o puntero a escalar, del mismo tamano y alineacion que T) es un
+    //     campo T cuyas cargas y escrituras son atomicas, como lo accede C; su direccion es un puntero a almacenamiento
+    //     atomico.
+    bool atomicStorage = false;
+    if (!mapped && !record.isCxx && field.type.kind == CppTypeKind::Atomic && field.type.element &&
+        field.type.sizeBits && field.type.element->sizeBits && *field.type.sizeBits == *field.type.element->sizeBits &&
+        field.type.alignmentBits && field.type.element->alignmentBits &&
+        *field.type.alignmentBits >= *field.type.element->alignmentBits &&
+        (*field.type.sizeBits == 8 || *field.type.sizeBits == 16 || *field.type.sizeBits == 32 ||
+         *field.type.sizeBits == 64))
+    {
+        CppType value = *field.type.element;
+        value.isConst = field.type.isConst || value.isConst;
+        value.isVolatile = field.type.isVolatile || value.isVolatile;
+        if (value.kind == CppTypeKind::Pointer && value.element)
+        {
+            auto element = mapCppScalarType(*value.element);
+            if (element && !value.element->isConst && !value.element->isVolatile)
+                mapped = CppScalarTypeMapping{element->nativeSharpTypeKey + "*", field.type.canonicalSpelling,
+                                              value.isConst, value.isVolatile};
+        }
+        else if (value.kind == CppTypeKind::Enumeration)
+        {
+            CppType unqualified = value;
+            unqualified.isVolatile = false;
+            mapped = projectCppSemanticEnumType(unqualified, projectOrdinal, moduleName, lookup);
+        }
+        else mapped = mapCppScalarType(value);
+        if (mapped)
+        {
+            mapped->canonicalCppType = field.type.canonicalSpelling;
+            atomicStorage = true;
         }
     }
     // Item 9.13: a function pointer field of a C++ record too (Assimp, ImGui, mmx). / Tambien un campo puntero a
@@ -848,6 +904,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
                                     *field.type.sizeBits / 8, effectiveAlignment, field.clangUsr};
     result.pointeeVolatile = pointeeVolatile;
     result.pointerLevelQualifiers = pointerLevels;
+    result.atomicStorage = atomicStorage;
     result.pointeeAtomic = atomicPointee.has_value() && result.type.nativeSharpTypeKey.ends_with('*');
     result.access = field.access;
     if (vectorArrayView)
@@ -881,6 +938,10 @@ frontend::CppImportedInstanceField toCppImportedInstanceField(const CppSemanticI
         field.bitOffset, field.bitWidth};
     result.pointeeVolatile = field.pointeeVolatile;
     result.pointerLevelQualifiers = field.pointerLevelQualifiers;
+    result.atomicStorage = field.atomicStorage;
+    result.volatileUnitByteOffset = field.volatileUnitByteOffset;
+    result.volatileUnitBitOffset = field.volatileUnitBitOffset;
+    result.volatileUnitBytes = field.volatileUnitBytes;
     result.pointeeAtomic = field.pointeeAtomic;
     result.cppArrayElementStrides = field.cppArrayElementStrides;
     result.cppArrayPhysicalLayouts = field.cppArrayPhysicalLayouts;

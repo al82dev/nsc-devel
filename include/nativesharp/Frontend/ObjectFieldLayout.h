@@ -32,5 +32,10 @@ struct ObjectFieldLayout final
     std::string typeKey;
     std::optional<std::uint64_t> bitOffset{};
     std::optional<std::uint64_t> bitWidth{};
+    // C3-05: the Microsoft storage unit a volatile access uses (absent when it is the field window). / La
+    //     unidad de Microsoft que usa un acceso volatile (ausente si es la ventana del campo).
+    std::optional<std::uint64_t> volatileUnitByteOffset{};
+    std::optional<std::uint64_t> volatileUnitBitOffset{};
+    std::optional<std::uint64_t> volatileUnitBytes{};
 };
 }

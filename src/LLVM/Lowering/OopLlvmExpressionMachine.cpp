@@ -510,6 +510,13 @@ bool OopLlvmImplementation::lowerExpressionFrame004FieldLoad(
     // LKF-436: a packed field is read with its real alignment. / LKF-436: un campo empaquetado se lee
     // con su alineación real.
     clampAccessAlignment(load, current);
+    // EN: C3-04. A C `_Atomic T` field is read with a sequentially consistent atomic load, as C reads it.
+    // ES: C3-04. Un campo C `_Atomic T` se lee con una carga atomica secuencialmente consistente, como lo lee C.
+    if (current->cppAtomicAccess && current->cppAtomicAlignmentBytes)
+    {
+        LLVMSetOrdering(load, LLVMAtomicOrderingSequentiallyConsistent);
+        LLVMSetAlignment(load, static_cast<unsigned>(*current->cppAtomicAlignmentBytes));
+    }
     const std::string record =
         runtimeDebugFieldLoadRecord(*current, "FIELD-LOAD-END");
     if (!record.empty() && !emitRuntimeDebugTrace(4U, record, error))
