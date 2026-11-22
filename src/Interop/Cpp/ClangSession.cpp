@@ -5214,6 +5214,16 @@ private:
                 //     era el ultimo elemento de una expresion con comas. Queda fuera.
                 int depth = 0;
                 bool list = false;
+                // EN: Item 16.8. A macro that names __FILE__, __LINE__ or __func__ would take the location of NSC's
+                //     synthetic unit, not the use site; it is not imported as a value.
+                // ES: Item 16.8. Una macro que nombra __FILE__, __LINE__ o __func__ tomaria la ubicacion de la unidad
+                //     sintetica de NSC, no la del sitio de uso; no se importa como valor.
+                for (const auto& token : info->tokens())
+                    if (const auto* identifier = token.getIdentifierInfo())
+                        if (const auto spelled = identifier->getName(); spelled == "__FILE__" || spelled == "__LINE__" ||
+                            spelled == "__func__" || spelled == "__FUNCTION__" || spelled == "__builtin_FILE" ||
+                            spelled == "__builtin_LINE" || spelled == "__builtin_FUNCTION")
+                            list = true;
                 for (const auto& token : info->tokens())
                 {
                     if (token.isOneOf(clang::tok::l_paren, clang::tok::l_square, clang::tok::l_brace)) ++depth;
@@ -5631,6 +5641,18 @@ private:
         //     uno usado tambien como valor recibe el valor, y su `#x` el texto de la llamada. Los argumentos
         //     variables siguen pasandose solo como valores.
         const auto uses = macroParameterUses(*info);
+        // Item 16.8: a site-sensitive macro would report the wrapper's location. / Una macro sensible al sitio
+        //     informaria la ubicacion del envoltorio.
+        for (const auto& token : info->tokens())
+            if (const auto* identifier = token.getIdentifierInfo())
+                if (const auto spelled = identifier->getName(); spelled == "__FILE__" || spelled == "__LINE__" ||
+                    spelled == "__func__" || spelled == "__FUNCTION__" || spelled == "__builtin_FILE" ||
+                    spelled == "__builtin_LINE" || spelled == "__builtin_FUNCTION")
+                {
+                    result.diagnostics.push_back("the macro uses " + spelled.str() + ", which would describe the "
+                        "wrapper NativeSharp generates instead of the call site");
+                    return result;
+                }
         if (info->isVariadic() && info->getNumParams() > 0 &&
             (uses.stringified.back() || uses.pasted.back()))
         {
