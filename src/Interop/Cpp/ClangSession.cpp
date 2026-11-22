@@ -517,7 +517,13 @@ MacroParameterUses macroParameterUses(const clang::MacroInfo& info)
                 tokens[before - 1].isOneOf(clang::tok::plusplus, clang::tok::minusminus, clang::tok::amp) &&
                 (before < 2 || !tokens[before - 2].isOneOf(clang::tok::identifier, clang::tok::r_paren,
                                                            clang::tok::numeric_constant));
-            if (assignedAfter || modifiedBefore) uses.written[parameter] = true;
+            // EN: `*(p) = 5` writes through the pointer, not the parameter: a unary `*` before it is a dereference.
+            // ES: `*(p) = 5` escribe a traves del puntero, no en el parametro: un `*` unario antes es una
+            //     desreferencia.
+            const bool dereferenced = before > 0 && tokens[before - 1].is(clang::tok::star) &&
+                (before < 2 || !tokens[before - 2].isOneOf(clang::tok::identifier, clang::tok::r_paren,
+                                                           clang::tok::numeric_constant));
+            if ((assignedAfter && !dereferenced) || modifiedBefore) uses.written[parameter] = true;
         }
     }
     return uses;
