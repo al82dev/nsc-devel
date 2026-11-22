@@ -142,6 +142,10 @@ void TypeSyntax::setConstExpression(AstNode* expression) noexcept
 bool TypeSyntax::isPackExpansion() const noexcept { return isPackExpansion_; }
 void TypeSyntax::setPackExpansion(bool value) noexcept { isPackExpansion_ = value; }
 void TypeSyntax::addModifier(TypeModifierSyntax modifier) { modifiers_.push_back(modifier); }
+void TypeSyntax::setArrayCount(std::size_t modifierIndex, AstNode* count) noexcept
+{
+    if (modifierIndex < modifiers_.size()) modifiers_[modifierIndex].arrayCount = count;
+}
 void TypeSyntax::addArrayModifierGroup(const std::vector<TypeModifierSyntax>& modifiers)
 {
     auto insertion = modifiers_.end();

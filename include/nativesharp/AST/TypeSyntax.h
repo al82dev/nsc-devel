@@ -136,6 +136,8 @@ public:
     void setPackExpansion(bool value = true) noexcept;
 
     void addModifier(TypeModifierSyntax modifier);
+    // C2-04: replaces the count expression of an array modifier. / Reemplaza la expresion de cuenta de un arreglo.
+    void setArrayCount(std::size_t modifierIndex, AstNode* count) noexcept;
     // Each written bracket group is outer to the groups that follow it. The parser stores the
     // dimensions inside one group from innermost to outermost, then inserts the complete group
     // before the fixed-array suffixes already collected from earlier brackets.

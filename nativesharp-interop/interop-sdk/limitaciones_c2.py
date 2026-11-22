@@ -80,4 +80,26 @@ positivo(c3, BODY3.replace('return prefs_sum(&p) - p.level + 26 + 0 * (int)e.dum
 rechazo(c3, 'int x = PREFS_INIT; return x;', "brace initializer list")
 rechazo(c3, 'Prefs p = PREFS_INIT; p = PREFS_INIT; return 0;', "brace initializer list")
 rechazo(c3, 'Err e = PREFS_INIT; return 0;', "'Prefs'")
+
+# C2-04: a function-like macro in an array dimension (LZ4_COMPRESSBOUND) is evaluated by Clang as an integer constant
+# expression; nested macro calls too. A macro whose expansion is not a constant keeps the array invalid.
+H4 = r'''
+#define BOUND(n) ((n) + ((n) / 255) + 16)
+#define TWICE(x) (2 * (x))
+#define BASE 10
+int runtime_value(void);
+#define RUNTIME(n) ((n) + runtime_value())
+int fill(int* p, int n);
+'''
+S4 = 'int runtime_value(void) { return 1; }\nint fill(int* p, int n) { p[0] = 1; p[n - 1] = 2; return n; }\n'
+BODY4 = r'''
+    int[BOUND(64)] a;
+    int[TWICE(BOUND(BASE))] b;
+    if (fill(&a[0], 80) != 80 || a[79] != 2) return 1;
+    if (fill(&b[0], 52) != 52 || b[51] != 2) return 2;
+    return 42;
+'''
+c4 = Caso('c2-dimension', H4, S4)
+positivo(c4, BODY4)
+rechazo(c4, 'int[RUNTIME(2)] c; return 0;', 'RUNTIME')
 fin()

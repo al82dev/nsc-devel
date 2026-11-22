@@ -3635,6 +3635,78 @@ void applyBraceInitializerMacros(ast::AstNode& node, ast::AstArena& arena,
         if (child) applyBraceInitializerMacros(*child, arena, macros, visited, misplaced, reasons);
 }
 
+// EN: C2-04. The C spelling of a constant macro argument written in NativeSharp: integer literals, names (macros,
+//     enumerators) and nested calls to function-like macros. Null for anything else.
+// ES: C2-04. La escritura C de un argumento constante de macro escrito en NativeSharp: literales enteros, nombres
+//     (macros, enumeradores) y llamadas anidadas a macros de funcion. Nulo para lo demas.
+std::optional<std::string> cMacroConstantSpelling(const ast::AstNode* node,
+                                                  const std::set<std::string, std::less<>>& functionMacros)
+{
+    if (!node) return std::nullopt;
+    if (node->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
+        node->kind() == ast::AstNodeKind::IdentifierExpression)
+        return std::string(node->text());
+    if (node->kind() != ast::AstNodeKind::CallExpression || !node->first() ||
+        node->first()->kind() != ast::AstNodeKind::IdentifierExpression ||
+        !functionMacros.contains(node->first()->text()))
+        return std::nullopt;
+    std::string text = std::string(node->first()->text()) + "(";
+    for (std::size_t index = 0; index < node->children().size(); ++index)
+    {
+        const auto argument = cMacroConstantSpelling(node->children()[index], functionMacros);
+        if (!argument) return std::nullopt;
+        text += (index ? ", " : "") + *argument;
+    }
+    return text + ")";
+}
+
+// EN: C2-04. An array dimension that calls a function-like macro (`byte[LZ4_COMPRESSBOUND(64)]`) needs a constant,
+//     not the runtime wrapper of the macro: Clang evaluates the expansion as an integer constant expression of the
+//     header's language and the dimension takes that value. A dimension Clang does not accept stays as written.
+// ES: C2-04. Una dimension de arreglo que llama a una macro de funcion necesita una constante, no el envoltorio de
+//     ejecucion de la macro: Clang evalua la expansion como expresion constante entera del lenguaje del encabezado y
+//     la dimension toma ese valor. Una dimension que Clang no acepta queda como esta escrita.
+void evaluateMacroArrayDimensions(ast::TypeSyntax* type, ast::AstArena& arena,
+    const std::set<std::string, std::less<>>& functionMacros,
+    const std::vector<std::unique_ptr<interop::CppInteropSession>>& sessions)
+{
+    if (!type) return;
+    for (std::size_t index = 0; index < type->modifiers().size(); ++index)
+    {
+        const ast::AstNode* count = type->modifiers()[index].arrayCount;
+        if (!count || count->kind() != ast::AstNodeKind::CallExpression) continue;
+        const auto spelling = cMacroConstantSpelling(count, functionMacros);
+        if (!spelling) continue;
+        for (const auto& session : sessions)
+            if (session)
+                if (const auto value = session->evaluateIntegerConstantExpression(*spelling))
+                {
+                    auto* literal = arena.make<ast::AstNode>(ast::AstNodeKind::IntegerLiteralExpression, count->range());
+                    literal->setTokenKind(lexer::TokenKind::IntegerLiteral);
+                    literal->setText(value->second ? std::to_string(static_cast<std::int64_t>(value->first))
+                                                   : std::to_string(value->first));
+                    literal->setIntegerValue(value->first);
+                    type->setArrayCount(index, literal);
+                    break;
+                }
+    }
+    for (ast::TypeSyntax* argument : type->typeArguments())
+        evaluateMacroArrayDimensions(argument, arena, functionMacros, sessions);
+    evaluateMacroArrayDimensions(type->functionReturnType(), arena, functionMacros, sessions);
+}
+
+void evaluateMacroArrayDimensionsInTree(ast::AstNode& node, ast::AstArena& arena,
+    const std::set<std::string, std::less<>>& functionMacros,
+    const std::vector<std::unique_ptr<interop::CppInteropSession>>& sessions, std::set<const ast::AstNode*>& visited)
+{
+    if (!visited.insert(&node).second) return;
+    evaluateMacroArrayDimensions(const_cast<ast::TypeSyntax*>(node.typeSyntax()), arena, functionMacros, sessions);
+    for (ast::AstNode* child : {node.first(), node.second(), node.third()})
+        if (child) evaluateMacroArrayDimensionsInTree(*child, arena, functionMacros, sessions, visited);
+    for (ast::AstNode* child : node.children())
+        if (child) evaluateMacroArrayDimensionsInTree(*child, arena, functionMacros, sessions, visited);
+}
+
 std::vector<MisplacedArgumentList> expandCppArgumentListMacros(ast::AstNode& root, ast::AstArena& arena,
                                  const std::map<std::string, std::size_t, std::less<>>& macros)
 {
@@ -4117,6 +4189,18 @@ bool ProjectCompilation::parseSyntaxUnits(
     for (auto& unit : units_)
     {
         if (!unit || !unit->syntaxTree()) continue;
+        if (const auto macros = cppFunctionMacros_.find(unit->projectOrdinal()); macros != cppFunctionMacros_.end())
+            for (const auto& group : cppProjectSessions_)
+            {
+                std::error_code ec;
+                if (!std::filesystem::equivalent(group.projectFile,
+                        projectGraph_->projects()[unit->projectOrdinal()].projectFile(), ec) || ec)
+                    continue;
+                std::set<const ast::AstNode*> visited;
+                evaluateMacroArrayDimensionsInTree(*unit->syntaxTree(), unit->arena(), macros->second, group.sessions,
+                                                   visited);
+                break;
+            }
         if (const auto braces = cppBraceInitializerMacros_.find(unit->projectOrdinal());
             braces != cppBraceInitializerMacros_.end())
         {
