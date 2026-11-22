@@ -823,6 +823,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/Internal/TemporaryFile.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/CompilationInputManifestFactory.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/ProjectCommands.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/LibraryReferenceValidation.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/PromotionAct.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/ReleaseCandidateFreeze.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/ToolchainContract.cpp"
@@ -833,6 +834,8 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/FloatingPointMode.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/LinkTimeOptimizationMode.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/CompilationArtifactCache.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/ProjectOopObjectGenerator.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Internal/ThinLtoBackend.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Internal/ArtifactCacheFilesystemPath.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Internal/CacheEntryLock.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Internal/CodeViewProcedureRanges.cpp"
@@ -908,6 +911,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/Internal/ScopedTemporaryDirectory.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/Internal/TemporaryFiles.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/WindowsLibraryBuilder.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/UnicodeDllLoader.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/WindowsRuntimeLibrary.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/WindowsRuntimeImports.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Interop/LibraryAbiReport.cpp"
@@ -919,6 +923,8 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Interop/LibraryMetadataConstruction.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Interop/LibraryMetadataPayload.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Interop/LibraryMetadataVerification.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Interop/Internal/CppCRecordMetadataCodec.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Interop/Cpp/CppBinaryDependencies.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Interop/LibraryMetadataMerger.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Target/TargetDataLayout.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Target/TargetInfo.cpp"
@@ -1014,6 +1020,11 @@ target_compile_definitions(
         "NSC_SUITE_NSLINK_EXECUTABLE=\"${NSC_NSLINK_EXECUTABLE}\""
         "NSC_SUITE_WINDOWS_RUNTIME_LIBRARY=\"${NSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY}\"")
 target_compile_features(nsc_component_tests PRIVATE cxx_std_20)
+# EN: The suite links only LLVM-C, so ThinLtoBackend uses its fallback without the LLVM C++ API, as in the dynamic
+#     host build. ES: El suite solo enlaza LLVM-C; ThinLtoBackend usa su respaldo sin la API C++ de LLVM, como el
+#     host dinamico.
+set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Internal/ThinLtoBackend.cpp"
+    TARGET_DIRECTORY nsc_component_tests PROPERTIES COMPILE_DEFINITIONS NSC_THINLTO_UNAVAILABLE=1)
 target_link_libraries(
     nsc_component_tests
     PRIVATE
