@@ -234,6 +234,10 @@ bool ProjectObjectLayoutModel::build(
             }
             experimentalCppFieldLayouts_.push_back(ObjectFieldLayout{ordinal, *member.explicitFieldOffset,
                 storageSize, alignment, member.declaredTypeKey, member.explicitBitOffset, member.explicitBitWidth});
+            // C3-05: the unit of a volatile access. / La unidad de un acceso volatile.
+            experimentalCppFieldLayouts_.back().volatileUnitByteOffset = member.cppVolatileUnitOffset;
+            experimentalCppFieldLayouts_.back().volatileUnitBitOffset = member.cppVolatileUnitBitOffset;
+            experimentalCppFieldLayouts_.back().volatileUnitBytes = member.cppVolatileUnitBytes;
         }
     }
     if (!diagnostics.hasErrors())

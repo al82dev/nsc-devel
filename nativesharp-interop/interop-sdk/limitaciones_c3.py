@@ -148,4 +148,35 @@ c4 = Caso('c3-atomico', H4, S4, standard='c11')
 positivo(c4, BODY4)
 rechazo(c4, 'Counter* c = counter(); return read_plain(&c->count);', 'read_plain')
 rechazo(c4, 'Counter* c = counter(); return bump(ref c->count);', 'ref')
+
+# C3-05: a bit-field reached through volatile storage (`Regs volatile*`, the MMIO pattern) is accessed through its
+# Microsoft storage unit (here the 32-bit `unsigned int` unit), as Clang does; a non-volatile access keeps the
+# field's window. A volatile field already used its unit (T19-044).
+H5 = r'''
+typedef struct Regs { unsigned char tag; unsigned int ready : 1; unsigned int mode : 3; unsigned int level : 12; } Regs;
+volatile Regs* regs(void);
+int regs_mode(void);
+'''
+S5 = r'''
+static Regs r = {9, 0, 0, 0};
+volatile Regs* regs(void) { return &r; }
+int regs_mode(void) { return (int)r.mode + (int)r.level; }
+'''
+BODY5 = r'''
+    var r = regs();
+    r->mode = 5;
+    r->level = 37;
+    if (r->mode != 5 || r->ready != 0u || r->tag != 9) return 1;
+    return regs_mode();
+'''
+c5 = Caso('c3-bitfield-volatile', H5, S5)
+positivo(c5, BODY5)
+if not ONLY or any('c3-bitfield-ir' in o for o in ONLY):
+    result = ir(Caso('c3-bitfield-ir', H5, S5), 'var r = regs(); r->mode = 5; return (int)r->level;', opt=0)
+    text = result.stdout
+    lines = [l for l in text.splitlines() if 'volatile' in l and ('load' in l or 'store' in l)]
+    if result.returncode or not lines or any(' i8' in l for l in lines) or not any(' i32' in l for l in lines):
+        _fail('c3-bitfield-ir', 'el acceso volatile no usa la unidad de 32 bits:\n' + '\n'.join(lines)[:2000])
+    else:
+        print('ok c3-bitfield-ir', flush=True)
 fin()

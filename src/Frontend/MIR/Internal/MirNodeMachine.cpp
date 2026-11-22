@@ -1746,6 +1746,19 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup16(
             result->bitOffset = layout->bitOffset;
             result->bitWidth = layout->bitWidth;
             result->bitStorageSize = bitField ? layout->size : 0;
+            // EN: C3-05. A volatile access of a C bit-field (a volatile field, or one reached through volatile
+            //     storage) uses its Microsoft storage unit, as Clang does; the field window serves other accesses.
+            // ES: C3-05. Un acceso volatile a un bit-field C (un campo volatile, o uno alcanzado por almacenamiento
+            //     volatile) usa su unidad de almacenamiento de Microsoft, como Clang; la ventana del campo sirve a los
+            //     demas accesos.
+            if (bitField && node->volatileAccess && layout->volatileUnitByteOffset && layout->volatileUnitBitOffset &&
+                layout->volatileUnitBytes)
+            {
+                result->immediate = *layout->volatileUnitByteOffset;
+                result->bitOffset = *layout->volatileUnitBitOffset;
+                result->bitStorageSize = *layout->volatileUnitBytes;
+                result->alignment = *layout->volatileUnitBytes;
+            }
             if (node->kind == ProjectOopHirNodeKind::NullConditionalFieldValue && bitField)
             {
                 error = "T01-F03 null-conditional access to a bit field has no nullable value carrier";

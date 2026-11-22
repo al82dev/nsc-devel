@@ -719,6 +719,9 @@ bool ProjectMemberModel::build(
         member.isCompilerGenerated = imported.isAnonymousCarrier;
         member.cppClangUsr = imported.clangUsr;
         member.explicitFieldOffset = imported.byteOffset;
+        member.cppVolatileUnitOffset = imported.volatileUnitByteOffset;
+        member.cppVolatileUnitBitOffset = imported.volatileUnitBitOffset;
+        member.cppVolatileUnitBytes = imported.volatileUnitBytes;
         member.explicitFieldAlignment = alignment;
         member.isBitField = imported.bitWidth.has_value();
         member.explicitBitOffset = imported.bitOffset;

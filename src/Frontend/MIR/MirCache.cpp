@@ -88,6 +88,9 @@ void appendObjectFieldIdentity(std::string& out, const ObjectFieldLayout& field)
     internal::CachePayloadWriter::u64(out, field.bitOffset.value_or(0U));
     internal::CachePayloadWriter::byte(out, field.bitWidth.has_value() ? 1U : 0U);
     internal::CachePayloadWriter::u64(out, field.bitWidth.value_or(0U));
+    internal::CachePayloadWriter::u64(out, field.volatileUnitByteOffset.value_or(~std::uint64_t{0}));
+    internal::CachePayloadWriter::u64(out, field.volatileUnitBitOffset.value_or(0U));
+    internal::CachePayloadWriter::u64(out, field.volatileUnitBytes.value_or(0U));
 }
 
 void appendPhysicalLayoutIdentity(

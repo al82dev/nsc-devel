@@ -240,6 +240,11 @@ struct ClassMemberSymbol final
     std::optional<std::uint64_t> explicitBitOffset;
     std::optional<std::uint64_t> explicitBitWidth;
     std::optional<std::uint64_t> explicitBitStorageSize;
+    // C3-05: the Microsoft storage unit a volatile access of an imported bit-field uses. / La unidad de Microsoft
+    //     que usa un acceso volatile de un bit-field importado.
+    std::optional<std::uint64_t> cppVolatileUnitOffset;
+    std::optional<std::uint64_t> cppVolatileUnitBitOffset;
+    std::optional<std::uint64_t> cppVolatileUnitBytes;
     // Item 326. A promoted field is a semantic alias owned by the containing type. It is not a
     // second physical field: the source member remains inside the anonymous aggregate and this
     // path names the compiler-generated carrier fields that lead from the containing object to it.
