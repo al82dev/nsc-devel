@@ -296,6 +296,13 @@ bool ProjectMemberModel::setExperimentalCppInstanceFields(
     std::vector<CppImportedInstanceField> fields, std::string& error)
 {
     if (built_) { error = "C++ instance fields must be configured before building members"; return false; }
+    cppNotImportedFields_.clear();
+    std::erase_if(fields, [this](CppImportedInstanceField& field)
+    {
+        if (!field.notImportedReason) return false;
+        cppNotImportedFields_.emplace(std::pair{field.ownerIdentityKey, field.name}, *field.notImportedReason);
+        return true;
+    });
     std::set<std::pair<std::string, std::string>> identities;
     // EN: T08-D23: pointee flags belong to a pointer, or to the pointer elements of a fixed array.
     // ES: T08-D23: las marcas del dato apuntado son de un puntero o de los elementos puntero de un arreglo fijo.

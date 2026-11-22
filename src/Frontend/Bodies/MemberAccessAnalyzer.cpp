@@ -1363,6 +1363,19 @@ void ProjectMethodBodyModel::finishMemberLookup(
             return;
         }
     }
+    if (!inaccessibleFound && memberModel_ != nullptr)
+    {
+        const std::string_view key = receiver.typeKey;
+        const auto owner = key.starts_with("type:") ? key.substr(5) : key;
+        const auto* reason = memberModel_->cppNotImportedFieldReason(owner, expression->text());
+        if (reason == nullptr) reason = memberModel_->cppNotImportedFieldReason(key, expression->text());
+        if (reason != nullptr)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::UnknownMember, diagnostics::DiagnosticSeverity::Error,
+                expression->range(), *reason);
+            return;
+        }
+    }
     diagnostics.report(
         inaccessibleFound ? diagnostics::DiagnosticId::InaccessibleMember
                           : diagnostics::DiagnosticId::UnknownMember,

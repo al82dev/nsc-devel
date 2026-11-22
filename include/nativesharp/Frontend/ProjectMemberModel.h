@@ -32,6 +32,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
@@ -66,6 +67,13 @@ public:
     // Isolated indexing only; callers must account for all C++ overloads before resolution.
     bool setExperimentalCppLifetimeMethods(std::vector<CppImportedLifetimeMethod> methods, std::string& error);
     bool setExperimentalCppInstanceFields(std::vector<CppImportedInstanceField> fields, std::string& error);
+    // EN: Item 1.4. Why a C/C++ field of the type with identity `ownerIdentityKey` was not imported, if it exists.
+    // ES: Item 1.4. Por que no se importo un campo C/C++ del tipo con identidad `ownerIdentityKey`, si existe.
+    const std::string* cppNotImportedFieldReason(std::string_view ownerIdentityKey, std::string_view name) const
+    {
+        const auto found = cppNotImportedFields_.find({std::string(ownerIdentityKey), std::string(name)});
+        return found == cppNotImportedFields_.end() ? nullptr : &found->second;
+    }
     bool setExperimentalCppStaticMethods(std::vector<CppImportedStaticMethod> methods, std::string& error);
     bool setExperimentalCppStaticFields(std::vector<CppImportedStaticField> fields, std::string& error);
 
@@ -604,6 +612,7 @@ private:
     std::vector<CppImportedInstanceMethod> experimentalCppInstanceMethods_;
     std::vector<CppImportedLifetimeMethod> experimentalCppLifetimeMethods_;
     std::vector<CppImportedInstanceField> experimentalCppInstanceFields_;
+    std::map<std::pair<std::string, std::string>, std::string> cppNotImportedFields_;
     std::vector<CppImportedStaticMethod> experimentalCppStaticMethods_;
     std::vector<CppImportedStaticField> experimentalCppStaticFields_;
     std::vector<ModuleInitializationRecord> moduleInitializers_;

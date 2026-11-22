@@ -40,5 +40,10 @@ struct CppImportedInstanceField final
     // EN: T19-012. C++ access of the field; NativeSharp checks it at each use.
     // ES: T19-012. Acceso C++ del campo; NativeSharp lo comprueba en cada uso.
     ClassMemberAccessibility accessibility = ClassMemberAccessibility::Public;
+    // EN: Item 1.4. Set when the C/C++ field exists but could not be imported; the field is not a member, the reason
+    //     only explains a later use.
+    // ES: Item 1.4. Presente cuando el campo C/C++ existe pero no se pudo importar; no es miembro, el motivo solo
+    //     explica un uso posterior.
+    std::optional<std::string> notImportedReason{};
 };
 }

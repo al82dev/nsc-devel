@@ -998,6 +998,15 @@ bool provideExperimentalCppInstanceFields(
                     imported.microsoftVolatileSemantics = volatileMode;
                     result.push_back(std::move(imported));
                 }
+                else if (const auto& source = entry.declaration.fields[fieldIndex];
+                         !source.name.empty() && !source.isAnonymousCarrier)
+                {
+                    frontend::CppImportedInstanceField omitted{group.projectOrdinal, group.identity.key(),
+                        source.name, std::string{}, 0, false, false};
+                    omitted.notImportedReason = "C/C++ field '" + source.name + "' of type '" +
+                        source.type.spelling + "' was not imported: NativeSharp has no mapping for that field type";
+                    result.push_back(std::move(omitted));
+                }
         }
     }
     output = std::move(result);
@@ -3136,6 +3145,7 @@ bool provideCppFieldsWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
         !reconstructPrecompiledCMembers(modules, graph, "x86_64-pc-windows-msvc", lookup,
                                        restored, constants, error)) return false;
     std::set<std::pair<std::string, std::string>> names;
+    std::erase_if(live, [](const auto& field) { return field.notImportedReason.has_value(); });
     for (const auto& field : live)
         if (!names.emplace(field.ownerIdentityKey, field.name).second)
         { error = "duplicate live C/C++ field: " + field.ownerIdentityKey + "." + field.name; return false; }
