@@ -1210,6 +1210,16 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
              arguments[argumentOrdinal].pointerLevelQualifiers, arguments[argumentOrdinal].pointerPointeeReadonly,
              arguments[argumentOrdinal].pointerPointeeVolatile, parameter.typeKey, parameter.pointerLevelQualifiers,
              parameter.pointerPointeeReadonly, parameter.pointerPointeeVolatile) != nullptr);
+    // C1-02 (item 4.7): a decayed fixed array keeps its element qualifiers. / Un arreglo fijo que decae conserva
+    //     los calificadores de sus elementos.
+    const bool decayDropsQualifier = conversion.exists() &&
+        conversion.kind == ProjectConversionKind::CFlexibleArrayToPointer &&
+        ProjectMemberModel::fixedArrayElementTypeKey(arguments[argumentOrdinal].typeKey).has_value() &&
+        method_body_detail::decayedFixedArrayDropsQualifier(conversionTarget,
+            arguments[argumentOrdinal].readonlyReceiver, arguments[argumentOrdinal].volatileStorage,
+            arguments[argumentOrdinal].pointerLevelQualifiers, arguments[argumentOrdinal].pointerPointeeReadonly,
+            arguments[argumentOrdinal].pointerPointeeVolatile, parameter.typeKey, parameter.pointerLevelQualifiers,
+            parameterPointeeReadonly, parameter.pointerPointeeVolatile);
     const bool violatesPointerContract = !packElement &&
         ProjectTypeConversion::isPointer(parameter.typeKey) &&
         !language::pointerContractImplicitlyAssignable(
@@ -1230,7 +1240,7 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
     const bool boundLvalue = rvalueArgument && conversion.exists() &&
         conversion.kind == ProjectConversionKind::Identity && arguments[argumentOrdinal].addressable;
     if (!conversion.exists() || (!rvalueArgument && (discardsPointeeConst || violatesPointerContract)) ||
-        boundLvalue ||
+        boundLvalue || decayDropsQualifier ||
         (arguments[argumentOrdinal].pointerPointeeVolatile &&
          (packElement || !parameter.pointerPointeeVolatile)) ||
         // T19-002: a pointer to C atomic storage binds only an `_Atomic T*` parameter, and only that parameter
@@ -6277,8 +6287,16 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     const bool writtenPassKindMismatch = !packElement &&
         argument.argumentPassKind != ParameterPassKind::Value &&
         parameter.passKind != argument.argumentPassKind;
+    // C1-02 (item 4.7): as for a namespace function. / Como en una funcion de namespace.
+    const bool decayDropsQualifier = conversion.exists() &&
+        conversion.kind == ProjectConversionKind::CFlexibleArrayToPointer &&
+        ProjectMemberModel::fixedArrayElementTypeKey(argument.typeKey).has_value() &&
+        method_body_detail::decayedFixedArrayDropsQualifier(conversionTarget, argument.readonlyReceiver,
+            argument.volatileStorage, argument.pointerLevelQualifiers, argument.pointerPointeeReadonly,
+            argument.pointerPointeeVolatile, parameter.typeKey, parameter.pointerLevelQualifiers,
+            parameterPointeeReadonly, parameter.pointerPointeeVolatile);
     if (!conversion.exists() || (!rvalueArgument && (discardsPointeeConst || violatesPointerContract)) ||
-        boundLvalue || writtenPassKindMismatch ||
+        boundLvalue || writtenPassKindMismatch || decayDropsQualifier ||
         (argument.pointerPointeeVolatile &&
          (packElement || !parameter.pointerPointeeVolatile)) ||
         // T19-002: as for a namespace function. / Como en una funcion de namespace.

@@ -6,7 +6,7 @@
 2.6 `int *const p` e `int a[const 4]`; 2.8 la identidad sobrevive al productor precompilado (.lib y DLL);
 2.9 `T***` y `void**` (ya funcionaba: se conserva la prueba).
 Rechazos (O0): escribir a traves de la base const, pasar `sbyte**` a `const char**` (regla T08-D17), y
-2.7 `volatile int**`, que NativeSharp no puede expresar (limitacion documentada).
+2.7 `volatile int**`: era una limitacion documentada; desde limitaciones C1-01 se mapea y pasa a ser positivo.
 """
 from comun import Caso, positivo, rechazo, fin
 
@@ -70,7 +70,10 @@ c = Caso('t2-c', H, S)
 positivo(c, BODY, PRELUDIO)
 rechazo(c, 'sbyte const** t = names(); t[0][0] = 1; return 0;', 'not assignable')
 rechazo(c, 'sbyte* m = null; sbyte** q = &m; return count_cpp(q);', 'count_cpp')
-rechazo(c, 'return rv(null);', "('volatile int **') is not yet mapped")
+# 2.7: `volatile int**` is mapped since limitaciones C1-01 (the base is the volatile pointee mark); see
+#     limitaciones_c1.py. The former rejection becomes a call through `int volatile**`.
+positivo(Caso('t2-c-volatile', H, S), 'int v = 42; int volatile* pv = &v; return rv(&pv);', opts=['0'],
+         modes=['directo'])
 
 HPP = r'''
 struct SessionDesc { char const* const* searchPaths; long long count; };

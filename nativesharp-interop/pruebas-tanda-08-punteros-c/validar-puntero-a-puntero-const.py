@@ -183,8 +183,9 @@ REJECTIONS = [
      "would discard pointee constness"),
     ("condicional", "int x = 1; int* p = &x; int const* c = &x; int** a = &p; int const** b = &c; "
      "var r = x > 0 ? a : b; return 0;", "same pointee qualification"),
+    # limitaciones C1-02: `&p` of an `in int*` is an `int* const*`; an `int**` would drop that level.
     ("direccion-de-in", "return 0; } public static int Address(in int* p) { int** q = &p; return 0;",
-     "cannot take the address of a readonly pointer"),
+     "would discard a qualifier of a pointer level"),
 ]
 for name, statements, expected in REJECTIONS:
     folder = root / "rechazos" / name

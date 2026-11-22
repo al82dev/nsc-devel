@@ -4146,10 +4146,17 @@ int main(int argc, char** argv)
                      "C volatile scalar pointer result retains the original Clang qualifier");
         for (const auto* name : {"ptr_volatile_nested"})
         {
+            // EN: limitaciones C1-01: `volatile int**` is mapped; the base is the volatile pointee mark.
+            // ES: limitaciones C1-01: `volatile int**` se mapea; la base es la marca de apuntado volatile.
             const auto* declaration = cFunctions ? functionByName(*cFunctions, name) : nullptr;
-            ok &= expect(declaration && std::holds_alternative<CppSemanticFunctionFailure>(
-                             projectCppSemanticFunction(*declaration, 0, "Semantic")),
-                         "nested volatile pointer remains deferred");
+            const auto nested = declaration ? projectCppSemanticFunction(*declaration, 0, "Semantic")
+                                            : CppSemanticFunctionResult{CppSemanticFunctionFailure{"fixture unavailable"}};
+            const auto* nestedSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&nested);
+            ok &= expect(nestedSymbol && nestedSymbol->parameters.size() == 1 &&
+                             nestedSymbol->parameters[0].typeKey == "builtin:int**" &&
+                             nestedSymbol->parameters[0].pointerPointeeVolatile &&
+                             nestedSymbol->parameters[0].pointerLevelQualifiers == 0U,
+                         "nested volatile pointer maps with a volatile base mark");
         }
         if (pointerRead && volatileSymbol)
         {

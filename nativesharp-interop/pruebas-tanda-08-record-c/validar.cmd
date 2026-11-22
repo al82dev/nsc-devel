@@ -432,7 +432,8 @@ copy /y "%~dp0VolatilePointeeLocalAddress.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-pointee-local-address.exe" > "%DEST%\volatile-pointee-local-address.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /c:"cannot take the address of a pointer to volatile storage" "%DEST%\volatile-pointee-local-address.log" >nul
+rem limitaciones C1-02: `&value` is an `int volatile**` now; storing it in an `int**` still fails.
+findstr /c:"initialization would discard pointer pointee volatile qualification" "%DEST%\volatile-pointee-local-address.log" >nul
 if errorlevel 1 exit /b 1
 copy /y "%~dp0VolatileRecordPointeeAddress.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
@@ -467,14 +468,12 @@ if errorlevel 1 exit /b 1
 copy /y "%~dp0VolatileAliasGlobalAddress.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-alias-global-address.exe" > "%DEST%\volatile-alias-global-address.log" 2>&1
-if not errorlevel 1 exit /b 1
-findstr /c:"cannot take the address of this global until nested pointer qualifiers are supported" "%DEST%\volatile-alias-global-address.log" >nul
+rem limitaciones C1-02/C1-03: `int volatile**` is representable now, so volatile-alias-global-address compiles.
 if errorlevel 1 exit /b 1
 copy /y "%~dp0VolatileAliasNested.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-alias-nested.exe" > "%DEST%\volatile-alias-nested.log" 2>&1
-if not errorlevel 1 exit /b 1
-findstr /c:"volatile pointer alias cannot yet be represented safely" "%DEST%\volatile-alias-nested.log" >nul
+rem limitaciones C1-02/C1-03: `int volatile**` is representable now, so volatile-alias-nested compiles.
 if errorlevel 1 exit /b 1
 copy /y "%~dp0VolatileAliasFieldDiscard.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1

@@ -126,8 +126,9 @@ REJECTIONS = [
      "would discard pointer pointee volatile qualification"),
     ("03d1-escribir-const-volatile", "QP q; fill_qp(&q); *q.pcvs[0] = 2; return 0;", "not assignable"),
     ("03d1-empaquetado-const", "PQ p; fill_pq(&p); *p.pcs[0] = 2; return 0;", "not assignable"),
-    ("03d1-direccion-puntero-const", "QP q; fill_qp(&q); var r = &q.cps[0]; return 0;",
-     "cannot take the address of a readonly pointer"),
+    # limitaciones C1-02: `&q.cps[0]` is an `int* const*`; the const slot stays unwritable through it.
+    ("03d1-direccion-puntero-const", "QP q; fill_qp(&q); var r = &q.cps[0]; *r = null; return 0;",
+     "not assignable"),
     ("03d1-direccion-apuntado-const", "QP q; fill_qp(&q); var r = &q.pcs[0]; return 0;",
      "cannot take the address of an array element with a const pointee"),
     ("03d1-direccion-apuntado-volatile", "QP q; fill_qp(&q); var r = &q.pvs[0]; return 0;",

@@ -78,6 +78,19 @@ const char* nestedPointerQualificationError(
           "reachable without it through the original pointer; use an explicit cast";
 }
 
+bool decayedFixedArrayDropsQualifier(
+    std::string_view decayedTypeKey, bool elementConst, bool elementVolatile, std::uint8_t arrayLevels,
+    bool arrayBaseConst, bool arrayBaseVolatile, std::string_view parameterTypeKey, std::uint8_t parameterLevels,
+    bool parameterBaseConst, bool parameterBaseVolatile) noexcept
+{
+    if (!nestedPointerTypeKey(decayedTypeKey))
+        return (elementConst && !parameterBaseConst) || (elementVolatile && !parameterBaseVolatile);
+    std::uint8_t levels = 0;
+    if (!language::pointerLevelsAfterAddressOf(arrayLevels, elementConst, elementVolatile, levels)) return true;
+    return nestedPointerQualificationError(decayedTypeKey, levels, arrayBaseConst, arrayBaseVolatile,
+        parameterTypeKey, parameterLevels, parameterBaseConst, parameterBaseVolatile) != nullptr;
+}
+
 bool addsNestedPointeeConst(
     std::string_view sourceTypeKey,
     bool sourcePointeeReadonly,

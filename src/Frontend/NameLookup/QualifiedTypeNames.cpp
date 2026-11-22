@@ -1,3 +1,4 @@
+#include "nativesharp/Language/PointerLevelQualifiers.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/CppAliasBuiltinType.h"
 #include "nativesharp/Frontend/CppAliasArrayType.h"
@@ -1072,17 +1073,31 @@ bool ProjectNameLookup::expandCppTypeAlias(
             interop::CppType normalized = aliasType;
             normalized.element = std::move(unqualifiedElement);
             const auto volatileAlias = cppAliasBuiltinType(normalized);
-            if (!volatileAlias || volatileAlias->pointerDepth != 1 || !syntax->modifiers().empty() ||
-                syntax->isPointeeConst() || syntax->isPointeeVolatile())
+            // EN: C1-03. More pointers over the alias (`VolatileIntPtr*`) keep the volatile base (`int volatile**`);
+            //     a qualifier written on the alias (`VolatileIntPtr const*`) qualifies the alias's own pointer
+            //     object, the deepest intermediate level of the written stars.
+            // ES: C1-03. Mas punteros sobre el alias conservan la base volatile; un calificador escrito sobre el
+            //     alias califica el objeto puntero del propio alias, el nivel intermedio mas profundo de las
+            //     estrellas escritas.
+            const std::size_t written = syntax->modifiers().size();
+            const bool onlyPointers = std::all_of(syntax->modifiers().begin(), syntax->modifiers().end(),
+                [](const ast::TypeModifierSyntax& modifier) { return modifier.kind == ast::TypeModifierSyntaxKind::Pointer; });
+            const bool aliasObjectQualified = syntax->isPointeeConst() || syntax->isPointeeVolatile();
+            if (!volatileAlias || volatileAlias->pointerDepth != 1 || !onlyPointers ||
+                (aliasObjectQualified && (written == 0 || written - 1U >= language::kMaxPointerLevelQualifierDepth)))
                 return report(diagnostics::DiagnosticId::InvalidUsingTarget,
                               "C/C++ volatile pointer alias cannot yet be represented safely: '" +
                               syntax->baseName() + "'");
             auto* mutableSyntax = const_cast<ast::TypeSyntax*>(syntax);
+            std::uint8_t levels = syntax->pointerLevelQualifiers();
+            if (syntax->isPointeeConst()) levels |= language::pointerLevelConstBit(written - 1U);
+            if (syntax->isPointeeVolatile()) levels |= language::pointerLevelVolatileBit(written - 1U);
             mutableSyntax->setBaseTokenKind(volatileAlias->token);
             mutableSyntax->setBaseName(std::string(volatileAlias->name));
             mutableSyntax->prependModifiers(cppPointerModifiers(aliasType));
             mutableSyntax->setPointeeConst(volatileAlias->pointeeConst);
             mutableSyntax->setPointeeVolatile();
+            mutableSyntax->setPointerLevelQualifiers(levels);
             return true;
         }
         const auto mapped = cppAliasBuiltinType(aliasType);

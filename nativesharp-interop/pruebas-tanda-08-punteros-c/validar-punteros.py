@@ -139,6 +139,8 @@ BODY = """    // 02a/03a: scalar pointers as parameters and returns.
     if (*vfirst != 2 || read_volatile(vfirst) != 2) return 10;
     // 02c: `const int**` and `int* const*` parameters are mapped (interop-sdk item 2.1).
     if (read_cpp(cboth) != 2 || read_icp(both) != 1) return 19;
+    // 02c: `volatile int**` is mapped too: the base is the volatile pointee mark (limitaciones C1-01).
+    if (read_vpp(&vfirst) != 2) return 20;
     // 02d: compatible conversions.
     int const* added = first;
     void* erased = first;
@@ -184,7 +186,6 @@ REJECTIONS = [
     ("04b-desreferencia-entero", "int x = 1; return *x;", "non-void pointer"),
     ("04c-escribir-const", "int x = 1; int const* c = &x; *c = 2; return 0;", "not assignable"),
     ("04c-reasignar-local-const", "int x = 1; const int* c = &x; c = &x; return 0;", "not assignable"),
-    ("02c-no-representado-volatile", "int x = 1; var v = vptr(&x); return read_vpp(&v);", "is not yet mapped"),
 ]
 
 

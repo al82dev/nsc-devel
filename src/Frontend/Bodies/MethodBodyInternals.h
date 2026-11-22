@@ -59,6 +59,15 @@ inline bool addsNestedPointeeVolatile(
 const char* nestedPointerQualificationError(
     std::string_view sourceTypeKey, std::uint8_t sourceLevels, bool sourceBaseConst, bool sourceBaseVolatile,
     std::string_view targetTypeKey, std::uint8_t targetLevels, bool targetBaseConst, bool targetBaseVolatile) noexcept;
+// EN: C1-02 (item 4.7). A fixed array that decays at a C boundary gives its element qualifiers to the object its
+//     first pointer points to: `int* const a[2]` decays to `int* const*`, `const int a[3]` to `int const*`. True when
+//     the parameter would drop one of them.
+// ES: C1-02 (item 4.7). Un arreglo fijo que decae en una frontera C da sus calificadores de elemento al objeto al
+//     que apunta su primer puntero. Verdadero si el parametro perderia alguno.
+bool decayedFixedArrayDropsQualifier(
+    std::string_view decayedTypeKey, bool elementConst, bool elementVolatile, std::uint8_t arrayLevels,
+    bool arrayBaseConst, bool arrayBaseVolatile, std::string_view parameterTypeKey, std::uint8_t parameterLevels,
+    bool parameterBaseConst, bool parameterBaseVolatile) noexcept;
 inline constexpr char kNestedPointeeVolatileMessage[] =
     "a pointer to a non-volatile-pointee pointer cannot become a 'T volatile**' implicitly: a 'T volatile*' stored "
     "through it would be read without volatile through the original 'T**'; use an explicit cast";
