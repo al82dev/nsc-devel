@@ -797,6 +797,13 @@ bool parseCppLibraryReferenceItem(
             }
             reference.includePaths.push_back({pathFromUtf8(trim(*path)), includeKind});
         }
+        else if (child.name == "Library")
+        {
+            if (!hasOnlyAttributes(child, {"Path"}, error)) return false;
+            const auto* path = attribute(child, "Path");
+            if (!path || trim(*path).empty()) { error = "Library requires Path"; return false; }
+            reference.additionalLibraries.push_back(trim(*path));
+        }
         else if (child.name == "Define" || child.name == "Undefine")
         {
             if (!hasOnlyAttributes(child, {"Value"}, error)) return false;
@@ -1578,6 +1585,14 @@ std::optional<std::vector<CppLibraryReference>> loadCppLibraryReferences(
                                                              error);
             if (!error.empty()) return std::nullopt;
             if (!loadLibraryArtifact(library, reference.libraryPath, error)) return std::nullopt;
+        }
+        for (const auto& additional : input.additionalLibraries)
+        {
+            const auto library = resolveLibraryReferencePath(projectDirectory, descriptor, options, additional, error);
+            if (!error.empty()) return std::nullopt;
+            std::filesystem::path loaded;
+            if (!loadLibraryArtifact(library, loaded, error)) return std::nullopt;
+            reference.additionalLibraryPaths.push_back(std::move(loaded));
         }
         if (input.runtime)
         {

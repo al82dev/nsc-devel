@@ -562,6 +562,9 @@ bool validateProjectLibraryReferences(
                 libraries.push_back(reference.libraryPath);
                 linkedCppLibraries.push_back(reference.libraryPath);
             }
+            // Item 18.8: the further libraries of the reference. / Las demas bibliotecas de la referencia.
+            for (const auto& additional : reference.additionalLibraryPaths)
+                if (linkedLibraries.insert(foldedPathKey(additional)).second) libraries.push_back(additional);
         }
     if (!validateCppImportRuntimes(cppRuntimeReferences, error)) return false;
     return true;

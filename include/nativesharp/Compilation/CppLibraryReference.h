@@ -32,5 +32,10 @@ struct CppLibraryReference final
     //     definiciones aparecen con MACRO definida. NSC define MACRO para la sesion, compila esa unidad una vez y
     //     enlaza su objeto con el programa o la biblioteca.
     std::string implementationMacro;
+    // EN: Item 18.8. Further import or static libraries the header needs at link time, in declaration order
+    //     (`<Library Path="SDL2main.lib" />` next to `Library="SDL2.lib"`).
+    // ES: Item 18.8. Otras bibliotecas de importacion o estaticas que el encabezado necesita al enlazar, en el orden
+    //     declarado.
+    std::vector<std::filesystem::path> additionalLibraryPaths;
 };
 }

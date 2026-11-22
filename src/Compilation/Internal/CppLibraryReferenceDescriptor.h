@@ -22,6 +22,9 @@ struct CppLibraryReferenceDescriptor final
     // EN: Item 6.1. Implementation="MACRO": compile the header's definitions (single-file library) with MACRO.
     // ES: Item 6.1. Implementation="MACRO": compilar las definiciones del encabezado (biblioteca de un archivo).
     std::string implementationMacro;
+    // Item 18.8: further link libraries of the reference (`<Library Path="SDL2main.lib" />`).
+    // Item 18.8: otras bibliotecas de enlace de la referencia.
+    std::vector<std::string> additionalLibraries;
     interop::CppLanguageMode language = interop::CppLanguageMode::Cpp;
     std::string languageStandard;
     std::vector<interop::CppIncludePath> includePaths;

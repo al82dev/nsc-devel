@@ -441,6 +441,7 @@ void CompilationInputManifest::collectGraphInputs(const ProjectGraph& graph)
         {
             if (!reference.headerPath.empty()) inputFiles_.push_back(reference.headerPath);
             if (!reference.libraryPath.empty()) inputFiles_.push_back(reference.libraryPath);
+            for (const auto& additional : reference.additionalLibraryPaths) inputFiles_.push_back(additional);
             if (!reference.runtimePath.empty()) inputFiles_.push_back(reference.runtimePath);
         }
         for (const SdkManifest& sdk : project.sdkReferences())
