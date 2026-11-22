@@ -710,6 +710,19 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         auto element = mapCppScalarType(pointee);
         if (!element && !record.isCxx)
             element = projectCppSemanticEnumType(*pointerType.element, projectOrdinal, moduleName, lookup);
+        // EN: Item 4.2. A pointer to a fixed array (`unsigned short (*image)[4]`) keeps the dimensions, so `p[i][j]`
+        //     strides by the whole row, as parameters already do.
+        // ES: Item 4.2. Un puntero a un arreglo fijo (`unsigned short (*image)[4]`) conserva las dimensiones, asi que
+        //     `p[i][j]` avanza por la fila completa, como ya ocurre en los parametros.
+        bool arrayPointeeReadonly = false;
+        if (!element && pointerType.element->kind == CppTypeKind::Array)
+            if (auto array = projectCArrayField(*pointerType.element, projectOrdinal, moduleName, lookup);
+                array && !array->isVolatile)
+            {
+                arrayPointeeReadonly = array->isConst;
+                element = CppScalarTypeMapping{array->nativeSharpTypeKey, pointerType.element->canonicalSpelling,
+                                               false, false};
+            }
         // EN: `Record **` (and deeper) with unqualified intermediate pointers keeps the record pointee; each
         //     intermediate level only adds `*` to the type key.
         // ES: `Record **` (y mas niveles) con punteros intermedios sin calificar conserva el record apuntado;
@@ -748,8 +761,8 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         {
             mapped = CppScalarTypeMapping{element->nativeSharpTypeKey + "*", pointerType.canonicalSpelling,
                                           pointerType.isConst, pointerType.isVolatile};
-            pointeeReadonly = innerConstFree ? cppPointeeReadonlyForNativeSharp(qualifiedPointerType)
-                                             : pointerType.element->isConst;
+            pointeeReadonly = arrayPointeeReadonly ||
+                (innerConstFree ? cppPointeeReadonlyForNativeSharp(qualifiedPointerType) : pointerType.element->isConst);
             pointeeVolatile = pointerType.element->isVolatile;
         }
     }
