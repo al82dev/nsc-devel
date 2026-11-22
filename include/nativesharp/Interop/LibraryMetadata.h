@@ -196,6 +196,14 @@ inline constexpr std::uint32_t kMetadataMemberReadonlyReferenceReturn = 1U << 31
 inline constexpr std::uint8_t kMetadataPointeeConst = 1U << 0U;
 inline constexpr std::uint8_t kMetadataPointeeVolatile = 1U << 1U;
 inline constexpr std::uint8_t kMetadataPointeeQualifierMask = kMetadataPointeeConst | kMetadataPointeeVolatile;
+// EN: C1-05. Bits 2-7 hold the intermediate pointer level qualifiers of the slot (Language/PointerLevelQualifiers.h,
+//     shifted by two): `int* volatile*` keeps its level 0 volatile across a library boundary. Zero for every slot
+//     without qualified levels, so existing content keeps its bytes.
+// ES: C1-05. Los bits 2-7 guardan los calificadores de niveles intermedios de la posicion (desplazados dos bits):
+//     `int* volatile*` conserva su nivel 0 volatile al cruzar una biblioteca. Cero para toda posicion sin niveles
+//     calificados, asi el contenido existente conserva sus bytes.
+inline constexpr std::uint8_t kMetadataPointerLevelShift = 2U;
+inline constexpr std::uint8_t kMetadataPointerQualifierAllBits = 0xFFU;
 
 // NSMETA. LibraryMetadataNamespaceFunction::flags bit 5 marks the declaration as an
 // extension method. Its first parameter is the implicit receiver and retains Value/ref/in in the

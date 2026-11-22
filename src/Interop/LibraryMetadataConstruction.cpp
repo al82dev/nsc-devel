@@ -2095,11 +2095,15 @@ bool appendAssociatedItemMetadata(
 //     a C alias, together with the flags the member model recorded for the symbol.
 // ES: T08-D02. Calificadores del dato apuntado de una posicion de firma: las marcas que su sintaxis recibio de
 //     `T const*` o de un alias C, junto con las que el modelo de miembros registro para el simbolo.
-std::uint8_t pointeeQualifiers(const ast::TypeSyntax* syntax, bool readonly = false, bool isVolatile = false)
+std::uint8_t pointeeQualifiers(const ast::TypeSyntax* syntax, bool readonly = false, bool isVolatile = false,
+                               std::uint8_t levels = 0)
 {
     std::uint8_t qualifiers = 0;
     if (readonly || (syntax != nullptr && syntax->isPointeeConst())) qualifiers |= kMetadataPointeeConst;
     if (isVolatile || (syntax != nullptr && syntax->isPointeeVolatile())) qualifiers |= kMetadataPointeeVolatile;
+    // C1-05: the intermediate pointer levels. / Los niveles intermedios de punteros.
+    const std::uint8_t allLevels = static_cast<std::uint8_t>(levels | (syntax ? syntax->pointerLevelQualifiers() : 0U));
+    qualifiers |= static_cast<std::uint8_t>(allLevels << kMetadataPointerLevelShift);
     return qualifiers;
 }
 
@@ -2119,7 +2123,8 @@ LibraryMetadataField buildFieldMetadata(
         field.ownership = metadataOwnership(member.declaredOwnership);
         if (fieldLayout.typeKey.ends_with('*'))
             field.pointeeQualifiers = pointeeQualifiers(member.declaredTypeSyntax,
-                member.declaredPointerPointeeReadonly, member.declaredPointerPointeeVolatile);
+                member.declaredPointerPointeeReadonly, member.declaredPointerPointeeVolatile,
+                member.declaredPointerLevelQualifiers);
     }
     field.typeKey = fieldLayout.typeKey;
     field.offset = fieldLayout.offset;
@@ -3038,7 +3043,8 @@ void initializeMetadataMemberRecord(
     record.declaredErrorTypeKey = member.declaredErrorTypeKey;
     record.declaredOwnership = metadataOwnership(member.declaredOwnership);
     record.declaredPointeeQualifiers = pointeeQualifiers(member.declaredTypeSyntax,
-        member.declaredPointerPointeeReadonly, member.declaredPointerPointeeVolatile);
+        member.declaredPointerPointeeReadonly, member.declaredPointerPointeeVolatile,
+        member.declaredPointerLevelQualifiers);
     if (publishLifetimeContracts)
     {
         record.returnLifetimeName = member.returnLifetimeName;
@@ -3168,7 +3174,7 @@ bool buildMemberParameterMetadata(
         ? static_cast<std::uint8_t>(parameter.ffiCallbackMayEscape ? 2U : 1U)
         : 0U;
     parameterRecord.pointeeQualifiers = pointeeQualifiers(parameter.typeSyntax,
-        parameter.pointerPointeeReadonly, parameter.pointerPointeeVolatile);
+        parameter.pointerPointeeReadonly, parameter.pointerPointeeVolatile, parameter.pointerLevelQualifiers);
     if (publishLifetimeContracts)
         parameterRecord.lifetimeName = parameter.lifetimeName;
     if (metadataDefaultValue(parameter.defaultValueSyntax, parameterRecord, error))
@@ -3512,7 +3518,7 @@ bool buildNamespaceFunctionParameterMetadata(
     parameterRecord.isDynamicTrait =
         parameter.typeSyntax != nullptr && parameter.typeSyntax->isDynamicTrait();
     parameterRecord.pointeeQualifiers = pointeeQualifiers(parameter.typeSyntax,
-        parameter.pointerPointeeReadonly, parameter.pointerPointeeVolatile);
+        parameter.pointerPointeeReadonly, parameter.pointerPointeeVolatile, parameter.pointerLevelQualifiers);
     if (publishLifetimeContracts)
         parameterRecord.lifetimeName = parameter.lifetimeName;
     if (metadataDefaultValue(parameter.defaultValueSyntax, parameterRecord, error))

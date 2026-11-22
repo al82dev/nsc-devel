@@ -57,14 +57,18 @@ bool derivableMember(const ClassMemberSymbol& member, FileId fileId) noexcept
 // ES: T19-037. True si un miembro lleva un flag `volatile` que el registro `-v1` del miembro no guarda.
 bool memberHasVolatileFlags(const ClassMemberSymbol& member) noexcept
 {
-    return member.declaredPointerPointeeVolatile || anySnapshotParameterVolatile(member.parameters);
+    return member.declaredPointerPointeeVolatile || member.declaredPointerLevelQualifiers != 0U ||
+        anySnapshotParameterVolatile(member.parameters);
 }
 
 // EN: T19-037. Writes, for one member, the `volatile` flags of the optional block that follows the entries.
 // ES: T19-037. Escribe, para un miembro, los flags `volatile` del bloque opcional que sigue a las entradas.
 void writeMemberVolatileFlags(PrecompiledSnapshotWriter& writer, const ClassMemberSymbol& member)
 {
-    writer.byte(member.declaredPointerPointeeVolatile ? 1U : 0U);
+    // C1-05: bit 0 the volatile base, bits 1-6 the intermediate levels. / Bit 0 la base volatile, bits 1-6 los
+    //     niveles intermedios.
+    writer.byte(static_cast<std::uint8_t>((member.declaredPointerPointeeVolatile ? 1U : 0U) |
+        (static_cast<unsigned>(member.declaredPointerLevelQualifiers) << 1U)));
     writeSnapshotParameterVolatileFlags(writer, member.parameters);
 }
 
@@ -80,7 +84,9 @@ bool readMemberVolatileFlags(
     if (reader.atEnd()) return true;
     for (std::pair<const ast::AstNode*, ClassMemberSymbol>& entry : entries)
     {
-        entry.second.declaredPointerPointeeVolatile = reader.byte() != 0U;
+        const std::uint8_t value = reader.byte();
+        entry.second.declaredPointerPointeeVolatile = (value & 1U) != 0U;
+        entry.second.declaredPointerLevelQualifiers = static_cast<std::uint8_t>(value >> 1U);
         if (!readSnapshotParameterVolatileFlags(reader, entry.second.parameters)) return false;
     }
     return !reader.failed();

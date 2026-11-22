@@ -160,7 +160,7 @@ bool anySnapshotParameterVolatile(const std::vector<MethodParameterSymbol>& para
 {
     for (const MethodParameterSymbol& parameter : parameters)
     {
-        if (parameter.pointerPointeeVolatile) return true;
+        if (parameter.pointerPointeeVolatile || parameter.pointerLevelQualifiers != 0U) return true;
     }
     return false;
 }
@@ -170,7 +170,11 @@ void writeSnapshotParameterVolatileFlags(
     const std::vector<MethodParameterSymbol>& parameters)
 {
     writer.u32(static_cast<std::uint32_t>(parameters.size()));
-    for (const MethodParameterSymbol& parameter : parameters) writer.byte(parameter.pointerPointeeVolatile ? 1U : 0U);
+    // C1-05: bit 0 is the volatile base; bits 1-6 the intermediate pointer levels. / El bit 0 es la base volatile;
+    //     los bits 1-6 los niveles intermedios.
+    for (const MethodParameterSymbol& parameter : parameters)
+        writer.byte(static_cast<std::uint8_t>((parameter.pointerPointeeVolatile ? 1U : 0U) |
+            (static_cast<unsigned>(parameter.pointerLevelQualifiers) << 1U)));
 }
 
 bool readSnapshotParameterVolatileFlags(
@@ -179,7 +183,12 @@ bool readSnapshotParameterVolatileFlags(
 {
     const std::uint32_t count = reader.u32();
     if (reader.failed() || count != parameters.size()) return false;
-    for (MethodParameterSymbol& parameter : parameters) parameter.pointerPointeeVolatile = reader.byte() != 0U;
+    for (MethodParameterSymbol& parameter : parameters)
+    {
+        const std::uint8_t value = reader.byte();
+        parameter.pointerPointeeVolatile = (value & 1U) != 0U;
+        parameter.pointerLevelQualifiers = static_cast<std::uint8_t>(value >> 1U);
+    }
     return !reader.failed();
 }
 }

@@ -1,3 +1,4 @@
+#include "nativesharp/Language/PointerLevelQualifiers.h"
 #include "PublicSurfaceBuilder.h"
 #include "PublicSurfaceEmitterSupport.h"
 #include "../Frontend/Internal/IndexShadowCheckSwitch.h"
@@ -34,6 +35,25 @@ void spellPointeeQualifiers(std::string &sourceType, std::uint8_t qualifiers)
     const std::size_t star = sourceType.find('*');
     if (star == std::string::npos || star == 0)
         return;
+    // EN: C1-05. Intermediate levels first, from the last star backwards, so earlier insert positions stay valid:
+    //     the qualifier of level k follows star n - 1 - k (1-based ordinal of n stars).
+    // ES: C1-05. Primero los niveles intermedios, desde la ultima estrella hacia atras, para que las posiciones
+    //     anteriores sigan validas: el calificador del nivel k sigue a la estrella n - 1 - k.
+    const auto levels = static_cast<std::uint8_t>(qualifiers >> interop::kMetadataPointerLevelShift);
+    if (levels != 0U)
+    {
+        std::vector<std::size_t> stars;
+        for (std::size_t index = star; index < sourceType.size(); ++index)
+            if (sourceType[index] == '*') stars.push_back(index);
+        for (std::size_t ordinal = stars.size(); ordinal-- > 0;)
+        {
+            if (ordinal + 1U >= stars.size()) continue;
+            const std::size_t level = stars.size() - 2U - ordinal;
+            std::string levelSpelling;
+            language::appendPointerLevelSpelling(levelSpelling, level, levels);
+            sourceType.insert(stars[ordinal] + 1U, levelSpelling);
+        }
+    }
     std::string spelling;
     if ((qualifiers & interop::kMetadataPointeeConst) != 0U)
         spelling += " const";

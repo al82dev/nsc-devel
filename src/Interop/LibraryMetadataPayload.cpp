@@ -2181,7 +2181,8 @@ bool decodeGenericTemplateContracts(
 
 bool readQualifier(ByteReader& reader, std::uint8_t& qualifier)
 {
-    return reader.u8(qualifier) && (qualifier & ~kMetadataPointeeQualifierMask) == 0U;
+    // C1-05: bits 2-7 are the intermediate pointer levels. / Los bits 2-7 son los niveles intermedios.
+    return reader.u8(qualifier) && (qualifier & ~kMetadataPointerQualifierAllBits) == 0U;
 }
 
 bool readQualifierCount(ByteReader& reader, std::size_t expected)
