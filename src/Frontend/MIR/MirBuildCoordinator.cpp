@@ -747,6 +747,7 @@ void ProjectOopMirModel::buildNamespaceStateFields(
         staticField.cppTlsOnDemand = state.cppTlsOnDemand;
         staticField.cppReferenceStorage = state.cppReferenceStorage;
         staticField.cppMacroAccessor = state.cppMacroAccessor;
+        staticField.cppMacroValue = state.cppMacroAccessor && state.cppMacroValue;
         staticField.cppTlsRuntimeIdentity = state.cppTlsRuntimeIdentity;
         staticField.cppCBoolStorage = state.isCppExternal && state.cppCGlobal &&
             !state.cppAtomicStorage && (state.declaredTypeKey == "builtin:bool" ||

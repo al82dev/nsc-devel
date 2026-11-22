@@ -96,7 +96,12 @@ bool OopLlvmImplementation::declareStaticFields(std::string& error, bool defineS
             // ES: T19-041. Una macro C no constante no tiene almacenamiento: su accesora C devuelve la direccion.
             if (field.cppMacroAccessor)
             {
-                LLVMTypeRef accessorType = LLVMFunctionType(LLVMPointerTypeInContext(context_, 0), nullptr, 0, 0);
+                // C2-07: the value accessor takes the caller's storage. / La accesora de valor recibe el
+                //     almacenamiento de quien llama.
+                LLVMTypeRef storagePointer = LLVMPointerTypeInContext(context_, 0);
+                const bool valueAccessor = field.cppMacroValue;
+                LLVMTypeRef accessorType = LLVMFunctionType(LLVMPointerTypeInContext(context_, 0),
+                    valueAccessor ? &storagePointer : nullptr, valueAccessor ? 1U : 0U, 0);
                 LLVMValueRef accessor = LLVMGetNamedFunction(module_, field.storageSymbol.c_str());
                 if (accessor == nullptr) accessor = LLVMAddFunction(module_, field.storageSymbol.c_str(), accessorType);
                 if (accessor == nullptr)

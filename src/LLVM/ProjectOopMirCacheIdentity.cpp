@@ -373,6 +373,7 @@ void writeStaticFields(IdentityWriter& output, const frontend::ProjectOopMirMode
         output.scalar(field.cppMacroAccessor);
         output.text(field.cppTlsRuntimeIdentity);
         output.scalar(field.cppCBoolStorage);
+        output.scalar(field.cppMacroValue);
         output.text(field.genericSpecializationKey); output.text(field.storageSymbol);
         output.text(field.accessorName); output.scalar(field.hasConstantInitializer);
         output.scalar(field.constantIntegerValue);

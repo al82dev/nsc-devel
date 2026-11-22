@@ -5794,8 +5794,13 @@ private:
             return "static inline __typeof__(" + name + ")* __nsc_macro_ref_" + name + "(void) { return &(" + name +
                 "); }\n";
         const std::string type = "__typeof__((0, (" + name + ")))";
-        return "static inline " + type + "* __nsc_macro_get_" + name + "(void) { static " + type +
-            " __nsc_value; __nsc_value = (" + name + "); return &__nsc_value; }\n";
+        // EN: C2-07. The value is written to storage the caller provides (its own stack slot), so concurrent reads
+        //     from several threads never share a static variable; each read evaluates the expansion, as in C.
+        // ES: C2-07. El valor se escribe en almacenamiento que aporta quien llama (su propio espacio de pila), asi
+        //     las lecturas concurrentes de varios hilos nunca comparten una variable static; cada lectura evalua la
+        //     expansion, como en C.
+        return "static inline " + type + "* __nsc_macro_get_" + name + "(" + type + "* __nsc_out) { *__nsc_out = (" +
+            name + "); return __nsc_out; }\n";
     }
 
     // EN: T19-041. The macros whose accessor (named `prefix` and the macro) Clang accepts in `code` without an error

@@ -67,5 +67,9 @@ struct ProjectOopMirStaticField final
     bool cppMacroAccessor = false;
     std::string cppTlsRuntimeIdentity;
     bool cppCBoolStorage = false;
+    // EN: C2-07. The accessor of a value macro writes the value to the caller's storage, its only argument.
+    // ES: C2-07. La accesora de una macro de valor escribe el valor en el almacenamiento de quien llama, su unico
+    //     argumento.
+    bool cppMacroValue = false;
 };
 }

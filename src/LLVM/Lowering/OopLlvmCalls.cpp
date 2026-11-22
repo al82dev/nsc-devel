@@ -918,9 +918,19 @@ LLVMValueRef OopLlvmImplementation::staticFieldStorageAddress(const frontend::Pr
             const auto accessorFound = staticFieldAccessorFunctions_.find(*node->memberOrdinal);
             if (accessorFound == staticFieldAccessorFunctions_.end())
                 return failValue(error, "Stage 37 imported static field has no declared accessor");
+            // EN: C2-07. A C value macro is evaluated into a stack slot of this function, never a shared static.
+            // ES: C2-07. Una macro C de valor se evalua en un espacio de pila de esta funcion, nunca un static
+            //     compartido.
+            LLVMValueRef storage = nullptr;
+            if (field.cppMacroAccessor && field.cppMacroValue)
+            {
+                LLVMTypeRef valueType = llvmType(field.typeKey, error);
+                if (valueType == nullptr) return nullptr;
+                storage = entryBlockAlloca(valueType, 16, "macro.value");
+            }
             LLVMValueRef address = buildPotentiallyThrowingCall(
                 accessorFound->second.functionType, accessorFound->second.function,
-                nullptr, 0, "static.address", error);
+                storage ? &storage : nullptr, storage ? 1U : 0U, "static.address", error);
             if (address == nullptr && !error.empty()) return nullptr;
             return address;
         }
