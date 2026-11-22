@@ -209,7 +209,11 @@ std::unique_ptr<clang::ASTUnit> runClangSessionAction(
     auto cancellable = makeCancellationFileSystem(overlay, std::move(cancellation));
     auto files = llvm::makeIntrusiveRefCnt<clang::FileManager>(clang::FileSystemOptions(), cancellable);
 
-    std::vector<std::string> args{std::string(driverPath), "-fsyntax-only"};
+    // EN: The reference's header is this session's main file, so `#pragma once` would warn about NSC's own way of
+    //     reading it (-Wpragma-once-outside-header), not about the library.
+    // ES: El encabezado de la referencia es el archivo principal de la sesion, asi que `#pragma once` avisaria de la
+    //     forma en que NSC lo lee, no de la biblioteca.
+    std::vector<std::string> args{std::string(driverPath), "-fsyntax-only", "-Wno-pragma-once-outside-header"};
     const auto adjusted = clang::tooling::getClangStripDependencyFileAdjuster()(arguments, input);
     args.insert(args.end(), adjusted.begin(), adjusted.end());
     args.push_back(input);
