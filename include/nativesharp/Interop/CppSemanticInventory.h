@@ -215,6 +215,7 @@ struct CppSemanticGlobal
     // EN: T19-005. C++ reference storage: the symbol holds the address of the referent, loaded at each access.
     // ES: T19-005. Almacenamiento referencia C++: el simbolo guarda la direccion del referente, cargada en cada acceso.
     bool referenceStorage = false;
+    std::uint8_t pointerLevelQualifiers = 0; // C1-02: intermediate pointer level qualifiers (Language/PointerLevelQualifiers.h).
 };
 struct CppSemanticGlobalFailure { std::string message; };
 using CppSemanticGlobalResult = std::variant<CppSemanticGlobal, CppSemanticGlobalFailure>;

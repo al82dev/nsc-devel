@@ -172,6 +172,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneAliasType(
     result->setOpaqueResultTraitName(source->opaqueResultTraitName());
     result->setPointeeConst(source->isPointeeConst());
     result->setPointeeVolatile(source->isPointeeVolatile());
+    result->setPointerLevelQualifiers(source->pointerLevelQualifiers());
     return result;
 }
 

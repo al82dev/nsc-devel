@@ -702,6 +702,7 @@ bool ProjectMemberModel::build(
         member.declaredTypeKey = imported.typeKey;
         member.declaredPointerPointeeReadonly = imported.pointeeReadonly;
         member.declaredPointerPointeeVolatile = imported.pointeeVolatile;
+        member.declaredPointerLevelQualifiers = imported.pointerLevelQualifiers;
         member.cppDeclaredPointerPointeeAtomic = imported.pointeeAtomic;
         member.isReadonly = imported.isConst;
         member.isVolatile = imported.isVolatile;

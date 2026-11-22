@@ -135,6 +135,7 @@ bool typeConformsToTrait(
         scratch.setDynamicTrait(type->isDynamicTrait());
         scratch.setPointeeConst(type->isPointeeConst());
         scratch.setPointeeVolatile(type->isPointeeVolatile());
+        scratch.setPointerLevelQualifiers(type->pointerLevelQualifiers());
         scratch.setTuple(type->isTuple());
         for (const TypeSyntax* argument : type->typeArguments())
         {
@@ -201,6 +202,7 @@ TypeSyntax* cloneType(
     result->setExplicitTraitImplementation(source->isExplicitTraitImplementation());
     result->setPointeeConst(source->isPointeeConst());
     result->setPointeeVolatile(source->isPointeeVolatile());
+    result->setPointerLevelQualifiers(source->pointerLevelQualifiers());
     result->setTuple(source->isTuple());
     result->setFunction(source->isFunction());
     result->setFunctionCarrier(source->functionCarrier());

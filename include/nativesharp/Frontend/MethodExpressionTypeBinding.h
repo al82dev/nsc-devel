@@ -64,5 +64,7 @@ struct MethodExpressionTypeBinding final
     // Preserve the origin needed to distinguish imported flexible members from native storage.
     bool cppFlexibleArrayMember = false;
     bool cppFlexibleArrayDecaySafe = false;
+    // C1-02: the expression's intermediate pointer level qualifiers. / Los calificadores de niveles intermedios.
+    std::uint8_t pointerLevelQualifiers = 0;
 };
 }

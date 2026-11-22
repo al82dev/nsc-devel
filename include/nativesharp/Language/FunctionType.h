@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include "nativesharp/Language/CallingConvention.h"
 #include "nativesharp/Language/FunctionCarrier.h"
 
@@ -39,5 +40,7 @@ struct FunctionType final
     //     grafia NativeSharp: solo lo llevan los tipos de funcion C.
     std::vector<bool> parameterPointeeAtomic;
     bool resultPointeeAtomic = false;
+    std::uint8_t resultPointerLevelQualifiers = 0; // C1-02: intermediate pointer level qualifiers (Language/PointerLevelQualifiers.h).
+    std::vector<std::uint8_t> parameterPointerLevelQualifiers; // C1-02: intermediate pointer level qualifiers (Language/PointerLevelQualifiers.h).
 };
 }

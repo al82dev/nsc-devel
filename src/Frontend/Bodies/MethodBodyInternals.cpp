@@ -53,6 +53,31 @@ bool nestedPointerTypeKey(std::string_view typeKey) noexcept
     return typeKey.size() > 2 && typeKey.ends_with("**");
 }
 
+const char* nestedPointerQualificationError(
+    std::string_view sourceTypeKey, std::uint8_t sourceLevels, bool sourceBaseConst, bool sourceBaseVolatile,
+    std::string_view targetTypeKey, std::uint8_t targetLevels, bool targetBaseConst, bool targetBaseVolatile) noexcept
+{
+    if (!nestedPointerTypeKey(sourceTypeKey) || !nestedPointerTypeKey(targetTypeKey)) return nullptr;
+    const std::size_t depth = language::pointerDepthOfTypeKey(targetTypeKey);
+    const auto conversion = language::classifyPointerQualificationConversion(
+        {sourceLevels, sourceBaseConst, sourceBaseVolatile}, {targetLevels, targetBaseConst, targetBaseVolatile},
+        depth);
+    if (conversion == language::PointerQualificationConversion::Identity ||
+        conversion == language::PointerQualificationConversion::Allowed)
+        return nullptr;
+    if (conversion == language::PointerQualificationConversion::UnsafeAddition && sourceLevels == targetLevels &&
+        sourceBaseVolatile == targetBaseVolatile && targetBaseConst && !sourceBaseConst)
+        return kNestedPointeeConstMessage;
+    if (conversion == language::PointerQualificationConversion::UnsafeAddition && sourceLevels == targetLevels &&
+        sourceBaseConst == targetBaseConst && targetBaseVolatile && !sourceBaseVolatile)
+        return kNestedPointeeVolatileMessage;
+    return conversion == language::PointerQualificationConversion::DropsQualifier
+        ? "the conversion would discard a qualifier of a pointer level ('T* const*', 'T* volatile*'); use an explicit "
+          "cast"
+        : "only the object the pointer points to may gain a qualifier implicitly; a deeper pointer level would be "
+          "reachable without it through the original pointer; use an explicit cast";
+}
+
 bool addsNestedPointeeConst(
     std::string_view sourceTypeKey,
     bool sourcePointeeReadonly,

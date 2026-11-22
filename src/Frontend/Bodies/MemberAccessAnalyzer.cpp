@@ -1117,9 +1117,10 @@ bool ProjectMethodBodyModel::analyzePropertyMember(
         result.typeKey = field.declaredTypeKey;
         result.valid = true;
         result.assignable = true;
-        result.addressable = !field.declaredPointerPointeeVolatile;
+        result.addressable = true;
         result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
         result.pointerPointeeVolatile = field.declaredPointerPointeeVolatile;
+        result.pointerLevelQualifiers = field.declaredPointerLevelQualifiers;
         result.pointerNullable = field.declaredPointerNullable;
         result.pointerHasProvenance = field.declaredPointerHasProvenance;
         result.pointerKnownAlignment = field.declaredPointerKnownAlignment;

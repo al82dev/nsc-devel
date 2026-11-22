@@ -863,14 +863,31 @@ void ProjectMethodBodyModel::analyzeRawIndex(
         result.typeKey = validFixedIndices ? indexedType : validFlexibleIndex
             ? *flexibleElementType : std::string(base.typeKey.substr(0, base.typeKey.size() - 1));
         result.valid = true;
-        result.volatileStorage = ((validFixedIndices || validFlexibleIndex) && base.volatileStorage) ||
-            (validPointerIndex && base.pointerPointeeVolatile);
         // EN: T08-D17: `q[i]` with `q` a `T const**` selects a mutable `T const*`, as `*q` does.
         // ES: T08-D17: `q[i]` con `q` de tipo `T const**` selecciona un `T const*` modificable, como `*q`.
         const bool nestedPointerIndex = validPointerIndex && method_body_detail::nestedPointerTypeKey(base.typeKey);
+        // C1-04: the same for `T volatile**`: the selected pointer is not volatile storage. / Lo mismo para
+        //     `T volatile**`: el puntero seleccionado no es almacenamiento volatile.
+        // C1-02: in a chain the selected pointer is qualified by level 0 of the mask, as `*q`. / En una cadena el
+        //     puntero seleccionado se califica con el nivel 0 de la mascara, como `*q`.
+        const bool levelConst = nestedPointerIndex && language::pointerLevelConst(base.pointerLevelQualifiers, 0);
+        const bool levelVolatile =
+            nestedPointerIndex && language::pointerLevelVolatile(base.pointerLevelQualifiers, 0);
+        result.volatileStorage = ((validFixedIndices || validFlexibleIndex) && base.volatileStorage) ||
+            (validPointerIndex && !nestedPointerIndex && base.pointerPointeeVolatile) || levelVolatile;
         const bool readonlyElement = (base.readonlyReceiver &&
             (validFixedIndices || validFlexibleIndex)) ||
-            (validPointerIndex && !nestedPointerIndex && base.pointerPointeeReadonly);
+            (validPointerIndex && !nestedPointerIndex && base.pointerPointeeReadonly) || levelConst;
+        if (nestedPointerIndex)
+        {
+            result.pointerLevelQualifiers = language::pointerLevelsAfterDereference(base.pointerLevelQualifiers);
+            if (base.cppVolatilePointeeContract)
+            {
+                result.cppVolatilePointeeContract = true;
+                result.cppVolatilePointeeMicrosoft = base.cppVolatilePointeeMicrosoft;
+                result.cppVolatilePointeeAlignment = base.cppVolatilePointeeAlignment;
+            }
+        }
         bool unalignedImportedFieldElement = false;
         if ((validFixedIndices || validFlexibleIndex) && memberModel_ != nullptr)
         {
@@ -928,7 +945,7 @@ void ProjectMethodBodyModel::analyzeRawIndex(
             return;
         }
         result.pointerPointeeReadonly = qualifiedPointerElement || (nestedPointerIndex && base.pointerPointeeReadonly);
-        result.pointerPointeeVolatile = volatilePointerElement;
+        result.pointerPointeeVolatile = volatilePointerElement || (nestedPointerIndex && base.pointerPointeeVolatile);
         // EN: T08-D11/D12. An element of C storage is C storage.
         // ES: T08-D11/D12. Un elemento de almacenamiento C es almacenamiento C.
         result.cppCOrigin = base.cppCOrigin;
@@ -951,7 +968,7 @@ void ProjectMethodBodyModel::analyzeRawIndex(
                 return imported && (imported->origin == CppImportedTypeOrigin::CStruct ||
                                     imported->origin == CppImportedTypeOrigin::CUnion);
             }();
-        result.addressable = !result.volatileStorage && !unalignedImportedFieldElement &&
+        result.addressable = (!result.volatileStorage || nestedPointerIndex) && !unalignedImportedFieldElement &&
             !qualifiedPointerElement && !volatilePointerElement && !result.cppAtomicStorage;
         result.readonlyReceiver = readonlyElement;
         result.onePastEndAddress = fixedOnePastAddress;

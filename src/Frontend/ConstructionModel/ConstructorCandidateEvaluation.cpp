@@ -1,3 +1,4 @@
+#include "nativesharp/Language/PointerLevelQualifiers.h"
 #include "nativesharp/Frontend/ProjectConstructionModel.h"
 #include "../Internal/NamedConstructorArgumentMap.h"
 
@@ -168,6 +169,16 @@ void ProjectConstructionModel::evaluateConstructorArgument(
         candidate.viable = false;
     if (argumentTypes[argumentOrdinal].pointerPointeeVolatile &&
         (packElement || !parameter.pointerPointeeVolatile)) candidate.viable = false;
+    // C1-02: a chain keeps every level qualifier, as for calls. / Una cadena conserva cada calificador de nivel.
+    if (!packElement && language::pointerDepthOfTypeKey(argumentTypes[argumentOrdinal].typeKey) >= 2 &&
+        language::pointerDepthOfTypeKey(parameter.typeKey) >= 2 &&
+        language::classifyPointerQualificationConversion(
+            {argumentTypes[argumentOrdinal].pointerLevelQualifiers, argumentTypes[argumentOrdinal].pointerPointeeReadonly,
+             argumentTypes[argumentOrdinal].pointerPointeeVolatile},
+            {parameter.pointerLevelQualifiers, parameter.pointerPointeeReadonly, parameter.pointerPointeeVolatile},
+            language::pointerDepthOfTypeKey(parameter.typeKey)) >
+            language::PointerQualificationConversion::Allowed)
+        candidate.viable = false;
     if (!packElement && !rvalueArgument && argumentTypes[argumentOrdinal].pointerPointeeReadonly &&
         ProjectTypeConversion::isPointer(parameter.typeKey) && !parameter.pointerPointeeReadonly)
     {

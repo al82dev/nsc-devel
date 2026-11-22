@@ -245,5 +245,6 @@ struct ClassMemberSymbol final
     bool isCppAnonymousCarrier = false;
     std::optional<std::size_t> promotedSourceMemberOrdinal;
     std::vector<std::size_t> anonymousCarrierMemberOrdinals;
+    std::uint8_t declaredPointerLevelQualifiers = 0; // C1-02: intermediate pointer level qualifiers (Language/PointerLevelQualifiers.h).
 };
 }

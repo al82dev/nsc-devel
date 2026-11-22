@@ -277,11 +277,15 @@ void ProjectMethodBodyModel::completeLocalIdentifier(
     result.assignable = !local.isConst;
     // T19-002: `&p` of a pointer to atomic storage would need a nested qualifier, like volatile. / `&p` de un
     //     puntero a almacenamiento atomico necesitaria un calificador anidado, como volatile.
-    result.addressable = !local.pointerPointeeVolatile && !local.cppPointerPointeeAtomic;
+    // C1-02: a pointer to volatile data has an address since levels are qualified (`T volatile**`). / Un puntero a
+    //     dato volatile tiene direccion desde que los niveles se califican.
+    result.addressable = !local.cppPointerPointeeAtomic;
     result.readonlyReceiver = local.isConst || local.readonlyBorrowedObject;
     result.readonlyBorrowedObject = local.readonlyBorrowedObject;
     result.pointerPointeeReadonly = local.pointerPointeeReadonly;
     result.pointerPointeeVolatile = local.pointerPointeeVolatile;
+    result.pointerLevelQualifiers = local.pointerLevelQualifiers;
+    result.cppVolatilePointeeContract = result.cppVolatilePointeeContract || local.cppVolatilePointeeContract;
     result.cppPointerPointeeAtomic = local.cppPointerPointeeAtomic;
     result.cppAtomicPointeeHoldsVolatile = local.cppAtomicPointeeHoldsVolatile;
     result.cppVolatilePointeeContract = local.cppVolatilePointeeContract;
@@ -413,6 +417,7 @@ void ProjectMethodBodyModel::initializeParameterIdentifierResult(
     result.storageOwnership = parameter.ownership;
     result.pointerPointeeReadonly = !byReferenceParameter && parameter.pointerPointeeReadonly;
     result.pointerPointeeVolatile = !byReferenceParameter && parameter.pointerPointeeVolatile;
+    result.pointerLevelQualifiers = byReferenceParameter ? 0U : parameter.pointerLevelQualifiers;
     result.cppPointerPointeeAtomic = !byReferenceParameter && parameter.cppPointerPointeeAtomic;
     if (!byReferenceParameter)
     {
@@ -491,7 +496,7 @@ void ProjectMethodBodyModel::completeParameterIdentifier(
     // E11 captured parameters are shared cells too.  `in` remains read-only; value/ref/
     // out parameters preserve the same assignability inside a closure as in the method.
     result.assignable = parameter.passKind != ParameterPassKind::In;
-    result.addressable = !result.pointerPointeeVolatile && !result.cppPointerPointeeAtomic;
+    result.addressable = !result.cppPointerPointeeAtomic;
     result.readonlyReceiver = parameter.passKind == ParameterPassKind::In;
     recordNameBinding(MethodNameBinding{
         MethodNameBindingKind::Parameter,
@@ -612,11 +617,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeImplicit
     result.valid = true;
     result.assignable = !readonlyThis && !field.isConst &&
         (!field.isReadonly || readonlyFieldAssignable(field, methodMemberOrdinal));
-    result.addressable = !field.isBitField && !field.declaredPointerPointeeVolatile &&
-        field.cppArrayElementStrides.empty();
+    result.addressable = !field.isBitField && field.cppArrayElementStrides.empty();
     result.readonlyReceiver = readonlyThis || field.isReadonly;
     result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
     result.pointerPointeeVolatile = field.declaredPointerPointeeVolatile;
+    result.pointerLevelQualifiers = field.declaredPointerLevelQualifiers;
     result.pointerNullable = field.declaredPointerNullable;
     result.pointerHasProvenance = field.declaredPointerHasProvenance;
     result.pointerKnownAlignment = field.declaredPointerKnownAlignment;
@@ -708,9 +713,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeProperty
         result.typeKey = field.declaredTypeKey;
         result.valid = true;
         result.assignable = true;
-        result.addressable = !field.declaredPointerPointeeVolatile;
+        result.addressable = true;
         result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
         result.pointerPointeeVolatile = field.declaredPointerPointeeVolatile;
+        result.pointerLevelQualifiers = field.declaredPointerLevelQualifiers;
         result.pointerNullable = field.declaredPointerNullable;
         result.pointerHasProvenance = field.declaredPointerHasProvenance;
         result.pointerKnownAlignment = field.declaredPointerKnownAlignment;
@@ -1149,9 +1155,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     //     que pierden `const`. Las globales `volatile`, atomicas y punteros a dato calificado siguen sin admitirlo.
     // T19-038: `&gp` of a C `_Atomic T*` global would be a nested qualified pointer. / `&gp` de una global C
     //     `_Atomic T*` seria un puntero calificado anidado.
-    const bool qualifiedAddress = (state.isCppExternal &&
+    // C1-02: a non-atomic pointer global has an address whose levels keep every qualifier. / Una global puntero
+    //     no atomica tiene direccion cuyos niveles conservan cada calificador.
+    const bool levelAddressablePointer = ProjectTypeConversion::isPointer(state.declaredTypeKey) &&
+        !state.cppAtomicStorage && !state.cppPointerPointeeAtomic;
+    const bool qualifiedAddress = !levelAddressablePointer && ((state.isCppExternal &&
         (state.isVolatile || state.cppPointerPointeeReadonly || state.cppAtomicStorage ||
-         state.cppPointerPointeeAtomic)) || pointeeVolatile;
+         state.cppPointerPointeeAtomic)) || pointeeVolatile);
     // EN: T19-002. As in C, `&a` of an `_Atomic` C global (scalar or record, `volatile` or `const` too, also
     //     `_Thread_local`) is a pointer to atomic storage: every access through it stays atomic. The storage itself
     //     stays non-addressable, so `ref`, `in` and `out` cannot reach it without the atomic access. An atomic
@@ -1172,7 +1182,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     //     volatile data. An array global, or one whose value is a pointer to qualified data, is not covered here.
     // ES: T19-038. Como en C, `&v` de una global C `volatile` no atomica (escalar o record, tambien `const`) es un
     //     puntero a dato volatile. Una global arreglo, o una cuyo valor es un puntero a dato calificado, no entra.
-    const bool volatileAddress = state.isCppExternal && state.isVolatile && !state.cppAtomicStorage &&
+    const bool volatileAddress = !levelAddressablePointer && state.isCppExternal && state.isVolatile &&
+        !state.cppAtomicStorage &&
         !state.cppPointerPointeeReadonly && !pointeeVolatile &&
         !ProjectMemberModel::flexibleArrayElementTypeKey(state.declaredTypeKey).has_value() &&
         !ProjectMemberModel::fixedArrayElementTypeKey(state.declaredTypeKey).has_value();
@@ -1238,6 +1249,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     result.volatileStorage = state.isCppExternal && state.isVolatile;
     result.pointerPointeeReadonly = state.cppPointerPointeeReadonly;
     result.pointerPointeeVolatile = pointeeVolatile;
+    result.pointerLevelQualifiers = state.isCppExternal ? state.cppPointerLevelQualifiers
+        : state.declaredTypeSyntax != nullptr ? state.declaredTypeSyntax->pointerLevelQualifiers() : 0U;
     // T19-038: a C `_Atomic T*` global points to atomic data. / Una global C `_Atomic T*` apunta a dato atomico.
     result.cppPointerPointeeAtomic = state.isCppExternal && state.cppPointerPointeeAtomic;
     // EN: T08-D13. A C global pointer to volatile scalars (or array of them) starts the C contract: aliases keep
@@ -1813,14 +1826,20 @@ if (operation == TokenKind::Amp)
     //     `p` de tipo `T const*` es un `T const**`). Un puntero de solo lectura exigiria `T* const*`, un calificador
     //     en un puntero intermedio que NativeSharp no representa.
     const bool pointerOperand = ProjectTypeConversion::isPointer(operand.typeKey);
-    if (pointerOperand && (!operand.assignable || operand.readonlyReceiver))
+    // EN: C1-02: the address of a pointer carries the pointer's own qualifiers as level 0 of the mask (`&p` of a
+    //     readonly `int*` is an `int* const*`, of a volatile one an `int* volatile*`).
+    // ES: C1-02: la direccion de un puntero lleva los calificadores del propio puntero como nivel 0 de la mascara.
+    std::uint8_t addressLevels = 0;
+    if (pointerOperand && !atomicAddress &&
+        !language::pointerLevelsAfterAddressOf(operand.pointerLevelQualifiers,
+            !operand.assignable || operand.readonlyReceiver, operand.volatileStorage, addressLevels))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidAddressOf,
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
-            "cannot take the address of a readonly pointer: the result would be a 'T* const*', a qualifier on an "
-            "intermediate pointer that NativeSharp does not represent");
+            "cannot take the address of this pointer: the result would need more than three qualified "
+            "intermediate pointer levels");
         return result;
     }
     result.typeKey = operand.typeKey + '*';
@@ -1834,7 +1853,15 @@ if (operation == TokenKind::Amp)
     //     pointee is a scalar, so aliases keep its volatile mode and alignment.
     // ES: T19-038. `&v` de una global C volatile apunta a dato volatile e inicia el contrato C (T08-D13) si el
     //     apuntado es escalar, asi que los alias conservan su modo volatile y su alineacion.
-    if (volatileAddress)
+    if (pointerOperand && !atomicAddress)
+    {
+        result.pointerLevelQualifiers = addressLevels;
+        result.pointerPointeeVolatile = operand.pointerPointeeVolatile;
+        result.cppVolatilePointeeContract = operand.cppVolatilePointeeContract;
+        result.cppVolatilePointeeMicrosoft = operand.cppVolatilePointeeMicrosoft;
+        result.cppVolatilePointeeAlignment = operand.cppVolatilePointeeAlignment;
+    }
+    else if (volatileAddress)
     {
         result.pointerPointeeVolatile = true;
         result.cppCOrigin = operand.cppCOrigin;
@@ -1914,8 +1941,26 @@ if (operation == TokenKind::Star)
     // EN: T08-D17: `*q` with `q` a `T const**` is a mutable `T const*`: the qualifier passes to the result.
     // ES: T08-D17: `*q` con `q` de tipo `T const**` es un `T const*` modificable: el calificador pasa al resultado.
     const bool nestedPointee = method_body_detail::nestedPointerTypeKey(operand.typeKey);
-    result.assignable = nestedPointee || !operand.pointerPointeeReadonly;
-    result.volatileStorage = operand.pointerPointeeVolatile;
+    // EN: C1-02/C1-04: in a chain, `*q` selects the level-0 pointer object, qualified by level 0 of the mask; the base
+    //     marks and the rest of the mask pass to the result (`*q` of an `int volatile* const*` is a const slot
+    //     holding an `int volatile*`).
+    // ES: C1-02/C1-04: en una cadena, `*q` selecciona el objeto puntero del nivel 0, calificado por el nivel 0 de la
+    //     mascara; las marcas de la base y el resto de la mascara pasan al resultado.
+    const bool levelConst = nestedPointee && language::pointerLevelConst(operand.pointerLevelQualifiers, 0);
+    const bool levelVolatile = nestedPointee && language::pointerLevelVolatile(operand.pointerLevelQualifiers, 0);
+    result.assignable = nestedPointee ? !levelConst : !operand.pointerPointeeReadonly;
+    result.volatileStorage = nestedPointee ? levelVolatile : operand.pointerPointeeVolatile;
+    result.pointerPointeeVolatile = nestedPointee && operand.pointerPointeeVolatile;
+    result.pointerLevelQualifiers =
+        nestedPointee ? language::pointerLevelsAfterDereference(operand.pointerLevelQualifiers) : 0U;
+    if (nestedPointee && operand.cppVolatilePointeeContract)
+    {
+        // The C contract describes the base access; it follows the chain. / El contrato C describe el acceso a la
+        //     base; sigue a la cadena.
+        result.cppVolatilePointeeContract = true;
+        result.cppVolatilePointeeMicrosoft = operand.cppVolatilePointeeMicrosoft;
+        result.cppVolatilePointeeAlignment = operand.cppVolatilePointeeAlignment;
+    }
     // T19-002: `*p` of a pointer to atomic storage is atomic storage. / `*p` de un puntero a almacenamiento
     //     atomico es almacenamiento atomico.
     result.cppAtomicStorage = operand.cppPointerPointeeAtomic;
@@ -1931,8 +1976,10 @@ if (operation == TokenKind::Star)
             return imported && (imported->origin == CppImportedTypeOrigin::CStruct ||
                                 imported->origin == CppImportedTypeOrigin::CUnion);
         }();
-    result.addressable = !result.volatileStorage && !operand.cppPointerPointeeAtomic;
-    result.readonlyReceiver = !nestedPointee && operand.pointerPointeeReadonly;
+    // C1-02: a qualified pointer slot has an address, which carries its qualifiers as level 0. / Una posicion
+    //     puntero calificada tiene direccion, que lleva sus calificadores como nivel 0.
+    result.addressable = (nestedPointee || !result.volatileStorage) && !operand.cppPointerPointeeAtomic;
+    result.readonlyReceiver = nestedPointee ? levelConst : operand.pointerPointeeReadonly;
     result.pointerPointeeReadonly = nestedPointee && operand.pointerPointeeReadonly;
     // EN: T08-D11/D12. The pointee of a C pointer value is C storage.
     // ES: T08-D11/D12. El dato apuntado por un puntero C es almacenamiento C.

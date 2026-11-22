@@ -5528,6 +5528,16 @@ void ProjectMethodBodyModel::analyzeVariableInitializer(
         diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error, variable->first()->range(),
             "initialization would discard pointer pointee volatile qualification");
+    if (!isVarInferred)
+        if (const char* error = method_body_detail::nestedPointerQualificationError(initializer.typeKey,
+                initializer.pointerLevelQualifiers, initializer.pointerPointeeReadonly,
+                initializer.pointerPointeeVolatile, typeKey,
+                variable->typeSyntax() != nullptr ? variable->typeSyntax()->pointerLevelQualifiers() : std::uint8_t{0},
+                declaredPointerPointeeReadonly, declaredPointerPointeeVolatile);
+            error != nullptr && error != method_body_detail::kNestedPointeeConstMessage)
+            diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error, variable->first()->range(),
+                "initialization of '" + variable->text() + "': " + error);
     // EN: T19-002. A pointer to C atomic storage has no NativeSharp spelling; only `var` keeps its atomic pointee.
     // ES: T19-002. Un puntero a almacenamiento C atomico no tiene escritura NativeSharp; solo `var` conserva su
     //     apuntado atomico.
@@ -6179,6 +6189,11 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
         isReadonlyReference, isVariableLengthArray, isVolatile, isRaii, isScope,
         isMoveOnly, isPinnedLocal, isBorrowed, pendingLocalBorrow.has_value());
     local.cppVolatilePointeeContract = inferredCppVolatilePointeeContract;
+    // C1-02: the levels the declaration writes, or those of the initializer of `var`. / Los niveles que escribe la
+    //     declaracion, o los del inicializador de `var`.
+    local.pointerLevelQualifiers = isVarInferred
+        ? (precomputedVarInitializer ? precomputedVarInitializer->pointerLevelQualifiers : std::uint8_t{0})
+        : variable->typeSyntax() != nullptr ? variable->typeSyntax()->pointerLevelQualifiers() : std::uint8_t{0};
     local.cppPointerPointeeAtomic = inferredCppPointerPointeeAtomic;
     // T19-038: `var pp = &a;` keeps what the atomic storage holds. / Conserva lo que guarda el almacenamiento.
     local.cppAtomicPointeeHoldsVolatile = inferredCppPointerPointeeAtomic &&
@@ -7565,6 +7580,16 @@ bool ProjectMethodBodyModel::validatePointerReturn(
         diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error, statement->first()->range(),
             std::string("return value: ") + method_body_detail::kNestedPointeeConstMessage);
+        return false;
+    }
+    if (const char* error = method_body_detail::nestedPointerQualificationError(value.typeKey,
+            value.pointerLevelQualifiers, value.pointerPointeeReadonly, value.pointerPointeeVolatile,
+            method.declaredTypeKey, method.declaredPointerLevelQualifiers, method.declaredPointerPointeeReadonly,
+            method.declaredPointerPointeeVolatile))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, statement->first()->range(),
+            std::string("return value: ") + error);
         return false;
     }
     if (!ProjectTypeConversion::isPointer(method.declaredTypeKey) ||

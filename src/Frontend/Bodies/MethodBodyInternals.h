@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nativesharp/Language/PointerLevelQualifiers.h"
 #include "nativesharp/Language/AbiSemantics.h"
 
 #include <cstddef>
@@ -38,4 +39,27 @@ bool addsNestedPointeeConst(
 inline constexpr char kNestedPointeeConstMessage[] =
     "a pointer to a mutable-pointee pointer cannot become a 'T const**' implicitly: a 'T const*' stored through "
     "it would be writable through the original 'T**'; use an explicit cast";
+// EN: C1-04. The same rule for the volatile base mark (`T volatile**`): a `T**` does not become a `T volatile**`
+//     implicitly, as in C, because a `T volatile*` stored through it would then be read without volatile through
+//     the original `T**`.
+// ES: C1-04. La misma regla para la marca volatile de la base: un `T**` no pasa implicitamente a `T volatile**`,
+//     como en C, porque un `T volatile*` guardado mediante el resultado se leeria sin volatile mediante el `T**`.
+inline bool addsNestedPointeeVolatile(
+    std::string_view sourceTypeKey,
+    bool sourcePointeeVolatile,
+    std::string_view targetTypeKey,
+    bool targetPointeeVolatile) noexcept
+{
+    return addsNestedPointeeConst(sourceTypeKey, sourcePointeeVolatile, targetTypeKey, targetPointeeVolatile);
+}
+// EN: C1-02. The whole rule for chains with level masks (Language/PointerLevelQualifiers.h); null when the implicit
+//     conversion keeps every qualifier as C allows. The messages of T08-D17 and C1-04 stay for the base cases.
+// ES: C1-02. La regla completa para cadenas con mascara de niveles; nulo si la conversion implicita conserva cada
+//     calificador como C permite. Los mensajes de T08-D17 y C1-04 se conservan para los casos de la base.
+const char* nestedPointerQualificationError(
+    std::string_view sourceTypeKey, std::uint8_t sourceLevels, bool sourceBaseConst, bool sourceBaseVolatile,
+    std::string_view targetTypeKey, std::uint8_t targetLevels, bool targetBaseConst, bool targetBaseVolatile) noexcept;
+inline constexpr char kNestedPointeeVolatileMessage[] =
+    "a pointer to a non-volatile-pointee pointer cannot become a 'T volatile**' implicitly: a 'T volatile*' stored "
+    "through it would be read without volatile through the original 'T**'; use an explicit cast";
 }

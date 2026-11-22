@@ -404,6 +404,9 @@ ProjectMethodBodyModel::analyzeExpressionKindCastExpression(
         pointerContractFromSyntax(expression->typeSyntax());
     result.pointerPointeeReadonly = targetPointeeReadonly;
     result.pointerPointeeVolatile = targetPointeeVolatile;
+    // C1-02: an explicit cast states every level. / Un cast explicito declara cada nivel.
+    result.pointerLevelQualifiers =
+        expression->typeSyntax() != nullptr ? expression->typeSyntax()->pointerLevelQualifiers() : 0U;
     result.pointerNullable = targetPointerContract.nullable;
     result.pointerHasProvenance = targetPointerContract.hasProvenance;
     result.pointerKnownAlignment = targetPointerContract.knownAlignment;

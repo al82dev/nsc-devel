@@ -438,6 +438,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneInferredTypeArgument(
     value->setOpaqueResultTraitName(actual->opaqueResultTraitName());
     value->setPointeeConst(actual->isPointeeConst());
     value->setPointeeVolatile(actual->isPointeeVolatile());
+    value->setPointerLevelQualifiers(actual->pointerLevelQualifiers());
     // EN: LKF-363: the reference qualifier, the lifetime and the function-type attributes belong to the
     //     inferred type as much as its name; the clone kept only the name and the qualifiers above.
     // ES: LKF-363: el calificador de referencia, la vida y los atributos de tipo función pertenecen al tipo

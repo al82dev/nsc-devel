@@ -691,6 +691,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     }
     bool pointeeReadonly = false;
     bool pointeeVolatile = false;
+    std::uint8_t pointerLevels = 0;
     // EN: T19-038. A C field `_Atomic T*` is mapped as its carrier, a pointer to T with the atomic mark.
     // ES: T19-038. Un campo C `_Atomic T*` se mapea como su portador, un puntero a T con la marca atomica.
     const auto atomicPointee = !record.isCxx ? cAtomicPointeeCarrier(field.type) : std::nullopt;
@@ -700,8 +701,16 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     //     readonly pointee mark (`T const**`), as for parameters.
     // ES: Item 2.3. `const` bajo el nivel superior de un campo puntero a puntero: el portador conserva los niveles y
     //     el `const` base pasa a ser la marca de solo lectura del campo (`T const**`), como en los parametros.
-    const auto innerConstFree = cppPointerChainWithoutInnerConst(qualifiedPointerType);
-    const CppType& pointerType = innerConstFree ? *innerConstFree : qualifiedPointerType;
+    // EN: C1-02/C1-03. A field whose pointer chain is qualified below its top (`volatile int** pp`,
+    //     `int* volatile* q`, `char const* const* searchPaths`): the carrier has no qualifier below the top, the
+    //     base becomes the pointee marks and the intermediate levels the field's level mask. C++ fields keep the
+    //     previous rule for volatile (no volatile pointee).
+    // ES: C1-02/C1-03. Un campo cuya cadena de punteros esta calificada bajo su nivel superior: el portador no tiene
+    //     calificadores bajo el nivel superior, la base pasa a ser las marcas del apuntado y los niveles intermedios
+    //     la mascara de niveles del campo. Los campos C++ siguen la regla previa para volatile.
+    const auto chain = cppPointerChainQualifiers(qualifiedPointerType);
+    const bool chainUsable = chain && (!record.isCxx || !cppPointerChainHasVolatile(qualifiedPointerType));
+    const CppType& pointerType = chainUsable ? chain->carrier : qualifiedPointerType;
     const bool scalarChainBase = [&]
     {
         const CppType* base = &pointerType;
@@ -772,8 +781,9 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
             mapped = CppScalarTypeMapping{element->nativeSharpTypeKey + "*", pointerType.canonicalSpelling,
                                           pointerType.isConst, pointerType.isVolatile};
             pointeeReadonly = arrayPointeeReadonly ||
-                (innerConstFree ? cppPointeeReadonlyForNativeSharp(qualifiedPointerType) : pointerType.element->isConst);
-            pointeeVolatile = pointerType.element->isVolatile;
+                (chainUsable ? chain->baseConst : pointerType.element->isConst);
+            pointeeVolatile = chainUsable ? chain->baseVolatile : pointerType.element->isVolatile;
+            pointerLevels = chainUsable ? chain->levels : 0U;
         }
     }
     // EN: T08-D23: an array of pointers to `const` and/or `volatile` data, or of `const` pointers, as a C record
@@ -837,6 +847,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
                                     std::move(*mapped), *field.offsetBits / 8, pointeeReadonly,
                                     *field.type.sizeBits / 8, effectiveAlignment, field.clangUsr};
     result.pointeeVolatile = pointeeVolatile;
+    result.pointerLevelQualifiers = pointerLevels;
     result.pointeeAtomic = atomicPointee.has_value() && result.type.nativeSharpTypeKey.ends_with('*');
     result.access = field.access;
     if (vectorArrayView)
@@ -869,6 +880,7 @@ frontend::CppImportedInstanceField toCppImportedInstanceField(const CppSemanticI
         field.pointeeReadonly, field.byteSize, field.byteAlignment, std::nullopt, field.clangUsr,
         field.bitOffset, field.bitWidth};
     result.pointeeVolatile = field.pointeeVolatile;
+    result.pointerLevelQualifiers = field.pointerLevelQualifiers;
     result.pointeeAtomic = field.pointeeAtomic;
     result.cppArrayElementStrides = field.cppArrayElementStrides;
     result.cppArrayPhysicalLayouts = field.cppArrayPhysicalLayouts;
@@ -3456,6 +3468,7 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             state.isCppReadonly = value.isConst;
             state.cppPointerPointeeReadonly = value.pointerPointeeReadonly;
             state.cppPointerPointeeVolatile = value.pointerPointeeVolatile;
+            state.cppPointerLevelQualifiers = value.pointerLevelQualifiers;
             state.cppMicrosoftVolatileSemantics = value.microsoftVolatileSemantics;
             state.cppStorageSizeBits = value.storageSizeBits;
             state.cppDeclarationAlignmentBits = value.declarationAlignmentBits;

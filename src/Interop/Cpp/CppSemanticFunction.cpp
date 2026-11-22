@@ -42,6 +42,25 @@ using RecordIndex = std::unordered_map<std::string, const CppRecordGroup*>;
 CppType invocationTypeForC(const CppType& type, bool allowAggregate)
 {
     CppType mapped = type;
+    // EN: C1-01/C1-02. A C pointer to pointer with qualified intermediate levels or a volatile base
+    //     (`volatile int**`, `int* volatile*`, `char const* const*`): the carrier has no qualifier below the top;
+    //     the parameter or result keeps the base as its pointee marks and the intermediate levels as its level mask.
+    //     The base must be one of the kinds a single-level volatile pointee accepts.
+    // ES: C1-01/C1-02. Un puntero a puntero C con niveles intermedios calificados o base volatile: el portador no
+    //     tiene calificadores bajo el nivel superior; el parametro o resultado conserva la base como marcas del
+    //     apuntado y los niveles intermedios como su mascara. La base debe ser de los tipos que acepta un apuntado
+    //     volatile de un nivel.
+    if (auto chain = cppPointerChainQualifiers(mapped); chain && (chain->levels != 0U || chain->baseVolatile))
+    {
+        const CppType* base = type.element.get();
+        while (base->kind == CppTypeKind::Pointer && base->element) base = base->element.get();
+        const bool scalarBase = base->kind == CppTypeKind::Void || base->kind == CppTypeKind::Boolean ||
+            base->kind == CppTypeKind::SignedInteger || base->kind == CppTypeKind::UnsignedInteger ||
+            base->kind == CppTypeKind::Floating;
+        const bool aggregateBase = base->kind == CppTypeKind::Record || base->kind == CppTypeKind::Enumeration;
+        if (scalarBase || (allowAggregate && aggregateBase)) return chain->carrier;
+        return mapped;
+    }
     if (mapped.kind != CppTypeKind::Pointer || !mapped.element || !mapped.element->isVolatile)
         return mapped;
     const auto kind = mapped.element->kind;
@@ -373,9 +392,20 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
             return mapped.isConst && slot.kind == CppTypeKind::Pointer && slot.element &&
                 slot.element->kind == CppTypeKind::Pointer;
         };
+        // C1-03: a C pointer to pointer with qualified levels or a volatile base is carried without them; the base
+        //     and the level mask become identity marks. / Un puntero a puntero C con niveles calificados o base
+        //     volatile se transporta sin ellos; la base y la mascara pasan a ser marcas de la identidad.
+        const auto nestedChain = [&](const CppType& slot) -> std::optional<CppType>
+        {
+            if (!cRecordValues) return std::nullopt;
+            auto chain = cppPointerChainQualifiers(slot);
+            if (!chain || (chain->levels == 0U && !chain->baseVolatile)) return std::nullopt;
+            return chain->carrier;
+        };
         const auto pointeeVolatile = [&](const CppType& slot)
         {
-            return qualifiable(slot) && slot.element->isVolatile;
+            return (qualifiable(slot) && slot.element->isVolatile) ||
+                (nestedChain(slot).has_value() && cppPointeeVolatileForNativeSharp(slot));
         };
         // EN: T19-038. A C `_Atomic T*` slot: its carrier is the pointer to T, with an atomic identity flag.
         // ES: T19-038. Una posicion C `_Atomic T*`: su portador es el puntero a T, con una marca atomica.
@@ -384,6 +414,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         // ES: El portador se mapea sin los calificadores del dato apuntado, que abajo pasan a ser marcas.
         const auto carrier = [&](const CppType& original)
         {
+            if (auto chain = nestedChain(original)) return *chain;
             const auto atomic = cAtomicPointeeCarrier(original);
             const CppType& slot = atomic ? *atomic : original;
             if (!(qualifiable(slot) && (slot.element->isConst || slot.element->isVolatile))) return slot;
@@ -409,6 +440,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         function.resultPointeeReadonly = pointeeConst(signature.returnType);
         function.resultPointeeVolatile = pointeeVolatile(signature.returnType);
         function.resultPointeeAtomic = pointeeAtomic(signature.returnType);
+        function.resultPointerLevelQualifiers = cppPointerLevelQualifiers(signature.returnType);
         for (const auto& original : signature.parameterTypes)
         {
             // EN: Item 9.14. A reference parameter of a callback (`void (*)(int& a, const int& b)`) is passed as the
@@ -450,7 +482,13 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
             function.parameterPointeeReadonly.push_back(pointeeConst(parameter));
             function.parameterPointeeVolatile.push_back(pointeeVolatile(parameter));
             function.parameterPointeeAtomic.push_back(pointeeAtomic(parameter));
+            function.parameterPointerLevelQualifiers.push_back(cppPointerLevelQualifiers(parameter));
         }
+        // C1-02: no mask is kept when every level is unqualified, so such identities keep their bytes. / No se
+        //     guarda mascara si ningun nivel esta calificado, asi esas identidades conservan sus bytes.
+        if (std::all_of(function.parameterPointerLevelQualifiers.begin(), function.parameterPointerLevelQualifiers.end(),
+                        [](std::uint8_t mask) { return mask == 0U; }))
+            function.parameterPointerLevelQualifiers.clear();
         function.variadic = signature.variadic;
         return CppScalarTypeMapping{language::functionTypeIdentity(function), type.canonicalSpelling, false, false};
     }
@@ -1011,8 +1049,10 @@ CppSemanticFunctionResult projectFunction(
         parameter.pointerPointeeReadonly = cppPointeeReadonlyForNativeSharp(sourceType);
         // Item 8.3: a non-null C pointer parameter. / Un parametro puntero C no nulo.
         if (input.nonNull && sourceType.kind == CppTypeKind::Pointer) parameter.pointerNullable = false;
-        parameter.pointerPointeeVolatile = sourceType.kind == CppTypeKind::Pointer &&
-            sourceType.element && sourceType.element->isVolatile;
+        // C1-01: the volatile base of a pointer to pointer. / El volatile base de un puntero a puntero.
+        parameter.pointerPointeeVolatile = cppPointeeVolatileForNativeSharp(sourceType);
+        // C1-02: the qualifiers of its intermediate levels. / Los calificadores de sus niveles intermedios.
+        parameter.pointerLevelQualifiers = cppPointerLevelQualifiers(sourceType);
         parameter.cppPointerPointeeAtomic = atomicPointee.has_value();
         if (reference)
         {

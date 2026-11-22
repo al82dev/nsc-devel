@@ -96,5 +96,6 @@ struct NamespaceStateSymbol final
     // Rebuilt from a precompiled library's C dependency catalogue instead of a header parsed here.
     // Reconstruida desde el catálogo de dependencias C de una biblioteca precompilada, no de un encabezado.
     bool cppFromPrecompiledCatalog = false;
+    std::uint8_t cppPointerLevelQualifiers = 0; // C1-02: intermediate pointer level qualifiers (Language/PointerLevelQualifiers.h).
 };
 }

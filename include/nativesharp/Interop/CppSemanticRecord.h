@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Interop/CppRecordDeclaration.h"
 #include "nativesharp/Interop/CppScalarTypeMapping.h"
@@ -51,6 +52,7 @@ struct CppSemanticInstanceField
     std::vector<std::pair<std::uint64_t, std::uint64_t>> cppArrayPhysicalLayouts{};
     // T19-012. C++ access of the field. / Acceso C++ del campo.
     CppAccess access = CppAccess::Public;
+    std::uint8_t pointerLevelQualifiers = 0; // C1-02: intermediate pointer level qualifiers (Language/PointerLevelQualifiers.h).
 };
 std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     const CppRecordDeclaration& record, std::size_t fieldIndex, std::size_t projectOrdinal,

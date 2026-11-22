@@ -45,5 +45,6 @@ struct CppImportedInstanceField final
     // ES: Item 1.4. Presente cuando el campo C/C++ existe pero no se pudo importar; no es miembro, el motivo solo
     //     explica un uso posterior.
     std::optional<std::string> notImportedReason{};
+    std::uint8_t pointerLevelQualifiers = 0; // C1-02: intermediate pointer level qualifiers (Language/PointerLevelQualifiers.h).
 };
 }

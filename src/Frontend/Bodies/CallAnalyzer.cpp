@@ -1203,7 +1203,13 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
         ((arguments[argumentOrdinal].pointerPointeeReadonly &&
           ProjectTypeConversion::isPointer(parameter.typeKey) && !parameterPointeeReadonly) ||
          method_body_detail::addsNestedPointeeConst(arguments[argumentOrdinal].typeKey,
-             arguments[argumentOrdinal].pointerPointeeReadonly, parameter.typeKey, parameter.pointerPointeeReadonly));
+             arguments[argumentOrdinal].pointerPointeeReadonly, parameter.typeKey, parameter.pointerPointeeReadonly) ||
+         // C1-04: a `T**` argument does not bind to a `T volatile**` parameter. / Un argumento `T**` no se enlaza
+         //     a un parametro `T volatile**`.
+         method_body_detail::nestedPointerQualificationError(arguments[argumentOrdinal].typeKey,
+             arguments[argumentOrdinal].pointerLevelQualifiers, arguments[argumentOrdinal].pointerPointeeReadonly,
+             arguments[argumentOrdinal].pointerPointeeVolatile, parameter.typeKey, parameter.pointerLevelQualifiers,
+             parameter.pointerPointeeReadonly, parameter.pointerPointeeVolatile) != nullptr);
     const bool violatesPointerContract = !packElement &&
         ProjectTypeConversion::isPointer(parameter.typeKey) &&
         !language::pointerContractImplicitlyAssignable(
@@ -2152,6 +2158,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
     result.typeKey = callable.declaredTypeKey;
     result.pointerPointeeReadonly = callable.declaredPointerPointeeReadonly;
     result.pointerPointeeVolatile = callable.declaredPointerPointeeVolatile;
+    result.pointerLevelQualifiers = callable.declaredPointerLevelQualifiers;
     result.cppPointerPointeeAtomic = callable.cppDeclaredPointerPointeeAtomic;
     result.pointerNullable = callable.declaredPointerNullable;
     result.pointerHasProvenance = callable.declaredPointerHasProvenance;
@@ -5745,6 +5752,9 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         //     resultado, igual que una llamada directa a una función C con el mismo tipo de retorno.
         result.pointerPointeeVolatile =
             qualifiedFunction.has_value() && qualifiedFunction->resultPointeeVolatile;
+        // C1-02: and its intermediate levels. / Y sus niveles intermedios.
+        result.pointerLevelQualifiers =
+            qualifiedFunction.has_value() ? qualifiedFunction->resultPointerLevelQualifiers : 0U;
         result.pointerPointeeReadonly =
             qualifiedFunction.has_value() && qualifiedFunction->resultPointeeReadonly;
         // T19-038: a C callback returning `_Atomic T*`. / Un callback C que devuelve `_Atomic T*`.
@@ -6240,7 +6250,12 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
         ((argument.pointerPointeeReadonly && ProjectTypeConversion::isPointer(parameter.typeKey) &&
           !parameterPointeeReadonly) ||
          method_body_detail::addsNestedPointeeConst(argument.typeKey, argument.pointerPointeeReadonly,
-             parameter.typeKey, parameter.pointerPointeeReadonly));
+             parameter.typeKey, parameter.pointerPointeeReadonly) ||
+         // C1-04: as above for the volatile base mark. / Como arriba para la marca volatile de la base.
+         method_body_detail::nestedPointerQualificationError(argument.typeKey, argument.pointerLevelQualifiers,
+             argument.pointerPointeeReadonly, argument.pointerPointeeVolatile, parameter.typeKey,
+             parameter.pointerLevelQualifiers, parameter.pointerPointeeReadonly,
+             parameter.pointerPointeeVolatile) != nullptr);
     const bool violatesPointerContract = !packElement &&
         ProjectTypeConversion::isPointer(parameter.typeKey) &&
         !language::pointerContractImplicitlyAssignable(
@@ -7825,6 +7840,7 @@ void ProjectMethodBodyModel::configureSelectedCallBinding(
     call.resultTypeKey = selectedMember.declaredTypeKey;
     result.pointerPointeeReadonly = selectedMember.declaredPointerPointeeReadonly;
     result.pointerPointeeVolatile = selectedMember.declaredPointerPointeeVolatile;
+    result.pointerLevelQualifiers = selectedMember.declaredPointerLevelQualifiers;
     result.cppPointerPointeeAtomic = selectedMember.cppDeclaredPointerPointeeAtomic;
     result.pointerNullable = selectedMember.declaredPointerNullable;
     result.pointerHasProvenance = selectedMember.declaredPointerHasProvenance;

@@ -336,7 +336,13 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
         if (current->canonicalSpelling.empty() || current->sizeBits != 64 || !current->element)
             return std::nullopt;
         current = current->element.get();
-        const bool supportedVolatilePointee = cLanguage && depth == 0 &&
+        // EN: C1-02/C1-03. Every level below the top may be qualified: the base becomes the pointee marks (`volatile`
+        //     only in C, on the kinds below) and each intermediate pointer, up to three, the global's level mask.
+        // ES: C1-02/C1-03. Cada nivel bajo el superior puede estar calificado: la base pasa a ser las marcas del
+        //     apuntado (`volatile` solo en C, en los tipos de abajo) y cada puntero intermedio, hasta tres, la
+        //     mascara de niveles de la global.
+        const bool intermediateLevel = current->kind == CppTypeKind::Pointer;
+        const bool supportedVolatilePointee = cLanguage &&
             (current->kind == CppTypeKind::Void ||
              current->kind == CppTypeKind::Boolean ||
              current->kind == CppTypeKind::SignedInteger ||
@@ -344,8 +350,9 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
              current->kind == CppTypeKind::Floating ||
              (lookup && (current->kind == CppTypeKind::Record ||
                          current->kind == CppTypeKind::Enumeration)));
-        if ((current->isVolatile && !supportedVolatilePointee) || (current->isConst &&
-            (depth != 0 || current->kind == CppTypeKind::Pointer))) return std::nullopt;
+        if (intermediateLevel && (current->isConst || current->isVolatile) &&
+            (depth >= 3 || (current->isVolatile && !cLanguage))) return std::nullopt;
+        if (!intermediateLevel && current->isVolatile && !supportedVolatilePointee) return std::nullopt;
         ++depth;
     }
     if (cLanguage && lookup && current->kind == CppTypeKind::Record)
@@ -594,15 +601,16 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     CppSemanticGlobal projected{projectOrdinal, std::string(moduleName), std::move(nsNamespace),
                              global.name, type->nativeSharpTypeKey, type->canonicalCppType,
                              *global.externalSymbol, type->isVolatile, type->isConst,
-                             pointerStorage->kind == CppTypeKind::Pointer && pointerStorage->element &&
-                                 pointerStorage->element->isConst, global.dllImport,
-                             pointerStorage->kind == CppTypeKind::Pointer && pointerStorage->element &&
-                                 pointerStorage->element->isVolatile, std::nullopt, global.type.sizeBits,
+                             // C1-02: the const base of the chain. / El const base de la cadena.
+                             cppPointeeReadonlyForNativeSharp(*pointerStorage), global.dllImport,
+                             // C1-03: the volatile base of the chain. / El volatile base de la cadena.
+                             cppPointeeVolatileForNativeSharp(*pointerStorage), std::nullopt, global.type.sizeBits,
                              global.declarationAlignmentBits};
     projected.threadLocal = global.threadLocal;
     projected.tlsOnDemand = global.threadLocal && global.cppTlsOnDemand;
     projected.atomicStorage = supportedAtomicTls;
     projected.pointerPointeeAtomic = atomicPointee.has_value();
+    projected.pointerLevelQualifiers = cppPointerLevelQualifiers(*pointerStorage);
     projected.macroAccessor = !global.cMacroAccessor.empty();
     projected.macroValue = global.cMacroAccessor.starts_with("__nsc_macro_get_");
     return projected;
@@ -1088,6 +1096,7 @@ static bool provideGlobalsWithLookup(
                     state.isCppReadonly = selected.candidate->isConst;
                     state.cppPointerPointeeReadonly = selected.candidate->pointerPointeeReadonly;
                     state.cppPointerPointeeVolatile = selected.candidate->pointerPointeeVolatile;
+                    state.cppPointerLevelQualifiers = selected.candidate->pointerLevelQualifiers;
                     state.cppMicrosoftVolatileSemantics = selected.candidate->microsoftVolatileSemantics;
                     state.cppStorageSizeBits = selected.candidate->storageSizeBits;
                     state.cppDeclarationAlignmentBits = selected.candidate->declarationAlignmentBits;

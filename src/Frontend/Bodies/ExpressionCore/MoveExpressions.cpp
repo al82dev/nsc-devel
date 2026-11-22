@@ -419,6 +419,7 @@ void ProjectMethodBodyModel::recordMovedArrayElement(
     moveBindings_.push_back(std::move(move));
     result.typeKey = element.typeKey;
     result.pointerPointeeVolatile = element.pointerPointeeVolatile;
+    result.pointerLevelQualifiers = element.pointerLevelQualifiers;
     result.valid = true;
     result.assignable = false;
     result.ownership = sema::OwnershipKind::Owned;
@@ -539,6 +540,7 @@ bool ProjectMethodBodyModel::tryOwnedFieldMoveSource(
     moveBindings_.push_back(std::move(move));
     result.typeKey = fieldSource.typeKey;
     result.pointerPointeeVolatile = fieldSource.pointerPointeeVolatile;
+    result.pointerLevelQualifiers = fieldSource.pointerLevelQualifiers;
     result.valid = true;
     result.assignable = false;
     result.ownership = sema::OwnershipKind::Owned;
@@ -586,6 +588,7 @@ bool ProjectMethodBodyModel::analyzeMovedIteratorCurrent(
     result.valid = true;
     result.typeKey = member.typeKey;
     result.pointerPointeeVolatile = member.pointerPointeeVolatile;
+    result.pointerLevelQualifiers = member.pointerLevelQualifiers;
     result.ownership = sema::OwnershipKind::Owned;
     result.ownershipTransfer = true;
     return true;
@@ -727,6 +730,7 @@ bool ProjectMethodBodyModel::completeLocalMove(
     }
     result.typeKey = local.typeKey;
     result.pointerPointeeVolatile = local.pointerPointeeVolatile;
+    result.pointerLevelQualifiers = local.pointerLevelQualifiers;
     result.callableTrait = local.callableTrait;
     result.ownershipSourceLocalOrdinal = sourceOrdinal;
     result.objectLifetimeOwnership = local.objectLifetimeOwnership;
@@ -855,6 +859,7 @@ bool ProjectMethodBodyModel::completeParameterMove(
     }
     result.typeKey = parameter.typeKey;
     result.pointerPointeeVolatile = parameter.pointerPointeeVolatile;
+    result.pointerLevelQualifiers = parameter.pointerLevelQualifiers;
     result.ownershipSourceParameterOrdinal = sourceOrdinal;
     result.objectLifetimeOwnership = sema::OwnershipKind::Owned;
     result.storageOwnership = sema::OwnershipKind::Owned;

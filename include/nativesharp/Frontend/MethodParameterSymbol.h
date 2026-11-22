@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include "nativesharp/Frontend/ParameterPassKind.h"
 
 #include "nativesharp/AST/AstNode.h"
@@ -78,5 +79,6 @@ struct MethodParameterSymbol final
     //     C): cada acceso por el puntero es atomico y secuencialmente consistente, como en C. No es
     //     sintaxis de usuario.
     bool cppPointerPointeeAtomic = false;
+    std::uint8_t pointerLevelQualifiers = 0; // C1-02: intermediate pointer level qualifiers (Language/PointerLevelQualifiers.h).
 };
 }

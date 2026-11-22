@@ -228,7 +228,10 @@ bool deserializeTemplateRecord(std::string_view bytes, GenericTemplateRecord& re
     internal::CachePayloadWriter::string(out, type.opaqueResultTraitName());
     internal::CachePayloadWriter::byte(out, type.isExplicitTraitImplementation() ? 1U : 0U);
     internal::CachePayloadWriter::byte(out, type.isPointeeConst() ? 1U : 0U);
-    internal::CachePayloadWriter::byte(out, type.isPointeeVolatile() ? 1U : 0U);
+    // C1-02: bit 0 is the volatile base; bits 1-6 the intermediate level qualifiers. / El bit 0 es la base
+    //     volatile; los bits 1-6 los calificadores de niveles intermedios.
+    internal::CachePayloadWriter::byte(out, static_cast<std::uint8_t>((type.isPointeeVolatile() ? 1U : 0U) |
+        (static_cast<unsigned>(type.pointerLevelQualifiers()) << 1U)));
     internal::CachePayloadWriter::byte(out, type.isTuple() ? 1U : 0U);
     internal::CachePayloadWriter::byte(out, type.isFunction() ? 1U : 0U);
     internal::CachePayloadWriter::byte(out, type.isPackExpansion() ? 1U : 0U);
@@ -338,7 +341,8 @@ static void applyTypeSyntaxQualifiers(
     type.setOpaqueResultTraitName(std::move(opaqueResultTraitName));
     type.setExplicitTraitImplementation(explicitTrait != 0U);
     type.setPointeeConst(pointeeConst != 0U);
-    type.setPointeeVolatile(pointeeVolatile != 0U);
+    type.setPointeeVolatile((pointeeVolatile & 1U) != 0U);
+    type.setPointerLevelQualifiers(static_cast<std::uint8_t>(pointeeVolatile >> 1U));
     type.setTuple(tuple != 0U);
     type.setFunction(function != 0U);
     type.setPackExpansion(pack != 0U);

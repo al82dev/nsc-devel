@@ -114,6 +114,8 @@ static std::string genericTypePattern(
     }
     if (syntax->isPointeeConst()) result += " const-pointee";
     if (syntax->isPointeeVolatile()) result += " volatile-pointee";
+    if (syntax->pointerLevelQualifiers() != 0U)
+        result += " levels-" + std::to_string(static_cast<unsigned>(syntax->pointerLevelQualifiers()));
     if (syntax->isPackExpansion()) result += "...";
     for (const ast::TypeModifierSyntax& modifier : syntax->modifiers())
     {

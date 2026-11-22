@@ -680,6 +680,8 @@ MethodParameterSymbol ProjectNamespaceFunctionModel::initializeNamespaceFunction
         parameter.typeSyntax->isPointeeConst();
     parameter.pointerPointeeVolatile = parameter.typeSyntax != nullptr &&
         parameter.typeSyntax->isPointeeVolatile();
+    parameter.pointerLevelQualifiers = parameter.typeSyntax != nullptr
+        ? parameter.typeSyntax->pointerLevelQualifiers() : 0U;
     parameter.ownership = ownershipKindFromSyntax(parameter.typeSyntax);
     parameter.fileId = declaration.fileId;
     parameter.range = parameterNode.range();

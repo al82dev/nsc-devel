@@ -228,5 +228,6 @@ struct MethodLocalSymbol final
     bool passedToCall = false;
     std::vector<std::size_t> possibleReferenceSourceLocals;
     std::vector<std::size_t> possibleReferenceSourceParameters;
+    std::uint8_t pointerLevelQualifiers = 0; // C1-02: intermediate pointer level qualifiers (Language/PointerLevelQualifiers.h).
 };
 }

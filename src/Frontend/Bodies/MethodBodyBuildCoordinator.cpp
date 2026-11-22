@@ -73,8 +73,12 @@ void ProjectMethodBodyModel::initializeNamespaceCallableAdapters(
             (function.cppReturnType && interop::cppPointeeReadonlyForNativeSharp(*function.cppReturnType));
         adapter.declaredPointerPointeeVolatile =
             (function.declaredTypeSyntax && function.declaredTypeSyntax->isPointeeVolatile()) ||
-            (function.cppReturnType && function.cppReturnType->kind == interop::CppTypeKind::Pointer &&
-             function.cppReturnType->element && function.cppReturnType->element->isVolatile);
+            // C1-01: the volatile base of a pointer to pointer. / El volatile base de un puntero a puntero.
+            (function.cppReturnType && interop::cppPointeeVolatileForNativeSharp(*function.cppReturnType));
+        // C1-02: the intermediate levels of the result. / Los niveles intermedios del resultado.
+        adapter.declaredPointerLevelQualifiers = function.declaredTypeSyntax
+            ? function.declaredTypeSyntax->pointerLevelQualifiers()
+            : function.cppReturnType ? interop::cppPointerLevelQualifiers(*function.cppReturnType) : 0U;
         // T19-002: a C `_Atomic T*` result points to atomic storage. / Un resultado C `_Atomic T*` apunta a
         //     almacenamiento atomico.
         adapter.cppDeclaredPointerPointeeAtomic = function.cppReturnType &&
@@ -669,6 +673,16 @@ bool ProjectMethodBodyModel::validateFieldInitializerConversion(
         diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error, field.syntax->first()->range(),
             std::string("field initializer: ") + method_body_detail::kNestedPointeeConstMessage);
+        return false;
+    }
+    if (const char* error = method_body_detail::nestedPointerQualificationError(initializer.typeKey,
+            initializer.pointerLevelQualifiers, initializer.pointerPointeeReadonly, initializer.pointerPointeeVolatile,
+            field.declaredTypeKey, field.declaredPointerLevelQualifiers, field.declaredPointerPointeeReadonly,
+            field.declaredPointerPointeeVolatile))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, field.syntax->first()->range(),
+            std::string("field initializer: ") + error);
         return false;
     }
     if (ProjectTypeConversion::isPointer(field.declaredTypeKey) &&

@@ -2178,6 +2178,15 @@ bool ProjectMethodBodyModel::validatePlainAssignmentConversion(
             std::string("assignment: ") + method_body_detail::kNestedPointeeConstMessage);
         return false;
     }
+    if (const char* error = method_body_detail::nestedPointerQualificationError(
+            right.typeKey, right.pointerLevelQualifiers, right.pointerPointeeReadonly, right.pointerPointeeVolatile,
+            left.typeKey, left.pointerLevelQualifiers, left.pointerPointeeReadonly, left.pointerPointeeVolatile))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, expression->second()->range(),
+            std::string("assignment: ") + error);
+        return false;
+    }
     if (!ProjectTypeConversion::isPointer(left.typeKey) ||
         language::pointerContractImplicitlyAssignable(
             pointerContract(

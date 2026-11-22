@@ -899,6 +899,7 @@ bool ProjectMethodBodyModel::analyzePointerArithmetic(
         const ExpressionResult& sourcePointer = leftIsPointer ? left : right;
         result.pointerPointeeReadonly = sourcePointer.pointerPointeeReadonly;
         result.pointerPointeeVolatile = sourcePointer.pointerPointeeVolatile;
+        result.pointerLevelQualifiers = sourcePointer.pointerLevelQualifiers;
         // T19-002: `p + i` still points to atomic storage. / `p + i` sigue apuntando a almacenamiento atomico.
         result.cppPointerPointeeAtomic = sourcePointer.cppPointerPointeeAtomic;
         result.cppAtomicPointeeHoldsVolatile = sourcePointer.cppAtomicPointeeHoldsVolatile;

@@ -112,9 +112,23 @@ MethodExpressionTypeBinding ProjectMethodBodyModel::makeExpressionTypeBinding(
     }
     binding.integerConstant = result.integerConstant;
     binding.pointerPointeeReadonly = result.pointerPointeeReadonly;
-    binding.pointerPointeeVolatile = result.pointerPointeeVolatile;
+    // EN: C1-04. The binding keeps the immediate pointee qualification, the one HIR applies to a load or store
+    //     through the pointer. In a `T volatile**` the mark is the base's (T08-D17), so the immediate pointee, a
+    //     `T volatile*`, is ordinary storage; the mark reaches the base access through the deref's own result.
+    // ES: C1-04. El binding conserva la calificacion del apuntado inmediato, la que HIR aplica a una carga o
+    //     escritura por el puntero. En un `T volatile**` la marca es de la base (T08-D17), asi que el apuntado
+    //     inmediato, un `T volatile*`, es almacenamiento ordinario; la marca llega al acceso de la base por el
+    //     resultado de la desreferencia.
+    // C1-02: in a chain the immediate pointee is level 0 of the mask. / En una cadena el apuntado inmediato es el
+    //     nivel 0 de la mascara.
+    const bool nestedChain = method_body_detail::nestedPointerTypeKey(result.typeKey);
+    binding.pointerPointeeVolatile = nestedChain
+        ? language::pointerLevelVolatile(result.pointerLevelQualifiers, 0)
+        : result.pointerPointeeVolatile;
+    binding.pointerLevelQualifiers = result.pointerLevelQualifiers;
     binding.cppPointerPointeeAtomic = result.cppPointerPointeeAtomic;
-    binding.cppVolatilePointeeContract = result.cppVolatilePointeeContract;
+    // The C contract describes the base access only. / El contrato C describe solo el acceso a la base.
+    binding.cppVolatilePointeeContract = result.cppVolatilePointeeContract && !nestedChain;
     binding.cppVolatilePointeeMicrosoft = result.cppVolatilePointeeMicrosoft;
     binding.cppVolatilePointeeAlignment = result.cppVolatilePointeeAlignment;
     binding.pointerKnownAlignment = result.pointerKnownAlignment;

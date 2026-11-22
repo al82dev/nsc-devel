@@ -147,6 +147,15 @@ std::string ProjectGenericModel::functionTypeSpelling(const ast::TypeSyntax* syn
         function.parameterPointeeReadonly.push_back(parameter != nullptr && parameter->isPointeeConst());
     function.resultPointeeReadonly = syntax->functionReturnType() != nullptr &&
         syntax->functionReturnType()->isPointeeConst();
+    // C1-02: intermediate pointer level qualifiers, kept only when some level has one. / Calificadores de niveles
+    //     intermedios, guardados solo si algun nivel tiene uno.
+    for (const ast::TypeSyntax* parameter : syntax->typeArguments())
+        function.parameterPointerLevelQualifiers.push_back(parameter != nullptr ? parameter->pointerLevelQualifiers() : 0U);
+    if (std::all_of(function.parameterPointerLevelQualifiers.begin(), function.parameterPointerLevelQualifiers.end(),
+                    [](std::uint8_t mask) { return mask == 0U; }))
+        function.parameterPointerLevelQualifiers.clear();
+    function.resultPointerLevelQualifiers = syntax->functionReturnType() != nullptr
+        ? syntax->functionReturnType()->pointerLevelQualifiers() : 0U;
     function.result = typeSpelling(syntax->functionReturnType());
     function.errorType = syntax->functionErrorType() == nullptr
         ? std::string{} : typeSpelling(syntax->functionErrorType());

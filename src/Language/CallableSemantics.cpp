@@ -155,6 +155,72 @@ bool consumeQualifierSuffix(
 //     `volatile T*` parameters (and results) as different function types, so no direction widens.
 // ES: Comparación exacta de un calificador en dos firmas. C considera tipos de función distintos a
 //     parámetros (y resultados) `T*`, `const T*` y `volatile T*`, por lo que ninguna dirección amplía.
+// EN: C1-02. Intermediate pointer level qualifiers of each parameter and the result: an optional suffix
+//     `:pointer-levels:` with two hex digits per parameter and two for the result, written only when some mask is
+//     not zero, so identities without them keep their bytes.
+// ES: C1-02. Calificadores de niveles intermedios de cada parametro y del resultado: un sufijo opcional con dos
+//     digitos hex por parametro y dos para el resultado, escrito solo si alguna mascara no es cero.
+constexpr std::string_view kPointerLevelsTag = ":pointer-levels:";
+
+std::uint8_t parameterLevels(const FunctionType& type, std::size_t index) noexcept
+{
+    return index < type.parameterPointerLevelQualifiers.size() ? type.parameterPointerLevelQualifiers[index] : 0U;
+}
+
+void appendPointerLevelsSuffix(std::string& identity, const FunctionType& type)
+{
+    bool any = type.resultPointerLevelQualifiers != 0U;
+    for (std::size_t index = 0; index < type.parameters.size(); ++index) any = any || parameterLevels(type, index);
+    if (!any) return;
+    constexpr char digits[] = "0123456789abcdef";
+    identity += kPointerLevelsTag;
+    const auto push = [&](std::uint8_t value)
+    {
+        identity.push_back(digits[value >> 4U]);
+        identity.push_back(digits[value & 15U]);
+    };
+    for (std::size_t index = 0; index < type.parameters.size(); ++index) push(parameterLevels(type, index));
+    push(type.resultPointerLevelQualifiers);
+}
+
+bool consumePointerLevelsSuffix(std::string_view identity, std::size_t& cursor, FunctionType& type)
+{
+    if (!identity.substr(cursor).starts_with(kPointerLevelsTag)) return true;
+    const std::size_t width = 2U * (type.parameters.size() + 1U);
+    const std::string_view text = identity.substr(cursor + kPointerLevelsTag.size(), width);
+    if (text.size() != width) return false;
+    const auto digit = [](char value) -> int
+    {
+        if (value >= '0' && value <= '9') return value - '0';
+        if (value >= 'a' && value <= 'f') return value - 'a' + 10;
+        return -1;
+    };
+    std::vector<std::uint8_t> values;
+    for (std::size_t index = 0; index < width; index += 2U)
+    {
+        const int high = digit(text[index]);
+        const int low = digit(text[index + 1U]);
+        if (high < 0 || low < 0) return false;
+        values.push_back(static_cast<std::uint8_t>(high * 16 + low));
+    }
+    type.resultPointerLevelQualifiers = values.back();
+    values.pop_back();
+    bool any = type.resultPointerLevelQualifiers != 0U;
+    for (const std::uint8_t value : values) any = any || value != 0U;
+    if (!any) return false;
+    type.parameterPointerLevelQualifiers = std::move(values);
+    cursor += kPointerLevelsTag.size() + width;
+    return true;
+}
+
+bool samePointerLevels(const FunctionType& source, const FunctionType& target) noexcept
+{
+    if (source.resultPointerLevelQualifiers != target.resultPointerLevelQualifiers) return false;
+    for (std::size_t index = 0; index < source.parameters.size(); ++index)
+        if (parameterLevels(source, index) != parameterLevels(target, index)) return false;
+    return true;
+}
+
 bool sameQualifier(const FunctionType& source, const FunctionType& target, const PointeeQualifier& qualifier) noexcept
 {
     if (source.*qualifier.result != target.*qualifier.result || source.parameters.size() != target.parameters.size())
@@ -171,6 +237,11 @@ bool sameQualifier(const FunctionType& source, const FunctionType& target, const
 bool functionParameterPointeeVolatile(const FunctionType& type, std::size_t parameterIndex) noexcept
 {
     return qualifierParameter(type, kPointeeVolatile, parameterIndex);
+}
+
+std::uint8_t functionParameterPointerLevels(const FunctionType& type, std::size_t parameterIndex) noexcept
+{
+    return parameterLevels(type, parameterIndex);
 }
 
 bool functionHasPointeeVolatile(const FunctionType& type) noexcept
@@ -258,6 +329,7 @@ std::string functionTypeIdentity(const FunctionType& type)
     appendQualifierSuffix(identity, type, kPointeeReadonly);
     appendQualifierSuffix(identity, type, kPointeeVolatile);
     appendQualifierSuffix(identity, type, kPointeeAtomic);
+    appendPointerLevelsSuffix(identity, type);
     return identity;
 }
 
@@ -319,7 +391,8 @@ std::optional<FunctionType> parseFunctionTypeIdentity(std::string_view identity)
         !consumeLengthPrefixed(identity, cursor, type.errorType) ||
         !consumeQualifierSuffix(identity, cursor, type, kPointeeReadonly) ||
         !consumeQualifierSuffix(identity, cursor, type, kPointeeVolatile) ||
-        !consumeQualifierSuffix(identity, cursor, type, kPointeeAtomic) || cursor != identity.size() ||
+        !consumeQualifierSuffix(identity, cursor, type, kPointeeAtomic) ||
+        !consumePointerLevelsSuffix(identity, cursor, type) || cursor != identity.size() ||
         type.result.empty())
         return std::nullopt;
     return type;
@@ -413,7 +486,7 @@ bool functionTypesAssignable(const FunctionType& source, const FunctionType& tar
         source.isAsync == target.isAsync &&
         (!source.nullable || target.nullable) &&
         sameQualifier(source, target, kPointeeReadonly) && sameQualifier(source, target, kPointeeVolatile) &&
-        sameQualifier(source, target, kPointeeAtomic);
+        sameQualifier(source, target, kPointeeAtomic) && samePointerLevels(source, target);
 }
 
 bool computeClosureLayout(

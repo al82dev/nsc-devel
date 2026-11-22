@@ -64,6 +64,8 @@ bool TypeSyntax::isPointeeConst() const noexcept { return isPointeeConst_; }
 void TypeSyntax::setPointeeConst(bool value) noexcept { isPointeeConst_ = value; }
 bool TypeSyntax::isPointeeVolatile() const noexcept { return isPointeeVolatile_; }
 void TypeSyntax::setPointeeVolatile(bool value) noexcept { isPointeeVolatile_ = value; }
+std::uint8_t TypeSyntax::pointerLevelQualifiers() const noexcept { return pointerLevelQualifiers_; }
+void TypeSyntax::setPointerLevelQualifiers(std::uint8_t value) noexcept { pointerLevelQualifiers_ = value; }
 
 void TypeSyntax::setBaseTokenKind(lexer::TokenKind kind) noexcept
 {

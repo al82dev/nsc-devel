@@ -28,6 +28,9 @@ FunctionType lambdaSignatureForTarget(const FunctionType& lambda, const Function
 bool functionTypesAssignable(const FunctionType& source, const FunctionType& target) noexcept;
 bool functionParameterPointeeVolatile(const FunctionType& type, std::size_t parameterIndex) noexcept;
 bool functionHasPointeeVolatile(const FunctionType& type) noexcept;
+// C1-02: intermediate pointer level qualifiers of a parameter (zero when absent). / Calificadores de niveles
+//     intermedios de un parametro (cero si no hay).
+std::uint8_t functionParameterPointerLevels(const FunctionType& type, std::size_t parameterIndex) noexcept;
 bool functionParameterPointeeReadonly(const FunctionType& type, std::size_t parameterIndex) noexcept;
 bool functionHasPointeeReadonly(const FunctionType& type) noexcept;
 // T19-038. / T19-038.

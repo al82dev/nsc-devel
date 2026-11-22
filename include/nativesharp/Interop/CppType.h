@@ -136,4 +136,87 @@ inline std::optional<CppType> cppPointerChainWithoutInnerConst(const CppType& po
     }
     return result;
 }
+
+// EN: C1-01. The `volatile` of the base of a pointer chain, the NativeSharp volatile pointee mark (`T volatile**`),
+//     like the readonly mark of item 2.1: for one level, the `volatile` of the pointee.
+// ES: C1-01. El `volatile` de la base de una cadena de punteros, la marca NativeSharp de apuntado volatile
+//     (`T volatile**`), como la marca de solo lectura del item 2.1: para un nivel, el `volatile` del apuntado.
+inline bool cppPointeeVolatileForNativeSharp(const CppType& pointer) noexcept
+{
+    if (pointer.kind != CppTypeKind::Pointer || !pointer.element) return false;
+    const CppType* current = pointer.element.get();
+    while (current->kind == CppTypeKind::Pointer && current->element) current = current->element.get();
+    return current->isVolatile;
+}
+
+// EN: C1-02. A pointer to pointer described level by level: the carrier without any qualifier below the top, the
+//     qualifiers of the intermediate pointer objects as a NativeSharp level mask (Language/PointerLevelQualifiers.h)
+//     and those of the base, which become the pointee marks (`T const**`, `T volatile**`). Null for one level, for a
+//     chain that ends in an array or a function, or with a qualified intermediate level beyond the three the mask
+//     holds.
+// ES: C1-02. Un puntero a puntero descrito nivel por nivel: el portador sin calificadores bajo el nivel superior, los
+//     calificadores de los objetos puntero intermedios como mascara de niveles NativeSharp y los de la base, que
+//     pasan a ser las marcas del apuntado. Nulo para un nivel, para una cadena que termina en arreglo o funcion, o
+//     con un nivel intermedio calificado mas alla de los tres que caben en la mascara.
+struct CppPointerChainQualifiers
+{
+    CppType carrier;
+    std::uint8_t levels = 0;
+    bool baseConst = false;
+    bool baseVolatile = false;
+};
+
+inline std::optional<CppPointerChainQualifiers> cppPointerChainQualifiers(const CppType& pointer)
+{
+    if (pointer.kind != CppTypeKind::Pointer || !pointer.element || pointer.element->kind != CppTypeKind::Pointer)
+        return std::nullopt;
+    CppPointerChainQualifiers result{pointer, 0, false, false};
+    CppType* level = &result.carrier;
+    std::size_t ordinal = 0;
+    while (level->kind == CppTypeKind::Pointer && level->element)
+    {
+        auto copy = std::make_shared<CppType>(*level->element);
+        if (copy->kind == CppTypeKind::Pointer)
+        {
+            if (copy->isConst || copy->isVolatile)
+            {
+                if (ordinal >= 3) return std::nullopt;
+                if (copy->isConst) result.levels |= static_cast<std::uint8_t>(1U << (2U * ordinal));
+                if (copy->isVolatile) result.levels |= static_cast<std::uint8_t>(1U << (2U * ordinal + 1U));
+            }
+            ++ordinal;
+        }
+        else
+        {
+            if (copy->kind == CppTypeKind::Array || copy->kind == CppTypeKind::Function) return std::nullopt;
+            result.baseConst = copy->isConst;
+            result.baseVolatile = copy->isVolatile;
+        }
+        copy->isConst = false;
+        copy->isVolatile = false;
+        level->element = copy;
+        level = copy.get();
+    }
+    return result;
+}
+
+// EN: C1-02. The level mask of a C/C++ pointer type; zero for one level or when the chain cannot be described.
+// ES: C1-02. La mascara de niveles de un tipo puntero C/C++; cero para un nivel o si la cadena no se describe.
+inline std::uint8_t cppPointerLevelQualifiers(const CppType& pointer)
+{
+    const auto chain = cppPointerChainQualifiers(pointer);
+    return chain ? chain->levels : 0U;
+}
+
+// EN: C1-02. Whether some level below the top is volatile (intermediate pointer or base); C++ declarations keep the
+//     previous rule and do not import a volatile pointee.
+// ES: C1-02. Si algun nivel bajo el superior es volatile (puntero intermedio o base); las declaraciones C++ siguen
+//     la regla previa y no importan un apuntado volatile.
+inline bool cppPointerChainHasVolatile(const CppType& pointer) noexcept
+{
+    for (const CppType* level = pointer.kind == CppTypeKind::Pointer ? pointer.element.get() : nullptr; level;
+         level = level->kind == CppTypeKind::Pointer ? level->element.get() : nullptr)
+        if (level->isVolatile) return true;
+    return false;
+}
 }

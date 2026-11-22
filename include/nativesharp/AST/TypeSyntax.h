@@ -11,6 +11,7 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -81,6 +82,10 @@ public:
     void setPointeeConst(bool value = true) noexcept;
     bool isPointeeVolatile() const noexcept;
     void setPointeeVolatile(bool value = true) noexcept;
+    // C1-02: qualifiers of the intermediate pointer levels (see Language/PointerLevelQualifiers.h). / Calificadores
+    //     de los niveles intermedios de punteros.
+    std::uint8_t pointerLevelQualifiers() const noexcept;
+    void setPointerLevelQualifiers(std::uint8_t value) noexcept;
 
     void addTypeArgument(TypeSyntax* typeArgument);
     const std::vector<TypeSyntax*>& typeArguments() const noexcept;
@@ -189,6 +194,7 @@ private:
     bool isExplicitTraitImplementation_ = false;
     bool isPointeeConst_ = false;
     bool isPointeeVolatile_ = false;
+    std::uint8_t pointerLevelQualifiers_ = 0;
     std::vector<TypeSyntax*> typeArguments_;
     bool isTuple_ = false;
     std::vector<std::string> tupleElementNames_;

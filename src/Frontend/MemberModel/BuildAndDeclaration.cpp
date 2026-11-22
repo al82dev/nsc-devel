@@ -925,6 +925,8 @@ void ProjectMemberModel::initializeMemberPointerAndOwnership(
         memberNode->typeSyntax()->isPointeeConst();
     symbol.declaredPointerPointeeVolatile = memberNode->typeSyntax() != nullptr &&
         memberNode->typeSyntax()->isPointeeVolatile();
+    symbol.declaredPointerLevelQualifiers = memberNode->typeSyntax() != nullptr
+        ? memberNode->typeSyntax()->pointerLevelQualifiers() : 0U;
     const language::PointerContract declaredPointer =
         pointerContractFromSyntax(memberNode->typeSyntax());
     symbol.declaredPointerNullable = declaredPointer.nullable;
@@ -1051,6 +1053,8 @@ void ProjectMemberModel::initializeMethodParameter(
         parameter.typeSyntax->isPointeeConst();
     parameter.pointerPointeeVolatile = parameter.typeSyntax != nullptr &&
         parameter.typeSyntax->isPointeeVolatile();
+    parameter.pointerLevelQualifiers = parameter.typeSyntax != nullptr
+        ? parameter.typeSyntax->pointerLevelQualifiers() : 0U;
     const language::PointerContract parameterPointer =
         pointerContractFromSyntax(parameter.typeSyntax);
     parameter.pointerNullable = parameterPointer.nullable;

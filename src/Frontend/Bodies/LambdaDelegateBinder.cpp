@@ -227,10 +227,16 @@ std::optional<language::FunctionType> ProjectMethodBodyModel::delegatePointeeQua
         const ast::TypeSyntax* syntax = parameter->typeSyntax();
         qualifiers.parameterPointeeReadonly.push_back(syntax != nullptr && syntax->isPointeeConst());
         qualifiers.parameterPointeeVolatile.push_back(syntax != nullptr && syntax->isPointeeVolatile());
+        qualifiers.parameterPointerLevelQualifiers.push_back(syntax != nullptr ? syntax->pointerLevelQualifiers() : 0U);
     }
+    // C1-02: no mask when every level is unqualified. / Sin mascara si ningun nivel esta calificado.
+    if (std::all_of(qualifiers.parameterPointerLevelQualifiers.begin(),
+                    qualifiers.parameterPointerLevelQualifiers.end(), [](std::uint8_t mask) { return mask == 0U; }))
+        qualifiers.parameterPointerLevelQualifiers.clear();
     const ast::TypeSyntax* result = declaration->typeSyntax();
     qualifiers.resultPointeeReadonly = result != nullptr && result->isPointeeConst();
     qualifiers.resultPointeeVolatile = result != nullptr && result->isPointeeVolatile();
+    qualifiers.resultPointerLevelQualifiers = result != nullptr ? result->pointerLevelQualifiers() : 0U;
     return qualifiers;
 }
 

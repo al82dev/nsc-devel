@@ -158,4 +158,5 @@ struct ExpressionResult final
     // This expression denotes an imported C-family flexible array member, not a native array.
     bool cppFlexibleArrayMember = false;
     bool cppFlexibleArrayDecaySafe = false;
+    std::uint8_t pointerLevelQualifiers = 0; // C1-02: intermediate pointer level qualifiers (Language/PointerLevelQualifiers.h).
 };

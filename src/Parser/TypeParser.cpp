@@ -5,6 +5,7 @@
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Lexer/TokenKind.h"
 #include "nativesharp/Language/LanguageSurface.h"
+#include "nativesharp/Language/PointerLevelQualifiers.h"
 
 #include <algorithm>
 #include <optional>
@@ -414,13 +415,25 @@ bool Parser::scanGenericTypeArgumentsAt(std::size_t& cursor) const noexcept
 
 bool Parser::scanTypeSuffixesAt(std::size_t& cursor) const noexcept
 {
-    if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::KwConst)
+    // C1-02: `const` and/or `volatile` before the first `*` qualify the base of the chain. / `const` y/o
+    //     `volatile` antes del primer `*` califican la base de la cadena.
+    while (cursor < tokens_.size() &&
+           (tokens_[cursor].kind() == TokenKind::KwConst || tokens_[cursor].kind() == TokenKind::KwVolatile))
         ++cursor;
     while (cursor < tokens_.size())
     {
         if (tokens_[cursor].kind() == TokenKind::Star)
         {
             cursor = scanPointerQualifiersAt(cursor + 1U);
+            // C1-02: qualifiers of an intermediate pointer level, always followed by another `*`. / Calificadores
+            //     de un nivel intermedio, siempre seguidos de otro `*`.
+            std::size_t qualified = cursor;
+            while (qualified < tokens_.size() &&
+                   (tokens_[qualified].kind() == TokenKind::KwConst ||
+                    tokens_[qualified].kind() == TokenKind::KwVolatile))
+                ++qualified;
+            if (qualified != cursor && qualified < tokens_.size() && tokens_[qualified].kind() == TokenKind::Star)
+                cursor = qualified;
             continue;
         }
         if (tokens_[cursor].kind() != TokenKind::LeftBracket) break;
@@ -1199,12 +1212,19 @@ void Parser::parsePointeeConst(
         type->setPointeeConst();
         completeRange = join(completeRange, pointeeConstRange);
     }
-    // EN: T08-D03: `volatile` before `*` exists only in materialized metadata sources.
-    // ES: T08-D03: `volatile` antes de `*` existe solo en fuentes de metadata materializadas.
-    if (!metadataSpellings_ || !at(TokenKind::KwVolatile)) return;
+    // EN: C1-02: `volatile` before `*` marks a volatile base (`int volatile*`, `int const volatile**`), in source
+    //     code as in materialized metadata (T08-D03 limited it to metadata). Either order with `const`.
+    // ES: C1-02: `volatile` antes de `*` marca una base volatile, en codigo fuente como en metadata materializada
+    //     (T08-D03 lo limitaba a metadata). En cualquier orden con `const`.
+    if (!at(TokenKind::KwVolatile)) return;
     const SourceRange volatileRange = consume().range();
     type->setPointeeVolatile();
     if (!pointeeConst) pointeeConstRange = volatileRange;
+    if (!pointeeConst && at(TokenKind::KwConst))
+    {
+        completeRange = join(completeRange, consume().range());
+        type->setPointeeConst();
+    }
     pointeeConst = true;
     completeRange = join(completeRange, volatileRange);
 }
@@ -1414,19 +1434,69 @@ void Parser::parseTypePostfixModifiers(ast::TypeSyntax* type, SourceRange& compl
     SourceRange pointeeConstRange{};
     bool pointeeConst = false;
     parsePointeeConst(type, completeRange, pointeeConst, pointeeConstRange);
+    // C1-02: qualifiers written after the i-th `*` and before the next one, by star ordinal. / Calificadores
+    //     escritos tras el i-esimo `*` y antes del siguiente, por ordinal de estrella.
+    struct LevelQualifier { std::size_t star; bool isConst; bool isVolatile; SourceRange range; };
+    std::vector<LevelQualifier> levelQualifiers;
+    std::size_t stars = 0;
+    bool arrayModifier = false;
     while (true)
     {
         if (at(TokenKind::Star))
         {
             parsePointerTypeModifier(type, completeRange);
+            ++stars;
+            std::size_t lookahead = index_;
+            while (lookahead < tokens_.size() &&
+                   (tokens_[lookahead].kind() == TokenKind::KwConst ||
+                    tokens_[lookahead].kind() == TokenKind::KwVolatile))
+                ++lookahead;
+            if (lookahead != index_ && lookahead < tokens_.size() && tokens_[lookahead].kind() == TokenKind::Star)
+            {
+                LevelQualifier qualifier{stars, false, false, current().range()};
+                while (index_ < lookahead)
+                {
+                    const lexer::Token& token = consume();
+                    (token.kind() == TokenKind::KwConst ? qualifier.isConst : qualifier.isVolatile) = true;
+                    qualifier.range = join(qualifier.range, token.range());
+                }
+                completeRange = join(completeRange, qualifier.range);
+                levelQualifiers.push_back(qualifier);
+            }
             continue;
         }
         if (at(TokenKind::LeftBracket))
         {
             parseArrayTypeModifier(type, completeRange);
+            arrayModifier = true;
             continue;
         }
         break;
+    }
+    if (!levelQualifiers.empty())
+    {
+        // Level of the object that the qualified pointer is: the one after star i of n is level n - 1 - i.
+        // Nivel del objeto que es el puntero calificado: el que sigue a la estrella i de n es el nivel n - 1 - i.
+        std::uint8_t mask = 0;
+        bool valid = !arrayModifier;
+        for (const LevelQualifier& qualifier : levelQualifiers)
+        {
+            const std::size_t level = stars - 1U - qualifier.star;
+            if (level >= language::kMaxPointerLevelQualifierDepth)
+            {
+                valid = false;
+                diagnostics_.report(diagnostics::DiagnosticId::InvalidType, diagnostics::DiagnosticSeverity::Error,
+                    qualifier.range, "at most three intermediate pointer levels may be qualified");
+                continue;
+            }
+            if (qualifier.isConst) mask |= language::pointerLevelConstBit(level);
+            if (qualifier.isVolatile) mask |= language::pointerLevelVolatileBit(level);
+        }
+        if (arrayModifier)
+            diagnostics_.report(diagnostics::DiagnosticId::InvalidType, diagnostics::DiagnosticSeverity::Error,
+                levelQualifiers.front().range,
+                "qualified intermediate pointer levels require a pointer chain without array modifiers");
+        if (valid) type->setPointerLevelQualifiers(mask);
     }
     if (pointeeConst && std::ranges::none_of(
             type->modifiers(), [](const ast::TypeModifierSyntax& modifier)

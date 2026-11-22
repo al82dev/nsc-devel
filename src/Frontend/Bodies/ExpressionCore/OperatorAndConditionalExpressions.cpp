@@ -205,7 +205,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 // EN: T08-D17: pointers to pointers with different base qualification have no common type.
                 // ES: T08-D17: punteros a puntero con distinta calificacion base no tienen tipo comun.
                 if (method_body_detail::nestedPointerTypeKey(left.typeKey) &&
-                    right.typeKey == left.typeKey && left.pointerPointeeReadonly != right.pointerPointeeReadonly)
+                    right.typeKey == left.typeKey && (left.pointerPointeeReadonly != right.pointerPointeeReadonly ||
+                    // C1-04: also the volatile base mark and the levels. / Tambien la marca volatile de la base y
+                    //     los niveles.
+                    left.pointerPointeeVolatile != right.pointerPointeeVolatile ||
+                    left.pointerLevelQualifiers != right.pointerLevelQualifiers))
                 {
                     diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
                         diagnostics::DiagnosticSeverity::Error, expression->range(),
@@ -215,6 +219,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 }
                 result.pointerPointeeReadonly = left.pointerPointeeReadonly || right.pointerPointeeReadonly;
                 result.pointerPointeeVolatile = left.pointerPointeeVolatile || right.pointerPointeeVolatile;
+                result.pointerLevelQualifiers = left.pointerLevelQualifiers;
                 // T19-002: `??` keeps the atomic pointee only when both sides have it. / `??` conserva el apuntado
                 //     atomico solo si lo tienen los dos lados.
                 if (right.typeKey != "builtin:null" &&
@@ -640,6 +645,7 @@ void ProjectMethodBodyModel::adoptConditionalNullableBranch(
     result.valid = true;
     result.pointerPointeeReadonly = nonNull.pointerPointeeReadonly;
     result.pointerPointeeVolatile = nonNull.pointerPointeeVolatile;
+    result.pointerLevelQualifiers = nonNull.pointerLevelQualifiers;
     result.cppPointerPointeeAtomic = nonNull.cppPointerPointeeAtomic;
     result.cppAtomicPointeeHoldsVolatile = nonNull.cppAtomicPointeeHoldsVolatile;
     result.pointerNullable = true;
@@ -718,7 +724,10 @@ bool ProjectMethodBodyModel::resolveConditionalMatchingType(
     // EN: T08-D17: pointers to pointers with different base qualification have no common type.
     // ES: T08-D17: punteros a puntero con distinta calificacion base no tienen tipo comun.
     if (method_body_detail::nestedPointerTypeKey(whenTrue.typeKey) &&
-        whenTrue.pointerPointeeReadonly != whenFalse.pointerPointeeReadonly)
+        (whenTrue.pointerPointeeReadonly != whenFalse.pointerPointeeReadonly ||
+         // C1-04: also the volatile base mark and the levels. / Tambien la marca volatile de la base y los niveles.
+         whenTrue.pointerPointeeVolatile != whenFalse.pointerPointeeVolatile ||
+         whenTrue.pointerLevelQualifiers != whenFalse.pointerLevelQualifiers))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
@@ -733,6 +742,7 @@ bool ProjectMethodBodyModel::resolveConditionalMatchingType(
         whenTrue.pointerPointeeReadonly || whenFalse.pointerPointeeReadonly;
     result.pointerPointeeVolatile =
         whenTrue.pointerPointeeVolatile || whenFalse.pointerPointeeVolatile;
+    result.pointerLevelQualifiers = whenTrue.pointerLevelQualifiers;
     result.cppPointerPointeeAtomic = whenTrue.cppPointerPointeeAtomic;
     result.cppAtomicPointeeHoldsVolatile = whenTrue.cppAtomicPointeeHoldsVolatile;
     result.pointerNullable = whenTrue.pointerNullable || whenFalse.pointerNullable;

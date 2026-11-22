@@ -195,6 +195,8 @@ void AstDumper::dumpType(const TypeSyntax* typeSyntax, std::ostream& output) con
     }
     if (typeSyntax->isPointeeConst()) output << " const";
     if (typeSyntax->isPointeeVolatile()) output << " volatile";
+    if (typeSyntax->pointerLevelQualifiers() != 0U)
+        output << " levels=" << static_cast<unsigned>(typeSyntax->pointerLevelQualifiers());
     dumpTypeModifiers(typeSyntax, output);
 }
 
