@@ -162,6 +162,12 @@ static bool appendCStaticInlineObjects(frontend::ProjectCompilation &compilation
                     std::find(request.demand.lookupNamespaces.begin(), request.demand.lookupNamespaces.end(), "") != request.demand.lookupNamespaces.end())
                 { selected = true; break; }
         if (!selected) continue;
+        // EN: Item 5.4. A constant macro (`#define ANSWER 42`) is a value with no storage: a precompiled template that
+        //     names it asks for nothing to emit. Only value storage and accessors have a C definition.
+        // ES: Item 5.4. Una macro constante es un valor sin almacenamiento: una plantilla precompilada que la nombra no
+        //     pide nada que emitir. Solo el almacenamiento de valores y las accesoras tienen definicion C.
+        if (entry.declaration.macro && entry.declaration.cMacroStorage.empty() &&
+            entry.declaration.cMacroAccessor.empty()) continue;
         const interop::CppInteropSession* session = nullptr;
         for (const auto& project : compilation.cppProjectSessions())
             if (project.projectFile == entry.projectFile && entry.referenceIndex < project.sessions.size())
