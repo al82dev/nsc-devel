@@ -2223,6 +2223,7 @@ bool provideExperimentalCppInstanceMethods(
     using Family = std::pair<std::string, std::string>;
     std::map<Family, std::vector<frontend::CppImportedInstanceMethod>> families;
     std::set<Family> blocked;
+    std::map<Family, std::set<std::size_t>> unprojectedArities;
     for (const auto& group : groups.groups)
     {
         const auto selected = selectCppRecordMemberDefinition(entries, group);
@@ -2247,7 +2248,7 @@ bool provideExperimentalCppInstanceMethods(
                     graph.projects()[group.projectOrdinal].moduleName(), entry.targetTriple, &visibleRecords, &lookup);
                 if (const auto* instance = std::get_if<CppSemanticInstanceMethod>(&mapped))
                     families[family].push_back(toCppImportedInstanceMethod(*instance));
-                else blocked.insert(family);
+                else unprojectedArities[family].insert(method.parameters.size());
             }
         }
     }
@@ -2255,6 +2256,15 @@ bool provideExperimentalCppInstanceMethods(
     for (auto& [family, methods] : families)
     {
         if (blocked.contains(family)) continue;
+        // EN: Item 9.1. An overload that cannot be projected blocks the family only when it has the arity of a
+        //     projected one: a call could then select it in C++ and another overload in NativeSharp. With a
+        //     different arity no call with the projected arities reaches it.
+        // ES: Item 9.1. Una sobrecarga que no se puede proyectar bloquea la familia solo si tiene la aridad de una
+        //     proyectada: una llamada podria elegirla en C++ y otra en NativeSharp. Con otra aridad ninguna llamada
+        //     con las aridades proyectadas la alcanza.
+        if (const auto found = unprojectedArities.find(family); found != unprojectedArities.end() &&
+            std::any_of(methods.begin(), methods.end(), [&](const auto& method) {
+                return found->second.contains(method.parameterTypeKeys.size()); })) continue;
         // T19-006: the C++ spelling suffix keeps `f(int)` and `f(long)` apart. / Separa `f(int)` de `f(long)`.
         std::set<std::tuple<std::vector<std::string>, bool, bool, std::string>> signatures;
         bool ambiguous = false;
