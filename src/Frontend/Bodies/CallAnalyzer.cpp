@@ -6454,7 +6454,7 @@ bool ProjectMethodBodyModel::reportTerminalCallCandidateDiagnostic(
             diagnostics::DiagnosticSeverity::Error,
             argument != nullptr ? argument->range() : expression->range(),
             "C variadic arguments must be by-value ABI scalars, raw pointers, enums, "
-            "or extern C delegates");
+            "complete C records, or extern C delegates");
         call.resolution = MethodCallResolutionKind::NoViableCandidate;
         recordCallBinding(std::move(call));
         return true;
