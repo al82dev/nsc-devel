@@ -466,6 +466,11 @@ struct MacroParameterUses
     //     pueden evaluar una aparicion de forma condicional.
     std::vector<unsigned> valueCount;
     bool conditional = false;
+    // EN: Item 5.10. Whether the macro writes the parameter (`x = ...`, `x += ...`, `++x`, `x--`) or takes its
+    //     address (`&x`): it needs the caller's place, not a copy.
+    // ES: Item 5.10. Si la macro escribe el parametro (`x = ...`, `x += ...`, `++x`, `x--`) o toma su direccion
+    //     (`&x`): necesita el lugar del llamador, no una copia.
+    std::vector<bool> written;
 };
 
 MacroParameterUses macroParameterUses(const clang::MacroInfo& info)
@@ -476,6 +481,7 @@ MacroParameterUses macroParameterUses(const clang::MacroInfo& info)
     uses.stringified.assign(count, false);
     uses.pasted.assign(count, false);
     uses.valueCount.assign(count, 0);
+    uses.written.assign(count, false);
     const auto tokens = info.tokens();
     for (std::size_t index = 0; index < tokens.size(); ++index)
     {
@@ -495,6 +501,21 @@ MacroParameterUses macroParameterUses(const clang::MacroInfo& info)
         {
             uses.value[parameter] = true;
             ++uses.valueCount[parameter];
+            // The parameter may be wrapped in parentheses: `(x) = 0`. / El parametro puede ir entre parentesis.
+            std::size_t after = index + 1;
+            std::size_t before = index;
+            while (after < tokens.size() && before > 0 && tokens[after].is(clang::tok::r_paren) &&
+                   tokens[before - 1].is(clang::tok::l_paren)) { ++after; --before; }
+            const bool assignedAfter = after < tokens.size() &&
+                tokens[after].isOneOf(clang::tok::equal, clang::tok::plusequal, clang::tok::minusequal,
+                    clang::tok::starequal, clang::tok::slashequal, clang::tok::percentequal, clang::tok::ampequal,
+                    clang::tok::pipeequal, clang::tok::caretequal, clang::tok::lesslessequal,
+                    clang::tok::greatergreaterequal, clang::tok::plusplus, clang::tok::minusminus);
+            const bool modifiedBefore = before > 0 &&
+                tokens[before - 1].isOneOf(clang::tok::plusplus, clang::tok::minusminus, clang::tok::amp) &&
+                (before < 2 || !tokens[before - 2].isOneOf(clang::tok::identifier, clang::tok::r_paren,
+                                                           clang::tok::numeric_constant));
+            if (assignedAfter || modifiedBefore) uses.written[parameter] = true;
         }
     }
     return uses;
@@ -5530,6 +5551,14 @@ private:
             // ES: Item 5.3 (D1). El envoltorio evalua cada argumento valor una vez. Si la macro evalua el parametro
             //     varias veces o de forma condicional y el argumento tiene efectos (una llamada, una asignacion, un
             //     incremento), la llamada se rechaza en lugar de cambiar su resultado.
+            // Item 5.10: a written parameter needs the caller's place. / Un parametro escrito necesita el lugar.
+            if (parameterIndex < uses.written.size() && uses.written[parameterIndex] && !argument.lvalue)
+            {
+                result.diagnostics.push_back("the macro writes or takes the address of argument " +
+                    std::to_string(index + 1) + ", so it needs the caller's variable: pass it with ref ('ref " +
+                    argument.sourceSpelling + "') instead of a copy");
+                return result;
+            }
             if (parameterIndex < uses.valueCount.size() && !argument.lvalue &&
                 (uses.valueCount[parameterIndex] > 1 || (uses.conditional && uses.valueCount[parameterIndex] > 0)))
             {
