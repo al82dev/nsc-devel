@@ -1427,6 +1427,7 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
         {
             value.isCStaticInlineDefinition = true;
             value.externalLinkage = false;
+            value.languageLinkage = CppLanguageLinkage::None;
         }
         value.dllImport = function->hasAttr<clang::DLLImportAttr>();
         if (const auto* prototype = function->getType()->getAs<clang::FunctionProtoType>())
