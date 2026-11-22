@@ -35,6 +35,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapImplicitConversion(
     }
     // A C global `extern T name[];` (T[*]) decays to the address of its first element.
     // Una global C `extern T name[];` (T[*]) decae a la dirección de su primer elemento.
+    // EN: Item 4.7. A local or parameter fixed array passed to a C pointer decays to its address.
+    // ES: Item 4.7. Un arreglo fijo local o parametro pasado a un puntero C decae a su direccion.
+    if (conversion.kind == ProjectConversionKind::CFlexibleArrayToPointer &&
+        (value->kind == ProjectOopHirNodeKind::LocalValue || value->kind == ProjectOopHirNodeKind::ParameterValue))
+    {
+        value->kind = value->kind == ProjectOopHirNodeKind::LocalValue ? ProjectOopHirNodeKind::LocalAddress
+                                                                       : ProjectOopHirNodeKind::ParameterAddress;
+        auto address = makeNode(ProjectOopHirNodeKind::AddressValue, syntax, conversion.targetTypeKey);
+        address->children.push_back(std::move(value));
+        return address;
+    }
     if (conversion.kind == ProjectConversionKind::CFlexibleArrayToPointer &&
         value->kind == ProjectOopHirNodeKind::NamespaceStateValue)
     {

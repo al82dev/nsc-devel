@@ -95,6 +95,14 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyCFrontierConversion(
     { return std::find(std::begin(arithmetic), std::end(arithmetic), key) != std::end(arithmetic); };
     if (parameter.passKind == ParameterPassKind::Value && isArithmetic(source.typeKey) && isArithmetic(target))
         return {ProjectConversionKind::Numeric, 5, source.typeKey, target, std::nullopt};
+    // EN: Item 4.7. A fixed array decays to a pointer to its first element at a C boundary, as in C: `int[2][4]`
+    //     becomes `int (*)[4]` and `int[3]` becomes `int*`. Only for an addressable array place.
+    // ES: Item 4.7. Un arreglo fijo decae a puntero a su primer elemento en una frontera C, como en C: `int[2][4]`
+    //     pasa a `int (*)[4]` e `int[3]` pasa a `int*`. Solo para un lugar arreglo direccionable.
+    if (parameter.passKind == ParameterPassKind::Value && source.addressable)
+        if (const auto element = ProjectMemberModel::fixedArrayElementTypeKey(source.typeKey);
+            element && *element + "*" == target)
+            return {ProjectConversionKind::CFlexibleArrayToPointer, 4, source.typeKey, target, std::nullopt};
     return {ProjectConversionKind::None, 1000, source.typeKey, target, std::nullopt};
 }
 
