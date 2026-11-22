@@ -196,6 +196,30 @@ def rechazo(caso, body, texto, preludio=''):
         print(f'ok {label}', flush=True)
 
 
+def diagnostico(caso, body, textos, compila, preludio='', extra=None, opts=None):
+    """Compiles the direct project in each optimization level and checks that the output contains every text.
+    compila: whether the build must succeed. extra: additional files {name: text} next to api.h."""
+    if not _selected(caso.nombre):
+        return
+    for opt in opts or OPTS:
+        label = f'{caso.nombre}-O{opt}-diagnostico'
+        base = ROOT / caso.nombre / f'O{opt}' / 'diagnostico'
+        base.mkdir(parents=True)
+        for name, text in (extra or {}).items():
+            (base / name).write_text(text, encoding='utf-8')
+        refs = caso.reference(base) + core(opt)
+        (base / 'Main.ns').write_text(f'using NativeSharp.Core;\n{preludio}\nint Main()\n{{\n{body}\n}}\n',
+                                      encoding='utf-8')
+        project(base, 'App', ['Main.ns'], refs)
+        result = nsc(base, 'App', opt, 'exe', 'app.exe', 'nsc')
+        missing = [t for t in textos if t not in result.stdout]
+        if (result.returncode == 0) != compila or missing:
+            _fail(label, f'compila={result.returncode == 0} (esperado {compila}), faltan {missing}:\n'
+                         f'{result.stdout[-1500:]}')
+        else:
+            print(f'ok {label}', flush=True)
+
+
 def ir(caso, body, preludio='', opt=1):
     """Returns the optimized LLVM IR of the direct project (for comparisons against Clang)."""
     base = ROOT / caso.nombre / f'ir-O{opt}'
