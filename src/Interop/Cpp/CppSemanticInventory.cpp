@@ -1440,7 +1440,14 @@ static CppSemanticEnumConstantResult projectCppEnumConstantImpl(
          value.valueType.enumIdentity->clangUsr != entry.declaration.clangUsr ||
          value.valueType.sizeBits != entry.declaration.sizeBits || value.valueType.alignmentBits != entry.declaration.alignmentBits))
         return CppSemanticEnumConstantFailure{"C++ enumerator identity or representation is unsupported"};
-    const auto& type = entry.declaration.isCxx ? *entry.declaration.underlyingType : value.valueType;
+    // EN: Item 3.9. A C23 enumerator of an enum with a fixed underlying type (`enum E : unsigned char`) has the
+    //     enum type, as in C++; its value is represented by the underlying integer type.
+    // ES: Item 3.9. Un enumerador C23 de un enum con tipo base fijo (`enum E : unsigned char`) tiene el tipo del
+    //     enum, como en C++; su valor se representa con el tipo entero base.
+    const bool cFixedUnderlying = !entry.declaration.isCxx && value.valueType.kind == CppTypeKind::Enumeration &&
+        entry.declaration.underlyingType.has_value();
+    const auto& type = entry.declaration.isCxx || cFixedUnderlying ? *entry.declaration.underlyingType
+                                                                   : value.valueType;
     const auto mapped = mapCppScalarType(type);
     if (!mapped || value.name.empty() || !type.sizeBits || *type.sizeBits == 0 || *type.sizeBits > 64 ||
         (type.kind != CppTypeKind::SignedInteger && type.kind != CppTypeKind::UnsignedInteger))
