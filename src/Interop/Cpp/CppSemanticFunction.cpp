@@ -360,7 +360,19 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
                 slot.element->kind != CppTypeKind::Pointer && slot.element->kind != CppTypeKind::Function &&
                 slot.element->kind != CppTypeKind::Array;
         };
-        const auto pointeeConst = [&](const CppType& slot) { return qualifiable(slot) && slot.element->isConst; };
+        // Item 2.4: a pointer to pointer carries the const of its base (`T const**`). / Un puntero a puntero lleva
+        //     el const de su base.
+        const auto pointeeConst = [&](const CppType& slot)
+        {
+            return (qualifiable(slot) && slot.element->isConst) ||
+                (slot.kind == CppTypeKind::Pointer && slot.element && slot.element->kind == CppTypeKind::Pointer &&
+                 cppPointeeReadonlyForNativeSharp(slot));
+        };
+        const auto nestedReadonly = [](const CppType& slot, const CppScalarTypeMapping& mapped)
+        {
+            return mapped.isConst && slot.kind == CppTypeKind::Pointer && slot.element &&
+                slot.element->kind == CppTypeKind::Pointer;
+        };
         const auto pointeeVolatile = [&](const CppType& slot)
         {
             return qualifiable(slot) && slot.element->isVolatile;
@@ -391,7 +403,8 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
             : cRecordValues
             ? cCallbackRecordValueOfCFunction(signature.returnType, moduleName, lookup, owner, cFunctionCppRecords)
             : cCallbackRecordValue(signature.returnType, moduleName, lookup, owner, cppRecordValues);
-        if (!result || result->isConst || result->isVolatile) return std::nullopt;
+        if (!result || (result->isConst && !nestedReadonly(signature.returnType, *result)) || result->isVolatile)
+            return std::nullopt;
         function.result = result->nativeSharpTypeKey;
         function.resultPointeeReadonly = pointeeConst(signature.returnType);
         function.resultPointeeVolatile = pointeeVolatile(signature.returnType);
@@ -405,7 +418,8 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
                 : cRecordValues
                 ? cCallbackRecordValueOfCFunction(parameter, moduleName, lookup, owner, cFunctionCppRecords)
                 : cCallbackRecordValue(parameter, moduleName, lookup, owner, cppRecordValues);
-            if (!mapped || mapped->isConst || mapped->isVolatile || parameter.kind == CppTypeKind::Void)
+            if (!mapped || (mapped->isConst && !nestedReadonly(parameter, *mapped)) || mapped->isVolatile ||
+                parameter.kind == CppTypeKind::Void)
                 return std::nullopt;
             function.parameters.push_back(mapped->nativeSharpTypeKey);
             function.parameterPointeeReadonly.push_back(pointeeConst(parameter));
