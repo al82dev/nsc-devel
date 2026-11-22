@@ -384,12 +384,20 @@ bool ProjectInheritanceModel::resolveBaseSpecification(
     }
     if (candidateType.kind != NamedTypeDeclarationKind::Class)
     {
+        // EN: Item 14.0 (D11). A NativeSharp class cannot derive from a C/C++ record yet; the diagnostic says so
+        //     instead of describing the base list.
+        // ES: Item 14.0 (D11). Una clase NativeSharp todavia no puede derivar de un record C/C++; el diagnostico lo
+        //     dice en lugar de describir la lista de bases.
+        const bool cppBase = nameLookup_->cppImportedType(*candidate) != nullptr;
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidBaseType,
             diagnostics::DiagnosticSeverity::Error,
             baseSyntax->range(),
-            "class '" + type.identity.key() +
-                "' may list only one class base followed by interfaces");
+            cppBase ? "class '" + type.identity.key() + "' cannot derive from the C/C++ record '" +
+                          candidateType.identity.fullyQualifiedName() + "': deriving NativeSharp classes from C++ "
+                          "classes (overrides called by the library) is not supported yet"
+                    : "class '" + type.identity.key() +
+                          "' may list only one class base followed by interfaces");
         return false;
     }
     if (!validateBaseClassDerivation(
