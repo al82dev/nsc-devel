@@ -624,8 +624,10 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
             }
         }
     }
-    if (!mapped && !record.isCxx)
-        mapped = projectCppStoredFunctionPointer(field.type, projectOrdinal, moduleName, lookup);
+    // Item 9.13: a function pointer field of a C++ record too (Assimp, ImGui, mmx). / Tambien un campo puntero a
+    //     funcion de un record C++.
+    if (!mapped && (!record.isCxx || cppValueFields))
+        mapped = projectCppStoredFunctionPointer(field.type, projectOrdinal, moduleName, lookup, record.isCxx);
     if (!mapped && (!record.isCxx || (cppValueFields && scalarArray)) && field.type.kind == CppTypeKind::Array)
         mapped = projectCArrayField(field.type, projectOrdinal, moduleName, lookup);
     if (!mapped && (!record.isCxx || (cppValueFields && !field.type.isVolatile)) &&
