@@ -1537,7 +1537,10 @@ bool ProjectMethodBodyModel::validateLambdaEnvironmentRestrictions(
             diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error,
             syntax->range(),
-            "extern C lambda must not capture state; a C function pointer has no environment channel");
+            // C4-01: the text names both forms of the rule and the explicit channel. / El texto nombra ambas formas
+            //     de la regla y el canal explicito.
+            "extern C lambda must not capture state; a C function pointer has no environment channel, so a lambda "
+            "converted to one cannot capture state: pass the state through the API's user data pointer");
         valid = false;
     }
     if (inferAnonymous && !binding.captures.empty())

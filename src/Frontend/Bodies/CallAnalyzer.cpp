@@ -943,8 +943,33 @@ ProjectMethodBodyModel::analyzeNamespaceFunctionArguments(
         const ast::AstNode* argument = extraArgumentSyntax != nullptr ? extraArgumentSyntax
             : syntaxOrdinal < argumentSyntaxes.size() ? argumentSyntaxes[syntaxOrdinal]
                                                       : expression->children()[argumentOrdinal];
-        ExpressionResult analyzed = analyzeExpression(
-            argument, callerCallableOrdinal, scopeOrdinal, diagnostics, true, false, true);
+        // EN: C4-01. A lambda written as the argument of an imported C/C++ function (one candidate) in a function
+        //     pointer position takes that type: its parameters and result come from the C signature and it reaches
+        //     the pointer through its generated thunk, as `binop f = (a, b) => a + b;` does. A captured state stays
+        //     rejected by the binding; the C pointer is never the internal delegate representation.
+        // ES: C4-01. Una lambda escrita como argumento de una funcion C/C++ importada (un candidato) en una posicion
+        //     puntero a funcion toma ese tipo: sus parametros y resultado salen de la firma C y llega al puntero por su
+        //     thunk generado, como `binop f = (a, b) => a + b;`. Un estado capturado sigue rechazado por el enlace;
+        //     el puntero C nunca es la representacion interna de delegado.
+        const NamespaceFunctionSymbol* cTarget = nullptr;
+        if (argument != nullptr && argument->kind() == ast::AstNodeKind::LambdaExpression &&
+            forwardedReceiver == nullptr && extraArgumentSyntax == nullptr && namespaceFunctionModel_ != nullptr &&
+            reference.candidateFunctionOrdinals.size() == 1U &&
+            reference.candidateFunctionOrdinals.front() < namespaceFunctionModel_->functions().size())
+        {
+            const auto& candidate = namespaceFunctionModel_->functions()[reference.candidateFunctionOrdinals.front()];
+            if (!candidate.cppCanonicalIdentity.empty() && candidate.definitionSyntax == nullptr &&
+                argumentOrdinal < candidate.parameters.size() &&
+                candidate.parameters[argumentOrdinal].passKind == ParameterPassKind::Value)
+                if (const auto function = language::parseFunctionTypeIdentity(candidate.parameters[argumentOrdinal].typeKey);
+                    function && function->carrier == language::FunctionCarrier::Pointer &&
+                    function->callingConvention != language::CallingConvention::NativeSharp)
+                    cTarget = &candidate;
+        }
+        ExpressionResult analyzed = cTarget != nullptr
+            ? bindLambdaToDelegate(argument, cTarget->parameters[argumentOrdinal].typeKey,
+                                   callerCallableOrdinal, scopeOrdinal, diagnostics)
+            : analyzeExpression(argument, callerCallableOrdinal, scopeOrdinal, diagnostics, true, false, true);
         if (analyzed.methodGroup)
         {
             analyzed = bindNamespaceFunctionMethodGroupArgument(
