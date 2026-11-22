@@ -326,6 +326,24 @@ bool ProjectMethodBodyModel::analyzeOverloadedBinary(
         operatorTraitKey, operatorName, left.typeKey, right.typeKey);
     if (candidates.empty()) return false;
     const std::vector<ExpressionResult> arguments = {left, right};
+    // EN: Item 9.9. When both operands also admit the built-in integer operation (integers, C enums, unscoped
+    //     C++ enums), a user operator that does not fit is not an error: as in C++, the built-in one applies.
+    // ES: Item 9.9. Si ambos operandos admiten tambien la operacion entera incorporada (enteros, enums C, enums
+    //     C++ sin ambito), un operador de usuario que no encaja no es error: como en C++, se usa el incorporado.
+    const auto builtinOperand = [&](const ExpressionResult& operand) {
+        return cppImportedCEnumUnderlying(nameLookup_, operand.typeKey).has_value() ||
+            (ProjectTypeConversion::isIntegral(operand.typeKey) && operand.typeKey != "builtin:bool");
+    };
+    if ((cppImportedCEnumUnderlying(nameLookup_, left.typeKey) ||
+         cppImportedCEnumUnderlying(nameLookup_, right.typeKey)) &&
+        builtinOperand(left) && builtinOperand(right))
+    {
+        diagnostics::DiagnosticEngine probe;
+        ExpressionResult tried = resolveSyntheticCall(
+            expression, methodMemberOrdinal, scopeOrdinal, operatorName, candidates,
+            arguments, nullptr, {}, std::nullopt, false, false, probe, true);
+        if (!tried.valid) return false;
+    }
     ExpressionResult overloaded = resolveSyntheticCall(
         expression, methodMemberOrdinal, scopeOrdinal, operatorName, std::move(candidates),
         arguments, nullptr, {}, std::nullopt, false, false, diagnostics, true);

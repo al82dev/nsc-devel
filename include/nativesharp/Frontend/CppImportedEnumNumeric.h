@@ -17,7 +17,13 @@ inline std::optional<std::string> cppImportedCEnumUnderlying(
     if (!lookup || !typeKey.starts_with("type:")) return std::nullopt;
     const auto ordinal = lookup->typeOrdinalForIdentity(typeKey.substr(5));
     const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
-    if (!imported || imported->origin != CppImportedTypeOrigin::CEnum || !imported->enumBase ||
+    // EN: Item 9.9. An unscoped C++ enum promotes to its integer like a C enum (`f(FA | FB)` with `f(int)`);
+    //     a scoped `enum class` keeps its own rules.
+    // ES: Item 9.9. Un enum C++ sin ambito se promueve a su entero como un enum C; un `enum class` conserva sus
+    //     reglas.
+    const bool unscopedCppEnum = imported && imported->origin == CppImportedTypeOrigin::CppEnum &&
+        imported->cppEnumScoped.has_value() && !*imported->cppEnumScoped;
+    if (!imported || (imported->origin != CppImportedTypeOrigin::CEnum && !unscopedCppEnum) || !imported->enumBase ||
         !imported->objectLayout || imported->isIncomplete || !imported->deferredImportError.empty())
         return std::nullopt;
     return "builtin:" + imported->enumBase->name;

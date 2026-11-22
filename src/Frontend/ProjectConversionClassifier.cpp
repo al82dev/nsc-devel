@@ -234,6 +234,13 @@ ProjectImplicitConversion ProjectConversionClassifier::classifyImplicit(
         return type && type->origin == CppImportedTypeOrigin::CEnum && type->enumBase &&
             type->deferredImportError.empty();
     };
+    // EN: Item 9.9. An unscoped C++ enum converts implicitly to an integer, as in C++; never the other way.
+    // ES: Item 9.9. Un enum C++ sin ambito se convierte implicitamente a entero, como en C++; nunca al reves.
+    if (sourceImported && sourceImported->origin == CppImportedTypeOrigin::CppEnum && sourceImported->enumBase &&
+        sourceImported->deferredImportError.empty() && sourceImported->cppEnumScoped.has_value() &&
+        !*sourceImported->cppEnumScoped && ProjectTypeConversion::isIntegral(targetTypeKey))
+        return ProjectImplicitConversion{ProjectConversionKind::Numeric, 3,
+                                         std::string(sourceTypeKey), std::string(targetTypeKey), std::nullopt};
     if (isCEnum(sourceImported) &&
         (ProjectTypeConversion::isIntegral(targetTypeKey) || isCEnum(targetImported)))
         return ProjectImplicitConversion{ProjectConversionKind::Numeric, 3,
