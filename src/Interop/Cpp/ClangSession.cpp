@@ -460,6 +460,12 @@ struct MacroParameterUses
     std::vector<bool> value;
     std::vector<bool> stringified;
     std::vector<bool> pasted;
+    // EN: Item 5.3. How many times each parameter appears as a value, and whether the body has `?:`, `&&` or `||`,
+    //     which may evaluate an occurrence conditionally.
+    // ES: Item 5.3. Cuantas veces aparece cada parametro como valor, y si el cuerpo tiene `?:`, `&&` o `||`, que
+    //     pueden evaluar una aparicion de forma condicional.
+    std::vector<unsigned> valueCount;
+    bool conditional = false;
 };
 
 MacroParameterUses macroParameterUses(const clang::MacroInfo& info)
@@ -469,9 +475,12 @@ MacroParameterUses macroParameterUses(const clang::MacroInfo& info)
     uses.value.assign(count, false);
     uses.stringified.assign(count, false);
     uses.pasted.assign(count, false);
+    uses.valueCount.assign(count, 0);
     const auto tokens = info.tokens();
     for (std::size_t index = 0; index < tokens.size(); ++index)
     {
+        if (tokens[index].isOneOf(clang::tok::question, clang::tok::ampamp, clang::tok::pipepipe))
+            uses.conditional = true;
         const auto* identifier = tokens[index].getIdentifierInfo();
         const int parameter = identifier ? info.getParameterNum(identifier) : -1;
         if (parameter < 0) continue;
@@ -482,7 +491,11 @@ MacroParameterUses macroParameterUses(const clang::MacroInfo& info)
             index > 1 && tokens[index - 2].is(clang::tok::comma);
         if (hashBefore) uses.stringified[parameter] = true;
         else if ((pasteBefore && !elision) || pasteAfter) uses.pasted[parameter] = true;
-        else uses.value[parameter] = true;
+        else
+        {
+            uses.value[parameter] = true;
+            ++uses.valueCount[parameter];
+        }
     }
     return uses;
 }
@@ -5496,6 +5509,34 @@ private:
                 return result;
             }
             spelling += std::string(argument.pointerDepth, '*');
+            // EN: Item 5.3 (D1). The wrapper evaluates each value argument once. When the macro evaluates the
+            //     parameter several times or conditionally and the argument has side effects (a call, an assignment,
+            //     an increment), the call is rejected instead of changing its result.
+            // ES: Item 5.3 (D1). El envoltorio evalua cada argumento valor una vez. Si la macro evalua el parametro
+            //     varias veces o de forma condicional y el argumento tiene efectos (una llamada, una asignacion, un
+            //     incremento), la llamada se rechaza en lugar de cambiar su resultado.
+            if (parameterIndex < uses.valueCount.size() && !argument.lvalue &&
+                (uses.valueCount[parameterIndex] > 1 || (uses.conditional && uses.valueCount[parameterIndex] > 0)))
+            {
+                const auto& text = argument.sourceSpelling;
+                bool assignment = false;
+                for (std::size_t at = text.find('='); at != std::string::npos; at = text.find('=', at + 1))
+                {
+                    const char before = at > 0 ? text[at - 1] : ' ';
+                    const char after = at + 1 < text.size() ? text[at + 1] : ' ';
+                    if (after != '=' && before != '=' && before != '!' && before != '<' && before != '>')
+                        assignment = true;
+                }
+                if (text.find('(') != std::string::npos || text.find("++") != std::string::npos ||
+                    text.find("--") != std::string::npos || assignment)
+                {
+                    result.diagnostics.push_back("the macro evaluates argument " + std::to_string(index + 1) + " " +
+                        (uses.valueCount[parameterIndex] > 1 ? "more than once" : "conditionally") +
+                        ", and '" + text + "' may have side effects that NativeSharp would evaluate only once; "
+                        "store the value in a local and pass the local");
+                    return result;
+                }
+            }
             const std::string parameter = "__nsc_a" + std::to_string(index);
             key += (index ? "," : "(") + std::string(argument.lvalue ? "&" : "") + spelling;
             // T19-003: in C++ an lvalue argument is a reference. / En C++ un argumento lvalue es una referencia.
