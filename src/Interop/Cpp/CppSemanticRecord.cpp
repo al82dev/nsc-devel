@@ -1897,7 +1897,12 @@ CppCRecordClosureResult collectCppCRecordClosure(
                 }
                 else
                 {
-                    const auto identity = record.cppValueObservation ? projectCppEnumTypeIdentity(type, module) :
+                    // Item 9.11: the identity of a qualified enum (`const Flags*`) is the enum's. / La identidad de un
+                    //     enum calificado es la del enum.
+                    CppType unqualified = type;
+                    unqualified.isConst = false;
+                    unqualified.isVolatile = false;
+                    const auto identity = record.cppValueObservation ? projectCppEnumTypeIdentity(unqualified, module) :
                         std::optional<compilation::TypeIdentity>{compilation::TypeIdentity(module, {}, {}, type.enumIdentity->name)};
                     if (!identity || !identity->isValid()) { failure = "C enum field identity is invalid"; return false; }
                     enums.insert(identity->key());
@@ -2974,7 +2979,10 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                     { error = "C anonymous enum field has incompatible layout"; return false; }
                     return true;
                 }
-                const auto identity = record.cppValueObservation ? projectCppEnumTypeIdentity(type, record.moduleName) :
+                CppType unqualified = type;
+                unqualified.isConst = false;
+                unqualified.isVolatile = false;
+                const auto identity = record.cppValueObservation ? projectCppEnumTypeIdentity(unqualified, record.moduleName) :
                     std::optional<compilation::TypeIdentity>{compilation::TypeIdentity(record.moduleName, {}, {}, type.enumIdentity->name)};
                 const auto found = std::find_if(enums.begin(), enums.end(), [&](const auto& value) {
                     return identity && value.identityKey == identity->key();
