@@ -901,11 +901,23 @@ CppSemanticFunctionResult projectFunction(
     if (!cLanguage && function.name.size() > 8 && function.name.starts_with("operator") &&
         !std::isalnum(static_cast<unsigned char>(function.name[8])) && function.name[8] != '_')
     {
-        const auto method = language::operatorMethodName(std::string_view(function.name).substr(8),
-                                                         function.parameters.size());
-        if (method.empty() || function.variadic) return failure("C++ operator is not a NativeSharp operator");
-        symbol.name = std::string(method);
-        symbol.isExtension = true;
+        const auto spelling = std::string_view(function.name).substr(8);
+        // EN: Item 11.4. A C++ compound assignment operator (`P& operator+=(P&, const P&)`, also a member one
+        //     through its adapter) keeps an internal name that `a += b` consults before the binary operator; it
+        //     is not a NativeSharp operator declaration.
+        // ES: Item 11.4. Un operador C++ de asignacion compuesta (tambien uno miembro por su adaptador) conserva un
+        //     nombre interno que `a += b` consulta antes del operador binario; no es una declaracion de operador.
+        static constexpr std::string_view compound[] = {"+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>="};
+        if (function.parameters.size() == 2 && !function.variadic &&
+            std::find(std::begin(compound), std::end(compound), spelling) != std::end(compound))
+            symbol.name = "__nsc_cpp_compound" + std::string(spelling);
+        else
+        {
+            const auto method = language::operatorMethodName(spelling, function.parameters.size());
+            if (method.empty() || function.variadic) return failure("C++ operator is not a NativeSharp operator");
+            symbol.name = std::string(method);
+            symbol.isExtension = true;
+        }
     }
     // EN: T19-039. The C operators of a `_Complex` carrier (ClangSession::declareCComplexOperators) are extension
     //     operators `op_<Operator>`; their conversion helpers are not imported.

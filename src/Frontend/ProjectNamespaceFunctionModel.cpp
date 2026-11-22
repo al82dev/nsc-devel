@@ -1926,6 +1926,14 @@ void ProjectNamespaceFunctionModel::walkNamespaceNode(
         if (const auto spelling = cppOperatorSpelling(node->tokenKind()); !spelling.empty())
             captureCppFunctionDemand(nameLookup, unit, node, lexicalNamespace, environment,
                                      "operator" + std::string(spelling), false);
+    // EN: Item 11.4. `a op= b` may resolve to a C++ `operator op=`, so it is demanded too.
+    // ES: Item 11.4. `a op= b` puede resolverse con un `operator op=` de C++, asi que tambien se demanda.
+    if (captureCppFunctionDemands_ && node->kind() == ast::AstNodeKind::AssignmentExpression)
+        if (const auto base = lexer::compoundAssignmentBaseOperator(node->tokenKind());
+            base != lexer::TokenKind::Invalid)
+            if (const auto spelling = cppOperatorSpelling(base); !spelling.empty())
+                captureCppFunctionDemand(nameLookup, unit, node, lexicalNamespace, environment,
+                                         "operator" + std::string(spelling) + "=", false);
     bindValueReferences(
         nameLookup,
         unit,

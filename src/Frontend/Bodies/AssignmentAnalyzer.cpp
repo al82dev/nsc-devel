@@ -2672,6 +2672,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
         : ProjectTypeConversion::commonNumericType(
               left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
     if (!common.has_value() && !narrowCppAtomic && !cAtomicEnum && !cVolatileBoolArrayBitwise)
+        if (ExpressionResult cppCompound; tryCppCompoundAssignment(
+                expression, left, right, methodMemberOrdinal, scopeOrdinal, cppCompound)) return cppCompound;
+    if (!common.has_value() && !narrowCppAtomic && !cAtomicEnum && !cVolatileBoolArrayBitwise)
     {
         // EN: LKF-376: string += is lowered only into a raii string local; other destinations reached
         //     the numeric message, which did not say what string += needs.
@@ -3597,6 +3600,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishAssignmen
             result.valid = true;
             return result;
         }
+    if (ExpressionResult cppCompound; tryCppCompoundAssignment(
+            expression, left, right, methodMemberOrdinal, scopeOrdinal, cppCompound)) return cppCompound;
     ExpressionResult overloaded;
     if (analyzeOverloadedBinary(
             overloaded, expression, left, right,
@@ -4194,4 +4199,83 @@ std::optional<std::size_t> ProjectMethodBodyModel::automaticPropertyBackingField
     }
     return std::nullopt;
 }
+bool ProjectMethodBodyModel::tryCppCompoundAssignment(
+    const ast::AstNode* expression, const ExpressionResult& left, const ExpressionResult& right,
+    std::size_t methodMemberOrdinal, std::size_t scopeOrdinal, ExpressionResult& out)
+{
+    // EN: Item 11.4. A C++ compound assignment operator of the target's type (`P& operator+=(P&, const P&)`, free or
+    //     member) is called as written, with the target's address and the right-hand side, before the binary
+    //     operator is considered: it mutates the receiver and need not equal `a = a + b`.
+    // ES: Item 11.4. Un operador C++ de asignacion compuesta del tipo del destino se llama como esta escrito, con la
+    //     direccion del destino y el lado derecho, antes de considerar el operador binario: muta el receptor y no
+    //     tiene por que equivaler a `a = a + b`.
+    if (namespaceFunctionModel_ != nullptr && left.typeKey.starts_with("type:") && left.assignable)
+    {
+        std::string_view spelling;
+        switch (expression->tokenKind())
+        {
+        case lexer::TokenKind::PlusEqual: spelling = "+="; break;
+        case lexer::TokenKind::MinusEqual: spelling = "-="; break;
+        case lexer::TokenKind::StarEqual: spelling = "*="; break;
+        case lexer::TokenKind::SlashEqual: spelling = "/="; break;
+        case lexer::TokenKind::PercentEqual: spelling = "%="; break;
+        case lexer::TokenKind::AmpEqual: spelling = "&="; break;
+        case lexer::TokenKind::PipeEqual: spelling = "|="; break;
+        case lexer::TokenKind::CaretEqual: spelling = "^="; break;
+        case lexer::TokenKind::LessLessEqual: spelling = "<<="; break;
+        case lexer::TokenKind::GreaterGreaterEqual: spelling = ">>="; break;
+        default: break;
+        }
+        const std::string name = "__nsc_cpp_compound" + std::string(spelling);
+        std::vector<std::pair<std::size_t, ProjectImplicitConversion>> matches;
+        const auto& functions = namespaceFunctionModel_->functions();
+        for (std::size_t ordinal = 0; !spelling.empty() && ordinal < functions.size(); ++ordinal)
+        {
+            const auto& function = functions[ordinal];
+            if (function.name != name || function.parameters.size() != 2) continue;
+            const auto& target = function.parameters[0];
+            const auto& source = function.parameters[1];
+            if (target.passKind != ParameterPassKind::Ref || target.pointeeTypeKey != left.typeKey) continue;
+            ProjectImplicitConversion conversion;
+            if (source.passKind == ParameterPassKind::Value)
+                conversion = classifyImplicit(right.typeKey, source.typeKey, right.integerConstant);
+            else if (right.addressable && right.typeKey == source.pointeeTypeKey &&
+                     (source.passKind == ParameterPassKind::In || !right.readonlyReceiver))
+                conversion = ProjectImplicitConversion{ProjectConversionKind::Identity, 0, right.typeKey + "*",
+                                                       source.typeKey, std::nullopt};
+            if (conversion.exists()) matches.emplace_back(ordinal, conversion);
+        }
+        if (matches.size() == 1)
+        {
+            const auto& [selected, conversion] = matches.front();
+            NamespaceFunctionCallBinding call;
+            call.resolution = MethodCallResolutionKind::Resolved;
+            call.syntax = expression;
+            call.callerCallableOrdinal = methodMemberOrdinal;
+            call.scopeOrdinal = scopeOrdinal;
+            call.writtenName = name;
+            call.candidateFunctionOrdinals = {selected};
+            call.viableCandidateFunctionOrdinals = {selected};
+            call.selectedFunctionOrdinal = selected;
+            call.selectedConversions = {
+                ProjectImplicitConversion{ProjectConversionKind::Identity, 0, left.typeKey + "*", left.typeKey + "*",
+                                          std::nullopt},
+                conversion};
+            call.selectedArgumentParameterOrdinals = {0, 1};
+            call.selectedArgumentSyntaxes = {expression->first(), expression->second()};
+            call.resultTypeKey = functions[selected].declaredTypeKey;
+            call.cComplexCompoundAssignment = true;
+            storeNamespaceFunctionCall(expression, call);
+            invalidateAssignedStorage(expression->first(), scopeOrdinal);
+            ExpressionResult result = left;
+            result.assignable = false;
+            result.addressable = false;
+            result.valid = true;
+            out = result;
+            return true;
+        }
+    }
+    return false;
+}
+
 }

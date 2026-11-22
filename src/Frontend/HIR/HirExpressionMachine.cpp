@@ -2577,9 +2577,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAssignmentExpression
         if (address == nullptr) return nullptr;
         auto pointer = makeNode(ProjectOopHirNodeKind::AddressValue, expression->first(), target.parameters[0].typeKey);
         pointer->children.push_back(std::move(address));
-        auto value = lowerExpression(expression->second(), memberOrdinal, false, error);
+        // Item 11.4: a `const P&` / `P&` right-hand side passes its address. / Un lado derecho por referencia pasa
+        //     su direccion.
+        const bool rightByAddress = target.parameters[1].passKind != ParameterPassKind::Value;
+        auto value = lowerExpression(expression->second(), memberOrdinal, rightByAddress, error);
         if (value == nullptr) return nullptr;
-        if (namespaceSetter->selectedConversions.size() == 2 &&
+        if (rightByAddress)
+        {
+            auto rightPointer = makeNode(ProjectOopHirNodeKind::AddressValue, expression->second(),
+                                         target.parameters[1].typeKey);
+            rightPointer->children.push_back(std::move(value));
+            value = std::move(rightPointer);
+        }
+        else if (namespaceSetter->selectedConversions.size() == 2 &&
             namespaceSetter->selectedConversions[1].kind != ProjectConversionKind::Identity)
             value = wrapImplicitConversion(std::move(value), namespaceSetter->selectedConversions[1],
                                            expression->second());

@@ -5156,6 +5156,10 @@ private:
     //     no NativeSharp conversion exists: a string literal to a `const char*`, and C's arithmetic conversions.
     // ES: Items 3.2 y 3.3. Las conversiones que C aplica cuando un argumento NativeSharp llega a un parametro
     //     C/C++ y no existe conversion NativeSharp: un literal de cadena a `const char*`, y las aritmeticas de C.
+    // Item 11.4: `a op= b` through a C++ compound assignment operator. / A traves de un operador C++ compuesto.
+    bool tryCppCompoundAssignment(const ast::AstNode* expression, const ExpressionResult& left,
+        const ExpressionResult& right, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal,
+        ExpressionResult& out);
     ProjectImplicitConversion classifyCFrontierConversion(
         const ExpressionResult& source, const MethodParameterSymbol& parameter, std::string_view targetTypeKey) const;
     bool reportTupleConversionFailure(
