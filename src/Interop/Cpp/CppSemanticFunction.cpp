@@ -2240,6 +2240,9 @@ bool provideExperimentalCppInstanceMethods(
                 if (method.kind != CppMethodKind::Method) continue;
                 const Family family{group.identity.key(), method.name};
                 if (method.isStatic) { blocked.insert(family); continue; }
+                // EN: Items 9.1 and 9.2. A deleted overload never blocks its family: C++ cannot call it either.
+                // ES: Items 9.1 y 9.2. Una sobrecarga eliminada nunca bloquea su familia: C++ tampoco la llama.
+                if (method.isDeleted) continue;
                 auto mapped = projectCppSemanticInstanceMethod(entry.declaration, methodIndex, group.projectOrdinal,
                     graph.projects()[group.projectOrdinal].moduleName(), entry.targetTriple, &visibleRecords, &lookup);
                 if (const auto* instance = std::get_if<CppSemanticInstanceMethod>(&mapped))
