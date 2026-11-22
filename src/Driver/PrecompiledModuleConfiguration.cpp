@@ -504,6 +504,20 @@ bool configurePrecompiledModules(
                 failure->projectFailure.failure.diagnostics, compilation.diagnostics());
             return false;
         }
+        // EN: Item 1.1. A session that opened correctly can still carry Clang warnings (`#warning`, deprecated
+        //     declarations...). They are reported with the rest of the compilation instead of being dropped.
+        // ES: Item 1.1. Una sesion que abrio bien puede traer avisos de Clang (`#warning`, declaraciones
+        //     obsoletas...). Se informan con el resto de la compilacion en lugar de descartarse.
+        for (const auto& group : std::get<interop::CppGraphSessions>(opened).projects)
+            for (const auto& session : group.sessions)
+            {
+                if (!session) continue;
+                std::vector<interop::CppSessionDiagnostic> warnings;
+                for (auto& diagnostic : session->diagnosticsSnapshot())
+                    if (diagnostic.severity == interop::CppSessionDiagnosticSeverity::Warning)
+                        warnings.push_back(std::move(diagnostic));
+                frontend::appendCppDiagnostics(warnings, compilation.diagnostics());
+            }
         const bool hasSessions = !std::get<interop::CppGraphSessions>(opened).projects.empty();
         if (captureCppInputs)
         {
