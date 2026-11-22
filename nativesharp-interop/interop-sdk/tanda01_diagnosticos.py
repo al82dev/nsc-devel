@@ -30,10 +30,12 @@ def una_vez():
         print('ok t1-una-vez', flush=True)
 una_vez()
 
-campo = Caso('t1-campo-omitido', 'typedef struct S { int a; void* pad[2]; int b; } S;\nint g(S* s);\n',
+# EN: `_Float16` has no NativeSharp mapping yet (item 3.6); `void*[N]` fields are imported since batch 4.
+# ES: `_Float16` aun no tiene mapeo en NativeSharp (item 3.6); los campos `void*[N]` se importan desde la tanda 4.
+campo = Caso('t1-campo-omitido', 'typedef struct S { int a; _Float16 pad; int b; } S;\nint g(S* s);\n',
              'int g(S* s) { return s->a + s->b; }\n')
-diagnostico(campo, 'S s; s.a = 40; s.b = 2; void* p = s.pad[0]; return g(&s);',
-            ["C/C++ field 'pad' of type 'void *[2]' was not imported"], False, opts=['0'])
+diagnostico(campo, 'S s; s.a = 40; s.b = 2; int p = (int)s.pad; return g(&s);',
+            ["C/C++ field 'pad' of type '_Float16' was not imported"], False, opts=['0'])
 positivo(campo, 'S s; s.a = 40; s.b = 2; return g(&s);')
 
 param = Caso('t1-parametro', 'int g(typeof(nullptr) p);\n', None, standard='c23')
