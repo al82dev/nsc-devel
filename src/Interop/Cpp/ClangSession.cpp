@@ -2219,10 +2219,31 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                     }
                     value.bases.push_back(std::move(projected));
                 }
-                for (const clang::Decl* member : cppRecord->decls())
+                // EN: Item 9.8. Static data members of public bases are members of the derived record too
+                //     (`Derived::value` from `std::true_type`-like traits), unless the record hides the name; they
+                //     keep the base's own storage symbol.
+                // ES: Item 9.8. Los miembros de datos static de las bases publicas tambien son del record derivado,
+                //     salvo que el record oculte el nombre; conservan el simbolo de almacenamiento de la base.
+                std::vector<const clang::VarDecl*> staticMembers;
+                std::set<std::string> staticNames;
+                std::function<void(const clang::CXXRecordDecl&, unsigned)> gatherStatics =
+                    [&](const clang::CXXRecordDecl& owner, unsigned depth) {
+                        for (const clang::Decl* member : owner.decls())
+                            if (const auto* field = llvm::dyn_cast<clang::VarDecl>(member);
+                                field && field->isStaticDataMember() && !field->isImplicit() &&
+                                (depth == 0 || field->getAccess() == clang::AS_public) &&
+                                staticNames.insert(field->getNameAsString()).second)
+                                staticMembers.push_back(field);
+                        if (depth >= 16 || !owner.hasDefinition()) return;
+                        for (const auto& base : owner.bases())
+                            if (base.getAccessSpecifier() == clang::AS_public && !base.isVirtual())
+                                if (const auto* baseRecord = base.getType()->getAsCXXRecordDecl();
+                                    baseRecord && baseRecord->hasDefinition())
+                                    gatherStatics(*baseRecord->getDefinition(), depth + 1);
+                    };
+                gatherStatics(*cppRecord, 0);
+                for (const clang::VarDecl* field : staticMembers)
                 {
-                    const auto* field = llvm::dyn_cast<clang::VarDecl>(member);
-                    if (!field || !field->isStaticDataMember() || field->isImplicit()) continue;
                     CppStaticField projected;
                     projected.clangUsr = declarationUsr(field);
                     projected.name = field->getNameAsString();

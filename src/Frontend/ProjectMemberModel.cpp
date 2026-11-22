@@ -355,8 +355,12 @@ bool ProjectMemberModel::setExperimentalCppStaticFields(
         { error = "invalid experimental C++ static field"; return false; }
         // T19-036: a verified shared symbol is the same storage under two owners. / El mismo almacenamiento.
         const auto [symbol, inserted] = symbols.emplace(field.externalSymbol, &field);
+        // Item 9.8: a C++ mangled symbol names one entity; a derived record reaches its base's static member.
+        //     / Un simbolo C++ decorado nombra una entidad; un derivado alcanza el miembro static de su base.
+        const bool sharedSymbol = (symbol->second->sharedExternalSymbolVerified && field.sharedExternalSymbolVerified) ||
+            field.externalSymbol.starts_with('?');
         if (!identities.emplace(field.ownerIdentityKey, field.name).second || (!inserted &&
-            (!symbol->second->sharedExternalSymbolVerified || !field.sharedExternalSymbolVerified ||
+            (!sharedSymbol ||
              symbol->second->ownerIdentityKey == field.ownerIdentityKey || symbol->second->name != field.name ||
              sharedCppTypeKeyShape(symbol->second->typeKey) != sharedCppTypeKeyShape(field.typeKey) ||
              symbol->second->isConst != field.isConst || symbol->second->isVolatile != field.isVolatile ||
