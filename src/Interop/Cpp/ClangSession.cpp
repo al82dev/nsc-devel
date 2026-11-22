@@ -1464,6 +1464,18 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
             }
             value.parameters.push_back(std::move(captured));
         }
+        // Item 15.6: a C++ internal definition of the header is imported under its mangled name. / Una definicion
+        //     interna C++ del encabezado se importa con su nombre decorado.
+        if (astContext.getLangOpts().CPlusPlus && !value.externalLinkage && definition && definition->hasBody() &&
+            definition->getTemplatedKind() == clang::FunctionDecl::TK_NonTemplate && !definition->isDependentContext() &&
+            mangler.shouldMangleDeclName(function))
+        {
+            llvm::SmallString<128> symbol;
+            llvm::raw_svector_ostream stream(symbol);
+            mangler.mangleName(clang::GlobalDecl(function), stream);
+            value.externalSymbol = std::string(symbol.str());
+            value.cppInternalDefinition = true;
+        }
         if (value.externalLinkage)
         {
             if (value.callingConvention == "regcall" && generator)
@@ -4373,7 +4385,13 @@ public:
                     const auto* definition = function->getDefinition();
                     const auto* ctor = llvm::dyn_cast_or_null<clang::CXXConstructorDecl>(definition);
                     const auto* dtor = llvm::dyn_cast_or_null<clang::CXXDestructorDecl>(definition);
-                    if (definition == function && definition->isInlined() &&
+                    // Item 15.6: an internal definition (`static inline`) is emitted too. / Tambien una definicion
+                    //     interna.
+                    const bool internalDefinition = definition == function && definition->hasBody() &&
+                        !definition->isExternallyVisible() && !ctor && !dtor && !definition->isDependentContext() &&
+                        definition->getTemplatedKind() == clang::FunctionDecl::TK_NonTemplate;
+                    if (internalDefinition) consider(clang::GlobalDecl(definition));
+                    else if (definition == function && definition->isInlined() &&
                         (definition->hasBody() || ((ctor || dtor) && definition->isExplicitlyDefaulted())) &&
                         !definition->isDependentContext() && !definition->isDeleted() &&
                         !definition->hasAttr<clang::DLLImportAttr>() &&
@@ -4570,6 +4588,14 @@ public:
             auto* global = value ? llvm::dyn_cast<llvm::GlobalObject>(value) : nullptr;
             if (!global || global->isDeclaration() || global->hasAvailableExternallyLinkage()) continue;
             if (global->hasLinkOnceODRLinkage()) global->setLinkage(llvm::GlobalValue::WeakODRLinkage);
+            // Item 15.6: an internal definition becomes a weak_odr one the program can link. / Una definicion interna
+            //     pasa a weak_odr para que el programa la enlace.
+            if (global->hasLocalLinkage())
+            {
+                global->setLinkage(llvm::GlobalValue::WeakODRLinkage);
+                global->setVisibility(llvm::GlobalValue::DefaultVisibility);
+                global->setComdat(module->getOrInsertComdat(name));
+            }
             emitted.push_back(name);
         }
         if (emitted.empty() || llvm::verifyModule(*module, &llvm::errs())) { emitted.clear(); return std::nullopt; }

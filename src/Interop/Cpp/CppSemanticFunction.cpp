@@ -775,7 +775,7 @@ CppSemanticFunctionResult projectFunction(
         return CppSemanticFunctionFailure{std::move(message)};
     };
     if (moduleName.empty() || function.name.empty() || function.qualifiedName.empty() ||
-        (!function.externalLinkage && !function.isCStaticInlineDefinition) ||
+        (!function.externalLinkage && !function.isCStaticInlineDefinition && !function.cppInternalDefinition) ||
         !function.externalSymbol || function.externalSymbol->empty() ||
         function.callingConvention.empty())
         return failure("function requires a project, a name and an external symbol");

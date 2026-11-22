@@ -74,6 +74,11 @@ struct CppFunctionDeclaration
     bool hasPrototype = true;
     // Definition owned by this C translation unit; not an external ABI symbol.
     bool isCStaticInlineDefinition = false;
+    // EN: Item 15.6. A C++ function with internal linkage defined in the header (`static inline int f(...)`): NSC
+    //     emits its own weak_odr copy under the mangled name, as for an inline function.
+    // ES: Item 15.6. Una funcion C++ con enlace interno definida en el encabezado: NSC emite su propia copia weak_odr
+    //     con el nombre decorado, como una funcion inline.
+    bool cppInternalDefinition = false;
     // T13-005: a function template specialization NativeSharp requested. / Una especializacion pedida.
     bool templateSpecialization = false;
     // EN: T19-003. For a C function-like macro called from NativeSharp, the C name of the static inline wrapper
