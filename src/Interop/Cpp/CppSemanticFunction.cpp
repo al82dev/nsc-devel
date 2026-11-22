@@ -964,7 +964,10 @@ CppSemanticFunctionResult projectFunction(
             parameter.passKind = input.type.element->isConst
                 ? frontend::ParameterPassKind::In : frontend::ParameterPassKind::Ref;
             parameter.pointeeTypeKey = parameter.typeKey.substr(0, parameter.typeKey.size() - 1);
-            parameter.pointerPointeeReadonly = input.type.element->isConst;
+            // Item 2.5: the referent of `const char*&` is a mutable pointer to readonly data. / El referente de
+            //     `const char*&` es un puntero modificable a datos de solo lectura.
+            parameter.pointerPointeeReadonly = input.type.element->kind == CppTypeKind::Pointer
+                ? cppPointeeReadonlyForNativeSharp(*input.type.element) : input.type.element->isConst;
             parameter.pointerNullable = false;
             parameter.lifetimeName = "$p" + std::to_string(index);
             // T19-007: `T&&` also binds a materialized value. / `T&&` tambien enlaza un valor materializado.
@@ -1172,7 +1175,11 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
                                       projectOrdinal, false, false, lookup != nullptr);
         if (!mapped || parameter.type.kind == CppTypeKind::Void)
             return fail("C++ instance method parameter type is not yet mapped");
-        if (reference) mapped->isConst = false;
+        // Item 2.5: a reference to a pointer keeps the readonly mark of the pointed data. / Una referencia a un
+        //     puntero conserva la marca de solo lectura del dato apuntado.
+        if (reference)
+            mapped->isConst = parameter.type.element->kind == CppTypeKind::Pointer &&
+                cppPointeeReadonlyForNativeSharp(*parameter.type.element);
         parameters.push_back(std::move(*mapped));
         objectSizeModes.push_back(parameter.objectSizeMode
             ? static_cast<std::uint8_t>(1 + *parameter.objectSizeMode + (parameter.objectSizeDynamic ? 4 : 0)) : 0);
@@ -1293,7 +1300,11 @@ CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
                                       projectOrdinal, false, false, true);
         if (!mapped || parameter.type.kind == CppTypeKind::Void)
             return fail("C++ static method parameter type is not yet mapped");
-        if (reference) mapped->isConst = false;
+        // Item 2.5: a reference to a pointer keeps the readonly mark of the pointed data. / Una referencia a un
+        //     puntero conserva la marca de solo lectura del dato apuntado.
+        if (reference)
+            mapped->isConst = parameter.type.element->kind == CppTypeKind::Pointer &&
+                cppPointeeReadonlyForNativeSharp(*parameter.type.element);
         parameters.push_back(std::move(*mapped));
         objectSizeModes.push_back(parameter.objectSizeMode
             ? static_cast<std::uint8_t>(1 + *parameter.objectSizeMode + (parameter.objectSizeDynamic ? 4 : 0)) : 0);
