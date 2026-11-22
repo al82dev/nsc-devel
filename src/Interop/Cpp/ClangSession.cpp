@@ -5015,7 +5015,22 @@ private:
             if (name.starts_with("__nsc_")) continue;
             if (info->isFunctionLike())
                 macroConstants_->names.push_back({name, true, false, macroTokenParameters(*info)});
-            else objectLike.push_back(name);
+            else
+            {
+                // EN: Item 5.1. A macro that expands to a list of arguments (`"$clr.diffuse", 0, 0`) is not one
+                //     value: imported as a value it was the last element of a comma expression. It stays out.
+                // ES: Item 5.1. Una macro que se expande a una lista de argumentos no es un valor: importada como valor
+                //     era el ultimo elemento de una expresion con comas. Queda fuera.
+                int depth = 0;
+                bool list = false;
+                for (const auto& token : info->tokens())
+                {
+                    if (token.isOneOf(clang::tok::l_paren, clang::tok::l_square, clang::tok::l_brace)) ++depth;
+                    else if (token.isOneOf(clang::tok::r_paren, clang::tok::r_square, clang::tok::r_brace)) --depth;
+                    else if (token.is(clang::tok::comma) && depth == 0) list = true;
+                }
+                if (!list) objectLike.push_back(name);
+            }
         }
         std::sort(objectLike.begin(), objectLike.end());
         // EN: T19-003. A macro expansion session reports only the function-like macros; the values come from the
