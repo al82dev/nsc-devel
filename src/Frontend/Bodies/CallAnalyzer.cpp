@@ -4351,8 +4351,7 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                         !lookupScopeName(scopeOrdinal, argument->text()).has_value() && [&] {
                             const auto& types = nameLookup_->namedTypes();
                             for (std::size_t ordinal = 0; ordinal < types.size(); ++ordinal)
-                                if (types[ordinal].identity.name() == argument->text() &&
-                                    nameLookup_->cppImportedType(ordinal) != nullptr) return true;
+                                if (types[ordinal].identity.name() == argument->text()) return true;
                             return false;
                         }();
                     if ((argument != nullptr && argument->kind() == ast::AstNodeKind::TypeArgumentExpression) ||
