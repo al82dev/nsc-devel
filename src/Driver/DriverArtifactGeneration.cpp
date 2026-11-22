@@ -1576,6 +1576,11 @@ void collectDynamicMethodExports(const frontend::ProjectCompilation &compilation
     {
         if (function.isLambda || function.destructor || function.declaringTypeOrdinal >= types.size())
             continue;
+        // EN: Item 2.8. The constructors and methods of an imported C/C++ type belong to the C/C++ library, or to
+        //     the code NSC emits for it; a NativeSharp DLL that uses the type does not export them.
+        // ES: Item 2.8. Los constructores y metodos de un tipo C/C++ importado son de la biblioteca C/C++, o del
+        //     codigo que NSC emite para ella; una DLL NativeSharp que usa el tipo no los exporta.
+        if (function.isCppExternal || function.isImportedC) continue;
         const frontend::NamedTypeDeclaration &type = types[function.declaringTypeOrdinal];
         if (function.isSyntheticImplicitConstructor)
         {
