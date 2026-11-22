@@ -776,7 +776,7 @@ CppSemanticFunctionResult projectFunction(
                           cRecordValues, false, cppRecordValues);
     if (!resultType && !vectorReason.empty())
         return failure("C/C++ vector return type is not yet mapped: " + vectorReason);
-    if (!resultType) return failure("C/C++ return type is not yet mapped");
+    if (!resultType) return failure("C/C++ return type '" + function.returnType.spelling + "' is not yet mapped");
 
     std::string cppNamespace;
     if (function.qualifiedName != function.name)
@@ -897,7 +897,7 @@ CppSemanticFunctionResult projectFunction(
         const auto carrier = macroReference ? std::optional<CppType>(input.type)
             : reference ? cppParameterReferenceCarrier(input.type) : std::nullopt;
         if (reference && !carrier)
-            return failure("C/C++ parameter " + std::to_string(index) + " is not yet mapped");
+            return failure("C/C++ parameter " + std::to_string(index) + " ('" + input.type.spelling + "') is not yet mapped");
         // T19-002: a C `_Atomic T*` parameter takes a pointer to atomic storage. / Un parametro C `_Atomic T*`
         //     toma un puntero a almacenamiento atomico.
         const auto atomicPointee = cLanguage ? cAtomicPointeeCarrier(input.type) : std::nullopt;
@@ -918,7 +918,7 @@ CppSemanticFunctionResult projectFunction(
         if (!parameterType && !vectorReason.empty())
             return failure("C/C++ vector parameter " + std::to_string(index) + " is not yet mapped: " + vectorReason);
         if (!parameterType || input.type.kind == CppTypeKind::Void)
-            return failure("C/C++ parameter " + std::to_string(index) + " is not yet mapped");
+            return failure("C/C++ parameter " + std::to_string(index) + " ('" + input.type.spelling + "') is not yet mapped");
         frontend::MethodParameterSymbol parameter;
         parameter.name = input.name;
         parameter.typeKey = parameterType->nativeSharpTypeKey;
@@ -931,7 +931,7 @@ CppSemanticFunctionResult projectFunction(
         {
             // T10-003: `T&` is a ref parameter and `const T&` an in parameter; both name the referent type.
             if (!parameter.typeKey.ends_with('*'))
-                return failure("C/C++ parameter " + std::to_string(index) + " is not yet mapped");
+                return failure("C/C++ parameter " + std::to_string(index) + " ('" + input.type.spelling + "') is not yet mapped");
             parameter.passKind = input.type.element->isConst
                 ? frontend::ParameterPassKind::In : frontend::ParameterPassKind::Ref;
             parameter.pointeeTypeKey = parameter.typeKey.substr(0, parameter.typeKey.size() - 1);
