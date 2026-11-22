@@ -87,16 +87,21 @@ inline bool cppRecordValueOperationsEligible(const CppRecordValueTraits& traits,
     // ES: T12-001. Un record trivialmente copiable con construccion por defecto y destruccion triviales es un
     //     valor cuyos bytes son el objeto, tambien si no es de disposicion estandar (campos en una base y en
     //     el derivado, acceso mixto). El ABI de llamada de ese valor sigue siendo el de Clang en cada funcion.
-    if (traits.hasNonLiteralOrVolatileFieldsOrBases || !traits.triviallyCopyable ||
-        !traits.trivialDefaultConstructor || !traits.trivialDestructor) return false;
+    // EN: Item 10.1 (T16). The default constructor no longer takes part: a value whose copy, assignment and
+    //     destruction are trivial is transported as bytes; default-initializing a local of a type whose default
+    //     constructor is not trivial is rejected where the local is declared.
+    // ES: Item 10.1 (T16). El constructor por defecto ya no participa: un valor con copia, asignacion y destruccion
+    //     triviales se transporta como bytes; inicializar por defecto un local de un tipo cuyo constructor por
+    //     defecto no es trivial se rechaza donde se declara el local.
+    if (traits.hasNonLiteralOrVolatileFieldsOrBases || !traits.triviallyCopyable || !traits.trivialDestructor)
+        return false;
     const auto valid = [](const CppSpecialMemberSelection& operation) {
         return operation.status == CppSpecialMemberSelectionStatus::Selected &&
             operation.access == CppAccess::Public && operation.isDeleted == false &&
             operation.isTrivial == true;
     };
     return valid(operations.copyFromConst) && valid(operations.copyFromMutable) &&
-        valid(operations.destructor) && valid(operations.defaultConstructor) &&
-        valid(operations.assignFromConst) && valid(operations.assignFromMutable);
+        valid(operations.destructor) && valid(operations.assignFromConst) && valid(operations.assignFromMutable);
 }
 
 // EN: Item 10.1 (T16). Passing, returning and copying a value only needs its bytes to be the object: trivially
