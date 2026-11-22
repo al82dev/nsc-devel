@@ -1726,6 +1726,9 @@ void collectDynamicStateExports(const frontend::ProjectCompilation &compilation,
             continue;
         const frontend::NamedTypeDeclaration &type = types[field.declaringTypeOrdinal];
         const frontend::ClassMemberSymbol &member = members[field.memberOrdinal];
+        // Item 2.8: a static member of an imported C/C++ type is the library's storage, not a DLL export.
+        //     / Un miembro static de un tipo C/C++ importado es almacenamiento de la biblioteca.
+        if (member.isCppExternal || member.isImportedC) continue;
         if (type.projectOrdinal == rootProjectOrdinal &&
             isPubliclyReachableNamedType(types, field.declaringTypeOrdinal) &&
             (hasConsumerCallableAccessibility(member.accessibility) ||
