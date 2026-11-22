@@ -204,4 +204,43 @@ BODY6 = r'''
 c6 = Caso('c3-union-transparente', H6, S6)
 positivo(c6, BODY6)
 rechazo(c6, 'int x = 1; return family_of(&x);', 'family_of')
+
+# C3-07: a flexible array member whose element is an array (`int rows[][4]`) is imported like `T x[]`: indexed past
+# any length, its rows are `int[4]` with their own bound, and it decays to `int (*)[4]` / `int rows[][4]`. A final
+# `T x[0]` is flexible (item 4.5); a final `T x[1]` stays a one-element array (not every final array is flexible).
+H7 = r'''
+typedef struct Grid { int n; int rows[][4]; } Grid;
+typedef struct Z { int n; int data[0]; } Z;
+typedef struct One { int n; int data[1]; } One;
+typedef struct M { int m[3][4]; } M;
+Grid* grid(void); Z* zeros(void); One* one(void); M* mat(void);
+int sum_rows(int rows[][4], int count);
+int sum_ptr(int (*rows)[4], int count);
+'''
+S7 = r'''
+static int storage[64];
+Grid* grid(void) { Grid* g = (Grid*)storage; g->n = 2; for (int i = 0; i < 8; ++i) g->rows[i/4][i%4] = i; return g; }
+Z* zeros(void) { Z* z = (Z*)storage; z->n = 3; z->data[0] = 5; z->data[1] = 6; z->data[2] = 7; return z; }
+One* one(void) { static One o = {1, {9}}; return &o; }
+M* mat(void) { static M m; for (int i = 0; i < 12; ++i) m.m[i/4][i%4] = i; return &m; }
+int sum_rows(int rows[][4], int count) { int s = 0; for (int i = 0; i < count; ++i) for (int j = 0; j < 4; ++j) s += rows[i][j]; return s; }
+int sum_ptr(int (*rows)[4], int count) { return sum_rows(rows, count); }
+'''
+BODY7 = r'''
+    var g = grid();
+    if (g->rows[1][3] != 7 || sum_rows(g->rows, 2) != 28 || sum_ptr(g->rows, 2) != 28) return 1;
+    g->rows[1][0] = 14;
+    if (sum_rows(g->rows, 2) != 38) return 2;
+    var z = zeros();
+    if (z->data[2] != 7) return 3;
+    var o = one();
+    if (o->data[0] != 9) return 4;
+    var m = mat();
+    if (sum_rows(m->m, 3) != 66 || sum_ptr(m->m, 3) != 66) return 5;
+    return 42;
+'''
+c7 = Caso('c3-flexible-arreglos', H7, S7)
+positivo(c7, BODY7)
+rechazo(c7, 'var o = one(); return o->data[1];', 'outside [0, 1)')
+rechazo(c7, 'var g = grid(); return g->rows[0][4];', 'outside [0, 4)')
 fin()

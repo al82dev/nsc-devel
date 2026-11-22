@@ -261,7 +261,7 @@ std::optional<CppSemanticInstanceField> projectCFlexibleArrayField(const CppReco
     if (record.isCxx || record.kind != CppRecordKind::Struct || fieldIndex + 1 != record.fields.size() ||
         field.name.empty() || field.access != CppAccess::Public || field.bitWidth || !field.offsetBits ||
         *field.offsetBits % 8 != 0 || *field.offsetBits > *record.sizeBits ||
-        !element || element->kind == CppTypeKind::Array ||
+        !element || (element->kind == CppTypeKind::Array && element->isIncompleteArray) ||
         !element->sizeBits || !element->alignmentBits || *element->sizeBits == 0 ||
         *element->sizeBits % 8 != 0 || *element->alignmentBits == 0 || *element->alignmentBits % 8 != 0)
         return std::nullopt;
@@ -273,13 +273,25 @@ std::optional<CppSemanticInstanceField> projectCFlexibleArrayField(const CppReco
     // ES: T08-D15: alineacion efectiva de Clang para el miembro, garantizada por la alineacion del propio record.
     const auto effectiveAlignment = std::gcd(recordAlignment, *field.offsetBits / 8);
     if (effectiveAlignment == 0) return std::nullopt;
-    const bool isConst = field.type.isConst || element->isConst;
-    const bool isVolatile = field.type.isVolatile || element->isVolatile;
+    bool isConst = field.type.isConst || element->isConst;
+    bool isVolatile = field.type.isVolatile || element->isVolatile;
     CppType unqualified = *element;
     unqualified.isConst = false;
     unqualified.isVolatile = false;
     std::optional<CppScalarTypeMapping> mapped;
-    if (element->kind == CppTypeKind::Boolean || element->kind == CppTypeKind::SignedInteger ||
+    // EN: C3-07. A flexible array of arrays (`int rows[][4]`) has fixed-array elements, mapped as array fields are.
+    // ES: C3-07. Un arreglo flexible de arreglos (`int rows[][4]`) tiene elementos arreglo fijo, mapeados como los
+    //     campos arreglo.
+    if (element->kind == CppTypeKind::Array)
+    {
+        mapped = projectCArrayField(unqualified, projectOrdinal, moduleName, lookup);
+        if (mapped)
+        {
+            isConst |= mapped->isConst;
+            isVolatile |= mapped->isVolatile;
+        }
+    }
+    else if (element->kind == CppTypeKind::Boolean || element->kind == CppTypeKind::SignedInteger ||
         element->kind == CppTypeKind::UnsignedInteger || element->kind == CppTypeKind::Floating)
         mapped = mapCppScalarType(unqualified);
     else if (element->kind == CppTypeKind::Enumeration)
