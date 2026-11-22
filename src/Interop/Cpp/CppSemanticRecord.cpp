@@ -590,7 +590,8 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     // A fixed vector exposes only its contiguous lanes, even if trailing padding
     // enlarges the physical field. The field retains Clang's own size,
     // offset and effective alignment; it is not a vector parameter conversion.
-    if (!mapped && record.isCxx && cppValueFields && field.type.kind == CppTypeKind::FixedVector &&
+    // C3-10: also in a C record (a vector aggregate). / Tambien en un record C (un agregado vectorial).
+    if (!mapped && (!record.isCxx || cppValueFields) && field.type.kind == CppTypeKind::FixedVector &&
         !field.type.isVolatile && field.type.arrayCount && *field.type.arrayCount > 0 &&
         *field.type.arrayCount <= (1U << 20) && field.type.element &&
         !field.type.element->isConst && !field.type.element->isVolatile && !field.type.element->isRestrict &&
@@ -613,7 +614,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     }
     // Preserve physical strides when a vector has trailing padding; the logical
     // array type contains only the lanes that can be indexed.
-    if (!mapped && cppValueFields && field.type.kind == CppTypeKind::Array)
+    if (!mapped && (!record.isCxx || cppValueFields) && field.type.kind == CppTypeKind::Array)
     {
         const CppType* current = &field.type;
         std::vector<std::uint64_t> dimensions;

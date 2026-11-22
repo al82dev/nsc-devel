@@ -320,4 +320,60 @@ positivo(Caso('c3-barreras-core', H9, S9),
          'NativeSharp.Core.Threading.AtomicFence.Thread(NativeSharp.Core.Threading.MemoryOrder.SequentiallyConsistent); '
          'NativeSharp.Core.Threading.AtomicFence.Compiler(NativeSharp.Core.Threading.MemoryOrder.Acquire); return value();')
 comun.core = _core
+
+# C3-10: vector fields of C records (a vector aggregate) are imported as lane views, as in C++ records: an HVA
+# (`{ v4f a, b, c, d; }`) passes and returns in XMM0-3 under `__vectorcall` and by address under cdecl, with Clang's
+# declaration shape; arrays of vectors in a record keep their stride. Records through `__vectorcall` and cdecl
+# function pointers are called as Clang does. 512-bit vectors stay unmapped (no carrier, no demonstrated ABI); the
+# 256-bit ones are covered with AVX by pruebas-tanda-19-traslados/validar-vectores-c.py --avx.
+H10 = r'''
+typedef float v4f __attribute__((vector_size(16)));
+typedef float v16f __attribute__((vector_size(64)));
+typedef struct H4 { v4f a, b, c, d; } H4;
+typedef struct AV { int tag; v4f lanes[2]; } AV;
+typedef struct R { int a; int b; } R;
+typedef struct H2d { double x, y; } H2d;
+typedef int (__vectorcall *vcr)(R r, H2d h);
+float __vectorcall vh4(H4 h);
+H4 __vectorcall mkh4(float f);
+float cdh4(H4 h);
+float sum_av(const AV* p);
+void fill_av(AV* p);
+vcr get_vcr(void);
+float cd16(v16f v);
+'''
+S10 = r'''
+float __vectorcall vh4(H4 h) { return h.a[0] + h.b[1] + h.c[2] + h.d[3]; }
+H4 __vectorcall mkh4(float f) { H4 h; for (int i = 0; i < 4; ++i) { h.a[i] = f; h.b[i] = f + 1; h.c[i] = f + 2; h.d[i] = f + 3; } return h; }
+float cdh4(H4 h) { return h.a[0] + h.b[1] + h.c[2] + h.d[3]; }
+float sum_av(const AV* p) { float s = p->tag; for (int i = 0; i < 2; ++i) for (int j = 0; j < 4; ++j) s += p->lanes[i][j]; return s; }
+void fill_av(AV* p) { p->tag = 2; for (int i = 0; i < 2; ++i) for (int j = 0; j < 4; ++j) p->lanes[i][j] = 5.0f; }
+static int __vectorcall vcr_impl(R r, H2d h) { return r.a + r.b + (int)(h.x + h.y); }
+vcr get_vcr(void) { return vcr_impl; }
+float cd16(v16f v) { return v[0]; }
+'''
+BODY10 = r'''
+    var h = mkh4(9.0f);
+    if ((int)vh4(h) != 42 || (int)cdh4(h) != 42) return 1;
+    AV v; fill_av(&v);
+    if (v.lanes[1][3] != 5.0f) return 2;
+    v.lanes[0][0] = 6.0f;
+    if ((int)sum_av(&v) != 43) return 3;
+    var f = get_vcr(); R r; r.a = 20; r.b = 20; H2d d; d.x = 1.0; d.y = 1.0;
+    return f(r, d);
+'''
+c10 = Caso('c3-vectores-agregados', H10, S10)
+positivo(c10, BODY10)
+rechazo(c10, 'return (int)cd16();', 'only 128-bit and 256-bit vectors are mapped')
+if not ONLY or any('c3-vectores-ir' in o for o in ONLY):
+    result = ir(Caso('c3-vectores-ir', H10, S10), 'var h = mkh4(9.0f); return (int)vh4(h) + (int)cdh4(h);', opt=0)
+    decls = {l.split('@', 1)[1].split('(')[0].strip('"\01'): l for l in result.stdout.splitlines() if l.startswith('declare')}
+    hva = '{ <4 x float>, <4 x float>, <4 x float>, <4 x float> }'
+    ok = (result.returncode == 0 and any('vh4@@64' in k and 'x86_vectorcallcc' in d and hva + ' inreg' in d for k, d in decls.items())
+          and any('mkh4@@8' in k and 'x86_vectorcallcc ' + hva in d for k, d in decls.items())
+          and any(k == 'cdh4' and '(ptr' in d for k, d in decls.items()))
+    if not ok:
+        _fail('c3-vectores-ir', 'forma inesperada:\n' + '\n'.join(decls.values())[:2500])
+    else:
+        print('ok c3-vectores-ir', flush=True)
 fin()
