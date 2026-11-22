@@ -678,6 +678,17 @@ static void explainMissingCppSymbols(const frontend::ProjectCompilation &compila
         error << "nsc: error: C/C++ function '" << llvm_backend::ProjectOopObjectGenerator::demangleSymbol(symbol)
               << "' (symbol '" << symbol << "')";
         if (!location.empty()) error << ", declared at " << location << ",";
+        // EN: Item 1.9. A wrapper or thunk that NSC generates from the header (`__nsc_` names, macro accessors)
+        //     belongs to the code emitted for the program, not to a library: its absence is an emission failure.
+        // ES: Item 1.9. Un wrapper o thunk que NSC genera desde el encabezado (nombres `__nsc_`, accesores de
+        //     macros) pertenece al codigo emitido para el programa, no a una biblioteca: su ausencia es un fallo de
+        //     emision.
+        if (symbol.find("__nsc_") != std::string::npos)
+        {
+            error << " is a wrapper that NSC generates from the C/C++ header, and its code was not emitted; "
+                     "this is a NativeSharp compiler defect, not a missing library\n";
+            continue;
+        }
         if (sameName.empty())
         {
             error << " is not defined by any linked library\n";
