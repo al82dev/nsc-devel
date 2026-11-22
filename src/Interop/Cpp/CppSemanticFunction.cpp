@@ -409,8 +409,33 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         function.resultPointeeReadonly = pointeeConst(signature.returnType);
         function.resultPointeeVolatile = pointeeVolatile(signature.returnType);
         function.resultPointeeAtomic = pointeeAtomic(signature.returnType);
-        for (const auto& parameter : signature.parameterTypes)
+        for (const auto& original : signature.parameterTypes)
         {
+            // EN: Item 9.14. A reference parameter of a callback (`void (*)(int& a, const int& b)`) is passed as the
+            //     referent's address, as Clang does: NativeSharp's function type sees the pointer, readonly for
+            //     `const T&`.
+            // ES: Item 9.14. Un parametro referencia de un callback se pasa como la direccion del referente, como
+            //     Clang: el tipo de funcion NativeSharp ve el puntero, de solo lectura para `const T&`.
+            std::optional<CppType> referenceCarrier;
+            if ((original.kind == CppTypeKind::LValueReference || original.kind == CppTypeKind::RValueReference) &&
+                original.element && original.element->kind != CppTypeKind::Void &&
+                original.element->kind != CppTypeKind::Function && original.element->kind != CppTypeKind::Array &&
+                !original.element->isVolatile && !original.element->canonicalSpelling.empty())
+            {
+                CppType pointer = original;
+                pointer.kind = CppTypeKind::Pointer;
+                pointer.isConst = false;
+                pointer.isVolatile = false;
+                pointer.sizeBits = 64;
+                pointer.alignmentBits = 64;
+                pointer.canonicalSpelling = original.element->canonicalSpelling + " *";
+                pointer.spelling = pointer.canonicalSpelling;
+                pointer.unqualifiedCanonicalSpelling = pointer.canonicalSpelling;
+                referenceCarrier = std::move(pointer);
+            }
+            if ((original.kind == CppTypeKind::LValueReference || original.kind == CppTypeKind::RValueReference) &&
+                !referenceCarrier) return std::nullopt;
+            const CppType& parameter = referenceCarrier ? *referenceCarrier : original;
             if (parameter.kind == CppTypeKind::Record && !cRecordValues && !cppRecordValues) return std::nullopt;
             const auto mapped = parameter.kind != CppTypeKind::Record
                 ? mapFunctionType(carrier(parameter), true, records, moduleName, depth + 1, lookup,
