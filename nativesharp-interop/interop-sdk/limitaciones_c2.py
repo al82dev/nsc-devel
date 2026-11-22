@@ -167,4 +167,72 @@ positivo(Caso('c2-preprocesador-bib', H6, S6), BODY6.replace('if (line != 5 || e
          modes=['lib', 'dll'])
 rechazo(c6, 'return str_len(NAME_OF());', 'names the enclosing C function')
 rechazo(c6, 'int a = 1; int b = 2; return (int)SWAP(ref a, ref b);', 'it has no value')
+
+# C2-07: a value macro that is not a constant is evaluated at each read, into the reader's own storage (no static
+# shared between threads); an lvalue macro keeps its address accessor.
+H7 = r'''
+typedef struct Pair { int a; int b; } Pair;
+int next_id(void);
+Pair make_pair(int a);
+extern int store;
+#define NEXT_ID (next_id())
+#define PAIR_OF(x) make_pair(x)
+#define CURRENT (make_pair(next_id()))
+#define STORE store
+'''
+S7 = r'''
+static int counter = 0;
+int store = 5;
+int next_id(void) { return ++counter; }
+Pair make_pair(int a) { Pair p = {a, a * 2}; return p; }
+'''
+BODY7 = r'''
+    int a = NEXT_ID;
+    int b = NEXT_ID;
+    if (b != a + 1) return 1;
+    Pair p = CURRENT;
+    Pair q = CURRENT;
+    if (q.a != p.a + 1 || q.b != q.a * 2) return 2;
+    STORE = 40;
+    if (store != 40) return 3;
+    return 42;
+'''
+positivo(Caso('c2-accesor', H7, S7), BODY7)
+
+# C2-09: macros of headers reached through IncludeDirectory Kind="User" are imported (constants, function-like
+# macros, type names, aliases of functions); those of Kind="System" headers follow the system-header policy and stay
+# out, without changing it implicitly.
+class CasoIncludes(Caso):
+    """A case whose header includes `user/u.h` (Kind=User) and `sys/s.h` (Kind=System)."""
+
+    def native(self, folder):
+        (folder / 'user').mkdir(parents=True, exist_ok=True)
+        (folder / 'sys').mkdir(parents=True, exist_ok=True)
+        (folder / 'user' / 'u.h').write_text(r"""
+#define U_ANSWER 40
+#define U_TWICE(x) ((x) * 2)
+#define U_REAL double
+int add_impl(int a, int b);
+#define U_ADD add_impl
+""", encoding='utf-8')
+        (folder / 'sys' / 's.h').write_text('#define S_HIDDEN 7\n', encoding='utf-8')
+        return super().native(folder)
+
+    def reference(self, folder):
+        library = self.native(folder)
+        return (f'<CppLibraryReference Header="api.h" Language="{self.language}" Standard="{self.standard}"{library}>'
+                '<IncludeDirectory Path="user" Kind="User" /><IncludeDirectory Path="sys" Kind="System" />'
+                '</CppLibraryReference>')
+
+
+H9 = '#include <u.h>\n#include <s.h>\n'
+S9 = 'int add_impl(int a, int b) { return a + b; }\n'
+BODY9 = r"""
+    U_REAL half = 0.5;
+    if ((int)(half * 4.0) != 2) return 1;
+    return U_ADD(U_TWICE(U_ANSWER) - 40, 2);
+"""
+c9 = CasoIncludes('c2-includes', H9, S9, clang_args=('-Iuser', '-Isys'))
+positivo(c9, BODY9)
+rechazo(c9, 'return S_HIDDEN;', "unknown identifier 'S_HIDDEN'")
 fin()

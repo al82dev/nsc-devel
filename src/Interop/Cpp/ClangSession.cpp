@@ -5271,6 +5271,14 @@ private:
             if (name.starts_with("__nsc_")) continue;
             if (info->isFunctionLike())
                 macroConstants_->names.push_back({name, true, false, macroTokenParameters(*info)});
+            // EN: C2-09. An object-like macro whose whole expansion names a function of the header
+            //     (`#define compress LZ4_compress_default`) is an alias of it: a call through the macro is expanded
+            //     like a function-like macro call, so C resolves the function.
+            // ES: C2-09. Una macro de objeto cuya expansion entera nombra una funcion del encabezado es un alias de
+            //     ella: una llamada mediante la macro se expande como una llamada a macro de funcion, asi C resuelve la
+            //     funcion.
+            else if (macroAliasesFunction(*info))
+                macroConstants_->names.push_back({name, true, false, {}});
             else
             {
                 // EN: Item 5.1. A macro that expands to a list of arguments (`"$clr.diffuse", 0, 0`) is not one
@@ -5861,6 +5869,19 @@ private:
     //     el envoltorio y la nueva unidad reemplaza la de la sesion; el envoltorio se importa con el nombre de la
     //     macro (cMacroWrapper). Un envoltorio que Clang rechaza deja la sesion como estaba y devuelve los
     //     diagnosticos de Clang. Quien llama tiene el mutex.
+    // C2-09: whether an object-like macro expands to exactly the name of a function the session declares. / Si una
+    //     macro de objeto se expande exactamente al nombre de una funcion que declara la sesion.
+    bool macroAliasesFunction(const clang::MacroInfo& info) const
+    {
+        if (info.isFunctionLike() || info.getNumTokens() != 1) return false;
+        const auto* identifier = info.tokens().front().getIdentifierInfo();
+        if (!identifier || !info.tokens().front().is(clang::tok::identifier)) return false;
+        auto& context = ast_->getASTContext();
+        const auto found = context.getTranslationUnitDecl()->lookup(clang::DeclarationName(identifier));
+        return std::any_of(found.begin(), found.end(),
+                           [](const clang::NamedDecl* declaration) { return llvm::isa<clang::FunctionDecl>(declaration); });
+    }
+
     std::optional<CppTemplateInstantiation> expandCFunctionMacroCall(
         std::string_view name, std::span<const CppTemplateArgument> argumentTypes,
         const CppMacroCallSite* site = nullptr) const
@@ -5869,7 +5890,9 @@ private:
         const auto& sources = ast_->getSourceManager();
         auto* identifier = preprocessor.getIdentifierInfo(name);
         const auto* info = identifier ? preprocessor.getMacroInfo(identifier) : nullptr;
-        if (!info || !info->isFunctionLike() || info->isBuiltinMacro()) return std::nullopt;
+        // C2-09: also an object-like alias of a function. / Tambien un alias de objeto de una funcion.
+        const bool functionAlias = info && !info->isFunctionLike() && macroAliasesFunction(*info);
+        if (!info || (!info->isFunctionLike() && !functionAlias) || info->isBuiltinMacro()) return std::nullopt;
         const auto definition = info->getDefinitionLoc();
         if (definition.isInvalid() || sources.isInSystemHeader(definition) ||
             sources.isWrittenInBuiltinFile(definition) || sources.isWrittenInCommandLineFile(definition) ||
@@ -5925,7 +5948,9 @@ private:
                                          "(##), and NativeSharp passes variable arguments only as values");
             return result;
         }
-        const std::size_t parameters = info->getNumParams();
+        // C2-09: an alias takes the call's arguments, as the function does. / Un alias toma los argumentos de la
+        //     llamada, como la funcion.
+        const std::size_t parameters = functionAlias ? argumentTypes.size() : info->getNumParams();
         const bool variadic = info->isVariadic();
         if (variadic ? argumentTypes.size() + 1 < parameters : argumentTypes.size() != parameters)
         {
