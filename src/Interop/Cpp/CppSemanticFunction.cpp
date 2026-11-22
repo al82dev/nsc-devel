@@ -775,8 +775,10 @@ CppSemanticFunctionResult projectFunction(
                            "' is a C++ pointer to member, which has no NativeSharp type");
     // EN: T19-007. A `T&&` result is a reference too, read-only: an xvalue is read or passed on, not assigned.
     // ES: T19-007. Un resultado `T&&` tambien es una referencia, de solo lectura: un xvalue se lee o se pasa.
-    const bool referenceReturn = !cLanguage && (function.returnType.kind == CppTypeKind::LValueReference ||
-        function.returnType.kind == CppTypeKind::RValueReference);
+    // Item 9.12: a C++ reference keeps its meaning under extern "C" linkage. / Una referencia C++ conserva su
+    //     significado con enlace extern "C".
+    const bool referenceReturn = function.returnType.kind == CppTypeKind::LValueReference ||
+        function.returnType.kind == CppTypeKind::RValueReference;
     const auto returnCarrier = referenceReturn ? cppParameterReferenceCarrier(function.returnType) : std::nullopt;
     // EN: T19-007. A `const T&` result is a read-only reference; the call site derives it from cppReturnType.
     // ES: T19-007. Un resultado `const T&` es una referencia de solo lectura; la llamada la deduce de cppReturnType.
@@ -792,9 +794,9 @@ CppSemanticFunctionResult projectFunction(
     // T19-002: a C `_Atomic T*` result is a pointer to T marked atomic. / Un resultado C `_Atomic T*` es un puntero
     //     a T marcado atomico.
     const auto atomicReturn = cLanguage ? cAtomicPointeeCarrier(function.returnType) : std::nullopt;
-    const CppType mappedReturn = cLanguage
-        ? invocationTypeForC(atomicReturn ? *atomicReturn : function.returnType, true)
-        : returnCarrier ? *returnCarrier : function.returnType;
+    const CppType mappedReturn = returnCarrier ? *returnCarrier
+        : cLanguage ? invocationTypeForC(atomicReturn ? *atomicReturn : function.returnType, true)
+        : function.returnType;
     const bool cRecordValues = cLanguage;
     // EN: T19-036. `__vectorcall` passes a trivial C++ record like a C one (homogeneous aggregates in vector
     //     registers); the backend accepts it only when Clang's plan for the declaration agrees.
@@ -931,13 +933,12 @@ CppSemanticFunctionResult projectFunction(
     {
         const auto& input = function.parameters[index];
         // Map only the carrier; the original Clang type retains its qualifiers below.
-        const bool rvalue = !cLanguage && input.type.kind == CppTypeKind::RValueReference;
+        const bool rvalue = input.type.kind == CppTypeKind::RValueReference;
         // T19-003: the pointer of an lvalue macro argument is a `ref` parameter. / El puntero de un argumento lvalue
         //     de una macro es un parametro `ref`.
         const bool macroReference = cLanguage && input.cMacroReference && input.type.kind == CppTypeKind::Pointer &&
             input.type.element;
-        const bool reference = (!cLanguage && (input.type.kind == CppTypeKind::LValueReference || rvalue)) ||
-            macroReference;
+        const bool reference = input.type.kind == CppTypeKind::LValueReference || rvalue || macroReference;
         const auto carrier = macroReference ? std::optional<CppType>(input.type)
             : reference ? cppParameterReferenceCarrier(input.type) : std::nullopt;
         if (reference && !carrier)
@@ -946,8 +947,7 @@ CppSemanticFunctionResult projectFunction(
         //     toma un puntero a almacenamiento atomico.
         const auto atomicPointee = cLanguage ? cAtomicPointeeCarrier(input.type) : std::nullopt;
         const CppType& sourceType = atomicPointee ? *atomicPointee : input.type;
-        CppType mappedInput = cLanguage
-            ? invocationTypeForC(sourceType, true) : carrier ? *carrier : input.type;
+        CppType mappedInput = carrier ? *carrier : cLanguage ? invocationTypeForC(sourceType, true) : input.type;
         // Top-level qualifiers on a by-value pointer describe the callee's
         // local parameter, not the pointer expression at the call site.
         // Item 2.6: with or without an object size contract (`int *const p`, `int a[const 4]`).
