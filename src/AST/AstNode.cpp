@@ -94,6 +94,10 @@ void AstNode::setThird(AstNode* node) noexcept { third_ = node; }
 void AstNode::addChild(AstNode* node) { children_.push_back(node); }
 void AstNode::prependChild(AstNode* node) { children_.insert(children_.begin(), node); }
 void AstNode::replaceChild(std::size_t index, AstNode* node) noexcept { children_[index] = node; }
+void AstNode::insertChild(std::size_t index, AstNode* node)
+{
+    children_.insert(children_.begin() + static_cast<std::ptrdiff_t>(index), node);
+}
 const std::vector<AstNode*>& AstNode::children() const noexcept { return children_; }
 bool AstNode::flag() const noexcept { return flag_; }
 void AstNode::setFlag(bool value) noexcept { flag_ = value; }

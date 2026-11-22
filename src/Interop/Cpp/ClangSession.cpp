@@ -4792,8 +4792,6 @@ public:
     {
         std::lock_guard lock(mutex_);
         if (!ast_) return std::nullopt;
-        // T19-003: a macro expansion session reports only its macros. / Solo sus macros.
-        if (options_.macroExpansionOnly) return std::vector<CppGlobalDeclaration>{};
         clang::ASTContext& context = ast_->getASTContext();
         std::unique_ptr<clang::MangleContext> mangler(context.createMangleContext());
         std::vector<CppGlobalDeclaration> result;
@@ -4833,6 +4831,13 @@ public:
             value.clangUsr = declarationUsr(function);
             result.push_back(std::move(value));
         }
+        // EN: T19-003/C2-08. A macro expansion session reports only the constants of its macros: values with storage
+        //     or an accessor already travel as C globals in the producer's catalogue.
+        // ES: T19-003/C2-08. Una sesion de expansion de macros informa solo las constantes de sus macros: los valores
+        //     con almacenamiento o accesora ya viajan como globales C en el catalogo del productor.
+        if (options_.macroExpansionOnly)
+            std::erase_if(result, [](const CppGlobalDeclaration& value)
+                { return !value.macro || !value.cMacroStorage.empty() || !value.cMacroAccessor.empty(); });
         return result;
     }
     std::vector<CppMacroName> macrosSnapshot() const override
@@ -5201,6 +5206,9 @@ private:
         auto& preprocessor = ast_->getPreprocessor();
         const auto& sources = ast_->getSourceManager();
         std::vector<std::string> objectLike;
+        // C2-02: argument-list macros and the spelling of each element. / Macros lista de argumentos y la escritura
+        //     de cada elemento.
+        std::vector<std::pair<std::string, std::vector<std::string>>> argumentLists;
         for (const auto& [identifier, state] : preprocessor.macros())
         {
             const auto* info = identifier ? preprocessor.getMacroInfo(identifier) : nullptr;
@@ -5220,6 +5228,7 @@ private:
                 //     era el ultimo elemento de una expresion con comas. Queda fuera.
                 int depth = 0;
                 bool list = false;
+                bool locationSensitive = false;
                 // EN: Item 16.8. A macro that names __FILE__, __LINE__ or __func__ would take the location of NSC's
                 //     synthetic unit, not the use site; it is not imported as a value.
                 // ES: Item 16.8. Una macro que nombra __FILE__, __LINE__ o __func__ tomaria la ubicacion de la unidad
@@ -5229,22 +5238,54 @@ private:
                         if (const auto spelled = identifier->getName(); spelled == "__FILE__" || spelled == "__LINE__" ||
                             spelled == "__func__" || spelled == "__FUNCTION__" || spelled == "__builtin_FILE" ||
                             spelled == "__builtin_LINE" || spelled == "__builtin_FUNCTION")
-                            list = true;
+                            locationSensitive = true;
+                std::vector<std::string> elements(1);
                 for (const auto& token : info->tokens())
                 {
                     if (token.isOneOf(clang::tok::l_paren, clang::tok::l_square, clang::tok::l_brace)) ++depth;
                     else if (token.isOneOf(clang::tok::r_paren, clang::tok::r_square, clang::tok::r_brace)) --depth;
-                    else if (token.is(clang::tok::comma) && depth == 0) list = true;
+                    if (token.is(clang::tok::comma) && depth == 0)
+                    {
+                        list = true;
+                        elements.emplace_back();
+                        continue;
+                    }
+                    if (!elements.back().empty()) elements.back() += ' ';
+                    elements.back() += preprocessor.getSpelling(token);
                 }
-                if (!list) objectLike.push_back(name);
+                // EN: C2-02. The elements of an argument-list macro are evaluated one by one, each as its own macro,
+                //     so a call argument can stand for the whole list without taking only the last value.
+                // ES: C2-02. Los elementos de una macro lista se evaluan uno por uno, cada uno como su propia macro,
+                //     para que un argumento de llamada equivalga a la lista entera sin tomar solo el ultimo valor.
+                if (list && !locationSensitive &&
+                    std::none_of(elements.begin(), elements.end(), [](const std::string& item) { return item.empty(); }))
+                    argumentLists.emplace_back(name, std::move(elements));
+                if (!list && !locationSensitive) objectLike.push_back(name);
             }
+        }
+        if (!argumentLists.empty())
+        {
+            source_ += '\n';
+            for (const auto& [name, elements] : argumentLists)
+                for (std::size_t index = 0; index < elements.size(); ++index)
+                {
+                    const std::string element = name + "__nsc_arg" + std::to_string(index);
+                    source_ += "#define " + element + " " + elements[index] + '\n';
+                    objectLike.push_back(element);
+                }
         }
         std::sort(objectLike.begin(), objectLike.end());
         // EN: T19-003. A macro expansion session reports only the function-like macros; the values come from the
         //     producer's catalogue.
         // ES: T19-003. Una sesion de expansion de macros informa solo las macros de funcion; los valores vienen del
         //     catalogo del productor.
-        if (objectLike.empty() || options_.macroExpansionOnly) return *macroConstants_;
+        // EN: C2-08. A macro expansion session (the consumer of a precompiled library, over the producer's macro
+        //     source with the producer's options) evaluates the object-like macros too, so constants, values and
+        //     argument lists reach the published templates; it reports only those (globalsSnapshot).
+        // ES: C2-08. Una sesion de expansion de macros (el consumidor de una biblioteca precompilada, sobre la fuente
+        //     de macros del productor con sus opciones) evalua tambien las macros de objeto, asi las constantes,
+        //     valores y listas llegan a las plantillas publicadas; solo informa esas (globalsSnapshot).
+        if (objectLike.empty()) return *macroConstants_;
         const bool cpp = ast_->getASTContext().getLangOpts().CPlusPlus;
         std::string code = source_ + "\n";
         for (const auto& name : objectLike)
@@ -5285,6 +5326,18 @@ private:
         for (const auto& name : objectLike)
             macroConstants_->names.push_back({name, false, constants.contains(name) ||
                 macroDeclaredValueOrType(name)});
+        for (const auto& [name, elements] : argumentLists)
+        {
+            bool imported = true;
+            for (std::size_t index = 0; index < elements.size(); ++index)
+            {
+                const std::string element = name + "__nsc_arg" + std::to_string(index);
+                imported = imported && (constants.contains(element) || macroDeclaredValueOrType(element));
+            }
+            CppMacroName macro{name, false, imported};
+            macro.argumentListCount = elements.size();
+            macroConstants_->names.push_back(std::move(macro));
+        }
         return *macroConstants_;
     }
 

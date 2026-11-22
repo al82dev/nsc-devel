@@ -406,6 +406,9 @@ private:
     // EN: T19-003. The C function-like macros of each project, which a call expands through a Clang wrapper.
     // ES: T19-003. Las macros de funcion C de cada proyecto, que una llamada expande con un envoltorio de Clang.
     std::map<std::size_t, std::set<std::string, std::less<>>> cppFunctionMacros_;
+    // C2-02: argument-list macros of each project and their element counts. / Macros lista de cada proyecto y su
+    //     numero de elementos.
+    std::map<std::size_t, std::map<std::string, std::size_t, std::less<>>> cppArgumentListMacros_;
     // T19-040: the token parameters of each function-like macro, and the per-call wrappers. / Los parametros de
     //     tokens de cada macro de funcion, y los envoltorios por llamada.
     std::map<std::size_t, std::map<std::string, std::vector<unsigned>, std::less<>>> cppFunctionMacroTokens_;

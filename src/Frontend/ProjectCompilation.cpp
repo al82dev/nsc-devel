@@ -3533,6 +3533,83 @@ private:
 // ES: T13-006. Antes de analizar, cada especializacion de plantilla C++ que escribe una unidad NativeSharp la
 //     instancian las sesiones de su proyecto que declaran la plantilla, y el uso se reescribe con el nombre de
 //     la especializacion. Una especializacion de clase nueva se importa como las que nombra el encabezado.
+namespace
+{
+void collectDeclaredNames(const ast::AstNode& node, std::set<std::string, std::less<>>& names)
+{
+    switch (node.kind())
+    {
+        case ast::AstNodeKind::ParameterDeclaration:
+        case ast::AstNodeKind::FieldDeclaration:
+        case ast::AstNodeKind::MethodDeclaration:
+        case ast::AstNodeKind::PropertyDeclaration:
+        case ast::AstNodeKind::FunctionDeclaration:
+        case ast::AstNodeKind::GlobalVariableDeclaration:
+        case ast::AstNodeKind::VariableDeclarationStatement:
+            names.insert(std::string(node.text()));
+            break;
+        default:
+            break;
+    }
+    for (const ast::AstNode* child : {node.first(), node.second(), node.third()})
+        if (child) collectDeclaredNames(*child, names);
+    for (const ast::AstNode* child : node.children())
+        if (child) collectDeclaredNames(*child, names);
+}
+
+struct MisplacedArgumentList
+{
+    SourceRange range;
+    std::string name;
+    std::size_t count = 0;
+};
+
+void expandArgumentListCalls(ast::AstNode& node, ast::AstArena& arena,
+                             const std::map<std::string, std::size_t, std::less<>>& macros,
+                             std::set<const ast::AstNode*>& visited, std::vector<MisplacedArgumentList>& misplaced)
+{
+    if (!visited.insert(&node).second) return;
+    if (node.kind() == ast::AstNodeKind::IdentifierExpression)
+        if (const auto macro = macros.find(node.text()); macro != macros.end())
+            misplaced.push_back({node.range(), macro->first, macro->second});
+    if (node.kind() == ast::AstNodeKind::CallExpression)
+        for (std::size_t index = 0; index < node.children().size(); ++index)
+        {
+            ast::AstNode* argument = node.children()[index];
+            if (!argument || argument->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+            const auto macro = macros.find(argument->text());
+            if (macro == macros.end()) continue;
+            for (std::size_t element = 0; element < macro->second; ++element)
+            {
+                auto* replacement = arena.make<ast::AstNode>(ast::AstNodeKind::IdentifierExpression, argument->range());
+                replacement->setText(macro->first + "__nsc_arg" + std::to_string(element));
+                if (element == 0) node.replaceChild(index, replacement);
+                else node.insertChild(index + element, replacement);
+            }
+            index += macro->second - 1U;
+        }
+    for (ast::AstNode* child : {node.first(), node.second(), node.third()})
+        if (child) expandArgumentListCalls(*child, arena, macros, visited, misplaced);
+    for (ast::AstNode* child : std::vector<ast::AstNode*>(node.children()))
+        if (child) expandArgumentListCalls(*child, arena, macros, visited, misplaced);
+}
+
+std::vector<MisplacedArgumentList> expandCppArgumentListMacros(ast::AstNode& root, ast::AstArena& arena,
+                                 const std::map<std::string, std::size_t, std::less<>>& macros)
+{
+    std::set<std::string, std::less<>> declared;
+    collectDeclaredNames(root, declared);
+    std::map<std::string, std::size_t, std::less<>> visible;
+    for (const auto& [name, count] : macros)
+        if (!declared.contains(name)) visible.emplace(name, count);
+    if (visible.empty()) return {};
+    std::set<const ast::AstNode*> visited;
+    std::vector<MisplacedArgumentList> misplaced;
+    expandArgumentListCalls(root, arena, visible, visited, misplaced);
+    return misplaced;
+}
+}
+
 bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
 {
     cppFunctionTemplates_.clear();
@@ -3541,6 +3618,7 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
     cppUnimportedMacros_.clear();
     cppFunctionMacros_.clear();
     cppFunctionMacroTokens_.clear();
+    cppArgumentListMacros_.clear();
     if (cppProjectSessions_.empty() || !projectGraph_) return true;
     // EN: T14-001, T14-003. The macros of each project that are not imported as constants, so a call to one says
     //     why: NativeSharp does not run the C preprocessor over its own code.
@@ -3558,6 +3636,16 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
                     {
                         // EN: T19-003. A function-like macro is expanded at each call by a Clang wrapper.
                         // ES: T19-003. Una macro de funcion se expande en cada llamada con un envoltorio de Clang.
+                        // C2-02: an argument-list macro whose elements were all imported. / Una macro lista cuyos
+                        //     elementos se importaron todos.
+                        if (macro.argumentListCount != 0 && macro.constant)
+                        {
+                            cppArgumentListMacros_[ordinal][macro.name] = macro.argumentListCount;
+                            cppUnimportedMacros_[ordinal].emplace(macro.name,
+                                "expands to a list of " + std::to_string(macro.argumentListCount) +
+                                " arguments; write it as call arguments, where it stands for all of them");
+                            continue;
+                        }
                         if (macro.functionLike)
                         {
                             cppFunctionMacros_[ordinal].insert(macro.name);
@@ -3568,7 +3656,10 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
                             cppUnimportedMacros_[ordinal].emplace(macro.name, macro.functionLike ?
                                 "is a function-like macro: NativeSharp does not expand C/C++ macros; declare an "
                                 "inline function in the header instead" :
-                                "does not expand to a scalar constant that NativeSharp can import");
+                                macro.argumentListCount != 0
+                                ? "expands to a list of arguments and only fits a call argument; one of its elements "
+                                  "is not a value NativeSharp can import"
+                                : "does not expand to a scalar constant that NativeSharp can import");
                     }
             break;
         }
@@ -3967,6 +4058,23 @@ bool ProjectCompilation::parseSyntaxUnits(
     if (!syntaxOk || diagnostics_.hasErrors())
     {
         return false;
+    }
+    // EN: C2-02. A call argument that names an argument-list macro stands for its elements, in order, as the C
+    //     preprocessor expands it: `aiGetMaterialColor(m, AI_MATKEY_COLOR, &c)` passes `"$clr.diffuse", 0, 0`. A unit
+    //     that declares a variable, parameter, field or member with the macro's name keeps NativeSharp's lookup.
+    // ES: C2-02. Un argumento de llamada que nombra una macro lista equivale a sus elementos, en orden, como los
+    //     expande el preprocesador C. Una unidad que declara una variable, parametro, campo o miembro con el nombre de
+    //     la macro conserva la busqueda de NativeSharp.
+    for (auto& unit : units_)
+    {
+        if (!unit || !unit->syntaxTree()) continue;
+        const auto lists = cppArgumentListMacros_.find(unit->projectOrdinal());
+        if (lists == cppArgumentListMacros_.end()) continue;
+        for (const auto& use : expandCppArgumentListMacros(*unit->syntaxTree(), unit->arena(), lists->second))
+            diagnostics_.report(diagnostics::DiagnosticId::UnknownIdentifier, diagnostics::DiagnosticSeverity::Error,
+                use.range, "unknown identifier '" + use.name + "': the C macro expands to a list of " +
+                    std::to_string(use.count) + " arguments; write it as call arguments, where it stands for all "
+                    "of them");
     }
     return enterStage(CompilationStage::Parse, loadError);
 }

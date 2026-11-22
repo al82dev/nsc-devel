@@ -252,6 +252,13 @@ struct CppMacroName
     // ES: T19-040. Los parametros que una macro de funcion usa solo con `#` o `##`, o que no usa: C no evalua sus
     //     argumentos, asi que NativeSharp los pasa como tokens.
     std::vector<unsigned> tokenParameters{};
+    // EN: C2-02. An object-like macro that expands to a list of arguments (`"$clr.diffuse", 0, 0`): its element
+    //     count. Each element is imported as the macro `<name>__nsc_arg<i>`, and a call argument that names the
+    //     macro stands for all of them, in order, as the C preprocessor expands it.
+    // ES: C2-02. Una macro de objeto que se expande a una lista de argumentos: su numero de elementos. Cada
+    //     elemento se importa como la macro `<nombre>__nsc_arg<i>`, y un argumento de llamada que nombra la macro
+    //     equivale a todos ellos, en orden, como los expande el preprocesador C.
+    std::size_t argumentListCount = 0;
 };
 
 struct CppTemplateName

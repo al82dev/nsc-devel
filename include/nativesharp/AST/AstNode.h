@@ -98,6 +98,9 @@ public:
     // Replaces an existing child while retaining its ordinal. The caller must
     // supply an index smaller than children().size(); the arena owns both nodes.
     void replaceChild(std::size_t index, AstNode* node) noexcept;
+    // C2-02: inserts a child before `index` (an index equal to children().size() appends). / Inserta un hijo
+    //     antes de `index`.
+    void insertChild(std::size_t index, AstNode* node);
     const std::vector<AstNode*>& children() const noexcept;
 
     bool flag() const noexcept;

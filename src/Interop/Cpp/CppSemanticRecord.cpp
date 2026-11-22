@@ -2547,8 +2547,16 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                 const auto options = session->optionsSnapshot();
                 if (options.macroExpansionOnly) continue;
                 std::set<std::string> functionLike;
+                // EN: C2-02/C2-08. Imported object-like macros (constants, values, argument lists) travel too, so a
+                //     consumer evaluates them for the published templates over the same macro source.
+                // ES: C2-02/C2-08. Las macros de objeto importadas (constantes, valores, listas) tambien viajan, para
+                //     que un consumidor las evalue para las plantillas publicadas sobre la misma fuente de macros.
+                bool objectMacros = false;
                 for (const auto& macro : session->macrosSnapshot())
+                {
                     if (macro.functionLike) functionLike.insert(macro.name);
+                    objectMacros = objectMacros || (!macro.functionLike && macro.constant);
+                }
                 std::set<std::string> called;
                 for (const auto& request : compilation.cppTemplateDemands())
                     if (functionLike.contains(request.demand.lookupName) && request.demand.directCall &&
@@ -2567,10 +2575,12 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                         complex = std::any_of(records->begin(), records->end(), [](const auto& record) {
                             return record.name.starts_with("__complex_");
                         });
-                if (called.empty() && !complex) continue;
+                if (called.empty() && !complex && !objectMacros) continue;
                 // T19-039: `_Complex` marks the reference in the list, which the consumer does not read. / `_Complex`
                 //     marca la referencia en la lista, que el consumidor no lee.
                 if (complex) called.insert("_Complex");
+                // C2-08: object-like macros mark the reference the same way. / Las macros de objeto marcan igual.
+                if (objectMacros) called.insert("__nsc_object_macros");
                 auto source = session->preprocessedSourceWithMacros();
                 if (!source || source->empty())
                 { error = "the preprocessed C source of a published macro is unavailable"; return false; }
