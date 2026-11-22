@@ -80,6 +80,21 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyCFrontierConversion(
         (target == "builtin:sbyte*" || target == "builtin:byte*" || target == "builtin:char*") &&
         parameter.passKind == ParameterPassKind::Value && parameter.pointerPointeeReadonly)
         return {ProjectConversionKind::StringLiteralToCharPointer, 4, source.typeKey, target, std::nullopt};
+    // EN: Item 3.3 (D3). Between integer and floating types C converts implicitly to the parameter type
+    //     (`double` to `float`, `int` to `unsigned int`); only at this boundary, never between NativeSharp values.
+    //     `bool` and `char` keep NativeSharp's rules: a C `_Bool` takes any nonzero value as true only through an
+    //     explicit cast.
+    // ES: Item 3.3 (D3). Entre tipos enteros y flotantes C convierte implicitamente al tipo del parametro (`double`
+    //     a `float`, `int` a `unsigned int`); solo en esta frontera, nunca entre valores NativeSharp. `bool` y `char`
+    //     conservan las reglas NativeSharp: un `_Bool` C toma todo valor distinto de cero como verdadero solo con un
+    //     cast explicito.
+    static constexpr std::string_view arithmetic[] = {"builtin:sbyte", "builtin:byte", "builtin:short",
+        "builtin:ushort", "builtin:int", "builtin:uint", "builtin:long", "builtin:ulong", "builtin:float",
+        "builtin:double"};
+    const auto isArithmetic = [](std::string_view key)
+    { return std::find(std::begin(arithmetic), std::end(arithmetic), key) != std::end(arithmetic); };
+    if (parameter.passKind == ParameterPassKind::Value && isArithmetic(source.typeKey) && isArithmetic(target))
+        return {ProjectConversionKind::Numeric, 5, source.typeKey, target, std::nullopt};
     return {ProjectConversionKind::None, 1000, source.typeKey, target, std::nullopt};
 }
 
