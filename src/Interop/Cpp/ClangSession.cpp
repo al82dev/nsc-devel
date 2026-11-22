@@ -1440,6 +1440,20 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
                 parameter->getType().getCanonicalType().getAsString(),
                 describeType(parameter->getType(), astContext), parameter->hasDefaultArg()};
             captureDefaultArgument(*parameter, astContext, captured);
+            // EN: Item 8.3. `__attribute__((nonnull))` on the parameter or on the function (all pointer parameters,
+            //     or the listed ones) and the `_Nonnull` nullability of its type.
+            // ES: Item 8.3. `__attribute__((nonnull))` en el parametro o en la funcion (todos los punteros, o los
+            //     listados) y la nulabilidad `_Nonnull` de su tipo.
+            if (parameter->getType()->isPointerType())
+            {
+                const auto nullability = parameter->getType()->getNullability();
+                captured.nonNull = parameter->hasAttr<clang::NonNullAttr>() ||
+                    (nullability && *nullability == clang::NullabilityKind::NonNull);
+                for (const auto* attribute : function->specific_attrs<clang::NonNullAttr>())
+                    if (attribute->args_size() == 0 ||
+                        attribute->isNonNull(static_cast<unsigned>(value.parameters.size())))
+                        captured.nonNull = true;
+            }
             if (const auto* size = parameter->getAttr<clang::PassObjectSizeAttr>())
             {
                 captured.objectSizeMode = static_cast<std::uint8_t>(size->getType());

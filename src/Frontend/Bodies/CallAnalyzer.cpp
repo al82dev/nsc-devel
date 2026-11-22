@@ -1202,7 +1202,8 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
         ProjectTypeConversion::isPointer(parameter.typeKey) &&
         !language::pointerContractImplicitlyAssignable(
             pointerContract(
-                arguments[argumentOrdinal].pointerNullable,
+                // Item 8.3: a string literal is never null. / Un literal de cadena nunca es nulo.
+                arguments[argumentOrdinal].pointerNullable && arguments[argumentOrdinal].typeKey != "string-literal",
                 arguments[argumentOrdinal].pointerPointeeReadonly,
                 arguments[argumentOrdinal].pointerHasProvenance,
                 arguments[argumentOrdinal].pointerKnownAlignment,
@@ -6237,7 +6238,8 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
         ProjectTypeConversion::isPointer(parameter.typeKey) &&
         !language::pointerContractImplicitlyAssignable(
             pointerContract(
-                argument.pointerNullable, argument.pointerPointeeReadonly,
+                // Item 8.3: a string literal is never null. / Un literal de cadena nunca es nulo.
+                argument.pointerNullable && argument.typeKey != "string-literal", argument.pointerPointeeReadonly,
                 argument.pointerHasProvenance, argument.pointerKnownAlignment,
                 argument.pointerAddressSpace),
             pointerContract(

@@ -31,6 +31,9 @@ struct CppFunctionParameter
     // ES: T19-003. Un parametro puntero de un envoltorio de macro que representa un argumento lvalue de la macro:
     //     se importa como parametro `ref`, asi `M(ref x)` deja que la macro asigne x.
     bool cMacroReference = false;
+    // EN: Item 8.3. The pointer is declared non-null (`nonnull`, `_Nonnull`): a null argument is rejected.
+    // ES: Item 8.3. El puntero se declara no nulo (`nonnull`, `_Nonnull`): un argumento nulo se rechaza.
+    bool nonNull = false;
     // Clang adds a size_t argument immediately after this pointer parameter.
     std::optional<std::uint8_t> objectSizeMode{};
     bool objectSizeDynamic = false;

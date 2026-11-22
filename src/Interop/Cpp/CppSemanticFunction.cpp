@@ -953,6 +953,8 @@ CppSemanticFunctionResult projectFunction(
         parameter.typeKey = parameterType->nativeSharpTypeKey;
         // Item 2.1: the base const of a pointer to pointer. / El const base de un puntero a puntero.
         parameter.pointerPointeeReadonly = cppPointeeReadonlyForNativeSharp(sourceType);
+        // Item 8.3: a non-null C pointer parameter. / Un parametro puntero C no nulo.
+        if (input.nonNull && sourceType.kind == CppTypeKind::Pointer) parameter.pointerNullable = false;
         parameter.pointerPointeeVolatile = sourceType.kind == CppTypeKind::Pointer &&
             sourceType.element && sourceType.element->isVolatile;
         parameter.cppPointerPointeeAtomic = atomicPointee.has_value();
