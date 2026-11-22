@@ -6,8 +6,7 @@ definicion externa y `static constexpr`; 9.8 miembro static heredado de una base
 int; 9.10 `operator|` de `enum class`; 9.11 arreglo de enum en un record C++; 9.12 referencias en `extern "C"`;
 9.13 campo puntero a funcion en un record C++; 9.14 referencias en la firma de un callback; 9.17 campo referencia;
 9.19 alias de namespace y `using`.
-Rechazo: 9.15 `h(long)` / `h(long long)` con un int es ambigua, como en Clang.
-Limitaciones documentadas: 9.3 (familia de constructores), 9.16 (`explicit`, depende de la Tanda 10), 9.18 (una
+Limitaciones documentadas: 9.15 (la ambiguedad `h(long)` / `h(long long)` choca con T10-009; se revirtio), 9.3 (familia de constructores), 9.16 (`explicit`, depende de la Tanda 10), 9.18 (una
 funcion con parametro de enum anonimo tiene enlace interno en C++: ver 15.6).
 """
 from comun import Caso, positivo, rechazo, fin
@@ -78,5 +77,4 @@ BODY = r'''
 '''
 c = Caso('t9-cpp', H, S, language='C++')
 positivo(c, BODY, PRELUDIO)
-rechazo(c, 'return h(5);', "ambiguous namespace function call to 'h'")
 fin()
