@@ -1643,6 +1643,12 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup15(
             // T12-003: the byte offset of the C++ base subobject. / El offset en bytes del subobjeto base C++.
             if (node->conversion && node->conversion->kind == ProjectConversionKind::CppPointerUpcast)
                 result->immediate = node->conversion->cppPointerOffset;
+            // EN: Item 3.1. A string literal is the interned global {i64 length, [N+1 x i8] bytes}; a pointer to its
+            //     characters starts at the bytes, 8 bytes past the length.
+            // ES: Item 3.1. Un literal de cadena es la global interna {i64 longitud, [N+1 x i8] bytes}; un puntero a
+            //     sus caracteres empieza en los bytes, 8 bytes despues de la longitud.
+            else if (node->conversion && node->conversion->kind == ProjectConversionKind::StringLiteralToCharPointer)
+                result->immediate = 8;
             // EN: T12-003. An explicit cast between pointers to related C++ records is a static_cast, as in
             //     C++: up or down, it moves by Clang's base offset. reinterpret_cast and unrelated records keep
             //     the address.
