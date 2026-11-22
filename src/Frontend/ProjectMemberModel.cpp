@@ -1,3 +1,4 @@
+#include "nativesharp/Interop/CppScalarTypeMapping.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "Internal/EnumInitializerResolver.h"
 #include "Internal/AnonymousMemberPromotionVisitState.h"
@@ -102,6 +103,9 @@ bool cppCallableRecordIsVisible(std::string_view key, std::size_t projectOrdinal
     }
     while (key.ends_with('*')) key.remove_suffix(1);
     if (!key.starts_with("type:")) return true;
+    // C3-01: the Core carrier of C `_Float16` is visible to every project. / El portador Core de `_Float16` es
+    //     visible para todo proyecto.
+    if (key == interop::kCppHalfTypeKey) return true;
     const auto ordinal = lookup.typeOrdinalForIdentity(key.substr(5));
     const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
     // T13-007: a NativeSharp struct mirrored for a C++ template. / Un struct NativeSharp reflejado para C++.

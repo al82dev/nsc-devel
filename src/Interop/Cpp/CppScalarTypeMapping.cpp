@@ -33,6 +33,12 @@ std::optional<CppScalarTypeMapping> mapCppScalarType(const CppType& type)
         if (type.unqualifiedCanonicalSpelling == "float" && type.sizeBits == 32) key = "builtin:float";
         else if (type.sizeBits == 64 && (type.unqualifiedCanonicalSpelling == "double" ||
                  (type.unqualifiedCanonicalSpelling == "long double" && type.ieeeBinary64))) key = "builtin:double";
+        // EN: C3-01. `_Float16` is IEEE binary16, the storage of NativeSharp.Core.Numerics.Half (`ushort Bits`):
+        //     fields, pointers and globals share it; by value, a C import passes it as Clang does (XMM, LLVM `half`).
+        // ES: C3-01. `_Float16` es IEEE binary16, el almacenamiento de NativeSharp.Core.Numerics.Half: campos,
+        //     punteros y globales lo comparten; por valor, una importacion C lo pasa como Clang (XMM, `half` de LLVM).
+        else if (type.sizeBits == 16 && type.unqualifiedCanonicalSpelling == "_Float16")
+            key = kCppHalfTypeKey;
     }
     if (key.empty()) return std::nullopt;
     return CppScalarTypeMapping{std::string(key), type.canonicalSpelling, type.isConst, type.isVolatile};

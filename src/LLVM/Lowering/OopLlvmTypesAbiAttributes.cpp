@@ -1,3 +1,4 @@
+#include "nativesharp/Interop/CppScalarTypeMapping.h"
 #include "../Internal/OopLlvmImplementation.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/LlvmExpressionFrame.h"
@@ -641,7 +642,30 @@ bool OopLlvmImplementation::cVectorPlanValues(const frontend::ProjectOopMirFunct
 {
         parameters.clear();
         result = nullptr;
+        // EN: C3-01. A C `_Float16` (the Half carrier) travels in XMM as LLVM `half`, as Clang passes and returns it
+        //     on Windows x64; a NativeSharp Half by value would use a general register. It needs no plan.
+        // ES: C3-01. Un `_Float16` de C (el portador Half) viaja en XMM como `half` de LLVM, como lo pasa y devuelve
+        //     Clang en Windows x64; un Half NativeSharp por valor usaria un registro general. No necesita plan.
+        bool halfValues = false;
+        if (function.isImportedC && !function.cppVectorCall)
+        {
+            parameters.assign(function.parameterTypeKeys.size(), nullptr);
+            for (std::size_t index = 0; index < function.parameterTypeKeys.size(); ++index)
+                if (function.parameterTypeKeys[index] == interop::kCppHalfTypeKey)
+                {
+                    parameters[index] = LLVMHalfTypeInContext(context_);
+                    halfValues = true;
+                }
+            if (function.returnTypeKey == interop::kCppHalfTypeKey)
+            {
+                result = LLVMHalfTypeInContext(context_);
+                halfValues = true;
+            }
+            if (!halfValues) parameters.clear();
+        }
         const interop::abi_plan::Plan* plan = function.cppAbiPlan.get();
+        if (halfValues && (plan == nullptr || plan->variadic ||
+            plan->logicalParameters.size() != function.parameterTypeKeys.size())) return true;
         if (!function.isImportedC || function.cppVectorCall || plan == nullptr || plan->variadic ||
             plan->logicalParameters.size() != function.parameterTypeKeys.size() ||
             std::any_of(function.cppObjectSizeModes.begin(), function.cppObjectSizeModes.end(),
@@ -661,10 +685,11 @@ bool OopLlvmImplementation::cVectorPlanValues(const frontend::ProjectOopMirFunct
         const auto wideInteger = [](std::string_view typeKey) {
             return typeKey == "builtin:i128" || typeKey == "builtin:u128";
         };
-        bool any = false;
-        parameters.assign(function.parameterTypeKeys.size(), nullptr);
+        bool any = halfValues;
+        if (!halfValues) parameters.assign(function.parameterTypeKeys.size(), nullptr);
         for (std::size_t index = 0; index < function.parameterTypeKeys.size(); ++index)
         {
+            if (parameters[index] != nullptr) continue;
             const auto& logical = plan->logicalParameters[index];
             if (wideInteger(function.parameterTypeKeys[index]) &&
                 logical.passing == interop::abi_plan::Passing::Indirect)
@@ -679,7 +704,7 @@ bool OopLlvmImplementation::cVectorPlanValues(const frontend::ProjectOopMirFunct
                 plan->physicalParameters[logical.firstPhysical].type, function.parameterTypeKeys[index]);
             any = any || parameters[index] != nullptr;
         }
-        if (plan->logicalReturn.passing == interop::abi_plan::Passing::Direct)
+        if (result == nullptr && plan->logicalReturn.passing == interop::abi_plan::Passing::Direct)
         {
             if (wideInteger(function.returnTypeKey) &&
                 plan->physicalReturn.kind == interop::abi_plan::TypeKind::Vector &&

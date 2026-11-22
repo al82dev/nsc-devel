@@ -490,6 +490,14 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
                         [](std::uint8_t mask) { return mask == 0U; }))
             function.parameterPointerLevelQualifiers.clear();
         function.variadic = signature.variadic;
+        // EN: C3-01. A callback with a `_Float16` value would pass it through a NativeSharp thunk in a general
+        //     register, while C uses XMM: it stays unmapped (a direct call adapts it).
+        // ES: C3-01. Un callback con un valor `_Float16` lo pasaria por un thunk NativeSharp en un registro general,
+        //     mientras C usa XMM: queda sin mapear (una llamada directa lo adapta).
+        if (function.result == kCppHalfTypeKey ||
+            std::find(function.parameters.begin(), function.parameters.end(), kCppHalfTypeKey) !=
+                function.parameters.end())
+            return std::nullopt;
         return CppScalarTypeMapping{language::functionTypeIdentity(function), type.canonicalSpelling, false, false};
     }
     if (type.kind != CppTypeKind::Pointer) return mapCppScalarType(type);
