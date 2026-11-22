@@ -5,6 +5,7 @@
 #include "ClangSessionSupport.h"
 #include "nativesharp/Basic/Sha256.h"
 
+#include <clang/AST/DeclFriend.h>
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/ASTStructuralEquivalence.h>
 #include <clang/AST/Attr.h>
@@ -1586,6 +1587,19 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
                     if (specializationNames->contains(specialization->getCanonicalDecl())) collect(specialization);
             continue;
         }
+        // EN: Item 9.5. A friend function defined inside a class (`friend int dot(const FP&, const FP&) {...}`)
+        //     belongs to the enclosing namespace but only argument-dependent lookup finds it in C++; NativeSharp
+        //     imports it as a free function of that namespace.
+        // ES: Item 9.5. Una funcion friend definida dentro de una clase pertenece al namespace que la rodea pero en
+        //     C++ solo la encuentra la busqueda dependiente de argumentos; NativeSharp la importa como funcion libre
+        //     de ese namespace.
+        if (const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(declaration);
+            record && record->isThisDeclarationADefinition() && !record->isDependentContext())
+            for (const auto* friendDeclaration : record->friends())
+                if (const auto* function = llvm::dyn_cast_or_null<clang::FunctionDecl>(
+                        friendDeclaration->getFriendDecl());
+                    function && function->doesThisDeclarationHaveABody() && !function->isDependentContext())
+                    collect(function);
         collect(llvm::dyn_cast<clang::FunctionDecl>(declaration));
     }
 }
@@ -4313,6 +4327,19 @@ public:
         std::function<void(const clang::DeclContext&)> visit = [&](const clang::DeclContext& scope) {
             for (const auto* declaration : scope.decls())
             {
+                // EN: Item 9.5. A friend function defined in its class is an inline function of the enclosing
+                //     namespace; it is emitted like any other inline definition.
+                // ES: Item 9.5. Una funcion friend definida en su clase es una funcion inline del namespace que la
+                //     rodea; se emite como cualquier otra definicion inline.
+                if (const auto* friendDeclaration = llvm::dyn_cast<clang::FriendDecl>(declaration))
+                    if (const auto* function = llvm::dyn_cast_or_null<clang::FunctionDecl>(
+                            friendDeclaration->getFriendDecl());
+                        function && function->doesThisDeclarationHaveABody() && !function->isDependentContext() &&
+                        function->isInlined() && function->isExternallyVisible())
+                    {
+                        offer(function);
+                        consider(clang::GlobalDecl(function));
+                    }
                 offer(declaration);
                 if (const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration))
                 {
