@@ -367,8 +367,7 @@ std::optional<ProjectImplicitConversion> classifyFunctionImplicitConversion(
         // pointer can receive that address. A managed fn& would require allocating a delegate cell,
         // which would violate the zero-size/no-hidden-allocation contract of F02.
         if (targetFunction->carrier != language::FunctionCarrier::Pointer ||
-            !language::functionTypesAssignable(
-                language::lambdaSignatureForTarget(sourceLambda->signature, *targetFunction), *targetFunction))
+            !language::functionTypesAssignable(sourceLambda->signature, *targetFunction))
             return makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
         return makeConversion(ProjectConversionKind::Function, 1, sourceTypeKey, targetTypeKey);
     }

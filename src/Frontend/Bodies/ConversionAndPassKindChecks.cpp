@@ -98,6 +98,19 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyCFrontierConversion(
     if (cLinkage && parameter.passKind == ParameterPassKind::Value && isArithmetic(source.typeKey) &&
         isArithmetic(target))
         return {ProjectConversionKind::Numeric, 5, source.typeKey, target, std::nullopt};
+    // EN: Item 7.1. A non-capturing lambda written as the argument of an imported C/C++ function reaches a C
+    //     function pointer of a Win64-equivalent convention through its generated thunk. Only at this boundary:
+    //     between NativeSharp values the lambda keeps the exact convention match (T08-F02).
+    // ES: Item 7.1. Una lambda sin capturas escrita como argumento de una funcion C/C++ importada llega a un
+    //     puntero a funcion C de convencion equivalente en Win64 por su thunk generado. Solo en esta frontera:
+    //     entre valores NativeSharp la lambda conserva la igualdad exacta de convencion (T08-F02).
+    if (parameter.passKind == ParameterPassKind::Value)
+        if (const auto lambda = language::parseAnonymousLambdaTypeIdentity(source.typeKey))
+            if (const auto function = language::parseFunctionTypeIdentity(target);
+                function && function->carrier == language::FunctionCarrier::Pointer &&
+                language::functionTypesAssignable(language::lambdaSignatureForTarget(lambda->signature, *function),
+                                                  *function))
+                return {ProjectConversionKind::Function, 1, source.typeKey, target, std::nullopt};
     // EN: Item 4.7. A fixed array decays to a pointer to its first element at a C boundary, as in C: `int[2][4]`
     //     becomes `int (*)[4]` and `int[3]` becomes `int*`. Only for an addressable array place.
     // ES: Item 4.7. Un arreglo fijo decae a puntero a su primer elemento en una frontera C, como en C: `int[2][4]`
