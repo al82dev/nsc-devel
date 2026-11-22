@@ -459,6 +459,15 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
 }
 }
 
+// EN: Item 9.4. A real C++ operator name (`operator+`, `operator[]`), not an ordinary identifier that starts with
+//     "operator" (`operatorNorm`, `operatorSqrt`).
+// ES: Item 9.4. Un nombre de operador C++ real, no un identificador ordinario que empieza con "operator".
+static bool cppOperatorName(std::string_view name) noexcept
+{
+    return name.starts_with("operator") &&
+        (name.size() == 8 || (!std::isalnum(static_cast<unsigned char>(name[8])) && name[8] != '_'));
+}
+
 std::optional<CppScalarTypeMapping> projectCppStoredFunctionPointer(
     const CppType& type, std::optional<std::size_t> projectOrdinal,
     std::string_view moduleName, const frontend::ProjectNameLookup* lookup, bool cppRecordValues)
@@ -1121,7 +1130,7 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
     //     aplica el ajuste de this y el despacho virtual. Sin adaptador ninguno se mapea.
     const bool dispatched = method.dispatchSymbol && !method.dispatchSymbol->empty();
     if (method.kind != CppMethodKind::Method || method.name.empty() ||
-        method.name.starts_with("operator") ||
+        cppOperatorName(method.name) ||
         (method.inherited ? !dispatched : method.qualifiedName != record.qualifiedName + "::" + method.name) ||
         !projectedMethodAccess(method, dispatched) || method.isStatic ||
         ((method.isVirtual || method.isPureVirtual) && !dispatched) ||
@@ -1252,7 +1261,7 @@ CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
     const auto identity = projectCppRecordIdentity(record, moduleName);
     if (!identity) return fail("static method owner has no supported identity");
     const auto& method = record.methods[methodIndex];
-    if (method.kind != CppMethodKind::Method || method.name.empty() || method.name.starts_with("operator") ||
+    if (method.kind != CppMethodKind::Method || method.name.empty() || cppOperatorName(method.name) ||
         method.qualifiedName != record.qualifiedName + "::" + method.name ||
         (method.access != CppAccess::Public && method.access != CppAccess::Protected &&
          method.access != CppAccess::Private) ||
