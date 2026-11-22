@@ -1416,6 +1416,18 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
         value.isCStaticInlineDefinition = !astContext.getLangOpts().CPlusPlus &&
             !value.externalLinkage && definition && definition->getStorageClass() == clang::SC_Static &&
             definition->hasBody();
+        // EN: Item 6.2. A C99 `inline` or `extern inline` definition in the header (`inline int f(int x) {...}`) is
+        //     not guaranteed to have an external definition in any library; NativeSharp emits its own copy under a
+        //     private symbol, as for `static inline`.
+        // ES: Item 6.2. Una definicion C99 `inline` o `extern inline` en el encabezado no tiene garantizada una
+        //     definicion externa en ninguna biblioteca; NativeSharp emite su propia copia con un simbolo privado,
+        //     como para `static inline`.
+        if (!astContext.getLangOpts().CPlusPlus && value.externalLinkage && definition && definition->hasBody() &&
+            definition->isInlineSpecified() && !function->hasAttr<clang::DLLImportAttr>())
+        {
+            value.isCStaticInlineDefinition = true;
+            value.externalLinkage = false;
+        }
         value.dllImport = function->hasAttr<clang::DLLImportAttr>();
         if (const auto* prototype = function->getType()->getAs<clang::FunctionProtoType>())
             if (!clang::isUnresolvedExceptionSpec(prototype->getExceptionSpecType()))
@@ -4489,7 +4501,8 @@ public:
             {
                 const auto* candidate = llvm::dyn_cast<clang::FunctionDecl>(declaration);
                 if (!candidate || candidate->getNameAsString() != request.name ||
-                    candidate->getStorageClass() != clang::SC_Static) continue;
+                    (candidate->getStorageClass() != clang::SC_Static &&
+                     !(candidate->getDefinition() && candidate->getDefinition()->isInlineSpecified()))) continue;
                 const auto* definition = candidate->getDefinition();
                 if (!definition || !definition->hasBody() || (match && match != definition)) return std::nullopt;
                 match = definition;
@@ -4529,7 +4542,9 @@ public:
         {
             if (const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration))
             {
-                if (!function->isExternallyVisible() && function->doesThisDeclarationHaveABody() &&
+                // Item 6.2: a C99 inline definition of the header too. / Tambien una definicion inline C99.
+                if ((!function->isExternallyVisible() || function->isInlineSpecified()) &&
+                    function->doesThisDeclarationHaveABody() &&
                     !generator->HandleTopLevelDecl(clang::DeclGroupRef(const_cast<clang::FunctionDecl*>(function))))
                     return std::nullopt;
             }
@@ -4567,6 +4582,9 @@ public:
                 return std::nullopt;
             function->setName(requests[i].symbol);
             function->setLinkage(llvm::GlobalValue::ExternalLinkage);
+            // Item 6.2: a C99 inline body comes in a COMDAT named after the original symbol. / Un cuerpo inline C99
+            //     viene en un COMDAT con el nombre original.
+            function->setComdat(nullptr);
         }
         for (std::size_t i = 0; i < globals.size(); ++i)
         {
