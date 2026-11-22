@@ -667,6 +667,7 @@ LLVMValueRef LLVMConstVector(LLVMValueRef* scalarConstantValues, unsigned size);
 LLVMTypeRef LLVMTypeOf(LLVMValueRef value);
 LLVMValueRef LLVMSizeOf(LLVMTypeRef type);
 LLVMTypeKind LLVMGetTypeKind(LLVMTypeRef type);
+unsigned LLVMGetIntTypeWidth(LLVMTypeRef integerType);
 
 LLVMValueRef LLVMAddGlobal(LLVMModuleRef module, LLVMTypeRef type, const char* name);
 void LLVMSetInitializer(LLVMValueRef global, LLVMValueRef constantValue);

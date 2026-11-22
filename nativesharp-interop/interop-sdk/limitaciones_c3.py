@@ -52,4 +52,39 @@ if not ONLY or any('c3-ir' in o for o in ONLY):
         _fail('c3-ir', 'la llamada no usa `half`:\n' + '\n'.join(l for l in text.splitlines() if 'half' in l)[:2500])
     else:
         print('ok c3-ir', flush=True)
+
+# C3-02: `_BitInt(N)` narrower than its carrier travels as `iN`, as Clang declares it: a result is extended by the
+# carrier's signedness (the upper register bits are undefined), an argument is truncated (C's conversion to
+# `_BitInt(N)`). Values live in the carrier (`ushort`, `short`, `long`...) and follow its arithmetic in NativeSharp.
+H2 = r'''
+unsigned _BitInt(12) u12_add(unsigned _BitInt(12) a, unsigned _BitInt(12) b);
+_BitInt(12) s12(int v);
+int s12_to_int(_BitInt(12) v);
+unsigned _BitInt(40) u40_shift(unsigned _BitInt(40) v);
+_BitInt(100) wide(void);
+typedef int (*bit_cb)(_BitInt(12));
+int with_bit_cb(bit_cb cb);
+'''
+S2 = r'''
+unsigned _BitInt(12) u12_add(unsigned _BitInt(12) a, unsigned _BitInt(12) b) { return a + b; }
+_BitInt(12) s12(int v) { return (_BitInt(12))v; }
+int s12_to_int(_BitInt(12) v) { return (int)v; }
+unsigned _BitInt(40) u40_shift(unsigned _BitInt(40) v) { return v << 4; }
+_BitInt(100) wide(void) { return 1; }
+int with_bit_cb(bit_cb cb) { return cb(1); }
+'''
+BODY2 = r'''
+    if (u12_add(4000, 100) != 4) return 1;
+    if (s12(-5) != -5 || s12(2048) != -2048) return 2;
+    if (s12_to_int(4095) != -1) return 3;
+    if (u40_shift(0xF000000000UL) != 0) return 4;
+    if (u40_shift(0x0800000001UL) != 0x8000000010UL) return 5;
+    ushort wrapped = 4100;
+    if (u12_add(wrapped, 0) != 4) return 6;
+    return 42;
+'''
+c2 = Caso('c3-bitint', H2, S2, standard='c2x')
+positivo(c2, BODY2)
+rechazo(c2, 'return (int)wide();', 'wide')
+rechazo(c2, 'return with_bit_cb(null);', 'with_bit_cb')
 fin()

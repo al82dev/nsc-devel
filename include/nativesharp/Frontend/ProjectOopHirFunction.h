@@ -68,6 +68,9 @@ struct ProjectOopHirFunction final
     // Imported C function using the x86-64 System V calling convention.
     bool cppSysVCall = false;
     std::vector<std::uint8_t> cppObjectSizeModes;
+    // EN: C3-02. The N of each `_BitInt(N)` parameter, then of the result (0 for any other type); empty when none.
+    // ES: C3-02. El N de cada parametro `_BitInt(N)` y luego del resultado (0 para otro tipo); vacio si no hay.
+    std::vector<std::uint8_t> cppBitIntWidths;
     bool cppSysVRecordArguments = false;
     bool cppSysVDirectRecordReturn = false;
     std::shared_ptr<const interop::abi_plan::Plan> cppAbiPlan;

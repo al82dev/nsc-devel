@@ -233,6 +233,7 @@ void copyFunctionMetadata(
     function.cppPreserveNone = source.cppPreserveNone;
     function.cppSysVCall = source.cppSysVCall;
     function.cppObjectSizeModes = source.cppObjectSizeModes;
+    function.cppBitIntWidths = source.cppBitIntWidths;
     function.cppSysVRecordArguments = source.cppSysVRecordArguments;
     function.cppSysVDirectRecordReturn = source.cppSysVDirectRecordReturn;
     function.cppAbiPlan = source.cppAbiPlan;

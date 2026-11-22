@@ -1933,6 +1933,19 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             function.cppPreserveNone = symbol.cppCallingConvention == "preserve_none";
             function.cppSysVCall = symbol.cppCallingConvention == "sysv_abi";
             function.cppObjectSizeModes = symbol.cppObjectSizeModes;
+            // C3-02: the widths of the `_BitInt(N)` positions whose carrier is wider than N. / Los anchos de las
+            //     posiciones `_BitInt(N)` cuyo portador es mas ancho que N.
+            {
+                const auto width = [](const interop::CppType& type) -> std::uint8_t {
+                    return type.bitIntWidth && type.sizeBits && *type.bitIntWidth < *type.sizeBits &&
+                        *type.bitIntWidth <= 128U ? static_cast<std::uint8_t>(*type.bitIntWidth) : 0U;
+                };
+                std::vector<std::uint8_t> widths;
+                for (const auto& parameter : symbol.cppParameterTypes) widths.push_back(width(parameter));
+                widths.push_back(symbol.cppReturnType ? width(*symbol.cppReturnType) : 0U);
+                if (std::any_of(widths.begin(), widths.end(), [](std::uint8_t value) { return value != 0U; }))
+                    function.cppBitIntWidths = std::move(widths);
+            }
             // EN: T09-003. Clang passes a C enum by value as its underlying integer. The convention gates below
             //     read these keys, where each C enum whose Clang identity, size and underlying integer match the
             //     imported enum is replaced by that integer; any other key is kept and judged as before.

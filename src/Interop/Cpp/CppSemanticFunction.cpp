@@ -498,6 +498,14 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
             std::find(function.parameters.begin(), function.parameters.end(), kCppHalfTypeKey) !=
                 function.parameters.end())
             return std::nullopt;
+        // C3-02: so does a callback with a `_BitInt(N)` narrower than its carrier. / Tambien un callback con un
+        //     `_BitInt(N)` mas estrecho que su portador.
+        const auto narrowBitInt = [](const CppType& slot) {
+            return slot.bitIntWidth && slot.sizeBits && *slot.bitIntWidth < *slot.sizeBits;
+        };
+        if (narrowBitInt(signature.returnType) ||
+            std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), narrowBitInt))
+            return std::nullopt;
         return CppScalarTypeMapping{language::functionTypeIdentity(function), type.canonicalSpelling, false, false};
     }
     if (type.kind != CppTypeKind::Pointer) return mapCppScalarType(type);

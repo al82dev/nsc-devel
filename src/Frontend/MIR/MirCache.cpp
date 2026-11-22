@@ -925,6 +925,8 @@ void appendMirFunctionAbi(std::string& out, const ProjectOopMirFunction& functio
     internal::CachePayloadWriter::u32Vector(out, ownerships);
     std::vector<std::uint32_t> objectSizeModes(function.cppObjectSizeModes.begin(), function.cppObjectSizeModes.end());
     internal::CachePayloadWriter::u32Vector(out, objectSizeModes);
+    std::vector<std::uint32_t> bitIntWidths(function.cppBitIntWidths.begin(), function.cppBitIntWidths.end());
+    internal::CachePayloadWriter::u32Vector(out, bitIntWidths);
 }
 
 template <typename Tuples>
@@ -1197,7 +1199,8 @@ bool readMirFunctionAbi(
     function.abi.physicalParameterCount = u32;
     return readMirEnumVector(reader, function.parameterPassKinds) &&
         readMirEnumVector(reader, function.parameterOwnerships) &&
-        readMirEnumVector(reader, function.cppObjectSizeModes);
+        readMirEnumVector(reader, function.cppObjectSizeModes) &&
+        readMirEnumVector(reader, function.cppBitIntWidths);
 }
 
 template <typename Tuples>
@@ -1496,6 +1499,7 @@ bool matchesHirFunctionNames(
         function.parameterNames == source.parameterNames &&
         function.parameterTypeKeys == source.parameterTypeKeys &&
         function.cppObjectSizeModes == source.cppObjectSizeModes &&
+        function.cppBitIntWidths == source.cppBitIntWidths &&
         function.generatorParameterTypeKeys == source.generatorParameterTypeKeys;
 }
 

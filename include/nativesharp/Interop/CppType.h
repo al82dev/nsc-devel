@@ -67,6 +67,11 @@ struct CppType
     // ES: T14-007. Un puntero a miembro de datos o de funcion; su tipo sigue sin soporte y la marca permite
     //     decir por que la declaracion no tiene firma NativeSharp.
     bool memberPointer = false;
+    // EN: C3-02. The N of `_BitInt(N)` / `unsigned _BitInt(N)`; its carrier is the integer of `sizeBits`. Clang passes
+    //     and returns it as an N-bit value whose upper register bits are undefined.
+    // ES: C3-02. El N de `_BitInt(N)`; su portador es el entero de `sizeBits`. Clang lo pasa y devuelve como un valor de
+    //     N bits cuyos bits superiores del registro no estan definidos.
+    std::optional<std::uint32_t> bitIntWidth;
 };
 
 // A description of the Clang function type, not a promise that NSC can call it.

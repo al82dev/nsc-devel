@@ -661,6 +661,24 @@ bool OopLlvmImplementation::cVectorPlanValues(const frontend::ProjectOopMirFunct
                 result = LLVMHalfTypeInContext(context_);
                 halfValues = true;
             }
+            // EN: C3-02. A `_BitInt(N)` narrower than its carrier travels as LLVM `iN`, as Clang declares it; the call
+            //     truncates the carrier and extends the result by the carrier's signedness.
+            // ES: C3-02. Un `_BitInt(N)` mas estrecho que su portador viaja como `iN` de LLVM, como lo declara Clang;
+            //     la llamada trunca el portador y extiende el resultado segun el signo del portador.
+            if (function.cppBitIntWidths.size() == function.parameterTypeKeys.size() + 1U)
+            {
+                for (std::size_t index = 0; index < function.parameterTypeKeys.size(); ++index)
+                    if (function.cppBitIntWidths[index] != 0U)
+                    {
+                        parameters[index] = LLVMIntTypeInContext(context_, function.cppBitIntWidths[index]);
+                        halfValues = true;
+                    }
+                if (function.cppBitIntWidths.back() != 0U)
+                {
+                    result = LLVMIntTypeInContext(context_, function.cppBitIntWidths.back());
+                    halfValues = true;
+                }
+            }
             if (!halfValues) parameters.clear();
         }
         const interop::abi_plan::Plan* plan = function.cppAbiPlan.get();
@@ -722,6 +740,10 @@ LLVMValueRef OopLlvmImplementation::carrierToAbiValue(
 {
         LLVMTypeRef carrier = llvmType(typeKey, error);
         if (carrier == nullptr || abiType == nullptr) return nullptr;
+        // C3-02: an integer carrier narrows to `iN`. / Un portador entero se estrecha a `iN`.
+        if (LLVMGetTypeKind(carrier) == LLVMIntegerTypeKind && LLVMGetTypeKind(abiType) == LLVMIntegerTypeKind &&
+            LLVMGetIntTypeWidth(abiType) < LLVMGetIntTypeWidth(carrier))
+            return LLVMBuildTrunc(builder_, value, abiType, "c.bitint.arg");
         const unsigned alignment = vectorSlotAlignment(typeKey);
         LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "c.vector.carrier.to.abi");
         LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
@@ -736,6 +758,16 @@ LLVMValueRef OopLlvmImplementation::abiValueToCarrier(
 {
         LLVMTypeRef carrier = llvmType(typeKey, error);
         if (carrier == nullptr || abiType == nullptr) return nullptr;
+        // EN: C3-02. An `iN` result extends to its carrier by the carrier's signedness, as C converts `_BitInt(N)`.
+        // ES: C3-02. Un resultado `iN` se extiende a su portador segun el signo del portador, como C convierte.
+        if (LLVMGetTypeKind(carrier) == LLVMIntegerTypeKind && LLVMGetTypeKind(abiType) == LLVMIntegerTypeKind &&
+            LLVMGetIntTypeWidth(abiType) < LLVMGetIntTypeWidth(carrier))
+        {
+            const bool signedCarrier = typeKey == "builtin:sbyte" || typeKey == "builtin:short" ||
+                typeKey == "builtin:int" || typeKey == "builtin:long" || typeKey == "builtin:i128";
+            return signedCarrier ? LLVMBuildSExt(builder_, value, carrier, "c.bitint.result")
+                                 : LLVMBuildZExt(builder_, value, carrier, "c.bitint.result");
+        }
         const unsigned alignment = vectorSlotAlignment(typeKey);
         LLVMValueRef slot = entryBlockAlloca(abiType, alignment, "c.vector.abi.to.carrier");
         LLVMValueRef store = LLVMBuildStore(builder_, value, slot);

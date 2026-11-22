@@ -217,6 +217,7 @@ void appendFunctionVectors(std::string& out, const ProjectOopHirFunction& functi
     CachePayloadWriter::stringVector(out, function.parameterNames);
     CachePayloadWriter::stringVector(out, function.parameterTypeKeys);
     appendEnumVector(out, function.cppObjectSizeModes);
+    appendEnumVector(out, function.cppBitIntWidths);
     appendEnumVector(out, function.parameterPassKinds);
     appendEnumVector(out, function.parameterOwnerships);
     CachePayloadWriter::sizeVector(out, function.localOrdinals);

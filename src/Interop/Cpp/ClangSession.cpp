@@ -688,6 +688,8 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
     }
     else if (raw->isSignedIntegerType()) result.kind = CppTypeKind::SignedInteger;
     else if (raw->isUnsignedIntegerType()) result.kind = CppTypeKind::UnsignedInteger;
+    // C3-02: the width of `_BitInt(N)`. / El ancho de `_BitInt(N)`.
+    if (const auto* bitInt = raw->getAs<clang::BitIntType>()) result.bitIntWidth = bitInt->getNumBits();
     else if (raw->isRealFloatingType())
     {
         result.kind = CppTypeKind::Floating;

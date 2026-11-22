@@ -15,6 +15,7 @@
 #include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
 #include "nativesharp/Frontend/NamespaceStateSymbol.h"
 
+#include <charconv>
 #include <algorithm>
 #include <exception>
 #include <functional>
@@ -168,6 +169,18 @@ bool getType(ByteReader& reader, CppType& type, unsigned depth, bool allowAtomic
         !getFlag(reader, type.isVolatile) || !getFlag(reader, type.isRestrict) ||
         !getOptionalNumber(reader, type.sizeBits) || !getOptionalNumber(reader, type.alignmentBits) ||
         !getOptionalNumber(reader, type.arrayCount) || !getFlag(reader, type.isIncompleteArray)) return false;
+    // EN: C3-02. The N of `_BitInt(N)` is part of its canonical spelling, so the catalogue keeps it without a field.
+    // ES: C3-02. El N de `_BitInt(N)` es parte de su escritura canonica, asi el catalogo lo conserva sin un campo.
+    if (type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger)
+        if (const auto open = type.unqualifiedCanonicalSpelling.find("_BitInt("); open != std::string::npos)
+        {
+            std::uint32_t width = 0;
+            const char* first = type.unqualifiedCanonicalSpelling.data() + open + 8;
+            const char* last = type.unqualifiedCanonicalSpelling.data() + type.unqualifiedCanonicalSpelling.size();
+            if (const auto parsed = std::from_chars(first, last, width); parsed.ec == std::errc{} && parsed.ptr != last &&
+                *parsed.ptr == ')' && width != 0U)
+                type.bitIntWidth = width;
+        }
     bool present = false;
     if (!getFlag(reader, present)) return false;
     if (present)

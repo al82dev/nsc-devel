@@ -203,6 +203,9 @@ void writeFunctionIdentity(
     output.scalar(function.cppPreserveMost);
     output.scalar(function.cppPreserveNone);
     output.scalar(function.cppPreserveAll);
+    // C3-02: the `_BitInt(N)` widths change the declaration. / Los anchos cambian la declaracion.
+    output.scalar(function.cppBitIntWidths.size());
+    for (const auto width : function.cppBitIntWidths) output.scalar(width);
     output.scalar(function.isTransportedInlineBody);
     output.scalar(function.isSyntheticImplicitConstructor);
     output.text(function.importDllName);

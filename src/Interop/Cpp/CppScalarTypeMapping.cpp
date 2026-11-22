@@ -7,6 +7,11 @@ namespace nativesharp::interop
 std::optional<CppScalarTypeMapping> mapCppScalarType(const CppType& type)
 {
     if (type.canonicalSpelling.empty()) return std::nullopt;
+    // EN: C3-02. A `_BitInt(N)` with 64 < N < 128 travels in memory in Clang's Windows x64 ABI, unlike the 128-bit
+    //     carrier: it stays unmapped. N <= 64 and N == 128 use the integer carriers of their size.
+    // ES: C3-02. Un `_BitInt(N)` con 64 < N < 128 viaja en memoria en el ABI de Clang para Windows x64, a diferencia
+    //     del portador de 128 bits: queda sin mapear. N <= 64 y N == 128 usan los portadores enteros de su tamano.
+    if (type.bitIntWidth && *type.bitIntWidth > 64U && *type.bitIntWidth < 128U) return std::nullopt;
     std::string_view key;
     if (type.kind == CppTypeKind::Void) key = "builtin:void";
     else if (type.kind == CppTypeKind::Boolean && type.sizeBits == 8) key = "builtin:bool";
