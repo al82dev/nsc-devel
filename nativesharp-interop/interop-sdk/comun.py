@@ -39,6 +39,7 @@ ENV = dict(os.environ, TEMP=str(ROOT), TMP=str(ROOT), NSC_LINKER=LINKER, NSC_LLV
 ENV['PATH'] = str(Path(NSC).parent) + os.pathsep + str(Path(CLANG_ROOT) / 'bin') + os.pathsep + \
     str(Path(LINKER).parent) + os.pathsep + ENV.get('PATH', '')
 FAILURES = []
+_COUNTERS = {}
 print('Evidencia:', ROOT, flush=True)
 
 
@@ -182,8 +183,9 @@ def rechazo(caso, body, texto, preludio=''):
     """Compiles in O0 and expects a failure whose output contains `texto`."""
     if not _selected(caso.nombre):
         return
-    label = f'{caso.nombre}-rechazo'
-    base = ROOT / caso.nombre / 'rechazo'
+    _COUNTERS[caso.nombre] = _COUNTERS.get(caso.nombre, 0) + 1
+    label = f'{caso.nombre}-rechazo{_COUNTERS[caso.nombre]}'
+    base = ROOT / caso.nombre / f'rechazo{_COUNTERS[caso.nombre]}'
     base.mkdir(parents=True)
     refs = caso.reference(base) + core(0)
     (base / 'Main.ns').write_text(f'using NativeSharp.Core;\n{preludio}\nint Main()\n{{\n{body}\n}}\n',
