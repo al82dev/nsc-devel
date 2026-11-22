@@ -1,6 +1,7 @@
 """Tanda 15: subobjetos y layout C++ (items 15.1-15.7).
 
-15.1 campos record, arreglo y escalar de un record C++ con constructor y destructor propios, leidos por su direccion;
+15.1 campos record, arreglo y escalar de un record C++ con constructor propio, leidos por su direccion (un dueno con
+destructor no trivial no importa esos campos: lo exigen los rechazos de pruebas-tanda-09-regcall-cpp-*);
 15.2 arreglo de records en un campo C++ (`BlendDesc::targets`); 15.6 helper C++ `static inline` del encabezado;
 15.7 agregado constante `extern const` (forma de DEFINE_GUID).
 Limitaciones documentadas: 15.3 (uniones C++ con miembros no triviales), 15.4 (std::variant), 15.5 (punteros a
@@ -10,7 +11,7 @@ from comun import Caso, positivo, fin
 
 H = r'''
 struct V2 { float x, y; };
-struct Owner { int n; V2 pos; int arr[3]; Owner(); ~Owner(); };
+struct Owner { int n; V2 pos; int arr[3]; Owner(); };
 Owner* get_owner();
 struct TB { int a, b; };
 struct Blend { TB targets[4]; int count; };
@@ -21,7 +22,6 @@ extern const GUIDx IID_Thing;
 '''
 S = r'''
 Owner::Owner() : n(0) {}
-Owner::~Owner() {}
 static char storage[sizeof(Owner)];
 Owner* get_owner() { Owner* o = (Owner*)storage; o->n = 40; o->pos.x = 1; o->pos.y = 1; o->arr[2] = 0; return o; }
 static Blend bl = {{{1, 2}, {3, 4}, {5, 6}, {7, 35}}, 4};

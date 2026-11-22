@@ -527,12 +527,12 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         arrayElement->kind == CppTypeKind::Enumeration;
     const auto ownerOrdinal = lookup ? lookup->typeOrdinalForIdentity(identity->key()) : std::nullopt;
     const bool cppValueFields = record.isCxx && ownerOrdinal && lookup->cppTrivialValueEligible(*ownerOrdinal);
-    // EN: Item 15.1 (T21). A field is reached through the owner's address, so arrays, records, enums and function
-    //     pointers of a C++ record are projected also when the owner itself cannot be copied (a constructor or
-    //     destructor of its own); the field's own type must still be transportable.
-    // ES: Item 15.1 (T21). Un campo se alcanza por la direccion del dueno, asi que los arreglos, records, enums y
-    //     punteros a funcion de un record C++ se proyectan aunque el dueno no se pueda copiar; el tipo del campo
-    //     sigue teniendo que ser transportable.
+    // EN: Item 15.1 (T21). Array, record, enum and function pointer fields of a C++ record are projected when the
+    //     owner is a transport value (batch 10: its constructor may have a body). An owner with a non-trivial
+    //     destructor or copy keeps them unimported, as the existing rejections of pruebas-tanda-09 require.
+    // ES: Item 15.1 (T21). Los campos arreglo, record, enum y puntero a funcion de un record C++ se proyectan si el
+    //     dueno es un valor transportable (tanda 10). Un dueno con destructor o copia no triviales no los importa,
+    //     como exigen los rechazos existentes de pruebas-tanda-09.
     const auto pointerArray = frontend::cppAliasArrayType(field.type);
     const bool representablePointerArray = pointerArray && pointerArray->element.pointerDepth > 0 &&
         !pointerArray->element.pointeeConst && pointerArray->element.token != lexer::TokenKind::KwVoid;
@@ -632,13 +632,13 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     }
     // Item 9.13: a function pointer field of a C++ record too (Assimp, ImGui, mmx). / Tambien un campo puntero a
     //     funcion de un record C++.
-    if (!mapped)
+    if (!mapped && (!record.isCxx || cppValueFields))
         mapped = projectCppStoredFunctionPointer(field.type, projectOrdinal, moduleName, lookup, record.isCxx);
     // Item 9.11: an array of enums in a C++ record (GameInput labels). / Un arreglo de enums en un record C++.
-    if (!mapped && (!record.isCxx || scalarArray || enumArray || recordArray) &&
+    if (!mapped && (!record.isCxx || (cppValueFields && (scalarArray || enumArray || recordArray))) &&
         field.type.kind == CppTypeKind::Array)
         mapped = projectCArrayField(field.type, projectOrdinal, moduleName, lookup);
-    if (!mapped && (!record.isCxx || !field.type.isVolatile) &&
+    if (!mapped && (!record.isCxx || (cppValueFields && !field.type.isVolatile)) &&
         field.type.kind == CppTypeKind::Enumeration)
     {
         CppType unqualified = field.type;
@@ -651,7 +651,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         }
     }
     // T19-005: a C++ field of an unnamed enum too. / Tambien un campo C++ de un enum sin nombre.
-    if (!mapped && (!record.isCxx || !field.type.isVolatile) &&
+    if (!mapped && (!record.isCxx || (cppValueFields && !field.type.isVolatile)) &&
         field.type.kind == CppTypeKind::Enumeration &&
         field.type.enumIdentity && field.type.enumIdentity->anonymousContext &&
         field.type.enumIdentity->name.empty() && field.type.enumUnderlying &&
@@ -669,7 +669,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         if (auto mirror = nativeStructMirrorFieldKey(field.type, lookup))
             mapped = CppScalarTypeMapping{std::move(*mirror), field.type.canonicalSpelling, field.type.isConst,
                                           field.type.isVolatile};
-    if (!mapped && lookup && field.type.kind == CppTypeKind::Record)
+    if (!mapped && (!record.isCxx || cppValueFields) && lookup && field.type.kind == CppTypeKind::Record)
     {
         const auto target = projectCppRecordTypeIdentity(field.type, moduleName);
         const auto* imported = fieldRecordType(*lookup, target, projectOrdinal);
