@@ -771,6 +771,13 @@ CppSemanticFunctionResult projectFunction(
     const auto returnCarrier = referenceReturn ? cppParameterReferenceCarrier(function.returnType) : std::nullopt;
     // EN: T19-007. A `const T&` result is a read-only reference; the call site derives it from cppReturnType.
     // ES: T19-007. Un resultado `const T&` es una referencia de solo lectura; la llamada la deduce de cppReturnType.
+    // EN: Item 8.7 (D8). A function that returns twice (setjmp) would resume a NativeSharp frame through longjmp,
+    //     skipping its cleanups; it is not imported.
+    // ES: Item 8.7 (D8). Una funcion que vuelve dos veces (setjmp) reanudaria un frame NativeSharp por longjmp,
+    //     saltando sus limpiezas; no se importa.
+    if (function.returnsTwice)
+        return failure("it returns twice (setjmp); a longjmp back into a NativeSharp frame would skip its cleanups, "
+                       "so call it from C code");
     if (referenceReturn && !returnCarrier)
         return failure("C++ reference return type is not yet mapped");
     // T19-002: a C `_Atomic T*` result is a pointer to T marked atomic. / Un resultado C `_Atomic T*` es un puntero

@@ -59,6 +59,9 @@ struct CppFunctionDeclaration
     // True only if Clang resolved a non-throwing exception specification.
     bool isNonThrowing = false;
     bool dllImport = false;
+    // EN: Item 8.7. `returns_twice` (setjmp and similar): the call may return again through longjmp.
+    // ES: Item 8.7. `returns_twice` (setjmp y similares): la llamada puede volver otra vez por longjmp.
+    bool returnsTwice = false;
     // An external spelling does not guarantee that a particular binary defines the symbol.
     std::optional<std::string> externalSymbol;
     std::optional<CppSourcePoint> location;

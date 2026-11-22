@@ -1430,6 +1430,7 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
             value.languageLinkage = CppLanguageLinkage::None;
         }
         value.dllImport = function->hasAttr<clang::DLLImportAttr>();
+        value.returnsTwice = function->hasAttr<clang::ReturnsTwiceAttr>();
         if (const auto* prototype = function->getType()->getAs<clang::FunctionProtoType>())
             if (!clang::isUnresolvedExceptionSpec(prototype->getExceptionSpecType()))
                 value.isNonThrowing = prototype->isNothrow();
