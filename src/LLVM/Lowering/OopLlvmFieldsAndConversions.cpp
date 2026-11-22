@@ -3,6 +3,7 @@
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
+#include "nativesharp/Interop/CppScalarTypeMapping.h"
 #include "nativesharp/Language/AbiSemantics.h"
 
 #include <cmath>
@@ -303,7 +304,64 @@ LLVMValueRef OopLlvmImplementation::convert(
         LLVMValueRef spanView = tryConvertSpanView(
             value, source, target, destination, spanViewHandled, error);
         if (spanViewHandled) return spanView;
+        // EN: C3-01. An explicit conversion between Half (IEEE binary16, C `_Float16`) and a number converts the value,
+        //     as C converts `_Float16` and C# converts Half: the carrier's bits are a binary16 value. A number other than
+        //     float or double becomes binary16 directly (one rounding); Half reaches other numbers through float, which
+        //     holds every binary16 value exactly.
+        // ES: C3-01. Una conversion explicita entre Half (IEEE binary16, `_Float16` de C) y un numero convierte el valor,
+        //     como C convierte `_Float16` y C# convierte Half: los bits del portador son un valor binary16. Un numero
+        //     distinto de float o double pasa a binary16 directo (un redondeo); Half llega a otros numeros por float, que
+        //     contiene exactamente todo valor binary16.
+        if (source == interop::kCppHalfTypeKey || target == interop::kCppHalfTypeKey)
+            return convertHalf(value, source, target, destination, error);
         return convertScalar(value, source, target, destination, error);
+}
+
+LLVMValueRef OopLlvmImplementation::convertHalf(
+        LLVMValueRef value,
+        std::string_view source,
+        std::string_view target,
+        LLVMTypeRef destination,
+        std::string& error)
+{
+        LLVMTypeRef binary16 = LLVMHalfTypeInContext(context_);
+        if (source == interop::kCppHalfTypeKey)
+        {
+            LLVMValueRef slot = entryBlockAlloca(LLVMTypeOf(value), 2U, "half.cast.source.addr");
+            LLVMSetAlignment(LLVMBuildStore(builder_, value, slot), 2U);
+            LLVMValueRef half = LLVMBuildLoad2(builder_, binary16, slot, "half.cast.source");
+            LLVMSetAlignment(half, 2U);
+            if (target == "builtin:double") return LLVMBuildFPExt(builder_, half, destination, "half.to.double");
+            LLVMTypeRef floatType = LLVMFloatTypeInContext(context_);
+            LLVMValueRef widened = LLVMBuildFPExt(builder_, half, floatType, "half.to.float");
+            if (target == "builtin:float") return widened;
+            return convertScalar(widened, "builtin:float", target, destination, error);
+        }
+        LLVMValueRef half = nullptr;
+        const auto* sourceEnum = findEnumUnderlyingInfo(nameLookup_, source);
+        const unsigned sourceWidth = sourceEnum != nullptr ? sourceEnum->width : integerWidth(source);
+        const bool sourceSigned = sourceEnum != nullptr ? sourceEnum->isSigned : isSignedInteger(source);
+        if (source == "builtin:float" || source == "builtin:double")
+            half = LLVMBuildFPTrunc(builder_, value, binary16, "half.from.floating");
+        else if (source == "builtin:bool")
+            half = LLVMBuildUIToFP(builder_, value, binary16, "half.from.bool");
+        else if (sourceWidth != 0)
+            half = sourceSigned ? LLVMBuildSIToFP(builder_, value, binary16, "half.from.signed")
+                                : LLVMBuildUIToFP(builder_, value, binary16, "half.from.unsigned");
+        else if (source == "builtin:decimal")
+        {
+            LLVMValueRef asDouble = convertScalar(
+                value, source, "builtin:double", LLVMDoubleTypeInContext(context_), error);
+            if (asDouble == nullptr) return nullptr;
+            half = LLVMBuildFPTrunc(builder_, asDouble, binary16, "half.from.decimal");
+        }
+        else
+            return failValue(error, "unsupported conversion from '" + std::string(source) + "' to Half");
+        LLVMValueRef slot = entryBlockAlloca(destination, 2U, "half.cast.result.addr");
+        LLVMSetAlignment(LLVMBuildStore(builder_, half, slot), 2U);
+        LLVMValueRef result = LLVMBuildLoad2(builder_, destination, slot, "half.cast.result");
+        LLVMSetAlignment(result, 2U);
+        return result;
 }
 
 LLVMValueRef OopLlvmImplementation::convertStructuralTuple(

@@ -30,13 +30,21 @@ def una_vez():
         print('ok t1-una-vez', flush=True)
 una_vez()
 
-# EN: `_Float16` has no NativeSharp mapping yet (item 3.6); `void*[N]` fields are imported since batch 4.
-# ES: `_Float16` aun no tiene mapeo en NativeSharp (item 3.6); los campos `void*[N]` se importan desde la tanda 4.
+# EN: `_Float16` maps to Half since C3-01 (item 3.6), so its field is imported and the former rejection is a
+#     positive read; the omitted-field diagnostic is kept with `_BitInt(100)`, which stays unmapped (C3-02).
+#     `void*[N]` fields are imported since batch 4.
+# ES: `_Float16` se mapea a Half desde C3-01 (item 3.6), asi su campo se importa y el rechazo anterior es una
+#     lectura positiva; el diagnostico de campo omitido se conserva con `_BitInt(100)`, que sigue sin mapeo (C3-02).
+#     Los campos `void*[N]` se importan desde la tanda 4.
 campo = Caso('t1-campo-omitido', 'typedef struct S { int a; _Float16 pad; int b; } S;\nint g(S* s);\n',
              'int g(S* s) { return s->a + s->b; }\n')
-diagnostico(campo, 'S s; s.a = 40; s.b = 2; int p = (int)s.pad; return g(&s);',
-            ["C/C++ field 'pad' of type '_Float16' was not imported"], False, opts=['0'])
-positivo(campo, 'S s; s.a = 40; s.b = 2; return g(&s);')
+positivo(campo, 'S s; s.a = 40; s.b = 2; s.pad = (NativeSharp.Core.Numerics.Half)0.0f; int p = (int)s.pad; return g(&s) + p;')
+campo_bitint = Caso('t1-campo-omitido-bitint',
+                    'typedef struct S { int a; _BitInt(100) pad; int b; } S;\nint g(S* s);\n',
+                    'int g(S* s) { return s->a + s->b; }\n')
+diagnostico(campo_bitint, 'S s; s.a = 40; s.b = 2; int p = (int)s.pad; return g(&s);',
+            ["C/C++ field 'pad' of type '_BitInt(100)' was not imported"], False, opts=['0'])
+positivo(campo_bitint, 'S s; s.a = 40; s.b = 2; return g(&s);')
 
 param = Caso('t1-parametro', 'int g(typeof(nullptr) p);\n', None, standard='c23')
 diagnostico(param, 'return g(null);', ["('typeof (nullptr)') is not yet mapped"], False, opts=['0'])

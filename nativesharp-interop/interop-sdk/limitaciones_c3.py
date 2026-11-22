@@ -44,6 +44,13 @@ rechazo(c1, 'return with_half_cb(null);', 'with_half_cb')
 # C promotes `_Float16` to double in `...`; a Half is not passed there implicitly (write (double)Half.ToFloat(h)).
 rechazo(c1, 'var a = half_from(1.0f); return vread(1, a);', 'vread')
 positivo(Caso('c3-float16-variadica', H1, S1), 'var a = half_from(10.5f); return vread(1, (double)NativeSharp.Core.Numerics.Half.ToFloat(a)) == 42 ? 42 : 1;', modes=['directo'])
+# An explicit cast converts between Half and numbers, as C converts `_Float16` (a cast failed in the backend before).
+positivo(Caso('c3-float16-cast', H1, S1), r'''
+    var a = (NativeSharp.Core.Numerics.Half)2.75f;
+    var b = (NativeSharp.Core.Numerics.Half)7;
+    var c = (NativeSharp.Core.Numerics.Half)1.5;
+    if ((int)a != 2 || (float)a != 2.75f || (double)b != 7.0 || (long)b != 7L || (float)c != 1.5f) return 1;
+    return (int)half_to(half_add(b, (NativeSharp.Core.Numerics.Half)35u));''')
 
 if not ONLY or any('c3-ir' in o for o in ONLY):
     result = ir(Caso('c3-ir', H1, S1), 'var a = half_from(1.5f); return (int)half_to(half_add(a, a));')

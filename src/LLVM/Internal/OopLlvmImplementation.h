@@ -2995,6 +2995,8 @@ private:
         LLVMValueRef value,
         std::string_view source,
         std::string& error);
+    LLVMValueRef convertHalf(LLVMValueRef value, std::string_view source, std::string_view target,
+        LLVMTypeRef destination, std::string& error);
     LLVMValueRef convertScalar(
         LLVMValueRef value,
         std::string_view source,
