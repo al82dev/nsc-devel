@@ -1166,10 +1166,19 @@ LLVMValueRef OopLlvmImplementation::storeBitFieldFromParts(
 {
         LLVMTypeRef storageType = bitFieldStorageType(field, error);
         if (storageType == nullptr) return nullptr;
-        LLVMValueRef previous = LLVMBuildLoad2(
-            builder_, storageType, address, "bitfield.store.storage.load");
-        LLVMSetAlignment(previous, static_cast<unsigned>(field->alignment));
-        if (field->volatileAccess) LLVMSetVolatile(previous, 1);
+        // EN: Item 4.13. A bit-field that fills its whole storage unit keeps no other bits: the store does not read
+        //     the unit first, as Clang does. For a volatile field the extra read was an observable access.
+        // ES: Item 4.13. Un bit-field que ocupa toda su unidad no conserva otros bits: el store no lee antes la
+        //     unidad, como Clang. En un campo volatile la lectura extra era un acceso observable.
+        const bool wholeUnit = field->bitOffset && field->bitWidth && *field->bitOffset == 0 &&
+            *field->bitWidth == field->bitStorageSize * 8U;
+        LLVMValueRef previous = wholeUnit ? LLVMConstNull(storageType)
+                                          : LLVMBuildLoad2(builder_, storageType, address, "bitfield.store.storage.load");
+        if (!wholeUnit)
+        {
+            LLVMSetAlignment(previous, static_cast<unsigned>(field->alignment));
+            if (field->volatileAccess) LLVMSetVolatile(previous, 1);
+        }
         LLVMValueRef merged = insertBitField(field, previous, value, error);
         if (merged == nullptr) return nullptr;
         LLVMValueRef store = LLVMBuildStore(builder_, merged, address);
