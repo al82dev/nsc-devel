@@ -88,7 +88,11 @@ void compatibilityContract(TestContext& context, std::size_t variant)
     if (variant == 3U)
     {
         std::string incompletePolicy = currentCompatibilityPolicy();
-        constexpr std::string_view omittedCapability = "language_compatibility=";
+        // TF-DRIVER-027: since b56d00e0c language_compatibility is an informational label, so the omitted
+        //     field is compiler_compatibility, the first required capability after compiler_release.
+        // TF-DRIVER-027: desde b56d00e0c language_compatibility es una etiqueta informativa; el campo omitido
+        //     es compiler_compatibility, la primera capacidad requerida despues de compiler_release.
+        constexpr std::string_view omittedCapability = "compiler_compatibility=";
         const std::size_t omittedBegin = incompletePolicy.find(omittedCapability);
         if (omittedBegin != std::string::npos)
         {
@@ -101,7 +105,7 @@ void compatibilityContract(TestContext& context, std::size_t variant)
         // Keep every preceding capability normative so the missing field owns the rejection.
         tree.write("policy.txt", incompletePolicy);
         context.expect(!verifyInstalledCompatibilityCapabilities(tree.root() / "policy.txt", error) &&
-                contains(error, "missing required capability 'language_compatibility'"),
+                contains(error, "missing required capability 'compiler_compatibility'"),
             "incomplete installed capability policy is rejected");
         return;
     }

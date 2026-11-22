@@ -118,7 +118,9 @@ void registerEscapeRejectionCase(TestRegistry& registry)
             Vector{"escape-v1|999999999999999999999999:A|", "corrupt escape summary length"},
             Vector{"escape-v1|1:A/", "corrupt escape summary length"},
             Vector{"escape-v1|1:A|0x,", "invalid escape class"},
-            Vector{"escape-v1|1:A|5,", "invalid escape class"},
+            // RefSlotNoEscape (5), ObjectPointerGlobal (6) and ForeignImport (7) joined the domain; 8 is the first invalid class.
+            // RefSlotNoEscape (5), ObjectPointerGlobal (6) y ForeignImport (7) se sumaron al dominio; 8 es la primera clase invalida.
+            Vector{"escape-v1|1:A|8,", "invalid escape class"},
             Vector{"escape-v1|1:A|,", "invalid escape class"},
             Vector{"escape-v1|1:A|0", "corrupt escape class list"},
             Vector{"escape-v1|1:A|0,tail", "corrupt escape class list"},

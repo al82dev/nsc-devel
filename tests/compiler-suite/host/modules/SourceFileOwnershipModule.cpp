@@ -44,13 +44,16 @@ void registerSourceFileOwnershipModule(TestRegistry& registry)
         {"source", "file", "ownership", "unicode-path"},
         [](TestContext& context) {
             const std::filesystem::path path = L"A:\\fuente\\m\u00F3dulo-\u00F1.ns";
-            const std::string expectedDisplay = path.string();
+            // 4025a5555: SourceFile captures the display path as UTF-8 so non-ASCII names survive the ANSI code page.
+            // 4025a5555: SourceFile captura la ruta visible en UTF-8 para que los nombres no ASCII sobrevivan la pagina ANSI.
+            const auto utf8Display = path.u8string();
+            const std::string expectedDisplay(reinterpret_cast<const char*>(utf8Display.data()), utf8Display.size());
             const nativesharp::source::SourceFile file(nativesharp::FileId{41}, path, "source");
 
             context.expect(file.path() == path, "source file must preserve its representable Unicode path");
             context.expect(
                 file.displayPath() == expectedDisplay,
-                "display path must equal the narrow representation captured at construction");
+                "display path must equal the UTF-8 representation captured at construction");
         },
     });
     registry.add(TestCase{

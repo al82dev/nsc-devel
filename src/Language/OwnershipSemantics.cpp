@@ -118,7 +118,7 @@ bool decodeEscapeSummary(std::string_view encoded, EscapeSummary& summary, std::
         int value = -1;
         const auto item = std::from_chars(encoded.data(), encoded.data() + comma, value);
         if (item.ec != std::errc{} || item.ptr != encoded.data() + comma ||
-            value < 0 || value > static_cast<int>(EscapeClass::ObjectPointerGlobal))
+            value < 0 || value > static_cast<int>(EscapeClass::ForeignImport))
         { error = "invalid escape class"; return false; }
         decoded.parameters.push_back(static_cast<EscapeClass>(value));
         encoded.remove_prefix(comma + 1);

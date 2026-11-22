@@ -28,7 +28,7 @@ namespace NativeSharp.CompilerSuite.SelfHost.Diagnostics
         {
             raii Diagnostic diagnostic = DiagnosticCatalog.MissingSource("a.ns");
             raii string rendered = DiagnosticRenderer.Human(diagnostic);
-            return rendered == "nsc: error: cannot open source file 'a.ns'" ? 0 : 15;
+            return rendered == "nsc: error: source file does not exist or is not a regular file: 'a.ns'" ? 0 : 15;
         }
 
         private static int HumanUnknownOption()
@@ -57,7 +57,7 @@ namespace NativeSharp.CompilerSuite.SelfHost.Diagnostics
         {
             raii Diagnostic diagnostic = DiagnosticCatalog.MissingSource("");
             raii string rendered = DiagnosticRenderer.Human(diagnostic);
-            return rendered == "nsc: error: cannot open source file ''" ? 0 : 19;
+            return rendered == "nsc: error: source file does not exist or is not a regular file: ''" ? 0 : 19;
         }
 
         private static int HumanSeverityVariants()
