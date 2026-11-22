@@ -3410,8 +3410,11 @@ private:
         {
             const bool negative = kind == lexer::TokenKind::Minus;
             const auto* number = std::get_if<std::uint64_t>(&tokens_[index + (negative ? 1 : 0)].value());
-            if (!number || *number > (negative ? std::uint64_t(1) << 63 : std::uint64_t(INT64_MAX))) return std::nullopt;
+            // Item 13.6: a positive literal above INT64_MAX is an unsigned argument (`big<18446744073709551615ul>`).
+            //     / Un literal positivo mayor que INT64_MAX es un argumento sin signo.
+            if (!number || (negative && *number > (std::uint64_t(1) << 63))) return std::nullopt;
             value.kind = interop::CppTemplateArgument::Kind::Integral;
+            value.integralUnsigned = !negative && *number > std::uint64_t(INT64_MAX);
             value.integral = negative ? static_cast<std::int64_t>(std::uint64_t(0) - *number)
                                       : static_cast<std::int64_t>(*number);
             result.next = Position{index + (negative ? 2 : 1), false};

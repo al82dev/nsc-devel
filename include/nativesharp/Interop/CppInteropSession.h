@@ -180,6 +180,9 @@ struct CppTemplateArgument
     std::optional<std::string> recordUsr;
     unsigned pointerDepth = 0;
     std::int64_t integral = 0;
+    // Item 13.6: `integral` holds the bits of an unsigned value above INT64_MAX. / Guarda los bits de un valor sin
+    //     signo mayor que INT64_MAX.
+    bool integralUnsigned = false;
     bool boolean = false;
     // T13-013: a class template for a template template parameter. / Una plantilla de clase como argumento.
     std::string templateName;

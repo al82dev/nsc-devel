@@ -4012,7 +4012,7 @@ public:
             }
             else
             {
-                const bool negative = argument.integral < 0;
+                const bool negative = argument.integral < 0 && !argument.integralUnsigned;
                 const auto magnitude = negative ? std::uint64_t(0) - static_cast<std::uint64_t>(argument.integral)
                                                 : static_cast<std::uint64_t>(argument.integral);
                 const bool unsignedMagnitude = magnitude > static_cast<std::uint64_t>(INT64_MAX);
@@ -4021,7 +4021,7 @@ public:
                 if (negative)
                     value = clang::UnaryOperator::Create(context, value, clang::UO_Minus, value->getType(),
                         clang::VK_PRValue, clang::OK_Ordinary, location, false, clang::FPOptionsOverride());
-                key += std::to_string(argument.integral);
+                key += negative ? std::to_string(argument.integral) : std::to_string(magnitude);
             }
             explicitArguments.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(value, false), value));
         }
