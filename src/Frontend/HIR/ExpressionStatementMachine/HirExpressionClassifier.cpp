@@ -78,6 +78,12 @@ std::optional<IterativeExpressionKind> ProjectOopHirModel::iterativeDelegateAndC
 
     const NamespaceFunctionCallBinding* namespaceCall =
         namespaceFunctionCallBinding(syntax);
+    // C3-09: a C11 fence call lowers as an AtomicFence, without operands. / Una llamada a una barrera C11 se baja
+    //     como un AtomicFence, sin operandos.
+    if (const MethodCoreBinding* fence = coreBinding(syntax); namespaceCall != nullptr && fence != nullptr &&
+        (fence->kind == MethodCoreOperationKind::AtomicThreadFence ||
+         fence->kind == MethodCoreOperationKind::AtomicCompilerFence))
+        return std::nullopt;
     // T19-040: a macro call whose arguments are all tokens has no child to lower. / Una llamada a macro cuyos
     //     argumentos son todos tokens no tiene hijos que bajar.
     if (namespaceCall != nullptr &&

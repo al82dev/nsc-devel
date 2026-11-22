@@ -2091,6 +2091,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
     }
     const NamespaceFunctionCallBinding* namespaceCall =
         namespaceFunctionCallBinding(expression);
+    // C3-09: a C11 fence call is an AtomicFence. / Una llamada a una barrera C11 es un AtomicFence.
+    if (const MethodCoreBinding* fence = coreBinding(expression);
+        namespaceCall != nullptr && fence != nullptr && isAtomicFenceCoreCall(fence->kind))
+        return lowerAtomicFenceCoreCall(expression, addressContext, *fence, error);
     if (namespaceCall != nullptr)
     {
         return lowerNamespaceFunctionCall(expression, addressContext, *namespaceCall, error);

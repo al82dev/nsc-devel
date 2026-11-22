@@ -1543,6 +1543,60 @@ std::optional<std::size_t> ProjectMethodBodyModel::selectNamespaceFunctionCandid
     return std::nullopt;
 }
 
+// EN: C3-09. C11's `atomic_thread_fence` and `atomic_signal_fence` (`void f(memory_order)` with C linkage, declared by
+//     <stdatomic.h>) are functions no library defines: C reaches them through macros that expand to Clang builtins.
+//     A call from NativeSharp becomes the fence of NativeSharp.Core.Threading.AtomicFence (Thread or Compiler) with the
+//     same order: `consume` is `acquire`, as compilers implement it, and a `relaxed` fence (a no-op in C) is a
+//     compiler-only fence, which is conforming. The order must be a constant, as AtomicFence requires; other system
+//     macros stay as they are.
+// ES: C3-09. `atomic_thread_fence` y `atomic_signal_fence` de C11 (`void f(memory_order)` con enlace C, declaradas por
+//     <stdatomic.h>) son funciones que ninguna biblioteca define: C las alcanza por macros que expanden a builtins de
+//     Clang. Una llamada desde NativeSharp pasa a ser la barrera de NativeSharp.Core.Threading.AtomicFence (Thread o
+//     Compiler) con el mismo orden: `consume` es `acquire`, como lo implementan los compiladores, y una barrera
+//     `relaxed` (sin efecto en C) es una barrera solo del compilador, lo que es conforme. El orden debe ser constante,
+//     como lo exige AtomicFence; las demas macros del sistema quedan como estan.
+bool ProjectMethodBodyModel::recognizeCAtomicFence(
+    const ast::AstNode* expression,
+    std::size_t callerCallableOrdinal,
+    std::size_t scopeOrdinal,
+    std::size_t functionOrdinal,
+    std::span<ast::AstNode* const> argumentSyntaxes,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (namespaceFunctionModel_ == nullptr || functionOrdinal >= namespaceFunctionModel_->functions().size())
+        return true;
+    const NamespaceFunctionSymbol& function = namespaceFunctionModel_->functions()[functionOrdinal];
+    const bool thread = function.name == "atomic_thread_fence";
+    if ((!thread && function.name != "atomic_signal_fence") || function.cppCanonicalIdentity.empty() ||
+        function.definitionSyntax != nullptr || function.declaredTypeKey != "builtin:void" ||
+        function.cppParameterTypes.size() != 1U || argumentSyntaxes.size() != 1U ||
+        function.cppParameterTypes[0].kind != interop::CppTypeKind::Enumeration ||
+        !function.cppParameterTypes[0].enumIdentity || function.cppParameterTypes[0].enumIdentity->name != "memory_order")
+        return true;
+    const std::optional<ProjectIntegerValue> folded =
+        foldIntegerConstant(argumentSyntaxes[0], std::nullopt, callerCallableOrdinal);
+    if (!folded.has_value() || folded->bits > 5U)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::ConstRequiresConstant, diagnostics::DiagnosticSeverity::Error,
+            argumentSyntaxes[0] != nullptr ? argumentSyntaxes[0]->range() : expression->range(),
+            "the order of C '" + function.name + "' must be a constant memory_order (it becomes "
+            "NativeSharp.Core.Threading.AtomicFence)");
+        return false;
+    }
+    // C: relaxed 0, consume 1, acquire 2, release 3, acq_rel 4, seq_cst 5.
+    static constexpr language::MemoryOrder orders[] = {
+        language::MemoryOrder::Acquire, language::MemoryOrder::Acquire, language::MemoryOrder::Acquire,
+        language::MemoryOrder::Release, language::MemoryOrder::AcquireRelease,
+        language::MemoryOrder::SequentiallyConsistent};
+    const bool relaxed = folded->bits == 0U;
+    MethodCoreBinding binding{
+        thread && !relaxed ? MethodCoreOperationKind::AtomicThreadFence : MethodCoreOperationKind::AtomicCompilerFence,
+        expression, callerCallableOrdinal, scopeOrdinal, "builtin:void", "", false, std::nullopt, std::nullopt};
+    binding.atomicMemoryOrder = static_cast<std::uint8_t>(orders[folded->bits]);
+    coreBindings_.push_back(std::move(binding));
+    return true;
+}
+
 bool ProjectMethodBodyModel::validateNamespaceFunctionDefinition(
     const ast::AstNode* expression,
     std::size_t functionOrdinal,
@@ -2147,6 +2201,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
     checkNamespaceFunctionArgumentPassKinds(
         expression, callable, functionOrdinal, arguments,
         selected, hasForwardedReceiver, diagnostics);
+    if (!hasForwardedReceiver && !recognizeCAtomicFence(expression, callerCallableOrdinal, scopeOrdinal,
+                                                        functionOrdinal, argumentSyntaxes, diagnostics))
+    {
+        call.resolution = MethodCallResolutionKind::NoViableCandidate;
+        return {};
+    }
     call.resolution = MethodCallResolutionKind::Resolved;
     call.selectedFunctionOrdinal = functionOrdinal;
     call.selectedConversions = selected.conversions;

@@ -4181,6 +4181,9 @@ private:
         bool matchingArity,
         NamespaceFunctionCallBinding& call,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool recognizeCAtomicFence(const ast::AstNode* expression, std::size_t callerCallableOrdinal,
+        std::size_t scopeOrdinal, std::size_t functionOrdinal, std::span<ast::AstNode* const> argumentSyntaxes,
+        diagnostics::DiagnosticEngine& diagnostics);
     bool validateNamespaceFunctionDefinition(
         const ast::AstNode* expression,
         std::size_t functionOrdinal,

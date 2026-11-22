@@ -288,4 +288,36 @@ BODY8 = r'''
 c8 = Caso('c3-sin-prototipo-sysv', H8, S8)
 positivo(c8, BODY8)
 rechazo(c8, 'var f = get_krs(); return f();', 'get_krs')
+
+# C3-09: C11 `atomic_thread_fence` / `atomic_signal_fence` (functions no library defines; C reaches them through
+# macros to Clang builtins) become NativeSharp.Core.Threading.AtomicFence: `consume` is `acquire`, a `relaxed`
+# fence is a compiler-only fence, a signal fence is single-thread. The order must be a constant. Other system
+# macros stay as they are. The NativeSharp alternative, AtomicFence.Thread/Compiler, is verified too.
+import comun
+from pathlib import Path
+H9 = '#include <stdatomic.h>\nint value(void);\n'
+S9 = 'int value(void) { return 42; }\n'
+c9 = Caso('c3-barreras', H9, S9)
+positivo(c9, 'atomic_thread_fence(memory_order_seq_cst); atomic_thread_fence(memory_order_relaxed); '
+             'atomic_thread_fence(memory_order_consume); atomic_signal_fence(memory_order_acquire); return value();')
+rechazo(c9, 'int o = 5; atomic_thread_fence((memory_order)o); return 0;', 'constant memory_order')
+if not ONLY or any('c3-barreras-ir' in o for o in ONLY):
+    result = ir(Caso('c3-barreras-ir', H9, S9), 'atomic_thread_fence(memory_order_seq_cst); '
+                'atomic_thread_fence(memory_order_consume); atomic_signal_fence(memory_order_release); return value();', opt=0)
+    fences = [l.strip() for l in result.stdout.splitlines() if l.strip().startswith('fence')]
+    if result.returncode or fences != ['fence seq_cst', 'fence acquire', 'fence syncscope("singlethread") release'] or \
+            'call void @atomic_' in result.stdout:
+        _fail('c3-barreras-ir', 'barreras inesperadas: ' + repr(fences))
+    else:
+        print('ok c3-barreras-ir', flush=True)
+_core = comun.core
+def _core_threading(opt):
+    folder = Path(comun.CORE_ROOT) / f'O{opt}'
+    return _core(opt) + (f'<LibraryReference Include="{folder / "NativeSharpCoreThreading.lib"}" '
+                         f'Metadata="{folder / "NativeSharpCoreThreading.nsmeta"}" />')
+comun.core = _core_threading
+positivo(Caso('c3-barreras-core', H9, S9),
+         'NativeSharp.Core.Threading.AtomicFence.Thread(NativeSharp.Core.Threading.MemoryOrder.SequentiallyConsistent); '
+         'NativeSharp.Core.Threading.AtomicFence.Compiler(NativeSharp.Core.Threading.MemoryOrder.Acquire); return value();')
+comun.core = _core
 fin()
