@@ -120,6 +120,13 @@ inline bool cppRecordValueTransportEligible(const CppRecordValueTraits& traits,
             operation.access == CppAccess::Public && operation.isDeleted == false &&
             operation.isTrivial == true;
     };
+    // EN: The default constructor may have a body, but it must exist, be public and not deleted: a type that
+    //     C++ cannot default-construct (`Small() = delete`, a private one) stays a guarded value.
+    // ES: El constructor por defecto puede tener cuerpo, pero debe existir, ser publico y no estar eliminado: un tipo
+    //     que C++ no puede construir por defecto sigue siendo un valor protegido.
+    const auto& construct = operations.defaultConstructor;
+    if (construct.status != CppSpecialMemberSelectionStatus::Selected || construct.access != CppAccess::Public ||
+        construct.isDeleted != false) return false;
     return valid(operations.copyFromConst) && valid(operations.copyFromMutable) &&
         valid(operations.destructor) && valid(operations.assignFromConst) && valid(operations.assignFromMutable);
 }
