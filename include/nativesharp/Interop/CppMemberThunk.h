@@ -53,6 +53,16 @@ inline std::string cppDefaultArgumentThunkSymbol(std::string_view ownerUsr, std:
     return cppMemberThunkSymbol(std::string(ownerUsr) + "#default", std::string(usr) + "#" + std::to_string(arity));
 }
 
+// EN: X2-05. The adapter that takes a C++ function's non-trivial record parameters by `const T&` and calls it with
+//     them, so Clang copy-constructs each by-value argument and the callee destroys it, as the Microsoft ABI requires.
+// ES: X2-05. El adaptador que toma por `const T&` los parametros record no triviales de una funcion C++ y la llama con
+//     ellos, asi Clang construye por copia cada argumento por valor y el llamado lo destruye, como exige el ABI de
+//     Microsoft.
+inline std::string cppByValueThunkSymbol(std::string_view usr)
+{
+    return cppMemberThunkSymbol("#function#byvalue", usr);
+}
+
 // T19-006: the identity of that adapter as a declaration. / La identidad de ese adaptador como declaracion.
 inline std::string cppDefaultArgumentThunkUsr(std::string_view usr, std::size_t arity)
 {

@@ -324,6 +324,27 @@ std::filesystem::path pathFromUtf8(const char* text)
 // ES: T10-010. Un argumento predeterminado se conserva solo si Clang lo reduce a una constante del tipo del
 //     parametro: entero, bool, flotante real o puntero nulo. Enums, records y cualquier otro valor quedan
 //     sin evaluar, asi que NativeSharp sigue exigiendo ese argumento.
+// X2-05: a record value that C++ copies and destroys with code (not as bytes). / Un valor record que C++ copia y
+//     destruye con codigo (no como bytes).
+bool cppNonTrivialRecordValue(clang::QualType type)
+{
+    const auto* record = type.isNull() ? nullptr : type->getAsCXXRecordDecl();
+    return record && record->hasDefinition() &&
+        (!record->isTriviallyCopyable() || record->hasNonTrivialDestructor());
+}
+
+// X2-05: the reference a by-value adapter takes: `const T&` for a copyable record, `T&&` for a move-only one.
+//     / La referencia que toma el adaptador: `const T&` si el record se copia, `T&&` si solo se mueve.
+clang::QualType cppByValueAdapterType(clang::ASTContext& context, clang::QualType type)
+{
+    const auto* record = type->getAsCXXRecordDecl();
+    bool copyable = record->needsImplicitCopyConstructor() && !record->defaultedCopyConstructorIsDeleted();
+    for (const auto* constructor : record->ctors())
+        if (constructor->isCopyConstructor() && !constructor->isDeleted()) copyable = true;
+    const auto value = type.getUnqualifiedType();
+    return copyable ? context.getLValueReferenceType(value.withConst()) : context.getRValueReferenceType(value);
+}
+
 void captureDefaultArgument(const clang::ParmVarDecl& parameter, clang::ASTContext& context,
                             CppFunctionParameter& captured)
 {
@@ -1599,6 +1620,44 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
                 result.push_back(std::move(thunk));
             }
             for (auto& parameter : value.parameters) clearDefaultArgument(parameter);
+        }
+        // EN: X2-05. A non-trivial C++ record by value (a copy constructor or destructor that is not trivial) cannot
+        //     travel as bytes: the function is published as its by-value adapter, whose parameter is `const T&`; the
+        //     adapter's call makes the copy and the callee destroys it, as C++ does.
+        // ES: X2-05. Un record C++ no trivial por valor (constructor de copia o destructor no triviales) no puede
+        //     viajar como bytes: la funcion se publica como su adaptador por valor, cuyo parametro es `const T&`; la
+        //     llamada del adaptador hace la copia y el llamado la destruye, como C++.
+        if (astContext.getLangOpts().CPlusPlus && value.externalSymbol && value.clangUsr && !value.variadic &&
+            value.hasPrototype && value.callingConvention == "cdecl" && !thunkStart &&
+            !cppNonTrivialRecordValue(function->getReturnType()) &&
+            std::any_of(function->param_begin(), function->param_end(), [](const clang::ParmVarDecl* parameter) {
+                return cppNonTrivialRecordValue(parameter->getType());
+            }))
+        {
+            std::vector<clang::QualType> parameterTypes;
+            for (std::size_t index = 0; index < function->getNumParams(); ++index)
+            {
+                auto type = function->getParamDecl(static_cast<unsigned>(index))->getType();
+                if (cppNonTrivialRecordValue(type))
+                {
+                    type = cppByValueAdapterType(astContext, type);
+                    auto& parameter = value.parameters[index];
+                    parameter.typeSpelling = type.getAsString();
+                    parameter.canonicalTypeSpelling = type.getCanonicalType().getAsString();
+                    parameter.type = describeType(type, astContext);
+                }
+                parameterTypes.push_back(type);
+            }
+            clang::FunctionProtoType::ExtProtoInfo info;
+            if (const auto* prototype = function->getType()->getAs<clang::FunctionProtoType>())
+                info.ExceptionSpec = prototype->getExtProtoInfo().ExceptionSpec;
+            value.canonicalFunctionType =
+                astContext.getFunctionType(function->getReturnType(), parameterTypes, info).getCanonicalType().getAsString();
+            value.externalSymbol = cppByValueThunkSymbol(*value.clangUsr);
+            value.clangUsr = *value.clangUsr + "@nsc-byvalue";
+            value.languageLinkage = CppLanguageLinkage::Cpp;
+            value.dllImport = false;
+            value.abiPlan.reset();
         }
         result.push_back(std::move(value));
     };
@@ -3599,7 +3658,7 @@ public:
         // record. / Un adaptador de predeterminados tiene su numero de argumentos; una funcion libre, sin record.
         struct Request { std::string symbol; const clang::CXXRecordDecl* record; const clang::CXXMethodDecl* method;
                          bool freeOperator = false; const clang::FunctionDecl* function = nullptr;
-                         std::optional<std::size_t> defaultArity{}; };
+                         std::optional<std::size_t> defaultArity{}; bool byValueReferences = false; };
         const auto defaultArities = [](const clang::FunctionDecl& function) {
             std::vector<std::size_t> arities;
             for (unsigned index = 0; index < function.getNumParams(); ++index)
@@ -3669,6 +3728,12 @@ public:
                             if (wanted.contains(adapter) && found.insert(adapter).second)
                                 requests.push_back({std::move(adapter), nullptr, nullptr, false, function, arity});
                         }
+                    // X2-05: the by-value adapter. / El adaptador por valor.
+                    if (usr)
+                        if (auto adapter = cppByValueThunkSymbol(*usr);
+                            wanted.contains(adapter) && found.insert(adapter).second)
+                            requests.push_back({std::move(adapter), nullptr, nullptr, false, function,
+                                                function->getNumParams(), true});
                 }
             }
         };
@@ -3734,7 +3799,10 @@ public:
                 }
                 for (std::size_t index = 0; index < *request.defaultArity; ++index)
                 {
-                    const auto type = callee->getParamDecl(static_cast<unsigned>(index))->getType();
+                    auto type = callee->getParamDecl(static_cast<unsigned>(index))->getType();
+                    // X2-05: a non-trivial record by value arrives by `const T&`. / Llega por `const T&`.
+                    if (request.byValueReferences && cppNonTrivialRecordValue(type))
+                        type = cppByValueAdapterType(context, type);
                     const auto parameterAlias = alias("p" + std::to_string(index), type);
                     if (!parameters.empty()) parameters += ", ";
                     if (index) arguments += ", ";

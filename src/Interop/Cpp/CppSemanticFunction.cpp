@@ -914,7 +914,15 @@ CppSemanticFunctionResult projectFunction(
                           cRecordValues, false, cppRecordValues);
     if (!resultType && !vectorReason.empty())
         return failure("C/C++ vector return type is not yet mapped: " + vectorReason);
-    if (!resultType) return failure("C/C++ return type '" + function.returnType.spelling + "' is not yet mapped");
+    // X2-05: a C++ record returned by value is constructed by the callee; with a non-trivial copy or destructor it
+    //     needs in-place construction in the destination, not yet available. / Un record C++ devuelto por valor lo
+    //     construye el llamado; si su copia o destructor no son triviales necesita construccion en el destino.
+    if (!resultType)
+        return failure("C/C++ return type '" + function.returnType.spelling + "' is not yet mapped" +
+            (!cLanguage && function.returnType.kind == CppTypeKind::Record
+                ? std::string(" (a C++ record with a non-trivial copy constructor or destructor is not yet returned by "
+                              "value: it needs in-place construction in the destination)")
+                : std::string{}));
 
     std::string cppNamespace;
     if (function.qualifiedName != function.name)
