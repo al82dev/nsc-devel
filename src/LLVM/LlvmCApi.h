@@ -1017,6 +1017,12 @@ LLVMValueRef LLVMBuildExtractValue(
     LLVMValueRef aggregate,
     unsigned index,
     const char* name);
+LLVMValueRef LLVMBuildInsertValue(
+    LLVMBuilderRef builder,
+    LLVMValueRef aggregate,
+    LLVMValueRef element,
+    unsigned index,
+    const char* name);
 LLVMValueRef LLVMBuildExtractElement(
     LLVMBuilderRef builder,
     LLVMValueRef vector,

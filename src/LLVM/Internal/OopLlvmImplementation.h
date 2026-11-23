@@ -476,7 +476,15 @@ private:
         std::string& error,
         bool vectorCall,
         bool defineBody = true,
-        bool sysvCall = false);
+        bool sysvCall = false,
+        std::string_view sysvTypeKey = {});
+    // EN: C5-07. A sysv_abi callback whose records or narrow integers follow the Clang plan of its pointer type: an
+    //     x86_64_sysvcc shim rebuilds the logical values from the plan and calls the C boundary of the target.
+    // ES: C5-07. Un callback sysv_abi cuyos records o enteros estrechos siguen el plan de Clang de su tipo de
+    //     puntero: un adaptador x86_64_sysvcc rearma los valores logicos con el plan y llama al limite C del destino.
+    LLVMValueRef sysvPlannedCallbackThunk(
+        const std::string& targetName, std::string_view typeKey, bool defineBody, std::string& error);
+    std::unordered_map<std::string, std::shared_ptr<const interop::abi_plan::Plan>> sysvCallbackPlans_;
     // C5-07: a function type with the sysv_abi convention. / Un tipo de funcion con la convencion sysv_abi.
     bool isSysVDelegateType(std::string_view typeKey) const noexcept;
 

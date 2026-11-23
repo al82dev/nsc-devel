@@ -10,7 +10,8 @@ a `unsigned long long` (comprobado en el IR, no solo por valor).
 C5-05: `setjmp` (returns_twice) sigue rechazado con su motivo.
 C5-06: un tipo complejo y un enum C23 de base fija con nombres que comparten espacio de nombres con records.
 C5-07: funciones `static inline` `sysv_abi` con records usadas como callback C, directo y precompilado (C3-08 cubre
-la llamada). Una lambda NativeSharp hacia un puntero `sysv_abi` sigue rechazada con diagnostico.
+la llamada). Una lambda o funcion NativeSharp hacia un puntero `sysv_abi` es un thunk `x86_64_sysvcc`; los records
+y enteros estrechos siguen el plan de Clang del typedef del puntero.
 C5-08: `Implementation="MACRO"` con un encabezado de implementacion unica que incluye encabezados de sistema y otro
 encabezado propio, en ese orden.
 """
@@ -120,12 +121,42 @@ static inline __attribute__((sysv_abi)) int s_impl(P p, int k) { return p.x + p.
 S7 = 'int call_scb(scb f) { P p = {30, 10}; return f(p, 2); }\n'
 c7 = Caso('c5-sysv-callback', H7, S7)
 positivo(c7, 'if (call_scb(s_impl) != 42) return 1; scb f = s_impl; P p; p.x = 30; p.y = 10; return f(p, 2);')
-rechazo(c7, 'return call_scb((p, k) => p.x + k);', 'sysv_abi function pointer is not yet supported')
+# C5-07: this lambda to a sysv_abi pointer with a record was a rejection ('sysv_abi function pointer is not yet
+# supported'); the record now follows the Clang plan of the typedef (positive case). A precompiled template body names
+# the typedef so its catalog carries it. / Esta lambda era un rechazo; el record sigue ahora el plan de Clang del typedef.
+positivo(Caso('c5-sysv-lambda-record', H7, S7), 'return call_scb((p, k) => p.x + p.y + k);', modes=['directo', 'dll'])
+positivo(Caso('c5-sysv-lambda-typedef', H7, S7), 'scb f = (p, k) => p.x + p.y + k; return call_scb(f);', modes=['lib'])
 # C5-07: a scalar sysv_abi callback (32/64-bit integers, floating values, bool, pointers) is a NativeSharp thunk of
-# that convention; records stay rejected (above). / Un callback sysv_abi escalar es un thunk NativeSharp de esa convencion.
+# that convention. / Un callback sysv_abi escalar es un thunk NativeSharp de esa convencion.
 H7b = 'typedef long long (__attribute__((sysv_abi)) *scalar_cb)(int a, double d, long long* p, _Bool f);\nlong long call_scalar(scalar_cb f);\n'
 S7b = 'long long call_scalar(scalar_cb f) { long long v = 30; return f(5, 2.5, &v, 1); }\n'
 positivo(Caso('c5-sysv-escalar', H7b, S7b), 'return (int)call_scalar((a, d, p, f) => a + (long)(d * 2) + *p + (f ? 2 : 0));')
+# C5-07: records by value in registers (INTEGER/SSE pairs, <2 x float>), byval, sret and register returns, and narrow
+# integers (extension), as Clang classifies them for the typedef. / Records en registros, byval, sret y enteros estrechos.
+H7c = r'''
+typedef struct P { int x, y; } P;
+typedef struct M { double d; int i; } M;
+typedef struct B { long long a, b, c; } B;
+typedef struct F { float a, b, c; } F;
+typedef P (__attribute__((sysv_abi)) *rcb)(M m, short s);
+typedef B (__attribute__((sysv_abi)) *bcb)(B b, F f, unsigned char u);
+int call_rcb(rcb f);
+int call_bcb(bcb f);
+'''
+S7c = r'''
+int call_rcb(rcb f) { M m = {2.5, 7}; P r = f(m, -3); return r.x * 10 + r.y; }
+int call_bcb(bcb f) { B b = {1, 2, 3}; F x = {0.5f, 1.5f, 2.0f}; B r = f(b, x, 200); return (int)(r.a + r.b * 2 + r.c * 3); }
+'''
+c7c = Caso('c5-sysv-records', H7c, S7c)
+BODY7C = ('rcb r = (m, s) => { P v; v.x = (int)(m.d * 2) + s; v.y = m.i; return v; };\n'
+          'bcb b = (x, f, u) => { B v; v.a = x.a + u; v.b = x.b + (long)(f.a + f.b); v.c = x.c * (long)f.c; return v; };\n'
+          'return call_rcb(r) == 27 && call_bcb(b) == 227 ? 42 : 1;')
+positivo(c7c, BODY7C)
+# 128-bit values: the pointer type itself is not mapped, so the import is rejected. / El tipo de puntero con 128 bits
+# no se mapea: la importacion se rechaza.
+H7d = 'typedef long long (__attribute__((sysv_abi)) *wide_cb)(__int128 v);\nlong long call_wide(wide_cb f);\n'
+rechazo(Caso('c5-sysv-ancho', H7d, 'long long call_wide(wide_cb f) { return f(1); }\n'),
+        'return (int)call_wide((v) => (long)v);', "parameter 0 ('wide_cb') is not yet mapped")
 
 SINGLE = r'''
 #ifndef ONE_H

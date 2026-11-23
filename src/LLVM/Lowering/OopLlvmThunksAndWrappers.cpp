@@ -1,5 +1,9 @@
 #include "../Internal/OopLlvmImplementation.h"
 #include "../Internal/CppBoolAbi.h"
+#include "../Internal/CppSysVRecordAbi.h"
+#include "nativesharp/Interop/CppAbiPlan.h"
+#include "nativesharp/Interop/CppVariadicAbiValidation.h"
+#include "nativesharp/Language/CallableSemantics.h"
 #include "../Internal/CppDllExportHelper.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/OopLlvmDirectCFunction.h"
@@ -55,7 +59,7 @@ bool OopLlvmImplementation::defineFunctions(std::string& error)
 
 bool OopLlvmImplementation::defineCallbackGuardThunks(std::string& error, bool defineBodies)
 {
-        std::vector<std::tuple<std::string, bool, bool>> targets;
+        std::vector<std::tuple<std::string, bool, bool, std::string>> targets;
         const auto visit = [&](const frontend::ProjectOopMirNode* node, auto&& self) -> void
         {
             if (node == nullptr) return;
@@ -68,11 +72,15 @@ bool OopLlvmImplementation::defineCallbackGuardThunks(std::string& error, bool d
                 const auto* imported = findCallbackMirFunction(node->calleeName);
                 if (node->kind == frontend::ProjectOopMirNodeKind::DelegateCreate &&
                     directCFunctionAddress(imported)) return;
-                const std::tuple<std::string, bool, bool> target = {
-                    node->calleeName, isVectorCallDelegateType(node->typeKey), isSysVDelegateType(node->typeKey)};
+                const std::tuple<std::string, bool, bool, std::string> target = {
+                    node->calleeName, isVectorCallDelegateType(node->typeKey), isSysVDelegateType(node->typeKey),
+                    node->typeKey};
                 if (std::find(targets.begin(), targets.end(), target) == targets.end())
                     targets.push_back(target);
             }
+            // C5-07: the Clang plan of a sysv_abi callback type. / El plan de Clang de un tipo de callback sysv_abi.
+            if (node->cppFunctionPointerPlan && isSysVDelegateType(node->typeKey))
+                sysvCallbackPlans_.emplace(node->typeKey, node->cppFunctionPointerPlan);
             for (const auto& child : node->children) self(child.get(), self);
         };
         const std::span<const frontend::ProjectOopMirFunction> functions = mirModel_.functions();
@@ -100,9 +108,9 @@ bool OopLlvmImplementation::defineCallbackGuardThunks(std::string& error, bool d
             for (const frontend::ProjectOopMirFieldInitializer& initializer : mirModel_.fieldInitializers())
                 visit(initializer.value.get(), visit);
         }
-        for (const auto& [target, vectorCall, sysvCall] : targets)
+        for (const auto& [target, vectorCall, sysvCall, typeKey] : targets)
         {
-            if (callbackGuardThunk(target, error, vectorCall, defineBodies, sysvCall) == nullptr) return false;
+            if (callbackGuardThunk(target, error, vectorCall, defineBodies, sysvCall, typeKey) == nullptr) return false;
         }
         return true;
     }
@@ -409,8 +417,11 @@ LLVMValueRef OopLlvmImplementation::callbackGuardThunk(
         std::string& error,
         bool vectorCall,
         bool defineBody,
-        bool sysvCall)
+        bool sysvCall,
+        std::string_view sysvTypeKey)
 {
+        if (sysvCall && sysvCallbackPlans_.contains(std::string(sysvTypeKey)))
+            return sysvPlannedCallbackThunk(targetName, sysvTypeKey, defineBody, error);
         const std::string cacheKey = targetName + (vectorCall ? "|vectorcall" : sysvCall ? "|sysv" : "|c");
         const auto cached = callbackGuardThunks_.find(cacheKey);
         if (cached != callbackGuardThunks_.end()) return cached->second.function;
@@ -697,6 +708,310 @@ bool OopLlvmImplementation::isExternCDelegateType(std::string_view typeKey) cons
         }
         return false;
     }
+
+LLVMValueRef OopLlvmImplementation::sysvPlannedCallbackThunk(
+        const std::string& targetName, std::string_view typeKey, bool defineBody, std::string& error)
+{
+        using namespace interop::abi_plan;
+        const std::string cacheKey = targetName + "|sysv-plan|" + std::string(typeKey);
+        if (const auto cached = callbackGuardThunks_.find(cacheKey); cached != callbackGuardThunks_.end())
+            return cached->second.function;
+        const auto signature = language::parseFunctionTypeIdentity(typeKey);
+        const auto planned = sysvCallbackPlans_.find(std::string(typeKey));
+        if (!signature || planned == sysvCallbackPlans_.end() || !planned->second)
+            return failValue(error, "sysv_abi callback lost the Clang plan of its pointer type");
+        const Plan& plan = *planned->second;
+        if (!interop::validateCppSysVFunctionPointerPlan(plan) || plan.variadic || plan.callingConvention != 78 ||
+            plan.logicalParameters.size() != signature->parameters.size())
+            return failValue(error, "sysv_abi callback plan is not supported");
+        // The C boundary of the target guards NativeSharp exceptions. / El limite C del destino guarda excepciones.
+        LLVMValueRef boundary = callbackGuardThunk(targetName, error, false, defineBody, false);
+        if (!boundary) return nullptr;
+        const auto pieceType = [&](const Type& type) -> LLVMTypeRef {
+            if (type.packed) return nullptr;
+            if (type.kind == TypeKind::Vector)
+                return type.widthOrCount == 2 && type.elements.size() == 1 && type.elements[0].kind == TypeKind::Float &&
+                    !type.elements[0].widthOrCount && type.elements[0].elements.empty() ?
+                    LLVMVectorType(LLVMFloatTypeInContext(context_), 2) : nullptr;
+            if (!type.elements.empty()) return nullptr;
+            if (type.kind == TypeKind::Integer)
+                return type.widthOrCount && type.widthOrCount <= 64 ?
+                    LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount)) : nullptr;
+            if (type.widthOrCount) return nullptr;
+            if (type.kind == TypeKind::Float) return LLVMFloatTypeInContext(context_);
+            if (type.kind == TypeKind::Double) return LLVMDoubleTypeInContext(context_);
+            if (type.kind == TypeKind::Pointer) return LLVMPointerTypeInContext(context_, 0);
+            return nullptr;
+        };
+        const auto pieceLayout = [](const Type& type) -> std::pair<std::uint64_t, std::uint64_t> {
+            if (type.kind == TypeKind::Integer)
+            {
+                std::uint64_t alignment = 1;
+                while (alignment * 8 < type.widthOrCount && alignment < 8) alignment *= 2;
+                return {(type.widthOrCount + 7) / 8, alignment};
+            }
+            if (type.kind == TypeKind::Float) return {4, 4};
+            return {8, 8};
+        };
+        // The pieces of a direct record at their byte offsets, as the call through the pointer reads them.
+        // Las piezas de un record directo en sus desplazamientos, como las lee la llamada por el puntero.
+        const auto recordPieces = [&](const Type& physical, const std::optional<Type>& coercion, std::uint64_t offset,
+                                      std::uint64_t size, std::vector<std::pair<Type, std::uint64_t>>& pieces) {
+            pieces.clear();
+            const Type& shape = coercion ? *coercion : physical;
+            if (shape.kind != TypeKind::Structure)
+            {
+                if (!pieceType(shape)) return false;
+                pieces.push_back({shape, offset});
+            }
+            else
+            {
+                if (shape.packed || shape.widthOrCount || shape.elements.empty() || shape.elements.size() > 2) return false;
+                std::uint64_t at = offset;
+                for (const auto& element : shape.elements)
+                {
+                    if (!pieceType(element)) return false;
+                    const auto [bytes, alignment] = pieceLayout(element);
+                    at = (at + alignment - 1) / alignment * alignment;
+                    pieces.push_back({element, at});
+                    at += bytes;
+                }
+            }
+            for (const auto& [type, at] : pieces)
+                if (at > size || pieceLayout(type).first > size - at) return false;
+            return true;
+        };
+        const auto recordKey = [&](const std::string& key) {
+            return key.starts_with("type:") && !key.ends_with('*') && findStructLayout(mirModel_, key) != nullptr;
+        };
+        // Physical signature. / Firma fisica.
+        struct Logical { enum class Kind { Scalar, Pieces, ByValue } kind; std::vector<std::pair<Type, std::uint64_t>> pieces; };
+        std::vector<Logical> logicals;
+        std::vector<LLVMTypeRef> physicalTypes;
+        const std::string& resultKey = signature->result;
+        const bool recordResult = recordKey(resultKey);
+        const auto& result = plan.logicalReturn;
+        bool sretResult = false;
+        LLVMTypeRef returnType = nullptr;
+        std::vector<std::pair<Type, std::uint64_t>> returnPieces;
+        if (recordResult)
+        {
+            const auto* layout = findStructLayout(mirModel_, resultKey);
+            if (result.passing == Passing::Indirect)
+            {
+                if (plan.physicalReturn.kind != TypeKind::Void || plan.physicalParameters.empty() ||
+                    !plan.physicalParameters[0].structureReturn || plan.physicalParameters[0].type.kind != TypeKind::Pointer)
+                    return failValue(error, "sysv_abi callback record return plan is not supported");
+                sretResult = true;
+                returnType = LLVMVoidTypeInContext(context_);
+                physicalTypes.push_back(LLVMPointerTypeInContext(context_, 0));
+            }
+            else
+            {
+                if (result.passing != Passing::Direct ||
+                    !recordPieces(plan.physicalReturn, std::nullopt, result.offset, layout->size, returnPieces))
+                    return failValue(error, "sysv_abi callback record return plan is not supported");
+                std::vector<LLVMTypeRef> parts;
+                for (const auto& [type, at] : returnPieces) parts.push_back(pieceType(type));
+                returnType = plan.physicalReturn.kind == TypeKind::Structure ?
+                    LLVMStructTypeInContext(context_, parts.data(), static_cast<unsigned>(parts.size()), 0) : parts.front();
+            }
+        }
+        else if (resultKey == "builtin:void")
+        {
+            if (result.passing != Passing::Ignore || plan.physicalReturn.kind != TypeKind::Void)
+                return failValue(error, "sysv_abi callback return plan is not supported");
+            returnType = LLVMVoidTypeInContext(context_);
+        }
+        else
+        {
+            returnType = pieceType(plan.physicalReturn);
+            LLVMTypeRef expected = llvmType(resultKey, error);
+            if (!expected) return nullptr;
+            if ((result.passing != Passing::Direct && result.passing != Passing::Extend) || returnType != expected ||
+                result.offset)
+                return failValue(error, "sysv_abi callback return plan is not supported");
+        }
+        for (std::size_t i = 0; i < signature->parameters.size(); ++i)
+        {
+            const auto& key = signature->parameters[i];
+            const auto& logical = plan.logicalParameters[i];
+            if (logical.firstPhysical != physicalTypes.size() || logical.physicalCount < 1 ||
+                logical.firstPhysical + logical.physicalCount > plan.physicalParameters.size())
+                return failValue(error, "sysv_abi callback argument plan is not supported");
+            const auto& first = plan.physicalParameters[logical.firstPhysical];
+            if (!recordKey(key))
+            {
+                LLVMTypeRef type = pieceType(first.type);
+                LLVMTypeRef expected = llvmType(key, error);
+                if (!expected) return nullptr;
+                if ((logical.passing != Passing::Direct && logical.passing != Passing::Extend) ||
+                    logical.physicalCount != 1 || logical.offset || type != expected || first.byValue || first.structureReturn)
+                    return failValue(error, "sysv_abi callback scalar plan is not supported");
+                logicals.push_back({Logical::Kind::Scalar, {}});
+                physicalTypes.push_back(type);
+                continue;
+            }
+            const auto* layout = findStructLayout(mirModel_, key);
+            if (logical.passing == Passing::Indirect)
+            {
+                if (logical.physicalCount != 1 || !logical.byValue || !first.byValue || first.structureReturn ||
+                    first.type.kind != TypeKind::Pointer || !first.alignment || first.alignment > 4096 ||
+                    (first.alignment & (first.alignment - 1)) != 0)
+                    return failValue(error, "sysv_abi callback byval plan is not supported");
+                logicals.push_back({Logical::Kind::ByValue, {}});
+                physicalTypes.push_back(LLVMPointerTypeInContext(context_, 0));
+                continue;
+            }
+            std::vector<std::pair<Type, std::uint64_t>> pieces;
+            if (logical.passing != Passing::Direct ||
+                !recordPieces(first.type, logical.physicalCount == 1 ? std::nullopt : logical.coercion, logical.offset,
+                    layout->size, pieces) || pieces.size() != logical.physicalCount)
+                return failValue(error, "sysv_abi callback record plan is not supported");
+            for (std::size_t p = 0; p < pieces.size(); ++p)
+            {
+                const auto& declared = plan.physicalParameters[logical.firstPhysical + p];
+                if (declared.byValue || declared.structureReturn || declared.signExtend || declared.zeroExtend ||
+                    pieceType(declared.type) != pieceType(pieces[p].first))
+                    return failValue(error, "sysv_abi callback record plan is not supported");
+                physicalTypes.push_back(pieceType(pieces[p].first));
+            }
+            logicals.push_back({Logical::Kind::Pieces, std::move(pieces)});
+        }
+        if (physicalTypes.size() != plan.physicalParameters.size())
+            return failValue(error, "sysv_abi callback physical parameter count is invalid");
+        LLVMTypeRef thunkType = LLVMFunctionType(returnType, physicalTypes.empty() ? nullptr : physicalTypes.data(),
+            static_cast<unsigned>(physicalTypes.size()), 0);
+        const std::string thunkName = targetName + "__sysv_boundary";
+        LLVMValueRef thunk = LLVMAddFunction(module_, thunkName.c_str(), thunkType);
+        if (!thunk) return failValue(error, "failed to declare the sysv_abi callback boundary for " + targetName);
+        LLVMSetFunctionCallConv(thunk, LLVMX8664SysVCallConv);
+        applyUwtableAttribute(thunk);
+        const auto addAttribute = [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+            { LLVMAddAttributeAtIndex(thunk, index, attribute); };
+        const auto extension = [&](LLVMAttributeIndex index, bool signExtend, bool zeroExtend) -> bool {
+            if (!signExtend && !zeroExtend) return true;
+            const std::string_view name = signExtend ? "signext" : "zeroext";
+            const auto kind = llvm_api::LLVMGetEnumAttributeKindForName(name.data(), name.size());
+            const auto attribute = kind ? llvm_api::LLVMCreateEnumAttribute(context_, kind, 0) : nullptr;
+            if (!attribute) return false;
+            addAttribute(index, attribute);
+            return true;
+        };
+        if (!extension(0, plan.returnSignExtend, plan.returnZeroExtend))
+            return failValue(error, "sysv_abi callback return extension is unavailable");
+        for (std::size_t i = 0; i < plan.physicalParameters.size(); ++i)
+            if (!extension(static_cast<LLVMAttributeIndex>(i + 1), plan.physicalParameters[i].signExtend,
+                           plan.physicalParameters[i].zeroExtend))
+                return failValue(error, "sysv_abi callback argument extension is unavailable");
+        if (sretResult)
+            applySretAttributes(addAttribute, 0U, resultKey);
+        for (std::size_t i = 0; i < logicals.size(); ++i)
+            if (logicals[i].kind == Logical::Kind::ByValue)
+            {
+                const auto& logical = plan.logicalParameters[i];
+                LLVMTypeRef carrier = llvmType(signature->parameters[i], error);
+                if (!carrier) return nullptr;
+                applySysVRecordByValue(context_, carrier,
+                    static_cast<unsigned>(plan.physicalParameters[logical.firstPhysical].alignment),
+                    static_cast<unsigned>(logical.firstPhysical), addAttribute);
+            }
+        if (!defineBody)
+        {
+            callbackGuardThunks_[cacheKey] = FunctionInfo{thunk, thunkType, nullptr};
+            return thunk;
+        }
+        // Body: the logical values, the C boundary, the physical result. / Cuerpo: valores logicos, limite C, resultado.
+        LLVMValueRef savedFunction = currentFunction_;
+        const std::size_t savedBlockCounter = blockCounter_;
+        LLVMBasicBlockRef savedBlock = LLVMGetInsertBlock(builder_);
+        LLVMMetadataRef savedLocation = LLVMGetCurrentDebugLocation2(builder_);
+        const auto restore = [&]() {
+            currentFunction_ = savedFunction;
+            blockCounter_ = savedBlockCounter;
+            if (savedBlock) enterBlock(savedBlock);
+            LLVMSetCurrentDebugLocation2(builder_, savedLocation);
+        };
+        currentFunction_ = thunk;
+        blockCounter_ = 0;
+        LLVMSetCurrentDebugLocation2(builder_, nullptr);
+        enterBlock(appendBlock("sysv.callback.entry"));
+        std::vector<LLVMValueRef> values;
+        for (std::size_t i = 0; i < logicals.size(); ++i)
+        {
+            const auto& key = signature->parameters[i];
+            const auto& logical = plan.logicalParameters[i];
+            LLVMValueRef value = nullptr;
+            if (logicals[i].kind == Logical::Kind::Scalar)
+                value = LLVMGetParam(thunk, static_cast<unsigned>(logical.firstPhysical));
+            else
+            {
+                const auto* layout = findStructLayout(mirModel_, key);
+                LLVMTypeRef carrier = llvmType(key, error);
+                if (!carrier) { restore(); return nullptr; }
+                LLVMValueRef source = nullptr;
+                unsigned alignment = static_cast<unsigned>(layout->alignment);
+                if (logicals[i].kind == Logical::Kind::ByValue)
+                    source = LLVMGetParam(thunk, static_cast<unsigned>(logical.firstPhysical));
+                else
+                {
+                    alignment = static_cast<unsigned>(std::max<std::uint64_t>(layout->alignment, 8));
+                    source = entryBlockAlloca(carrier, alignment, "sysv.callback.record");
+                    for (std::size_t p = 0; p < logicals[i].pieces.size(); ++p)
+                    {
+                        const auto& [type, at] = logicals[i].pieces[p];
+                        LLVMValueRef address = at ? byteOffset(source, at, "sysv.callback.piece.addr") : source;
+                        LLVMValueRef stored = LLVMBuildStore(builder_,
+                            LLVMGetParam(thunk, static_cast<unsigned>(logical.firstPhysical + p)), address);
+                        LLVMSetAlignment(stored, static_cast<unsigned>(pieceLayout(type).second));
+                    }
+                }
+                LLVMValueRef loaded = LLVMBuildLoad2(builder_, carrier, source, "sysv.callback.value");
+                LLVMSetAlignment(loaded, alignment);
+                value = wrapIndirectArgument(loaded, key, error);
+            }
+            if (!value) { restore(); return nullptr; }
+            values.push_back(value);
+        }
+        language::FunctionType cSignature = *signature;
+        cSignature.callingConvention = language::CallingConvention::C;
+        LLVMValueRef logicalResult = emitExternCDelegateCall(boundary, values, signature->parameters, resultKey,
+            language::functionTypeIdentity(cSignature), false, false, error);
+        if (!logicalResult) { restore(); return nullptr; }
+        if (sretResult)
+        {
+            LLVMValueRef stored = LLVMBuildStore(builder_, logicalResult, LLVMGetParam(thunk, 0));
+            LLVMSetAlignment(stored, structAlignmentFor(resultKey));
+            LLVMBuildRetVoid(builder_);
+        }
+        else if (recordResult)
+        {
+            const auto* layout = findStructLayout(mirModel_, resultKey);
+            LLVMTypeRef carrier = llvmType(resultKey, error);
+            if (!carrier) { restore(); return nullptr; }
+            const auto alignment = static_cast<unsigned>(std::max<std::uint64_t>(layout->alignment, 8));
+            LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "sysv.callback.result");
+            LLVMValueRef stored = LLVMBuildStore(builder_, logicalResult, slot);
+            LLVMSetAlignment(stored, alignment);
+            LLVMValueRef physical = plan.physicalReturn.kind == TypeKind::Structure ? LLVMGetUndef(returnType) : nullptr;
+            for (std::size_t p = 0; p < returnPieces.size(); ++p)
+            {
+                const auto& [type, at] = returnPieces[p];
+                LLVMValueRef address = at ? byteOffset(slot, at, "sysv.callback.result.addr") : slot;
+                LLVMValueRef piece = LLVMBuildLoad2(builder_, pieceType(type), address, "sysv.callback.result.piece");
+                LLVMSetAlignment(piece, static_cast<unsigned>(pieceLayout(type).second));
+                physical = physical ? LLVMBuildInsertValue(builder_, physical, piece, static_cast<unsigned>(p),
+                    "sysv.callback.result.pack") : piece;
+            }
+            LLVMBuildRet(builder_, physical);
+        }
+        else if (resultKey == "builtin:void") LLVMBuildRetVoid(builder_);
+        else LLVMBuildRet(builder_, logicalResult);
+        restore();
+        applyOdrDefinition(thunk);
+        callbackGuardThunks_[cacheKey] = FunctionInfo{thunk, thunkType, nullptr};
+        return thunk;
+}
 
 bool OopLlvmImplementation::isSysVDelegateType(std::string_view typeKey) const noexcept
 {

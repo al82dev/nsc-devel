@@ -701,7 +701,7 @@ LLVMValueRef OopLlvmImplementation::lowerLambdaCreate(const frontend::ProjectOop
                 return failValue(error, "E11 extern C lambda reached LLVM with captured state");
             return callbackGuardThunk(
                 node->calleeName, error, isVectorCallDelegateType(node->typeKey), true,
-                isSysVDelegateType(node->typeKey));
+                isSysVDelegateType(node->typeKey), node->typeKey);
         }
 
         LLVMValueRef receiver = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
@@ -845,7 +845,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateCreate(const frontend::ProjectO
             // still yield the same pointer.
             return callbackGuardThunk(
                 node->calleeName, error, isVectorCallDelegateType(node->typeKey), true,
-                isSysVDelegateType(node->typeKey));
+                isSysVDelegateType(node->typeKey), node->typeKey);
         }
 
         LLVMValueRef receiver = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));

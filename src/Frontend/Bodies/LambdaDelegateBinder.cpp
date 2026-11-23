@@ -1627,9 +1627,29 @@ bool sysvScalarCallback(const language::FunctionType& function)
     return function.result == "builtin:void" || scalar(function.result);
 }
 
+// EN: C5-07. Records by value and narrow integers follow the Clang plan of the C typedef that names the pointer
+//     type (the compilation attaches it; without one the callback is rejected there). 128-bit values, half and
+//     other carriers stay out.
+// ES: C5-07. Records por valor y enteros estrechos siguen el plan de Clang del typedef C que nombra el tipo de
+//     puntero (la compilacion lo adjunta; sin el, el callback se rechaza alli). 128 bits, half y otros quedan fuera.
+bool sysvCallback(const language::FunctionType& function)
+{
+    if (sysvScalarCallback(function)) return true;
+    const auto planned = [](std::string_view key) {
+        return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" || key == "builtin:ulong" ||
+            key == "builtin:nint" || key == "builtin:nuint" || key == "builtin:float" || key == "builtin:double" ||
+            key == "builtin:bool" || key == "builtin:sbyte" || key == "builtin:byte" || key == "builtin:short" ||
+            key == "builtin:ushort" || key.ends_with('*') || key.starts_with("type:");
+    };
+    if (function.variadic) return false;
+    for (const auto& parameter : function.parameters)
+        if (!planned(parameter)) return false;
+    return function.result == "builtin:void" || planned(function.result);
+}
+
 constexpr std::string_view kSysVCallbackLimit =
-    " (sysv_abi callbacks take and return 32/64-bit integers, floating values, bool and pointers; records, narrow "
-    "integers and 128-bit values need Clang's plan)";
+    " (sysv_abi callbacks take and return integers, floating values, bool, pointers and C records; 128-bit and "
+    "other values need a plan Clang does not give)";
 }
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDelegate(
@@ -1645,7 +1665,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
         return result;
     }
     if (const auto target = language::parseFunctionTypeIdentity(delegateTypeKey);
-        target && target->callingConvention == language::CallingConvention::SysV && !sysvScalarCallback(*target))
+        target && target->callingConvention == language::CallingConvention::SysV && !sysvCallback(*target))
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error, syntax->range(),
@@ -1922,7 +1942,7 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
         //     NativeSharp llega a un puntero sysv_abi escalar por su thunk.
         const auto sysvTarget = language::parseFunctionTypeIdentity(delegateTypeKey);
         if (targetSysV && (function.cppCanonicalIdentity.empty()
-                ? !(sysvTarget && sysvScalarCallback(*sysvTarget))
+                ? !(sysvTarget && sysvCallback(*sysvTarget))
                 : function.cppCallingConvention != "sysv_abi"))
         {
             diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
@@ -1980,7 +2000,7 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
         return false;
     }
     else if (const auto sysvTarget = language::parseFunctionTypeIdentity(delegateTypeKey);
-             targetSysV && !(sysvTarget && sysvScalarCallback(*sysvTarget)))
+             targetSysV && !(sysvTarget && sysvCallback(*sysvTarget)))
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},

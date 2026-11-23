@@ -290,7 +290,7 @@ LLVMValueRef OopLlvmImplementation::convert(
             return callbackGuardThunk(
                 language::anonymousLambdaGeneratedName(*lambdaType), error,
                 targetFunction->callingConvention == language::CallingConvention::VectorCall, true,
-                targetFunction->callingConvention == language::CallingConvention::SysV);
+                targetFunction->callingConvention == language::CallingConvention::SysV, target);
         }
         const std::optional<std::vector<std::string>> sourceTuple =
             frontend::ProjectTypeConversion::tupleElementTypeKeys(source);

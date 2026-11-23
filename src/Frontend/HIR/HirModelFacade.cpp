@@ -27,6 +27,55 @@ void ProjectOopHirModel::setCppVariadicFunctionPointerPlanProvider(CppVariadicFu
     cppVariadicFunctionPointerPlanProvider_ = std::move(provider);
 }
 
+bool ProjectOopHirModel::attachSysVCallbackPlans(
+    const std::function<std::shared_ptr<const interop::abi_plan::Plan>(std::string_view)>& planFor,
+    std::string& error)
+{
+    const auto scalar = [](std::string_view key) {
+        return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" || key == "builtin:ulong" ||
+            key == "builtin:nint" || key == "builtin:nuint" || key == "builtin:float" || key == "builtin:double" ||
+            key == "builtin:bool" || key.ends_with('*');
+    };
+    // A callback of the convention whose values LLVM alone does not classify as Clang does. / Un callback de la
+    // convencion cuyos valores LLVM no clasifica solo como Clang.
+    const auto planned = [&](std::string_view key) {
+        const auto function = language::parseFunctionTypeIdentity(key);
+        if (!function || function->callingConvention != language::CallingConvention::SysV ||
+            function->carrier != language::FunctionCarrier::Pointer || function->variadic) return false;
+        return !(function->result == "builtin:void" || scalar(function->result)) ||
+            !std::all_of(function->parameters.begin(), function->parameters.end(),
+                [&](const std::string& parameter) { return scalar(parameter); });
+    };
+    bool ok = true;
+    const auto visit = [&](ProjectOopHirNode* root) {
+        std::vector<ProjectOopHirNode*> pending{root};
+        while (ok && !pending.empty())
+        {
+            ProjectOopHirNode* node = pending.back();
+            pending.pop_back();
+            if (node == nullptr) continue;
+            for (const auto& child : node->children) pending.push_back(child.get());
+            const bool callback = node->kind == ProjectOopHirNodeKind::LambdaCreate ||
+                node->kind == ProjectOopHirNodeKind::DelegateCreate ||
+                std::any_of(node->children.begin(), node->children.end(), [](const auto& child) {
+                    return child && language::isAnonymousLambdaTypeIdentity(child->typeKey); });
+            if (!callback || node->cppFunctionPointerPlan || !planned(node->typeKey)) continue;
+            node->cppFunctionPointerPlan = planFor(node->typeKey);
+            // A C function keeps its own address and needs no plan. / Una funcion C conserva su direccion.
+            if (!node->cppFunctionPointerPlan && node->kind != ProjectOopHirNodeKind::DelegateCreate)
+            {
+                error = "conversion of a NativeSharp callback to the sysv_abi function pointer '" + node->typeKey +
+                    "' needs the Clang plan of a C typedef naming that pointer type (a precompiled template body names "
+                    "the typedef, as in `T f = lambda;`, so its catalog carries it)";
+                ok = false;
+            }
+        }
+    };
+    for (ProjectOopHirFunction& function : functions_) visit(function.body.get());
+    for (ProjectOopHirFieldInitializer& initializer : fieldInitializers_) visit(initializer.value.get());
+    return ok;
+}
+
 ProjectOopHirNode::~ProjectOopHirNode()
 {
     std::vector<std::unique_ptr<ProjectOopHirNode>> pending;

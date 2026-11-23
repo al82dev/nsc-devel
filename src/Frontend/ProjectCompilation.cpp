@@ -2113,6 +2113,27 @@ bool ProjectCompilation::compileProjectOopHir(
             compilationJobs_, namespaceFunctionModel_.get(),
             metaprogrammingModel_.get(), &lifetime_->workerPool()))
     {
+        // EN: C5-07. The plan of a sysv_abi callback comes from a C typedef of the same pointer type: any one of them
+        //     names the same canonical function type, so Clang classifies it once.
+        // ES: C5-07. El plan de un callback sysv_abi viene de un typedef C del mismo tipo de puntero: cualquiera nombra
+        //     el mismo tipo de funcion canonico, asi que Clang lo clasifica una vez.
+        std::unordered_map<std::string, std::shared_ptr<const interop::abi_plan::Plan>> sysvPlans;
+        if (!oopHirModel_->attachSysVCallbackPlans([&](std::string_view typeKey) {
+                const std::string key(typeKey);
+                if (const auto found = sysvPlans.find(key); found != sysvPlans.end()) return found->second;
+                std::shared_ptr<const interop::abi_plan::Plan> plan;
+                for (const auto& alias : cppImportedTypeAliases_)
+                {
+                    const auto& pointer = alias.declaration.underlyingType;
+                    if (!cppFunctionPointerPlanProvider_ || pointer.kind != interop::CppTypeKind::Pointer ||
+                        !pointer.element || !pointer.element->function ||
+                        pointer.element->function->callingConvention != "sysv_abi") continue;
+                    if ((plan = cppFunctionPointerPlanProvider_(alias, typeKey))) break;
+                }
+                sysvPlans.emplace(key, plan);
+                return plan;
+            }, loadError))
+            return false;
         if (experimentalCppDiscardedLifetimeLoweringForTests_ || experimentalCppLocalLifetimeAnalysisForTests_)
         {
             using HirNode = ProjectOopHirNode;

@@ -135,6 +135,13 @@ public:
         driver::CompilationWorkerPool* workerPool);
 
     std::span<const ProjectOopHirFunction> functions() const noexcept;
+    // EN: C5-07. Attaches to each NativeSharp callback converted to a sysv_abi pointer whose values need it the
+    //     Clang plan of that pointer type (`planFor`); a missing plan rejects the callback.
+    // ES: C5-07. Adjunta a cada callback NativeSharp convertido a un puntero sysv_abi que lo necesita el plan de
+    //     Clang de ese tipo de puntero (`planFor`); sin plan, el callback se rechaza.
+    bool attachSysVCallbackPlans(
+        const std::function<std::shared_ptr<const interop::abi_plan::Plan>(std::string_view)>& planFor,
+        std::string& error);
     const MethodExpressionTypeBinding* yieldOperandBinding(
         const ast::AstNode* syntax, std::size_t callableOrdinal) const noexcept;
     std::span<const ProjectOopHirFieldInitializer> fieldInitializers() const noexcept;
