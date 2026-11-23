@@ -46,6 +46,8 @@ struct CppImportedInstanceMethod
     // T19-007: which parameters are C++ `T&&` (ref parameters that also bind a value). / Cuales son `T&&`.
     std::vector<bool> parameterRvalueReferences = {};
     bool isDeleted = false; // X1-03: a `= delete` method. / Un metodo `= delete`.
+    // X1-05: an `&&` receiver: called on a temporary only. / Un receptor `&&`: solo sobre un temporal.
+    bool receiverRvalue = false;
 };
 
 enum class CppImportedLifetimeKind { Constructor, Destructor };

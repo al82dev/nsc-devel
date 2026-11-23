@@ -7279,6 +7279,25 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
             provenVariantCase, expression, callee, selected,
             call, scopeOrdinal, diagnostics)) return result;
     const ClassMemberSymbol* directMember = methodSymbol(selected.memberOrdinal);
+    // EN: X1-05. An `&&` C++ method runs on a temporary (a call or construction result), as C++ allows it only on
+    //     an rvalue; on a named object it is rejected.
+    // ES: X1-05. Un metodo C++ `&&` se ejecuta sobre un temporal (resultado de una llamada o construccion), como C++
+    //     solo lo permite sobre un rvalue; sobre un objeto con nombre se rechaza.
+    if (directMember != nullptr && directMember->cppRvalueReceiver)
+    {
+        const ast::AstNode* receiver = expression->first() != nullptr ? expression->first()->first() : nullptr;
+        const bool temporary = receiver != nullptr &&
+            (receiver->kind() == ast::AstNodeKind::CallExpression ||
+             receiver->kind() == ast::AstNodeKind::ObjectCreationExpression ||
+             receiver->kind() == ast::AstNodeKind::NewExpression);
+        if (!temporary)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidCall, diagnostics::DiagnosticSeverity::Error,
+                expression->range(), "C++ method '" + directMember->name + "' has an '&&' receiver: C++ calls it on a "
+                "temporary (an rvalue), not on a named object");
+            return result;
+        }
+    }
     // X1-03: the selected C++ overload is `= delete`. / La sobrecarga C++ elegida es `= delete`.
     if (directMember != nullptr && directMember->cppDeleted)
     {

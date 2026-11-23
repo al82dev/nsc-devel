@@ -1316,9 +1316,10 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
         // X1-03: a deleted method is projected for selection; its call is rejected. / Un metodo eliminado se
         //     proyecta para la seleccion; su llamada se rechaza.
         method.isVolatile || method.variadic ||
-        // Item 12.1: an `&` / `const&` receiver is an lvalue receiver, as NativeSharp calls it; `&&` stays out.
-        //     / Un receptor `&` / `const&` es un receptor lvalue, como lo llama NativeSharp; `&&` queda fuera.
-        method.refQualifier == CppMethodRefQualifier::RValue || method.callingConvention != "cdecl" ||
+        // Item 12.1: an `&` / `const&` receiver is an lvalue receiver, as NativeSharp calls it. X1-05: an `&&`
+        //     receiver is projected too and called on a temporary only. / Un receptor `&` / `const&` es un receptor
+        //     lvalue; X1-05: un receptor `&&` tambien se proyecta y solo se llama sobre un temporal.
+        method.callingConvention != "cdecl" ||
         (!dispatched && (!method.externalSymbol || method.externalSymbol->empty())) || method.canonicalFunctionType.empty())
         return fail("C++ instance method contract is not yet mapped");
     RecordIndex recordIndex;
@@ -2007,7 +2008,26 @@ bool planCppImplicitLifetimeFromValues(
         for (const auto& child : node->children) if (child) pending.push_back(child.get());
         const bool discarded = node->kind == frontend::ProjectOopMirNodeKind::ExpressionStatement;
         const bool local = node->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration;
-        if ((!discarded && !local) || node->children.size() != 1) continue;
+        // EN: X2-05/X1-05. The other legal destinations of a C++ construction: a temporary's hidden owner, a trivial
+        //     temporary materialized by address, a constructed result, and a call argument lent by address.
+        // ES: X2-05/X1-05. Los demas destinos legales de una construccion C++: el dueno oculto de un temporal, un
+        //     temporal trivial materializado, un resultado construido y un argumento de llamada prestado.
+        if (!discarded && !local)
+        {
+            for (const auto& child : node->children)
+            {
+                if (!child || child->kind != frontend::ProjectOopMirNodeKind::ValueConstruct ||
+                    !child->targetTypeOrdinal || !child->memberOrdinal || !lookup.cppImportedType(*child->targetTypeOrdinal) ||
+                    *child->memberOrdinal >= members.members().size()) continue;
+                if (members.members()[*child->memberOrdinal].cppLifetimeImplicit) selected.push_back(*child->memberOrdinal);
+                const auto destructors = members.findMembers(*child->targetTypeOrdinal, ".dtor");
+                if (destructors.size() == 1 && destructors[0] < members.members().size() &&
+                    members.members()[destructors[0]].cppLifetimeImplicit)
+                    selected.push_back(destructors[0]);
+            }
+            continue;
+        }
+        if (node->children.size() != 1) continue;
         const auto* value = node->children.front().get();
         if (!value || value->kind != frontend::ProjectOopMirNodeKind::ValueConstruct ||
             !value->targetTypeOrdinal || !lookup.cppImportedType(*value->targetTypeOrdinal)) continue;
@@ -2487,6 +2507,7 @@ bool provideExperimentalCppInstanceMethods(
                 {
                     families[family].push_back(toCppImportedInstanceMethod(*instance));
                     families[family].back().isDeleted = method.isDeleted;
+                    families[family].back().receiverRvalue = method.refQualifier == CppMethodRefQualifier::RValue;
                 }
                 else if (!method.isDeleted) unprojectedArities[family].insert(method.parameters.size());
             }

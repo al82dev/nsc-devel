@@ -2212,6 +2212,10 @@ bool ProjectCompilation::compileProjectOopHir(
                     node->kind == ProjectOopHirNodeKind::PlacementConstruction;
                 if (!construction || !node->targetTypeOrdinal ||
                     !nameLookup_->cppImportedType(*node->targetTypeOrdinal)) continue;
+                // X1-05: a trivial C++ record materialized as a temporary needs no destructor; its bytes are its value.
+                //     / Un record C++ trivial materializado como temporal no necesita destructor.
+                if (parent && parent->kind == ProjectOopHirNodeKind::TemporaryAddress &&
+                    nameLookup_->cppTrivialValueEligible(*node->targetTypeOrdinal)) continue;
                 const bool discarded = experimentalCppDiscardedLifetimeLoweringForTests_ && parent &&
                     parent->kind == ProjectOopHirNodeKind::ExpressionStatement && parent->children.size() == 1;
                 // X2-05: `return construction;` builds the result in the caller's storage. / Construye el resultado en

@@ -518,6 +518,7 @@ bool ProjectMemberModel::build(
         member.declaringTypeOrdinal = ordinal;
         member.name = imported.name;
         member.cppDeleted = imported.isDeleted; // X1-03
+        member.cppRvalueReceiver = imported.receiverRvalue; // X1-05
         member.declaredTypeKey = imported.returnTypeKey;
         member.declaredPointerPointeeReadonly = imported.returnPointeeReadonly;
         member.hasImplicitThis = true;

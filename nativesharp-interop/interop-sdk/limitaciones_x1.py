@@ -7,7 +7,7 @@ X1-03: constructor `explicit`, acceso privado y `= delete`: una sobrecarga elimi
 participa en la seleccion y la llamada que la elige se rechaza, en vez de pasar a otra sobrecarga o al enlazador.
 X1-04: `T&` (ref), `const T&` (in, o un valor sin `in` que se materializa para la llamada si T no es un record C++),
 `T&&` (valor materializado), retorno por referencia y referencia a un campo.
-X1-05: ref-qualifiers `&` y `const &` en el receptor; `&&` queda sin proyectar.
+X1-05: ref-qualifiers `&` y `const &` en el receptor; `&&` sobre un temporal (rechazado sobre un objeto con nombre).
 X1-06: los mismos resultados en importacion directa, biblioteca precompilada sin encabezado y DLL.
 """
 from comun import Caso, positivo, rechazo, fin
@@ -101,6 +101,9 @@ rechazo(c, 'var x = new lib.Hidden(); return x.priv();', 'priv')
 rechazo(c, 'var b = new lib.Box(42); return lib.unbox(b);', 'lib.unbox')
 rechazo(c, 'int v = 41; return lib.sink(v);', 'lib.sink')
 rechazo(c, 'lib.Acc acc = new lib.Acc(); return acc.take();', 'take')
+# X1-05: an `&&` method runs on a temporary, as C++ allows it only on an rvalue; on a named object it is rejected (above).
+# Un metodo `&&` se ejecuta sobre un temporal; sobre un objeto con nombre se rechaza (arriba).
+positivo(Caso('x1-receptor-rvalue', H, S, **CPP), 'return (new lib.Acc()).take() + 42;', modes=['directo', 'dll'])
 
 # X1-06: the same calls through a precompiled library consumed without the header (records constructed by C++
 #     helpers, as the object lifetime of `new` in a template is X2's).

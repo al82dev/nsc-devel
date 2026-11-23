@@ -3973,9 +3973,15 @@ public:
             // ES: El miembro se nombra con un puntero a miembro de su propia clase, convertido a su tipo exacto:
             //     la resolucion de sobrecarga no puede elegir otro miembro del mismo nombre, y la llamada por el
             //     puntero conserva el despacho virtual y convierte self a la base declarante como lo hace Clang.
+            // X1-05: an `&&` method is named with its qualifier and called on self as an xvalue, as on a temporary.
+            //     / Un metodo `&&` se nombra con su calificador y se llama sobre self como xvalue.
+            const bool rvalueReceiver = method->getRefQualifier() == clang::RQ_RValue;
             const std::string member = "static_cast<" + resultAlias + " (" + ownerType + "::*)(" + parameterTypes + ")" +
-                (method->isConst() ? " const" : "") + ">(&" + ownerType + "::" + method->getNameAsString() + ")";
-            const std::string call = (request.freeOperator ? "(self.*" : "(self->*") + member + ")(" + arguments + ")";
+                (method->isConst() ? " const" : "") + (rvalueReceiver ? " &&" : "") + ">(&" + ownerType + "::" +
+                method->getNameAsString() + ")";
+            const std::string call = rvalueReceiver && !request.freeOperator
+                ? "(static_cast<" + self + "&&>(*self).*" + member + ")(" + arguments + ")"
+                : (request.freeOperator ? "(self.*" : "(self->*") + member + ")(" + arguments + ")";
             std::string resultType = "void";
             std::string body = call + ";";
             // A class result is trivially copyable (the projection only maps those): its bytes are copied to the
