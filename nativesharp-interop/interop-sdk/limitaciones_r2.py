@@ -19,22 +19,31 @@ def cache_invalidation():
     refs = caso.reference(base) + comun.core(0)
     (base / 'Main.ns').write_text('int Main() { return base_value() + K; }\n', encoding='utf-8')
 
+    # The artifact cache is opt-in (`--artifact-cache=<dir>`); each step reports its bundle cache state.
+    # La cache de artefactos se activa con `--artifact-cache=<dir>`; cada paso informa el estado de su cache.
     def build(define=None):
         reference = refs.replace(' />', f'><Define Value="{define}" /></CppLibraryReference>', 1) if define else refs
         comun.project(base, 'App', ['Main.ns'], reference)
         result = comun.run([comun.NSC, f'--cpp-clang-root={comun.CLANG_ROOT}', '--emit-project-oop-exe',
-                            'App.nsproj', '-O0', '-o', 'app.exe'], base, 'r2-cache')
+                            'App.nsproj', '-O0', '--verbose', f'--artifact-cache={base / "cache"}', '-o', 'app.exe'],
+                           base, 'r2-cache')
         if result.returncode:
-            return None
-        return comun.run([str(base / 'app.exe')], base, 'r2-cache-run').returncode
+            return None, None
+        state = next((line.split(':', 1)[1].strip() for line in result.stdout.splitlines()
+                      if line.startswith('compilation-bundle-cache:')), '?')
+        return comun.run([str(base / 'app.exe')], base, 'r2-cache-run').returncode, state
 
-    values = [build(), build()]
+    steps = [build(), build()]
     (base / 'sub.h').write_text('#define K 11\n', encoding='utf-8')
-    values.append(build())
+    steps.append(build())
     (base / 'sub.h').write_text('#ifdef EXTRA\n#define K 13\n#else\n#define K 11\n#endif\n', encoding='utf-8')
-    values.append(build('EXTRA'))
-    if values != [42, 42, 41, 43]:
-        _fail('r2-cache', f'valores {values}, se esperaba [42, 42, 41, 43]')
+    steps.append(build('EXTRA'))
+    values = [value for value, _ in steps]
+    hits = [state == 'hit' for _, state in steps]
+    # Cold, warm (reused), changed transitive header (not reused), changed Define (not reused).
+    if values != [42, 42, 41, 43] or hits != [False, True, False, False]:
+        _fail('r2-cache', f'valores {values} y cache {[state for _, state in steps]}; se esperaba [42, 42, 41, 43] '
+                          'con reutilizacion solo en el segundo paso')
     else:
         print('ok r2-cache', flush=True)
 
