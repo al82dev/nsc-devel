@@ -597,12 +597,13 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledNamespaceCallFrame(
         }
         lowered = finishNamespaceCall(
             frame.syntax,
-            frame.addressContext,
+            frame.addressContext && !frame.cppResultTemporary,
             error,
             *namespaceCall.binding,
             *namespaceCall.target,
             std::move(namespaceCall.node),
             namespaceCall.hasOwnedTemporary);
+        if (lowered != nullptr && frame.cppResultTemporary) lowered = cppResultTemporary(std::move(lowered), frame.syntax);
         if (lowered == nullptr)
         {
             if (!lastErrorRange_.isValid())

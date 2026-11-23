@@ -35,6 +35,7 @@ struct IterativeExpressionFrame final
     IterativeExpressionKind kind = IterativeExpressionKind::BuiltinUnary;
     const ast::AstNode* syntax = nullptr;
     bool addressContext = false;
+    bool cppResultTemporary = false; // X2-05: an addressed constructed C++ result. / Un resultado C++ direccionado.
     std::uint8_t stage = 0;
     std::unique_ptr<ProjectOopHirNode> first;
     std::unique_ptr<ProjectOopHirNode> second;

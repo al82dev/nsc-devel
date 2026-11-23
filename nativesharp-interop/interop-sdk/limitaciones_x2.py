@@ -356,4 +356,11 @@ positivo(Caso('x2-resultado-metodo', HF, SF, **CPP), BODY_INST, preludio=PRE_INS
 # returns an explicit copy works, as above). / Una propiedad automatica de ese record se rechaza en la propiedad.
 rechazo(Caso('x2-propiedad-auto-cpp', HF, SF, **CPP), 'return 0;', 'automatic property',
         preludio='class K { public lib.Obj P { get; set; } }'+chr(10))
+# X2-05: assigning such a result to a C++ local (`x = h.G()`, `x = Make(5)`) is the record's operator= from a
+# temporary that owns the result ('call result is not addressable unless the selected method returns ref' before).
+# Asignar ese resultado a un local C++ es el operator= desde un temporal que posee el resultado.
+positivo(Caso('x2-resultado-asignacion', HF, SF, **CPP),
+         '{ var h = new H2(); var x = Make(1); x = h.G(); if (x.v != 7) return 1; x = Make(5); if (x.v != 5) return 2;'
+         ' if (lib.c().assign != 2) return 3; }'
+         ' return lib.c().ctor == lib.c().dtor && lib.c().ctor == 4 ? 42 : 4;', preludio=PRE_INST, modes=['directo'])
 fin()

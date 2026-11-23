@@ -302,6 +302,25 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerInstanceFieldInitial
     return assignment;
 }
 
+bool ProjectOopHirModel::isCppNonTrivialRecordTypeKey(std::string_view typeKey) const
+{
+    if (nameLookup_ == nullptr || !typeKey.starts_with("type:") || typeKey.ends_with('*')) return false;
+    const auto type = nameLookup_->typeOrdinalForIdentity(typeKey.substr(5));
+    const auto* imported = type ? nameLookup_->cppImportedType(*type) : nullptr;
+    return imported != nullptr && imported->origin == CppImportedTypeOrigin::CppRecord &&
+        !nameLookup_->cppTrivialValueEligible(*type);
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::cppResultTemporary(
+    std::unique_ptr<ProjectOopHirNode> call, const ast::AstNode* syntax)
+{
+    const std::string typeKey = call->typeKey;
+    auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress, syntax, typeKey);
+    temporary->elementTypeKey = typeKey;
+    temporary->children.push_back(std::move(call));
+    return temporary;
+}
+
 bool ProjectOopHirModel::isCppDefaultConstructedField(const ClassMemberSymbol& field) const
 {
     if (field.kind != ClassMemberKind::Field || field.isStatic || field.syntax == nullptr ||

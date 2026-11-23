@@ -565,7 +565,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishOrdinaryCall(
         call.node->children.push_back(std::move(pack));
         call.node->argumentParameterOrdinals.push_back(parameterIndex);
     }
-    if (frame.addressContext && !selectedMember.isReferenceReturn)
+    // X2-05: a constructed C++ result is addressed through a temporary that owns it. / Un resultado C++ construido
+    //     se direcciona por un temporal que lo posee.
+    const bool cppTemporary = frame.addressContext && !selectedMember.isReferenceReturn &&
+        isCppNonTrivialRecordTypeKey(selectedMember.declaredTypeKey);
+    if (frame.addressContext && !selectedMember.isReferenceReturn && !cppTemporary)
     {
         error = "call result is not addressable unless the selected method returns ref";
         return nullptr;
@@ -577,6 +581,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishOrdinaryCall(
     call.node->referenceResult = selectedMember.isReferenceReturn;
     auto loweredCall = wrapFullExpressionCleanup(
         std::move(call.node), frame.syntax, call.hasOwnedTemporary);
+    if (cppTemporary) return cppResultTemporary(std::move(loweredCall), frame.syntax);
     if (!selectedMember.isReferenceReturn || frame.addressContext)
         return loweredCall;
     auto load = makeNode(
@@ -608,8 +613,12 @@ bool ProjectOopHirModel::initializeNamespaceCallFrame(
     call.target = &namespaceFunctionModel_->functions()[functionOrdinal];
     if (frame.addressContext && !call.target->isReferenceReturn)
     {
-        error = "namespace function call result is not addressable unless it returns ref";
-        return false;
+        if (isCppNonTrivialRecordTypeKey(binding->resultTypeKey)) frame.cppResultTemporary = true; // X2-05
+        else
+        {
+            error = "namespace function call result is not addressable unless it returns ref";
+            return false;
+        }
     }
     call.node = makeNode(
         ProjectOopHirNodeKind::StaticCall,

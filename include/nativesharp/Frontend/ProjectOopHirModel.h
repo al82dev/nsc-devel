@@ -4345,6 +4345,13 @@ private:
     //     place (`Assignment(FieldAddress(this), ValueConstruction)`), or null with an error. / Si un campo es un
     //     record C++ no trivial sin inicializador, y su construccion por defecto en su lugar.
     bool isCppDefaultConstructedField(const ClassMemberSymbol& field) const;
+    // X2-05: whether a type key names a non-trivial C++ record (a NativeSharp call returning one constructs it in
+    //     its destination). / Si una clave de tipo nombra un record C++ no trivial.
+    bool isCppNonTrivialRecordTypeKey(std::string_view typeKey) const;
+    // X2-05: the address of such a call's result is a temporary that owns it. / La direccion del resultado de esa
+    //     llamada es un temporal que lo posee.
+    std::unique_ptr<ProjectOopHirNode> cppResultTemporary(std::unique_ptr<ProjectOopHirNode> call,
+                                                          const ast::AstNode* syntax);
     std::unique_ptr<ProjectOopHirNode> cppDefaultFieldConstruction(std::size_t fieldMemberOrdinal, std::string& error);
     bool appendCppDefaultFieldConstructions(internal::OrdinaryConstructionFrameState& construction, std::string& error);
     std::vector<std::size_t> implicitInitializerTypes(
