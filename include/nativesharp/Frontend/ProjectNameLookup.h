@@ -161,6 +161,13 @@ struct CppImportedTypeDeclaration final
     std::vector<CppImportedPointerUpcast> cppPointerUpcasts{};
     // T12-001: Clang returns this record from a free C++ function through memory, whatever its size.
     bool cppIndirectReturn = false;
+    // EN: X3-04. An abstract C++ interface NativeSharp can implement: a complete polymorphic record whose object is
+    //     only its vtable pointer, without virtual bases or a virtual destructor, whose virtual methods (its own and
+    //     its bases') are all pure and have distinct names; these are their names, in declaration order.
+    // ES: X3-04. Una interfaz C++ abstracta que NativeSharp puede implementar: un record polimorfico cuyo objeto es
+    //     solo su puntero de vtable, sin bases virtuales ni destructor virtual, cuyos metodos virtuales (propios y de
+    //     sus bases) son todos puros y de nombres distintos; estos son sus nombres, en orden de declaracion.
+    std::vector<std::string> cppInterfaceMethods{};
 };
 
 class ProjectNameLookup final

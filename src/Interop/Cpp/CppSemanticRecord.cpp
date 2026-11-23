@@ -4721,6 +4721,25 @@ bool selectExperimentalCppRecordTypesForCompilation(
         for (const auto& upcast : observation.inventory[*selected].declaration.upcasts)
             type.cppPointerUpcasts.push_back({upcast.baseClangUsr, upcast.offsetBytes});
         type.cppIndirectReturn = observation.inventory[*selected].declaration.indirectReturn.value_or(false);
+        // X3-04: an abstract interface NativeSharp can implement. / Una interfaz abstracta que NativeSharp puede
+        //     implementar.
+        {
+            const auto& declaration = observation.inventory[*selected].declaration;
+            std::vector<std::string> names;
+            bool eligible = declaration.isCxx && declaration.complete && !declaration.hasVirtualBases &&
+                declaration.sizeBits == std::optional<std::uint64_t>{64} && declaration.fields.empty() &&
+                declaration.kind != CppRecordKind::Union;
+            for (const auto& method : declaration.methods)
+            {
+                if (!eligible) break;
+                if (!method.isVirtual) continue;
+                if (method.kind != CppMethodKind::Method || !method.isPureVirtual || method.variadic ||
+                    std::find(names.begin(), names.end(), method.name) != names.end())
+                { eligible = false; break; }
+                names.push_back(method.name);
+            }
+            if (eligible && !names.empty()) type.cppInterfaceMethods = std::move(names);
+        }
         const auto value = observeCppRecordValueForEntry(observation.inventory[*selected], compilation.cppProjectSessions());
         if (!value) continue;
         type.cppValueTraits = std::make_shared<const CppRecordValueTraits>(value->traits);

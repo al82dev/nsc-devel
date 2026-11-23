@@ -1643,6 +1643,27 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup15(
             // T12-003: the byte offset of the C++ base subobject. / El offset en bytes del subobjeto base C++.
             if (node->conversion && node->conversion->kind == ProjectConversionKind::CppPointerUpcast)
                 result->immediate = node->conversion->cppPointerOffset;
+            // EN: X3-04. A class converted to a pointer to the abstract C++ interface it implements: the hidden vptr
+            //     field (memberOrdinal) and its offset, where the conversion binds the object C++ sees.
+            // ES: X3-04. Una clase convertida a puntero a la interfaz C++ que implementa: el campo vptr oculto y su
+            //     offset, donde la conversion enlaza el objeto que ve C++.
+            else if (model_.memberModel_ != nullptr && node->children.size() == 1 && node->children[0] &&
+                     node->typeKey.starts_with("type:") && node->typeKey.ends_with('*') &&
+                     node->children[0]->typeKey.starts_with("type:") && !node->children[0]->typeKey.ends_with('*'))
+                for (std::size_t member = 0; member < model_.memberModel_->members().size(); ++member)
+                {
+                    const auto& field = model_.memberModel_->members()[member];
+                    if (!field.cppInterfaceTypeOrdinal || field.name != "__nsc_cpp_interface_vptr") continue;
+                    const auto& owner = model_.nameLookup_->namedTypes()[field.declaringTypeOrdinal];
+                    const auto& target = model_.nameLookup_->namedTypes()[*field.cppInterfaceTypeOrdinal];
+                    if ("type:" + owner.identity.key() != node->children[0]->typeKey ||
+                        "type:" + target.identity.key() + "*" != node->typeKey) continue;
+                    const ObjectFieldLayout* layout = model_.fieldLayout(member);
+                    if (layout == nullptr) { error = "X3-04 C++ interface field has no layout"; return -1; }
+                    result->memberOrdinal = member;
+                    result->immediate = layout->offset;
+                    break;
+                }
             // EN: Item 3.1. A string literal is the interned global {i64 length, [N+1 x i8] bytes}; a pointer to its
             //     characters starts at the bytes, 8 bytes past the length.
             // ES: Item 3.1. Un literal de cadena es la global interna {i64 longitud, [N+1 x i8] bytes}; un puntero a

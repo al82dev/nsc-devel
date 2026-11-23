@@ -100,6 +100,31 @@ bool OopLlvmImplementation::defineCallbackGuardThunks(std::string& error, bool d
                 continue;
             }
             const frontend::ProjectOopMirFunction& function = functions[ordinal];
+            // EN: X3-04. A method that implements an abstract C++ interface is called by the C++ adapter through its
+            //     C boundary (`<method>__c_boundary`), which takes the receiver first and guards NativeSharp errors.
+            // ES: X3-04. Un metodo que implementa una interfaz C++ abstracta lo llama el adaptador C++ por su limite
+            //     C, que toma primero el receptor y protege los errores de NativeSharp.
+            if (!function.namespaceFunctionOrdinal && !function.isStatic && memberModel_ != nullptr &&
+                function.memberOrdinal < memberModel_->members().size())
+            {
+                const auto& method = memberModel_->members()[function.memberOrdinal];
+                for (const std::size_t member : memberModel_->membersOfType(method.declaringTypeOrdinal))
+                {
+                    if (member >= memberModel_->members().size()) continue;
+                    const auto& field = memberModel_->members()[member];
+                    if (!field.cppInterfaceTypeOrdinal || field.name != "__nsc_cpp_interface_vptr") continue;
+                    const auto* interface = nameLookup_.cppImportedType(*field.cppInterfaceTypeOrdinal);
+                    if (interface != nullptr &&
+                        std::find(interface->cppInterfaceMethods.begin(), interface->cppInterfaceMethods.end(),
+                                  method.name) != interface->cppInterfaceMethods.end())
+                    {
+                        const std::tuple<std::string, bool, bool, std::string> target = {
+                            function.mangledName, false, false, std::string()};
+                        if (std::find(targets.begin(), targets.end(), target) == targets.end())
+                            targets.push_back(target);
+                    }
+                }
+            }
             visit(function.body.get(), visit);
             for (const frontend::ProjectOopMirCleanupRegion& cleanup : function.cleanupRegions)
                 visit(cleanup.action, visit);

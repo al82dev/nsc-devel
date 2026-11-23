@@ -148,6 +148,9 @@ struct ClassMemberSymbol final
     // semantic consumers use this extensible set for noheap/throws/async and future effects.
     sema::EffectSet effects;
     bool isVirtual = false;
+    // X3-04: a hidden field of a class that implements this abstract C++ interface. / Un campo oculto de una clase
+    //     que implementa esta interfaz C++ abstracta.
+    std::optional<std::size_t> cppInterfaceTypeOrdinal;
     bool isOverride = false;
     bool isAbstract = false;
     bool isSealed = false;

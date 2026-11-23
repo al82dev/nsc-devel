@@ -382,6 +382,13 @@ bool ProjectInheritanceModel::resolveBaseSpecification(
         // Stage 36 interface obligations are owned by ProjectInterfaceModel.
         return true;
     }
+    // EN: X3-04. An abstract C++ interface is implemented, not inherited: the class keeps no NativeSharp base and holds
+    //     the C++ object in hidden fields (ProjectMemberModel::collectTypeMembers).
+    // ES: X3-04. Una interfaz C++ abstracta se implementa, no se hereda: la clase no tiene base NativeSharp y guarda
+    //     el objeto C++ en campos ocultos.
+    if (const auto* imported = nameLookup_->cppImportedType(*candidate);
+        imported != nullptr && !imported->cppInterfaceMethods.empty())
+        return true;
     if (candidateType.kind != NamedTypeDeclarationKind::Class)
     {
         // EN: Item 14.0 (D11). A NativeSharp class cannot derive from a C/C++ record yet; the diagnostic says so

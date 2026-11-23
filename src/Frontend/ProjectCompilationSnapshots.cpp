@@ -575,7 +575,52 @@ bool ProjectCompilation::buildInheritanceModel()
         reportSink_("precompiled-snapshot-install: classes=" +
             std::to_string(inheritanceModel_->installedSnapshotClassCount()));
     }
-    return built;
+    // EN: X3-04. A class that implements an abstract C++ interface declares, for each pure virtual method, one public
+    //     instance method of that name with the NativeSharp signature of the imported C++ method.
+    // ES: X3-04. Una clase que implementa una interfaz C++ abstracta declara, por cada metodo virtual puro, un metodo
+    //     publico de instancia con ese nombre y la firma NativeSharp del metodo C++ importado.
+    bool implemented = true;
+    if (memberModel_ != nullptr)
+        for (const auto& field : memberModel_->members())
+        {
+            if (!field.cppInterfaceTypeOrdinal || field.name != "__nsc_cpp_interface_vptr") continue;
+            const auto* interface = nameLookup_->cppImportedType(*field.cppInterfaceTypeOrdinal);
+            const auto& owner = nameLookup_->namedTypes()[field.declaringTypeOrdinal];
+            const auto range = owner.parts.empty() || owner.parts.front().syntax == nullptr
+                ? SourceRange{} : owner.parts.front().syntax->range();
+            const auto report = [&](const std::string& message) {
+                diagnostics_.report(diagnostics::DiagnosticId::InvalidBaseType, diagnostics::DiagnosticSeverity::Error,
+                    range, "class '" + owner.identity.key() + "' implements the C++ interface '" +
+                        interface->identity.fullyQualifiedName() + "': " + message);
+                implemented = false;
+            };
+            for (const auto& name : interface->cppInterfaceMethods)
+            {
+                const ClassMemberSymbol* cpp = nullptr;
+                for (const auto ordinal : memberModel_->findMembers(*field.cppInterfaceTypeOrdinal, name))
+                    if (ordinal < memberModel_->members().size() &&
+                        memberModel_->members()[ordinal].kind == ClassMemberKind::Method &&
+                        !memberModel_->members()[ordinal].isStatic) cpp = &memberModel_->members()[ordinal];
+                if (cpp == nullptr) { report("its method '" + name + "' has no NativeSharp signature"); continue; }
+                const ClassMemberSymbol* own = nullptr;
+                std::size_t count = 0;
+                for (const auto ordinal : memberModel_->findMembers(field.declaringTypeOrdinal, name))
+                    if (ordinal < memberModel_->members().size() &&
+                        memberModel_->members()[ordinal].kind == ClassMemberKind::Method)
+                    { own = &memberModel_->members()[ordinal]; ++count; }
+                const bool same = own != nullptr && count == 1 && !own->isStatic &&
+                    own->accessibility == ClassMemberAccessibility::Public &&
+                    own->declaredTypeKey == cpp->declaredTypeKey && own->parameters.size() == cpp->parameters.size() &&
+                    std::equal(own->parameters.begin(), own->parameters.end(), cpp->parameters.begin(),
+                        [](const auto& left, const auto& right) {
+                            return left.typeKey == right.typeKey && left.passKind == right.passKind;
+                        });
+                if (!same)
+                    report("it must declare one public instance method '" + name + "' with the signature '" +
+                        cpp->signatureKey + "' returning '" + cpp->declaredTypeKey + "'");
+            }
+        }
+    return built && implemented;
 }
 
 // EN: Builds the interface model with the accepted snapshots (plan 3.7) and, in the reference

@@ -1,3 +1,4 @@
+#include "nativesharp/Interop/CppMemberThunk.h"
 #include "../Internal/OopLlvmImplementation.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/LlvmExpressionFrame.h"
@@ -2276,6 +2277,36 @@ bool OopLlvmImplementation::lowerExpressionFrame041Convert(
     values.pop_back();
     if (value == nullptr) { values.push_back(nullptr); return true; }
     if (terminated()) { values.push_back(value); return true; }
+    // EN: X3-04. A class converted to the abstract C++ interface it implements binds the C++ adapter object in its
+    //     hidden fields (vtable pointer, NativeSharp object) and yields its address.
+    // ES: X3-04. Una clase convertida a la interfaz C++ que implementa enlaza el objeto adaptador C++ en sus campos
+    //     ocultos (puntero de vtable, objeto NativeSharp) y entrega su direccion.
+    if (current->memberOrdinal && memberModel_ != nullptr && *current->memberOrdinal < memberModel_->members().size() &&
+        memberModel_->members()[*current->memberOrdinal].cppInterfaceTypeOrdinal)
+    {
+        const auto& field = memberModel_->members()[*current->memberOrdinal];
+        const auto* interface = nameLookup_.cppImportedType(*field.cppInterfaceTypeOrdinal);
+        if (interface == nullptr || !interface->clangUsr)
+        {
+            values.push_back(failValue(error, "X3-04 C++ interface has no Clang identity"));
+            return true;
+        }
+        LLVMValueRef object = checkedReceiver(value, error);
+        if (object == nullptr) { values.push_back(nullptr); return true; }
+        LLVMValueRef offset = LLVMConstInt(LLVMInt64TypeInContext(context_), current->immediate, 0);
+        LLVMValueRef storage = LLVMBuildGEP2(builder_, LLVMInt8TypeInContext(context_), object, &offset, 1,
+                                             "cpp.interface.storage");
+        const std::string symbol = interop::cppInterfaceBindSymbol(
+            nameLookup_.namedTypes()[field.declaringTypeOrdinal].identity.key(), *interface->clangUsr);
+        LLVMTypeRef pointer = LLVMPointerTypeInContext(context_, 0);
+        LLVMTypeRef parameters[] = {pointer, pointer};
+        LLVMTypeRef bindType = LLVMFunctionType(pointer, parameters, 2, 0);
+        LLVMValueRef bind = LLVMGetNamedFunction(module_, symbol.c_str());
+        if (bind == nullptr) bind = LLVMAddFunction(module_, symbol.c_str(), bindType);
+        LLVMValueRef arguments[] = {storage, object};
+        values.push_back(LLVMBuildCall2(builder_, bindType, bind, arguments, 2, "cpp.interface"));
+        return true;
+    }
     // EN: T12-003. A derived-to-base C++ pointer conversion adds Clang's base offset; a null pointer stays
     //     null, as in C++. A zero offset is the same address.
     // ES: T12-003. Una conversion C++ de puntero de derivado a base suma el offset de base de Clang; un puntero

@@ -1473,8 +1473,11 @@ bool ProjectObjectLayoutModel::collectClassPhysicalFields(
                 "class allocation has a fixed object size");
             return false;
         }
-        const std::optional<TypeLayout> fieldLayout = layoutTypeSyntax(
-            member.declaredTypeSyntax, diagnostics, member.range);
+        // X3-04: the hidden pointer fields of a C++ interface implementation have no syntax. / Los campos puntero
+        //     ocultos de la implementacion de una interfaz C++ no tienen sintaxis.
+        const std::optional<TypeLayout> fieldLayout = member.cppInterfaceTypeOrdinal.has_value()
+            ? std::optional<TypeLayout>(targetLayout_.layoutOf(BuiltinLayoutKind::Pointer))
+            : layoutTypeSyntax(member.declaredTypeSyntax, diagnostics, member.range);
         if (!fieldLayout.has_value()) return false;
         std::optional<std::uint64_t> bitWidth;
         if (!classBitFieldWidth(

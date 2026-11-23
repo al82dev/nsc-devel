@@ -254,6 +254,39 @@ bool ProjectMemberModel::collectTypeMembers(
             propertyDeclarations,
             ordinaryDeclarations,
             diagnostics);
+    // EN: X3-04. A class that implements an abstract C++ interface holds the object C++ sees: its vtable pointer
+    //     and the NativeSharp object, two hidden pointer fields that the conversion to the interface pointer binds.
+    // ES: X3-04. Una clase que implementa una interfaz C++ abstracta guarda el objeto que ve C++: su puntero de
+    //     vtable y el objeto NativeSharp, dos campos puntero ocultos que enlaza la conversion al puntero de interfaz.
+    if (type.kind == NamedTypeDeclarationKind::Class)
+        for (const NamedTypeDeclarationPart& part : type.parts)
+        {
+            if (part.syntax == nullptr) continue;
+            std::vector<const ast::TypeSyntax*> bases(part.syntax->typeSyntaxes().begin(), part.syntax->typeSyntaxes().end());
+            if (bases.empty() && part.syntax->typeSyntax() != nullptr) bases.push_back(part.syntax->typeSyntax());
+            for (const ast::TypeSyntax* base : bases)
+            {
+                const auto ordinal = base != nullptr ? nameLookup.resolvedTypeOrdinal(base) : std::nullopt;
+                const auto* imported = ordinal ? nameLookup.cppImportedType(*ordinal) : nullptr;
+                if (imported == nullptr || imported->cppInterfaceMethods.empty()) continue;
+                for (const char* name : {"__nsc_cpp_interface_vptr", "__nsc_cpp_interface_self"})
+                {
+                    ClassMemberSymbol field;
+                    field.kind = ClassMemberKind::Field;
+                    field.accessibility = ClassMemberAccessibility::Private;
+                    field.declaringTypeOrdinal = typeOrdinal;
+                    field.name = name;
+                    field.declaredTypeKey = "builtin:void*";
+                    field.isCompilerGenerated = true;
+                    field.cppInterfaceTypeOrdinal = *ordinal;
+                    const auto memberOrdinal = members_.size();
+                    members_.push_back(std::move(field));
+                    membersByType_[typeOrdinal].push_back(memberOrdinal);
+                    membersByName_[typeOrdinal][name].push_back(memberOrdinal);
+                }
+                break;
+            }
+        }
     return !diagnostics.hasErrors();
 }
 }

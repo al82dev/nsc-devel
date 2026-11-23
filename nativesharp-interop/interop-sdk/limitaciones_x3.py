@@ -5,10 +5,10 @@ base virtual, typeid y dynamic_cast en la biblioteca con --dll), que pasa con el
 X3-01/X3-02: herencia multiple con la segunda base en offset distinto de cero: conversion derivado->base y referencia
 a la base.
 X3-04: dispatch virtual desde NativeSharp sobre un objeto C++ (herencia simple y multiple con la base polimorfica no
-primaria); implementar desde NativeSharp un tipo C++ (override entrante) sigue rechazado.
+primaria); una clase NativeSharp implementa una interfaz C++ abstracta (adaptador de Clang, `(ICalc*)obj`).
 X3-06: punteros a miembro rechazados con su motivo (su representacion depende del modelo de herencia, T14-007).
-X3-07: COM consumido: interfaz abstracta `__stdcall` con AddRef/Release/QueryInterface por su vtable; una interfaz
-entrante implementada en NativeSharp queda pendiente con diagnostico.
+X3-07: COM consumido y entrante: interfaz abstracta `__stdcall` con AddRef/Release/QueryInterface por su vtable,
+tambien implementada por una clase NativeSharp y llamada desde C++.
 X3-03: un record con bases virtuales se construye y destruye por adaptadores de Clang (indicador de mas derivado, destructor de bases virtuales).
 """
 import comun
@@ -93,7 +93,45 @@ positivo(c3, 'ICalc* c = null; if (CreateCalc(&c) != 0) return 1; c->AddRef(); i
              '    if (c->Add(40, 2, &r) != 0) return 2; c->Release(); c->Release(); return LiveRefs() == 0 ? r : 3;',
          modes=['directo', 'dll'])
 rechazo(c3, 'Pt p; p.x = 4; return Pt_x(null, &p);', 'pointer to member')
-rechazo(c3, 'return 0;', 'cannot derive from the C/C++ record', preludio='class MyCalc : ICalc { }\n')
+# X3-04/X3-07: `class MyCalc : ICalc` was a rejection ('cannot derive from the C/C++ record'). A NativeSharp class now
+# implements an abstract C++ interface (polymorphic, only its vtable pointer, no virtual bases or virtual destructor,
+# pure virtual methods with distinct names, COM included): Clang compiles an adapter deriving from the interface
+# whose overrides call the class's methods through their C boundaries, held in two hidden fields of the object;
+# `(ICalc*)obj` binds it and yields the pointer C++ calls. The object's lifetime stays NativeSharp's.
+# X3-04/X3-07: una clase NativeSharp implementa ahora una interfaz C++ abstracta (COM incluido) mediante un adaptador
+# que compila Clang; `(ICalc*)obj` entrega el puntero que llama C++.
+SCOM = S3 + r'''
+extern "C" int UseCalc(ICalc* c)
+{
+    int r = 0;
+    if (c->Add(40, 2, &r) != 0) return 1;
+    c->AddRef();
+    if (c->Release() != 1) return 2;
+    void* q = nullptr; GUID_ g{};
+    if (c->QueryInterface(g, &q) != 0 || q != c) return 3;
+    return c->Release() == 1 ? r : 4;
+}
+'''
+HCOM = H3 + 'extern "C" int UseCalc(ICalc* c);\n'
+PRECOM = r'''
+class MyCalc : ICalc
+{
+    public uint refs = 1;
+    public int QueryInterface(in GUID_ iid, void** out) { *out = (void*)(ICalc*)this; AddRef(); return 0; }
+    public uint AddRef() { refs += 1; return refs; }
+    public uint Release() { refs -= 1; return refs; }
+    public int Add(int a, int b, int* out) { *out = a + b; return 0; }
+}
+'''
+positivo(Caso('x3-com-entrante', HCOM, SCOM, **CPP), 'var c = new MyCalc(); return UseCalc((ICalc*)c);',
+         preludio=PRECOM, modes=['directo', 'dll'])
+# A class must implement every pure virtual method with its NativeSharp signature. / Debe implementar cada metodo
+# virtual puro con su firma NativeSharp.
+rechazo(c3, 'return 0;', "it must declare one public instance method 'QueryInterface'", preludio='class MyCalc : ICalc { }\n')
+# A C++ class that is not an abstract interface (data, non-pure virtual methods) is still not a base.
+# / Una clase C++ que no es una interfaz abstracta sigue sin poder ser base.
+rechazo(Caso('x3-base-no-interfaz', H2, S2, **CPP), 'return 0;', 'cannot derive from the C/C++ record',
+        preludio='class MyShape : lib.Shape { }\n')
 
 H4 = 'namespace lib { struct VB { int v = 40; }; struct M1 : virtual VB { int m1 = 1; }; struct M2 : virtual VB { int m2 = 1; };\n' \
      'struct DD : M1, M2 { int dd = 0; }; int vb_value(DD* p); }\n'

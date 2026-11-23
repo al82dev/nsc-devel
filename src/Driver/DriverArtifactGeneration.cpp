@@ -336,6 +336,44 @@ static bool appendCppInlineObjects(frontend::ProjectCompilation &compilation,
             const std::set<std::string> done(emitted.begin(), emitted.end());
             std::erase_if(remaining, [&](const std::string& symbol) { return done.contains(symbol); });
         }
+    // EN: X3-04. The C++ adapter of each NativeSharp class that implements an abstract C++ interface: Clang compiles
+    //     its vtable and overrides, which call the C boundaries of the class's methods.
+    // ES: X3-04. El adaptador C++ de cada clase NativeSharp que implementa una interfaz C++ abstracta: Clang compila
+    //     su vtable y sus sobreescrituras, que llaman a los limites C de los metodos de la clase.
+    if (const auto* members = compilation.memberModel(); members && compilation.nameLookup())
+        for (const auto& field : members->members())
+        {
+            if (!field.cppInterfaceTypeOrdinal || field.name != "__nsc_cpp_interface_vptr") continue;
+            const auto* interface = compilation.nameLookup()->cppImportedType(*field.cppInterfaceTypeOrdinal);
+            if (!interface || !interface->clangUsr) { error = "C++ interface has no Clang identity"; return false; }
+            const auto classKey = compilation.nameLookup()->namedTypes()[field.declaringTypeOrdinal].identity.key();
+            interop::CppInteropSession::CppInterfaceAdapterRequest request;
+            request.interfaceUsr = *interface->clangUsr;
+            request.adapterName = interop::cppInterfaceAdapterName(classKey, *interface->clangUsr);
+            for (const auto& name : interface->cppInterfaceMethods)
+            {
+                const frontend::ProjectOopMirFunction* implementation = nullptr;
+                for (const auto member : members->findMembers(field.declaringTypeOrdinal, name))
+                    for (const auto& function : mir.functions())
+                        if (!function.namespaceFunctionOrdinal && function.memberOrdinal == member)
+                            implementation = &function;
+                if (!implementation)
+                { error = "C++ interface method '" + name + "' of '" + classKey + "' has no NativeSharp body"; return false; }
+                request.methods.emplace_back(name, implementation->mangledName + "__c_boundary");
+            }
+            std::string reason = "no Clang session declares the interface";
+            bool emitted = false;
+            for (const auto& project : compilation.cppProjectSessions())
+            {
+                for (const auto& session : project.sessions)
+                    if (session)
+                        if (auto ir = session->emitCppInterfaceAdapterIR(request, reason))
+                        { modules.push_back(std::move(*ir)); emitted = true; break; }
+                if (emitted) break;
+            }
+            if (!emitted)
+            { error = "cannot generate the C++ adapter of '" + classKey + "': " + reason; return false; }
+        }
     if (modules.empty()) return true;
     return bundle.appendGeneratedObjects(modules.size(),
         [&](std::span<const std::filesystem::path> paths, std::string& emitError)

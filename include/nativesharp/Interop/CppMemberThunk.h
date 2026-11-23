@@ -58,6 +58,27 @@ inline std::string cppDefaultArgumentThunkSymbol(std::string_view ownerUsr, std:
 // ES: X2-05. El adaptador que toma por `const T&` los parametros record no triviales de una funcion C++ y la llama con
 //     ellos, asi Clang construye por copia cada argumento por valor y el llamado lo destruye, como exige el ABI de
 //     Microsoft.
+// EN: X3-04. The C++ adapter of a NativeSharp class that implements an abstract C++ interface (a final class
+//     deriving from it whose overrides call the class's methods) and its `extern "C" void* bind(void* storage, void*
+//     self)`, named after the class identity and the interface's USR.
+// ES: X3-04. El adaptador C++ de una clase NativeSharp que implementa una interfaz C++ abstracta y su bind, nombrados
+//     por la identidad de la clase y el USR de la interfaz.
+inline std::string cppInterfaceAdapterName(std::string_view classKey, std::string_view interfaceUsr)
+{
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (const unsigned char c : classKey) { hash ^= c; hash *= 1099511628211ULL; }
+    hash ^= '#'; hash *= 1099511628211ULL;
+    for (const unsigned char c : interfaceUsr) { hash ^= c; hash *= 1099511628211ULL; }
+    static constexpr char digits[] = "0123456789abcdef";
+    std::string name("__nsc_cpp_iface_");
+    for (int shift = 60; shift >= 0; shift -= 4) name.push_back(digits[(hash >> shift) & 0xF]);
+    return name;
+}
+inline std::string cppInterfaceBindSymbol(std::string_view classKey, std::string_view interfaceUsr)
+{
+    return cppInterfaceAdapterName(classKey, interfaceUsr) + "_bind";
+}
+
 inline std::string cppByValueThunkSymbol(std::string_view usr)
 {
     return cppMemberThunkSymbol("#function#byvalue", usr);

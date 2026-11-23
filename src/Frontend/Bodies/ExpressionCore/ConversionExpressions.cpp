@@ -349,6 +349,22 @@ void ProjectMethodBodyModel::validateReferenceCast(
         referenceTypeOrdinalForTypeKey(result.typeKey);
     const bool targetIsReference = targetType.has_value();
     if (!sourceIsReference && !targetIsReference) return;
+    // EN: X3-04. A class that implements an abstract C++ interface converts explicitly to a pointer to that interface:
+    //     the object C++ sees, held in the class's hidden fields.
+    // ES: X3-04. Una clase que implementa una interfaz C++ abstracta se convierte explicitamente a un puntero a esa
+    //     interfaz: el objeto que ve C++, guardado en los campos ocultos de la clase.
+    if (sourceIsReference && !targetIsReference && memberModel_ != nullptr && nameLookup_ != nullptr &&
+        result.typeKey.starts_with("type:") && result.typeKey.ends_with('*') && !result.typeKey.ends_with("**"))
+    {
+        const auto source = referenceTypeOrdinalForTypeKey(operand.typeKey);
+        const auto target = nameLookup_->typeOrdinalForIdentity(
+            std::string_view(result.typeKey).substr(5, result.typeKey.size() - 6));
+        if (source && target)
+            for (const std::size_t member : memberModel_->membersOfType(*source))
+                if (member < memberModel_->members().size() &&
+                    memberModel_->members()[member].cppInterfaceTypeOrdinal == target)
+                    return;
+    }
     if (!sourceIsReference || !targetIsReference ||
         !canRuntimeReferenceConvert(operand.typeKey, result.typeKey))
     {

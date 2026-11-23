@@ -37,6 +37,8 @@
 #include <llvm/ADT/APFloat.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Intrinsics.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/VirtualFileSystem.h>
 #include <llvm/Support/raw_ostream.h>
@@ -4109,6 +4111,150 @@ public:
         if (!compile(snippets) && snippets.size() > 1)
             for (const auto& snippet : snippets) compile(std::span(&snippet, 1));
         return modules;
+    }
+
+    // X3-04: see CppInteropSession::emitCppInterfaceAdapterIR. / Ver CppInteropSession::emitCppInterfaceAdapterIR.
+    std::optional<std::string> emitCppInterfaceAdapterIR(const CppInterfaceAdapterRequest& request,
+        std::string& error) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || !ast_->getASTContext().getLangOpts().CPlusPlus || options_.macroExpansionOnly)
+        { error = "not a C++ session"; return std::nullopt; }
+        auto& context = ast_->getASTContext();
+        const clang::CXXRecordDecl* interface = nullptr;
+        std::vector<const clang::DeclContext*> pending{context.getTranslationUnitDecl()};
+        while (!pending.empty() && !interface)
+        {
+            const auto* scope = pending.back();
+            pending.pop_back();
+            for (const auto* declaration : scope->decls())
+            {
+                if (const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(declaration);
+                    record && record->isThisDeclarationADefinition() && declarationUsr(record) == request.interfaceUsr)
+                { interface = record; break; }
+                if (llvm::isa<clang::NamespaceDecl>(declaration) || llvm::isa<clang::LinkageSpecDecl>(declaration) ||
+                    llvm::isa<clang::CXXRecordDecl>(declaration))
+                    pending.push_back(llvm::cast<clang::DeclContext>(declaration));
+            }
+        }
+        if (!interface) { error = "the interface is not declared in this translation unit"; return std::nullopt; }
+        // The pure virtual methods of the interface and its bases, by name. / Los virtuales puros por nombre.
+        std::map<std::string, const clang::CXXMethodDecl*> methods;
+        std::vector<const clang::CXXRecordDecl*> records{interface};
+        while (!records.empty())
+        {
+            const auto* record = records.back();
+            records.pop_back();
+            for (const auto* method : record->methods())
+                if (method->isPureVirtual() && method->getIdentifier())
+                    methods.emplace(method->getNameAsString(), method);
+            for (const auto& base : record->bases())
+                if (const auto* baseRecord = base.getType()->getAsCXXRecordDecl()) records.push_back(baseRecord);
+        }
+        clang::PrintingPolicy policy(context.getLangOpts());
+        policy.FullyQualifiedName = true;
+        policy.SuppressScope = false;
+        const std::string interfaceName = "::" + interface->getQualifiedNameAsString();
+        std::string declarations;
+        std::string overrides;
+        for (std::size_t index = 0; index < request.methods.size(); ++index)
+        {
+            const auto& [name, boundary] = request.methods[index];
+            const auto found = methods.find(name);
+            if (found == methods.end()) { error = "the interface has no pure virtual method '" + name + "'"; return std::nullopt; }
+            const auto* method = found->second;
+            const std::string result = method->getReturnType().getAsString(policy);
+            const std::string callee = request.adapterName + "_m" + std::to_string(index);
+            std::string parameters;
+            std::string arguments;
+            std::string types;
+            for (unsigned parameter = 0; parameter < method->getNumParams(); ++parameter)
+            {
+                const std::string type = method->getParamDecl(parameter)->getType().getAsString(policy);
+                parameters += (parameter ? ", " : "") + type + " a" + std::to_string(parameter);
+                arguments += ", a" + std::to_string(parameter);
+                types += ", " + type;
+            }
+            declarations += result + " " + callee + "(void*" + types + ") __asm__(\"" + boundary + "\");\n";
+            overrides += "  " + result + " " + name + "(" + parameters + ")" + (method->isConst() ? " const" : "") +
+                " override { " + (method->getReturnType()->isVoidType() ? "" : "return ") + callee +
+                "(__nsc_self" + arguments + "); }\n";
+        }
+        const std::string bind = request.adapterName + "_bind";
+        const std::string code = source_ + "\nstruct __nsc_iface_place_t {};\n"
+            "inline void* operator new(decltype(sizeof(0)), void* p, __nsc_iface_place_t) noexcept { return p; }\n"
+            "extern \"C\" {\n" + declarations + "}\n"
+            "struct " + request.adapterName + " final : " + interfaceName + " {\n  void* __nsc_self;\n" + overrides + "};\n"
+            "extern \"C\" void* " + bind + "(void* storage, void* self) { auto* a = ::new (storage, "
+            "__nsc_iface_place_t{}) " + request.adapterName + "; a->__nsc_self = self; return static_cast<" +
+            interfaceName + "*>(a); }\n";
+        llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(llvm::vfs::createPhysicalFileSystem().release());
+        if (filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory))) { error = "no working directory"; return std::nullopt; }
+        std::vector<CppSessionDiagnostic> adapterDiagnostics;
+        detail::DiagnosticCollector collector(adapterDiagnostics);
+        // Without RTTI the adapter's vtable needs no `type_info` from the C runtime; its slots are the same. / Sin RTTI
+        //     la vtable del adaptador no necesita `type_info` del runtime de C; sus entradas son las mismas.
+        auto adapterArguments = detail::buildClangInvocationArguments(options_);
+        adapterArguments.push_back("-fno-rtti");
+        auto unit = detail::runClangSessionAction(code, adapterArguments, inputPath_,
+            utf8(options_.driverReferencePath), &collector, std::move(filesystem), CppCancellationToken{});
+        if (!unit || unit->getDiagnostics().hasErrorOccurred())
+        {
+            error = "Clang rejects the adapter";
+            for (const auto& diagnostic : adapterDiagnostics)
+                if (diagnostic.severity == CppSessionDiagnosticSeverity::Error ||
+                    diagnostic.severity == CppSessionDiagnosticSeverity::Fatal)
+                { error += ": " + describeCppDiagnostic(diagnostic); break; }
+            return std::nullopt;
+        }
+        auto& adapterContext = unit->getASTContext();
+        llvm::LLVMContext llvmContext;
+        auto generator = clang::CreateLLVMCodeGen(unit->getDiagnostics(), "nsc.cpp.interface",
+            unit->getVirtualFileSystemPtr(), unit->getHeaderSearchOpts(), unit->getPreprocessorOpts(),
+            unit->getCodeGenOpts(), llvmContext);
+        if (!generator) { error = "Clang has no code generator"; return std::nullopt; }
+        generator->Initialize(adapterContext);
+        for (const auto* declaration : adapterContext.getTranslationUnitDecl()->decls())
+        {
+            if (const auto* place = llvm::dyn_cast<clang::FunctionDecl>(declaration);
+                place && place->isOverloadedOperator() && place->hasBody() && place->getNumParams() == 3 &&
+                place->getParamDecl(2)->getType().getAsString().find("__nsc_iface_place_t") != std::string::npos)
+                generator->HandleTopLevelDecl(clang::DeclGroupRef(const_cast<clang::FunctionDecl*>(place)));
+            const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration);
+            if (!linkage) continue;
+            for (const auto* inner : linkage->decls())
+                if (const auto* function = llvm::dyn_cast<clang::FunctionDecl>(inner);
+                    function && function->getIdentifier() && function->getName() == bind && function->hasBody())
+                {
+                    generator->HandleTopLevelDecl(clang::DeclGroupRef(const_cast<clang::FunctionDecl*>(function)));
+                    generator->GetAddrOfGlobal(clang::GlobalDecl(function), false);
+                }
+        }
+        generator->HandleTranslationUnit(adapterContext);
+        auto module = generator->ReleaseModule();
+        if (!module) { error = "Clang emitted no module"; return std::nullopt; }
+        auto* function = module->getFunction(bind);
+        if (!function || function->isDeclaration()) { error = "Clang did not emit the bind function"; return std::nullopt; }
+        function->setLinkage(llvm::GlobalValue::WeakODRLinkage);
+        if (!function->hasComdat()) function->setComdat(module->getOrInsertComdat(bind));
+        // The vtables of the abstract bases, which the adapter's constructor installs for an instant, point at the C
+        // runtime's `_purecall`; a private trap stands for it. / Las vtables de las bases abstractas apuntan al
+        // `_purecall` del runtime de C; lo sustituye una trampa privada.
+        if (auto* purecall = module->getFunction("_purecall"); purecall && purecall->isDeclaration())
+        {
+            auto* trap = llvm::Function::Create(purecall->getFunctionType(), llvm::GlobalValue::InternalLinkage,
+                request.adapterName + "_purecall", module.get());
+            llvm::IRBuilder<> builder(llvm::BasicBlock::Create(module->getContext(), "entry", trap));
+            builder.CreateIntrinsic(builder.getVoidTy(), llvm::Intrinsic::trap, llvm::ArrayRef<llvm::Value*>{});
+            builder.CreateUnreachable();
+            purecall->replaceAllUsesWith(trap);
+            purecall->eraseFromParent();
+        }
+        if (llvm::verifyModule(*module, &llvm::errs())) { error = "the adapter module is invalid"; return std::nullopt; }
+        std::string ir;
+        llvm::raw_string_ostream stream(ir);
+        module->print(stream, nullptr);
+        return ir;
     }
     // EN: T13-006. The class and function templates declared at namespace scope, by their qualified C++ names,
     //     also through inline namespaces. NativeSharp writes a specialization of one of them by that name.

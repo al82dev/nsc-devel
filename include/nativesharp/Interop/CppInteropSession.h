@@ -380,6 +380,22 @@ public:
     virtual std::vector<std::string> emitCppMemberThunkIR(
         const std::vector<std::string>&, std::vector<std::string>& emitted) const
     { emitted.clear(); return {}; }
+    // EN: X3-04. The C++ adapter of a NativeSharp class that implements the abstract C++ interface `interfaceUsr`:
+    //     `struct <adapterName> final : Interface { void* self; overrides }` whose override of each method calls the
+    //     NativeSharp C boundary given for its name with `self` first, and `extern "C" void* <adapterName>_bind(void*
+    //     storage, void* self)`, which constructs it in storage and returns the interface pointer. IR with a weak_odr
+    //     bind, or null with the reason (also when the record is not in this translation unit).
+    // ES: X3-04. El adaptador C++ de una clase NativeSharp que implementa la interfaz C++ abstracta `interfaceUsr`,
+    //     cuyas sobreescrituras llaman al limite C NativeSharp de cada metodo con `self` primero, y su bind.
+    struct CppInterfaceAdapterRequest
+    {
+        std::string interfaceUsr;
+        std::string adapterName;
+        std::vector<std::pair<std::string, std::string>> methods; // C++ method name, NativeSharp C boundary symbol
+    };
+    virtual std::optional<std::string> emitCppInterfaceAdapterIR(const CppInterfaceAdapterRequest&,
+        std::string& error) const
+    { error = "the session cannot generate C++ interface adapters"; return std::nullopt; }
     // T13-006: the class and function templates declared at namespace scope.
     virtual std::vector<CppTemplateName> templatesSnapshot() const { return {}; }
     // T14-001: the macros of the header and whether each is an imported constant. / Las macros del encabezado.
