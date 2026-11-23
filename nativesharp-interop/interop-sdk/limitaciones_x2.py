@@ -112,8 +112,29 @@ rechazo(c, 'return lib.take_val(lib.make(42));', "no viable overload of namespac
 rechazo(c, 'var m = new lib.MoveOnly(1); var m2 = new lib.MoveOnly(in m); return 0;', 'constructor')
 # X2-05: the forms that still need a non-local destination keep the former rejection's coverage.
 # X2-05: las formas que aun necesitan un destino no local conservan la cobertura del rechazo anterior.
-rechazo(c, 'var o = Make(); return o.v;', 'requires direct local or discarded construction',
-        preludio='lib.Obj Make() { return lib.make(42); }\n')
+# X2-05: a NativeSharp function returning the record was a rejection ('requires direct local or discarded
+# construction'); it now constructs the result in the caller's local (hidden pointer), also through another such
+# function, with no copy or move. Returning a local of the function (NRVO) stays rejected.
+# X2-05: una funcion NativeSharp que devuelve el record era un rechazo; ahora construye el resultado en el local del
+# llamador, tambien a traves de otra funcion igual, sin copias. Devolver un local de la funcion sigue rechazado.
+PRE_RET = ('lib.Obj Make(int k) { if (k < 0) return lib.make(-k); return lib.make(k); }\n'
+           'lib.Obj Twice(int k) { return Make(k * 2); }\n')
+BODY_RET = r'''
+    lib.reset();
+    ref lib.Counters k = ref lib.counters();
+    {
+        var o = Make(40);
+        var p = Twice(-1);
+        if (o.v + p.v != 42 || k.ctor != 2 || k.copy + k.move != 0 || k.dtor != 0) return 1;
+    }
+    if (k.dtor != 2) return 2;
+    return 42;
+'''
+positivo(Caso('x2-retorno-ns', H, S, **CPP), BODY_RET, preludio=PRE_RET, modes=['directo'])
+rechazo(c, 'var o = Keep(); return o.v;', 'requires return move(value)',
+        preludio='lib.Obj Keep() { var o = lib.make(42); return o; }\n')
+rechazo(c, 'var o = Keep(); return o.v;', 'cannot copy or transfer a C++ value',
+        preludio='lib.Obj Keep() { var o = lib.make(42); return move(o); }\n')
 # X2-05: this temporary used as a receiver was a rejection ('cannot copy or transfer a C++ value'); it is now
 # constructed in a hidden owner and destroyed at the end of the full expression (counters), as a C++ temporary.
 # X2-05: este temporal receptor era un rechazo; ahora se construye en un dueno oculto y se destruye al final de la

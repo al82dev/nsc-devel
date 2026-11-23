@@ -2135,11 +2135,26 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             (staticCallee->isCppExternal || staticCallee->isImportedC) &&
             staticCallee->abi.returnPassing == frontend::ProjectOopMirAbiPassing::Indirect;
         LLVMValueRef sretSlot = nullptr;
-        if (!node->referenceResult && (isIndirectStructTypeKey(node->typeKey) || importedRecordSret))
+        // X2-05: a constructed C++ result is built in the destination the caller names. / Un resultado C++
+        //     construido se construye en el destino que nombra el llamador.
+        const bool constructedResult = staticCallee != nullptr && staticCallee->cppConstructedResult;
+        bool constructedInDestination = false;
+        if (!node->referenceResult && (isIndirectStructTypeKey(node->typeKey) || importedRecordSret || constructedResult))
         {
-            LLVMTypeRef carrier = llvmType(node->typeKey, error);
-            if (carrier == nullptr) return nullptr;
-            sretSlot = entryBlockAbiStorage(carrier, node->typeKey, "abi.sret.slot");
+            if (constructedResult && cppResultDestination_ != nullptr)
+            {
+                sretSlot = cppResultDestination_;
+                cppResultDestination_ = nullptr;
+                constructedInDestination = true;
+            }
+            else
+            {
+                if (constructedResult)
+                    return failValue(error, "the C++ result of '" + node->calleeName + "' needs a destination");
+                LLVMTypeRef carrier = llvmType(node->typeKey, error);
+                if (carrier == nullptr) return nullptr;
+                sretSlot = entryBlockAbiStorage(carrier, node->typeKey, "abi.sret.slot");
+            }
             arguments.push_back(sretSlot);
         }
         std::vector<LLVMValueRef> sourceArguments;
@@ -2358,6 +2373,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                 { LLVMAddCallSiteAttribute(call, index, attribute); },
                 0U, node->typeKey);
+            if (constructedInDestination) return sretSlot;
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             return LLVMBuildLoad2(builder_, carrier, sretSlot, "abi.sret.load");
         }

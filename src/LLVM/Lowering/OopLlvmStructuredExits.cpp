@@ -218,7 +218,34 @@ bool OopLlvmImplementation::lowerStructuredExit(
                 node, isBreak, isContinue, targetLoopIndex, targetFuncletDepth, error)) return false;
 
         LLVMValueRef returnValue = returnValueOverride;
-        if (isReturn && returnValue == nullptr && !node->children.empty())
+        // EN: X2-05. A constructed C++ result is built in the caller's storage (the hidden pointer): a construction
+        //     in place, or the call of another constructed-result function given the same destination; the return
+        //     itself carries no value.
+        // ES: X2-05. Un resultado C++ construido se construye en el almacenamiento del llamador (el puntero oculto):
+        //     una construccion en su lugar, o la llamada de otra funcion de resultado construido con el mismo destino;
+        //     el retorno no lleva valor.
+        bool constructedResult = false;
+        if (isReturn && returnValue == nullptr && !node->children.empty() && currentMirFunction_ != nullptr &&
+            currentMirFunction_->cppConstructedResult)
+        {
+            const auto* value = node->children.front().get();
+            if (sretStorage_ == nullptr) return fail(error, "a constructed C++ result has no hidden return storage");
+            if (value->kind == frontend::ProjectOopMirNodeKind::ValueConstruct)
+            {
+                if (lowerValueConstruction(value, error, nullptr, false, sretStorage_) == nullptr) return false;
+            }
+            else if (value->kind == frontend::ProjectOopMirNodeKind::DirectStaticCall)
+            {
+                cppResultDestination_ = sretStorage_;
+                const LLVMValueRef built = lowerExpression(value, error);
+                cppResultDestination_ = nullptr;
+                if (built == nullptr) return false;
+            }
+            else return fail(error, "a constructed C++ result must be returned as a construction or such a call");
+            if (terminated()) return true;
+            constructedResult = true;
+        }
+        if (isReturn && returnValue == nullptr && !node->children.empty() && !constructedResult)
         {
             returnValue = lowerExpression(node->children.front().get(), error);
             if (returnValue == nullptr) return false;

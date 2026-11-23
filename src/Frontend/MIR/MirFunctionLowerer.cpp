@@ -233,6 +233,7 @@ void copyFunctionMetadata(
     function.cppPreserveNone = source.cppPreserveNone;
     function.cppSysVCall = source.cppSysVCall;
     function.cppFactoryConstruction = source.cppFactoryConstruction; // X2-05
+    function.cppConstructedResult = source.cppConstructedResult; // X2-05
     function.cppObjectSizeModes = source.cppObjectSizeModes;
     function.cppBitIntWidths = source.cppBitIntWidths;
     function.cppSysVRecordArguments = source.cppSysVRecordArguments;
@@ -425,6 +426,9 @@ void configureFunctionAbi(
         function.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Vector &&
         functionStructLayout(indexes, layouts, function.returnTypeKey) != nullptr)
         function.abi.returnPassing = ProjectOopMirAbiPassing::Direct;
+    // X2-05: a constructed C++ result always travels through the hidden pointer, as the Microsoft ABI returns a
+    //     non-trivial record. / Un resultado C++ construido viaja siempre por el puntero oculto.
+    if (function.cppConstructedResult) function.abi.returnPassing = ProjectOopMirAbiPassing::Indirect;
     std::size_t physicalOrdinal = function.isStatic ? 0U : 1U;
     if (function.abi.returnPassing == ProjectOopMirAbiPassing::Indirect)
         function.abi.hiddenReturnParameterOrdinal = physicalOrdinal++;

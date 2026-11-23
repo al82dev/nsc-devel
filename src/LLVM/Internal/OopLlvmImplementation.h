@@ -485,6 +485,9 @@ private:
     LLVMValueRef sysvPlannedCallbackThunk(
         const std::string& targetName, std::string_view typeKey, bool defineBody, std::string& error);
     std::unordered_map<std::string, std::shared_ptr<const interop::abi_plan::Plan>> sysvCallbackPlans_;
+    // X2-05: the storage the next call to a constructed-result function builds its C++ result in. / El
+    //     almacenamiento donde la siguiente llamada a una funcion de resultado construido construye su resultado.
+    LLVMValueRef cppResultDestination_ = nullptr;
     // C5-07: a function type with the sysv_abi convention. / Un tipo de funcion con la convencion sysv_abi.
     bool isSysVDelegateType(std::string_view typeKey) const noexcept;
 

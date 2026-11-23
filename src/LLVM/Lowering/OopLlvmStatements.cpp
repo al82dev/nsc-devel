@@ -697,7 +697,18 @@ bool OopLlvmImplementation::lowerLocalDeclarationStatement(
                     const bool trivialCppValue = cppOrdinal && nameLookup_.cppTrivialValueEligible(*cppOrdinal);
                     if (!node->referenceLocal && imported && !cValue && !trivialCppValue)
                     {
-                        if (initializer->kind != frontend::ProjectOopMirNodeKind::ValueConstruct ||
+                        // X2-05: a NativeSharp function that constructs its C++ result here. / Una funcion
+                        //     NativeSharp que construye aqui su resultado C++.
+                        const auto* callee = initializer->kind == frontend::ProjectOopMirNodeKind::DirectStaticCall
+                            ? mirModel_.functionForMangledName(initializer->calleeName) : nullptr;
+                        if (callee != nullptr && callee->cppConstructedResult)
+                        {
+                            cppResultDestination_ = address;
+                            const LLVMValueRef built = lowerExpression(initializer, error);
+                            cppResultDestination_ = nullptr;
+                            if (built == nullptr) return fail(error, "C++ local requires in-place construction: " + error);
+                        }
+                        else if (initializer->kind != frontend::ProjectOopMirNodeKind::ValueConstruct ||
                             initializer->targetTypeOrdinal != cppOrdinal ||
                             lowerValueConstruction(initializer, error, nullptr, false, address) == nullptr)
                             return fail(error, "C++ local requires in-place construction: " + error);

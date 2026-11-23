@@ -2170,10 +2170,16 @@ bool ProjectCompilation::compileProjectOopHir(
                 if (experimentalCppLocalLifetimeAnalysisForTests_ && guardedCppValue &&
                     node->kind == ProjectOopHirNodeKind::LocalDeclaration && !node->referenceLocal)
                 {
+                    // X2-05: or the call of a NativeSharp function that constructs it there. / O la llamada de una
+                    //     funcion NativeSharp que lo construye alli.
+                    const bool constructedCall = node->children.size() == 1 && node->children[0] &&
+                        node->children[0]->kind == ProjectOopHirNodeKind::StaticCall &&
+                        node->children[0]->typeKey == node->typeKey && !node->children[0]->referenceResult;
                     if (node->staticLocal || !node->localOrdinal || !node->cleanupRegionOrdinal ||
                         !node->automaticDestruction || node->children.size() != 1 || !node->children[0] ||
-                        node->children[0]->kind != ProjectOopHirNodeKind::ValueConstruction ||
-                        node->children[0]->targetTypeOrdinal != valueOrdinal)
+                        (!constructedCall &&
+                         (node->children[0]->kind != ProjectOopHirNodeKind::ValueConstruction ||
+                          node->children[0]->targetTypeOrdinal != valueOrdinal)))
                     { loadError = "experimental C++ local requires direct automatic construction and cleanup"; return false; }
                 }
                 else if (experimentalCppLocalLifetimeAnalysisForTests_ && guardedCppValue &&
@@ -2181,6 +2187,11 @@ bool ProjectCompilation::compileProjectOopHir(
                     node->kind != ProjectOopHirNodeKind::LocalAddress &&
                     // X2-05: the hidden owner of a receiver temporary, built in place. / El dueno oculto de un
                     //     temporal receptor, construido en su lugar.
+                    // X2-05: a NativeSharp function's constructed result, into a local or returned again. / El
+                    //     resultado construido de una funcion NativeSharp, en un local o devuelto de nuevo.
+                    !(node->kind == ProjectOopHirNodeKind::StaticCall && parent &&
+                      ((parent->kind == ProjectOopHirNodeKind::LocalDeclaration && !parent->referenceLocal &&
+                        !parent->staticLocal) || parent->kind == ProjectOopHirNodeKind::Return)) &&
                     !(node->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow && node->referenceResult &&
                       node->automaticDestruction && node->localOrdinal && node->cleanupRegionOrdinal &&
                       node->children.size() == 1 && node->children[0] &&
@@ -2203,7 +2214,12 @@ bool ProjectCompilation::compileProjectOopHir(
                     !nameLookup_->cppImportedType(*node->targetTypeOrdinal)) continue;
                 const bool discarded = experimentalCppDiscardedLifetimeLoweringForTests_ && parent &&
                     parent->kind == ProjectOopHirNodeKind::ExpressionStatement && parent->children.size() == 1;
-                const bool local = experimentalCppLocalLifetimeAnalysisForTests_ && parent &&
+                // X2-05: `return construction;` builds the result in the caller's storage. / Construye el resultado en
+                //     el almacenamiento del llamador.
+                const bool returned = experimentalCppLocalLifetimeAnalysisForTests_ && parent &&
+                    parent->kind == ProjectOopHirNodeKind::Return && parent->children.size() == 1 &&
+                    parent->children[0].get() == node;
+                const bool local = returned || experimentalCppLocalLifetimeAnalysisForTests_ && parent &&
                     ((parent->kind == ProjectOopHirNodeKind::LocalDeclaration && !parent->referenceLocal &&
                       !parent->staticLocal) ||
                      (parent->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow && parent->referenceResult)) &&

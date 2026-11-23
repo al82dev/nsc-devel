@@ -269,6 +269,16 @@ bool hirLentTemporaryArgument(const ProjectOopHirNode& argument) noexcept
 void ProjectOopHirModel::ownCppTemporaries()
 {
     if (nameLookup_ == nullptr) return;
+    // X2-05: NativeSharp functions whose result is a non-trivial C++ record construct it in the caller's storage.
+    //     / Las funciones NativeSharp cuyo resultado es un record C++ no trivial lo construyen en el destino.
+    for (ProjectOopHirFunction& function : functions_)
+    {
+        if (function.isCppExternal || function.referenceReturn || !function.returnTypeKey.starts_with("type:")) continue;
+        const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(function.returnTypeKey).substr(5));
+        const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+        function.cppConstructedResult = imported != nullptr && imported->origin == CppImportedTypeOrigin::CppRecord &&
+            !nameLookup_->cppTrivialValueEligible(*ordinal);
+    }
     const auto visit = [&](std::unique_ptr<ProjectOopHirNode>& root) {
         if (root == nullptr) return;
         HirParentIndex parents;
