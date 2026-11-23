@@ -464,6 +464,7 @@ void ProjectMethodBodyModel::analyzeCallable(
         }
     }
     reportMissingReturn(callable, diagnostics);
+    if (callable.syntax != nullptr) checkOwnedResultsReleased(callable.syntax->first(), diagnostics);
     if (ownershipFlowReachable_) checkOutParametersAtExit(callableOrdinal, callable.syntax, diagnostics);
     finalizeRequiredConstructorAssignments(callable, callableOrdinal);
     closeOwnedParameterCleanups(

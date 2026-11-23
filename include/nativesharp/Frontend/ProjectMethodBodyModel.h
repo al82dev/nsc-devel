@@ -5780,6 +5780,9 @@ private:
         std::size_t callableOrdinal,
         const ast::AstNode* exitSyntax,
         diagnostics::DiagnosticEngine& diagnostics);
+    // R1-04: a local holding an owned C/C++ result is released, transferred, returned or stored on every
+    //     path. / Un local con un resultado C/C++ con dueno se libera, transfiere, devuelve o guarda en todo camino.
+    void checkOwnedResultsReleased(const ast::AstNode* body, diagnostics::DiagnosticEngine& diagnostics) const;
     void finalizeRequiredConstructorAssignments(
         const ClassMemberSymbol& callable, std::size_t callableOrdinal);
     std::vector<std::size_t> createOwnedParameterCleanups(

@@ -93,6 +93,31 @@ rechazo(c, 'int id = 0; { Counter c; c.hits = 0; id = add_timer((u) => { }, &c);
 rechazo(c, 'sbyte* sb = stackalloc sbyte[8]; take_buffer(sb); return 0;', 'takes ownership of argument 0', preludio=PRE)
 rechazo(c, 'make_buffer(4); return 0;', 'discarding it leaks it', preludio=PRE)
 rechazo(c, 'return need_ptr(null);', 'null', preludio=PRE)
+# R1-04: an owned result kept in a local is released, transferred, returned or stored on every path.
+# Un resultado con dueno guardado en un local se libera, transfiere, devuelve o guarda en todo camino.
+PRE4 = PRE + ('sbyte* Keep(int n) { var b = make_buffer(n); return b; }\n'
+              'class G { public static sbyte* stored; }\n'
+              'void Store() { var b = make_buffer(2); G.stored = b; }\n')
+BODY4 = r'''
+    int k = 3;
+    var a = make_buffer(4);
+    if (k > 2) { a[0] = 1; free_buffer(a); } else free_buffer(a);
+    var t = make_buffer(4); take_buffer(t);
+    var w = make_buffer(4);
+    if (k == 0) { free_buffer(w); return 1; }
+    for (int i = 0; i < 2; ++i) { k++; }
+    try { w[0] = 2; free_buffer(w); } catch { free_buffer(w); }
+    var r = Keep(1); free_buffer(r);
+    Store(); free_buffer(G.stored);
+    return 42;
+'''
+positivo(CasoContratos('r1-liberacion', H, S, CONTRACTS), BODY4, preludio=PRE4, modes=['directo'])
+rechazo(c, 'int k = 3; var a = make_buffer(4); if (k > 2) free_buffer(a); return 0;',
+        "is not released before this return", preludio=PRE)
+rechazo(c, 'int k = 3; var a = make_buffer(4); if (k > 2) return 1; free_buffer(a); return 0;',
+        "is not released before this return", preludio=PRE)
+rechazo(c, 'int k = 0; { var a = make_buffer(4); while (k < 2) { k++; free_buffer(a); } } return k;',
+        "is not released before the end of its block", preludio=PRE)
 rechazo(CasoContratos('r1-contrato-desconocido', H, S, '<Contract Function="nope" Parameter="0" Kind="NonNull" />'),
         'return 0;', "contract names 'nope'")
 fin()
