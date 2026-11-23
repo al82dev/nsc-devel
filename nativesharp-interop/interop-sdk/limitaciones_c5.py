@@ -1,0 +1,151 @@
+"""Limitaciones C5: casos C adicionales (plan de limitaciones, tareas C5-01..C5-08).
+
+C5-01: literales hacia `char*`, `signed char*` y `unsigned char*`: primer byte, vacio, nulos embebidos y duracion
+(un puntero retenido por C sigue valido: el literal es estatico).
+C5-02: `_Generic` distingue `char` de `signed char`: un `sbyte` que una funcion C devuelve como `signed char` conserva
+ese tipo; un `sbyte` NativeSharp sin origen C es `char` (item 5.5). Cada llamada enlaza su propio envoltorio.
+C5-03: `extern T a[]` y `extern T a[N]` en ambos ordenes dan el tipo compuesto C11 `T[N]` (longitud y limites).
+C5-04: un bit-field pasado a `...` se promueve como en C: `unsigned :3` e `int :5` a `int`, `unsigned long long :40`
+a `unsigned long long` (comprobado en el IR, no solo por valor).
+C5-05: `setjmp` (returns_twice) sigue rechazado con su motivo.
+C5-06: un tipo complejo y un enum C23 de base fija con nombres que comparten espacio de nombres con records.
+C5-07: funciones `static inline` `sysv_abi` con records usadas como callback C, directo y precompilado (C3-08 cubre
+la llamada). Una lambda NativeSharp hacia un puntero `sysv_abi` sigue rechazada con diagnostico.
+C5-08: `Implementation="MACRO"` con un encabezado de implementacion unica que incluye encabezados de sistema y otro
+encabezado propio, en ese orden.
+"""
+from comun import Caso, positivo, rechazo, ir, fin, _fail, ONLY
+
+H1 = r'''
+int clen(const char* s);
+int slen(const signed char* s);
+int ulen(const unsigned char* s);
+int byte_at(const char* s, int i);
+void keep(const char* s);
+int kept_len(void);
+'''
+S1 = r'''
+int clen(const char* s) { int n = 0; while (s[n]) ++n; return n; }
+int slen(const signed char* s) { int n = 0; while (s[n]) ++n; return n; }
+int ulen(const unsigned char* s) { int n = 0; while (s[n]) ++n; return n; }
+int byte_at(const char* s, int i) { return (unsigned char)s[i]; }
+static const char* saved;
+void keep(const char* s) { saved = s; }
+int kept_len(void) { return clen(saved); }
+'''
+positivo(Caso('c5-literales', H1, S1),
+         'keep("persist"); if (kept_len() != 7) return 1;\n'
+         '    return clen("abc") + slen("ab") + ulen("") + byte_at("a\\0b", 2) + clen("a\\0b") + 35 - 98 + 1;')
+
+H2 = r'''
+#define KIND(x) _Generic((x), char: 1, signed char: 2, unsigned char: 3, default: 0)
+char get_c(void);
+signed char get_sc(void);
+unsigned char get_uc(void);
+'''
+S2 = "char get_c(void) { return 'a'; }\nsigned char get_sc(void) { return -1; }\nunsigned char get_uc(void) { return 7; }\n"
+positivo(Caso('c5-generic', H2, S2),
+         'var c = get_c(); sbyte s = 5;\n'
+         '    if (KIND(c) != 1 || KIND(s) != 1 || KIND(get_sc()) != 2 || KIND(get_c()) != 1 || KIND(get_uc()) != 3) return 1;\n'
+         '    return 42;')
+
+H3 = r'''
+extern int arr1[];
+extern int arr1[4];
+extern int arr2[3];
+extern int arr2[];
+'''
+S3 = 'int arr1[4] = {1, 2, 3, 4};\nint arr2[3] = {10, 11, 12};\n'
+c3 = Caso('c5-extern-arreglos', H3, S3)
+positivo(c3, 'if (arr1.Length != 4 || arr2.Length != 3) return 1; return arr1[3] + arr2[2] + 26;')
+rechazo(c3, 'return arr1[4];', 'outside [0, 4)')
+
+H4 = r'''
+#include <stdarg.h>
+typedef struct BF { unsigned u3 : 3; int s5 : 5; unsigned long long w40 : 40; } BF;
+int vtypes(int n, ...);
+BF make_bf(void);
+'''
+S4 = r'''
+int vtypes(int n, ...) { va_list ap; va_start(ap, n); int a = va_arg(ap, int); int b = va_arg(ap, int); long long c = va_arg(ap, long long); va_end(ap); return a + b + (int)(c >> 32); }
+BF make_bf(void) { BF b; b.u3 = 5; b.s5 = -3; b.w40 = 40ull << 32; return b; }
+'''
+positivo(Caso('c5-bitfield-variadica', H4, S4), 'var b = make_bf(); return vtypes(3, b.u3, b.s5, b.w40);')
+if not ONLY or any('c5-bitfield-ir' in o for o in ONLY):
+    result = ir(Caso('c5-bitfield-ir', H4, S4), 'var b = make_bf(); return vtypes(3, b.u3, b.s5, b.w40);', opt=0)
+    calls = [l for l in result.stdout.splitlines() if 'call' in l and '@vtypes' in l]
+    if result.returncode or len(calls) != 1 or '(i32 3, i32 %' not in calls[0] or ', i32 %' not in calls[0] or \
+            ', i64 %' not in calls[0]:
+        _fail('c5-bitfield-ir', 'promociones inesperadas: ' + repr(calls))
+    else:
+        print('ok c5-bitfield-ir', flush=True)
+
+H5 = '#include <setjmp.h>\nint value(void);\n'
+rechazo(Caso('c5-setjmp', H5, 'int value(void) { return 1; }\n'),
+        'byte* buf = stackalloc byte[256]; return _setjmp((void*)buf);', 'setjmp')
+
+H6 = r'''
+typedef struct cplx { int tag; } cplx;
+typedef double _Complex cplx_t;
+enum color : unsigned char { red = 1, green = 2, blue = 40 };
+struct color_rec { enum color c; int pad; };
+cplx_t mul2(cplx_t z);
+int pick(enum color c, struct color_rec r, cplx s);
+'''
+S6 = r'''
+cplx_t mul2(cplx_t z) { return z * 2.0; }
+int pick(enum color c, struct color_rec r, cplx s) { return (int)c + (int)r.c + s.tag; }
+'''
+positivo(Caso('c5-nombres', H6, S6, standard='c23'),
+         'cplx s; s.tag = 0; color_rec r; r.c = green; r.pad = 0;\n'
+         '    var z = mul2(default(cplx_t)); return pick(blue, r, s) + (int)z.real;')
+
+# C5-06: C separates tags from ordinary names (`enum mode` and `typedef int mode`); NativeSharp has one namespace, so
+# naming the type is diagnosed, while calls that use both work.
+H6b = r'''
+enum mode : unsigned char { fast = 1, slow = 41 };
+typedef int mode;
+int use_mode(enum mode m, mode n);
+'''
+c6b = Caso('c5-nombres-etiqueta', H6b, 'int use_mode(enum mode m, mode n) { return (int)m + n; }\n', standard='c23')
+positivo(c6b, 'return use_mode(slow, 1);')
+rechazo(c6b, 'mode n = 1; return use_mode(slow, n);', "C/C++ type alias conflicts with a native type 'mode'")
+
+H7 = r'''
+typedef struct P { int x, y; } P;
+typedef int (__attribute__((sysv_abi)) *scb)(P p, int k);
+int call_scb(scb f);
+static inline __attribute__((sysv_abi)) int s_impl(P p, int k) { return p.x + p.y + k; }
+'''
+S7 = 'int call_scb(scb f) { P p = {30, 10}; return f(p, 2); }\n'
+c7 = Caso('c5-sysv-callback', H7, S7)
+positivo(c7, 'if (call_scb(s_impl) != 42) return 1; scb f = s_impl; P p; p.x = 30; p.y = 10; return f(p, 2);')
+rechazo(c7, 'return call_scb((p, k) => p.x + k);', 'sysv_abi function pointer is not yet supported')
+
+SINGLE = r'''
+#ifndef ONE_H
+#define ONE_H
+#include <stddef.h>
+#include <stdint.h>
+#include "one_extra.h"
+int64_t one_sum(const int32_t* values, size_t n);
+#ifdef ONE_IMPLEMENTATION
+int64_t one_sum(const int32_t* values, size_t n) { int64_t s = ONE_BASE; for (size_t i = 0; i < n; ++i) s += values[i]; return s; }
+#endif
+#endif
+'''
+EXTRA = '#ifndef ONE_EXTRA_H\n#define ONE_EXTRA_H\n#define ONE_BASE 2\n#endif\n'
+
+
+class CasoUnico(Caso):
+    """A single-file library with a second user header next to it."""
+
+    def native(self, folder):
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / 'one_extra.h').write_text(EXTRA, encoding='utf-8')
+        return super().native(folder)
+
+
+positivo(CasoUnico('c5-implementacion', SINGLE, None, extra_ref=' Implementation="ONE_IMPLEMENTATION"'),
+         'int* v = stackalloc int[3]; v[0] = 10; v[1] = 20; v[2] = 10; return (int)one_sum(v, 3);')
+fin()

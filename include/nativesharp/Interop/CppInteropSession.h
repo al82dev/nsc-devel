@@ -212,6 +212,7 @@ struct CppTemplateArgument
     //     operadores sin asignacion ni incremento, casts, lecturas de miembros e indices): evaluarlo una vez es lo que
     //     hace C cuando la macro lo evalua varias veces o de forma condicional.
     bool sideEffectFree = false;
+    bool cSignedChar = false; // C5-02: a C `signed char` value, kept apart from `char`. / Un valor C `signed char`.
 };
 
 // T13-010: the specialization Sema produced, or Clang's diagnostics. / La especializacion de Sema, o sus diagnosticos.

@@ -4485,7 +4485,23 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                     const ExpressionResult value = analyzeExpression(
                         place ? argument->first() : argument, methodMemberOrdinal, scopeOrdinal, diagnostics);
                     valid = valid && value.valid && !value.typeKey.empty();
-                    request.argumentTypeKeys.push_back((place ? "lvalue:" : "") + value.typeKey);
+                    // EN: C5-02. An `sbyte` that a C function returns as `signed char` keeps that C type: `_Generic`
+                    //     distinguishes it from `char`, which an `sbyte` is otherwise (item 5.5).
+                    // ES: C5-02. Un `sbyte` que una funcion C devuelve como `signed char` conserva ese tipo C:
+                    //     `_Generic` lo distingue de `char`, que es un `sbyte` en otro caso (item 5.5).
+                    bool signedCharOrigin = false;
+                    if (!place && value.typeKey == "builtin:sbyte" && argument != nullptr &&
+                        namespaceFunctionModel_ != nullptr)
+                        if (const auto* call = namespaceFunctionCall(argument);
+                            call && call->selectedFunctionOrdinal &&
+                            *call->selectedFunctionOrdinal < namespaceFunctionModel_->functions().size())
+                        {
+                            const auto& callee = namespaceFunctionModel_->functions()[*call->selectedFunctionOrdinal];
+                            signedCharOrigin = callee.cppReturnType &&
+                                callee.cppReturnType->unqualifiedCanonicalSpelling == "signed char";
+                        }
+                    request.argumentTypeKeys.push_back((place ? "lvalue:" : signedCharOrigin ? "csigned:" : "") +
+                                                       value.typeKey);
                 }
                 if (valid) namespaceFunctionModel_->recordCppTemplateDeduction(std::move(request));
                 // T19-003: a C/C++ function-like macro needs its expansion. / Una macro de funcion C/C++ necesita

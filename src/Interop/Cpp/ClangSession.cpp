@@ -6070,7 +6070,13 @@ private:
                 //     `char`, so `_Generic` selects the `char` branch a C caller would select.
                 // ES: Item 5.5. Un `char` C se importa como `sbyte`; en una macro C un valor `sbyte` vuelve como
                 //     `char`, asi `_Generic` elige la rama `char` que elegiria un llamador C.
-                if (!cpp && spelling == "signed char") spelling = "char";
+                if (!cpp && spelling == "signed char" && !argument.cSignedChar) spelling = "char";
+                // EN: C5-02. An `sbyte` is `char` or `signed char` in C, two wrappers with the same NativeSharp
+                //     signature: each call binds its own instead of choosing by overload.
+                // ES: C5-02. Un `sbyte` es `char` o `signed char` en C, dos envoltorios con la misma firma
+                //     NativeSharp: cada llamada enlaza el suyo en lugar de elegir por sobrecarga.
+                if (!cpp && argument.pointerDepth == 0 && (spelling == "char" || spelling == "signed char"))
+                    callSpecific = true;
             }
             if (spelling.empty())
             {

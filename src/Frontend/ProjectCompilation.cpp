@@ -1798,6 +1798,8 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
             }
             std::string_view base(key);
             if (base.starts_with("lvalue:")) { argument.lvalue = true; base.remove_prefix(7); }
+            // C5-02: a C `signed char` value. / Un valor C `signed char`.
+            if (base.starts_with("csigned:")) { argument.cSignedChar = true; base.remove_prefix(8); }
             while (base.ends_with('*')) { ++argument.pointerDepth; base.remove_suffix(1); }
             if (base.starts_with("builtin:"))
             {
