@@ -350,6 +350,11 @@ static bool appendCppInlineObjects(frontend::ProjectCompilation &compilation,
             interop::CppInteropSession::CppInterfaceAdapterRequest request;
             request.interfaceUsr = *interface->clangUsr;
             request.adapterName = interop::cppInterfaceAdapterName(classKey, *interface->clangUsr);
+            // X3-01: where the adapter lives in the object, for its destroy function. / Donde vive el adaptador.
+            for (std::size_t member = 0; member < members->members().size(); ++member)
+                if (&members->members()[member] == &field && compilation.objectLayoutModel())
+                    if (const auto* layout = compilation.objectLayoutModel()->fieldLayoutForMember(member))
+                        request.storageOffset = layout->offset;
             for (const auto& name : interface->cppInterfaceMethods)
             {
                 const frontend::ProjectOopMirFunction* implementation = nullptr;

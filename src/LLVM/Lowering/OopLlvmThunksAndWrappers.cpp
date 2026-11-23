@@ -1404,6 +1404,18 @@ bool OopLlvmImplementation::emitObjectDestructionSteps(
                     return false;
                 return true;
             }
+            // X3-01: the C++ object of a class derived from a C++ class. / El objeto C++ de una clase derivada.
+            if (!step.cppInterfaceDestroySymbol.empty())
+            {
+                LLVMTypeRef pointer = LLVMPointerTypeInContext(context_, 0);
+                LLVMTypeRef destroyType = LLVMFunctionType(LLVMVoidTypeInContext(context_), &pointer, 1, 0);
+                LLVMValueRef destroy = LLVMGetNamedFunction(module_, step.cppInterfaceDestroySymbol.c_str());
+                if (destroy == nullptr) destroy = LLVMAddFunction(module_, step.cppInterfaceDestroySymbol.c_str(), destroyType);
+                LLVMValueRef arguments[] = {object};
+                if (buildPotentiallyThrowingCall(destroyType, destroy, arguments, 1, "", error) == nullptr &&
+                    !error.empty()) return false;
+                return true;
+            }
             if (!step.isFieldRelease)
             {
                 const auto bodyFound = functions_.find(step.destructorCalleeName);

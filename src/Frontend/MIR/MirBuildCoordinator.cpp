@@ -1,3 +1,4 @@
+#include "nativesharp/Interop/CppMemberThunk.h"
 #include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
@@ -398,6 +399,21 @@ bool ProjectOopMirModel::appendOwnedFieldDestructionSteps(
             fieldStep.ownedField = ownedField;
             fieldStep.isFieldRelease = true;
             table.destructionSteps.push_back(std::move(fieldStep));
+        }
+        // EN: X3-01. The C++ object a class derived from a C++ class holds is destroyed after the class's own fields,
+        //     as a C++ base subobject is.
+        // ES: X3-01. El objeto C++ que guarda una clase derivada de una clase C++ se destruye despues de los campos
+        //     propios de la clase, como un subobjeto base C++.
+        for (const std::size_t memberOrdinal : classMembers)
+        {
+            const ClassMemberSymbol& field = memberModel.members()[memberOrdinal];
+            if (!field.cppInterfaceTypeOrdinal || field.name != "__nsc_cpp_interface_vptr") continue;
+            const auto* interface = nameLookup.cppImportedType(*field.cppInterfaceTypeOrdinal);
+            if (interface == nullptr || !interface->cppInterfaceDestructor || !interface->clangUsr) continue;
+            ProjectOopMirDispatchTable::DestructionStep step;
+            step.cppInterfaceDestroySymbol = interop::cppInterfaceAdapterName(
+                nameLookup.namedTypes()[chainTypeOrdinal].identity.key(), *interface->clangUsr) + "_destroy";
+            table.destructionSteps.push_back(std::move(step));
         }
     }
     return true;

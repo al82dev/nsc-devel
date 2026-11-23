@@ -4727,18 +4727,20 @@ bool selectExperimentalCppRecordTypesForCompilation(
             const auto& declaration = observation.inventory[*selected].declaration;
             std::vector<std::string> names;
             std::vector<std::string> pure;
-            // X3-01: a record with data too, constructed by default in the object and never destroyed there, so its
-            //     destructor must be trivial (then without a virtual one). / Tambien un record con datos, construido
-            //     por defecto en el objeto y nunca destruido alli: su destructor debe ser trivial.
-            const bool data = declaration.sizeBits != std::optional<std::uint64_t>{64} || !declaration.fields.empty();
+            // X3-01: a record with data too, constructed by default in the object and destroyed with it. / Tambien un
+            //     record con datos, construido por defecto en el objeto y destruido con el.
+            bool destructor = false;
             bool eligible = declaration.isCxx && declaration.complete && !declaration.hasVirtualBases &&
                 declaration.sizeBits && *declaration.sizeBits >= 64 && declaration.alignmentBits &&
                 *declaration.alignmentBits <= 64 && declaration.kind != CppRecordKind::Union;
             for (const auto& method : declaration.methods)
             {
                 if (!eligible) break;
-                if (method.kind == CppMethodKind::Destructor && data && (method.isVirtual || !method.isTrivial))
-                { eligible = false; break; }
+                if (method.kind == CppMethodKind::Destructor && (method.isVirtual || !method.isTrivial))
+                {
+                    if (method.isDeleted || method.access != CppAccess::Public) { eligible = false; break; }
+                    destructor = true;
+                }
                 if (!method.isVirtual) continue;
                 // A virtual destructor stays the adapter's own (C++ must not delete a NativeSharp object). / Un
                 //     destructor virtual queda como el del adaptador.
@@ -4753,6 +4755,7 @@ bool selectExperimentalCppRecordTypesForCompilation(
             {
                 type.cppInterfaceMethods = std::move(names);
                 type.cppInterfacePureMethods = std::move(pure);
+                type.cppInterfaceDestructor = destructor;
             }
         }
         const auto value = observeCppRecordValueForEntry(observation.inventory[*selected], compilation.cppProjectSessions());

@@ -392,6 +392,8 @@ public:
         std::string interfaceUsr;
         std::string adapterName;
         std::vector<std::pair<std::string, std::string>> methods; // C++ method name, NativeSharp C boundary symbol
+        // X3-01: the offset of the adapter storage in the NativeSharp object, for `<adapterName>_destroy(void* object)`.
+        std::uint64_t storageOffset = 0;
     };
     virtual std::optional<std::string> emitCppInterfaceAdapterIR(const CppInterfaceAdapterRequest&,
         std::string& error) const

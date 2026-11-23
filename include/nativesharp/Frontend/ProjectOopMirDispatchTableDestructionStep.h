@@ -15,5 +15,8 @@ struct ProjectOopMirDispatchTable::DestructionStep final
     //     destructor o campos owned) se destruye en su lugar; ownedField lleva su miembro y offset.
     bool isValueFieldDrop = false;
     std::string valueFieldTypeKey;
+    // X3-01: the C++ adapter's destroy function (`void f(void* object)`) of a class derived from a C++ class with a
+    //     non-trivial destructor. / La funcion de destruccion del adaptador C++.
+    std::string cppInterfaceDestroySymbol;
 };
 }

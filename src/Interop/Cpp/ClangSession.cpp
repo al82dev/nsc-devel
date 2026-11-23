@@ -4185,14 +4185,17 @@ public:
             "inline void* operator new(decltype(sizeof(0)), void* p, __nsc_iface_place_t) noexcept { return p; }\n"
             "extern \"C\" {\n" + declarations + "}\n"
             "struct " + request.adapterName + " final : " + interfaceName + " {\n  void* __nsc_self;\n" + overrides + "};\n"
-            "static_assert(sizeof(" + interfaceName + ") == sizeof(void*) || __is_trivially_destructible(" +
-            interfaceName + "), \"a C++ base with data needs a trivial destructor\");\n"
             // X3-01: constructed once, while its vtable pointer is still null (a new object is zeroed). / Construido
             //     una vez, mientras su puntero de vtable sigue nulo (un objeto nuevo empieza en cero).
             "extern \"C\" void* " + bind + "(void* storage, void* self) { if (!*static_cast<void**>(storage)) ::new "
             "(storage, __nsc_iface_place_t{}) " + request.adapterName + "; auto* a = static_cast<" +
             request.adapterName + "*>(storage); a->__nsc_self = self; return static_cast<" + interfaceName +
-            "*>(a); }\n";
+            "*>(a); }\n"
+            // X3-01: destroyed with the NativeSharp object, when it was constructed. / Destruido con el objeto
+            //     NativeSharp, si se construyo.
+            "extern \"C\" void " + request.adapterName + "_destroy(void* object) { void* s = static_cast<char*>(object) + " +
+            std::to_string(request.storageOffset) + "; if (*static_cast<void**>(s)) { static_cast<" + request.adapterName +
+            "*>(s)->~" + request.adapterName + "(); *static_cast<void**>(s) = nullptr; } }\n";
         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(llvm::vfs::createPhysicalFileSystem().release());
         if (filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory))) { error = "no working directory"; return std::nullopt; }
         std::vector<CppSessionDiagnostic> adapterDiagnostics;
@@ -4229,7 +4232,8 @@ public:
             if (!linkage) continue;
             for (const auto* inner : linkage->decls())
                 if (const auto* function = llvm::dyn_cast<clang::FunctionDecl>(inner);
-                    function && function->getIdentifier() && function->getName() == bind && function->hasBody())
+                    function && function->getIdentifier() && function->hasBody() &&
+                    (function->getName() == bind || function->getName() == request.adapterName + "_destroy"))
                 {
                     generator->HandleTopLevelDecl(clang::DeclGroupRef(const_cast<clang::FunctionDecl*>(function)));
                     generator->GetAddrOfGlobal(clang::GlobalDecl(function), false);
@@ -4238,6 +4242,11 @@ public:
         generator->HandleTranslationUnit(adapterContext);
         auto module = generator->ReleaseModule();
         if (!module) { error = "Clang emitted no module"; return std::nullopt; }
+        if (auto* destroy = module->getFunction(request.adapterName + "_destroy"); destroy && !destroy->isDeclaration())
+        {
+            destroy->setLinkage(llvm::GlobalValue::WeakODRLinkage);
+            if (!destroy->hasComdat()) destroy->setComdat(module->getOrInsertComdat(destroy->getName()));
+        }
         auto* function = module->getFunction(bind);
         if (!function || function->isDeclaration()) { error = "Clang did not emit the bind function"; return std::nullopt; }
         function->setLinkage(llvm::GlobalValue::WeakODRLinkage);

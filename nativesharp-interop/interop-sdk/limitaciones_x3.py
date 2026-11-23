@@ -214,7 +214,38 @@ positivo(Caso('x3-base-con-datos', HW, SW, **CPP),
          'var w = new MyWidget(); if (lib.render((lib.Widget*)w) != 42) return 1;\n'
          '    return lib.render((lib.Widget*)w) == 44 ? 42 : 2;',
          preludio='class MyWidget : lib.Widget { public int draw() { return 26; } }\n', modes=['directo', 'dll'])
-HO = 'namespace lib { struct Owning { int* p = nullptr; virtual int f() { return 1; } ~Owning(); }; }\n'
-rechazo(Caso('x3-base-destructor', HO, 'namespace lib { Owning::~Owning() {} }\n', **CPP), 'return 0;',
-        'cannot derive from the C/C++ record', preludio='class X : lib.Owning { }\n')
+# X3-01: a base with a non-trivial destructor was a rejection ('cannot derive from the C/C++ record'); the C++ object is
+# now destroyed with the NativeSharp object, after the class's own fields as a C++ base subobject is, and only if a
+# conversion constructed it; a virtual destructor too. / Una base con destructor no trivial era un rechazo; el objeto
+# C++ se destruye ahora con el objeto NativeSharp, solo si una conversion lo construyo.
+HO = r'''
+namespace lib {
+struct Owning { int id = 5; virtual int f() { return id; } ~Owning(); };
+struct VOwning { int id = 9; virtual int g() = 0; virtual ~VOwning(); };
+int use(Owning* o);
+int vuse(VOwning* o);
+int dtors();
+}
+'''
+SO = r'''
+namespace lib {
+static int d;
+Owning::~Owning() { ++d; }
+VOwning::~VOwning() { d += 10; }
+int use(Owning* o) { return o->f() + o->id; }
+int vuse(VOwning* o) { return o->g() + o->id; }
+int dtors() { return d; }
+}
+'''
+BODYO = r'''
+    { var x = new X(); if (lib.use((lib.Owning*)x) != 37 || lib.use((lib.Owning*)x) != 37) return 1; }
+    if (lib.dtors() != 1) return 2;
+    { var x = new X(); }
+    if (lib.dtors() != 1) return 3;
+    { var y = new Y(); if (lib.vuse((lib.VOwning*)y) != 42) return 4; }
+    return lib.dtors() == 11 ? 42 : 5;
+'''
+positivo(Caso('x3-base-destructor', HO, SO, **CPP), BODYO,
+         preludio='class X : lib.Owning { public int f() { return 32; } }\nclass Y : lib.VOwning { public int g() { return 33; } }\n',
+         modes=['directo', 'dll'])
 fin()
