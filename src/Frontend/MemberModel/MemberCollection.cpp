@@ -258,6 +258,9 @@ bool ProjectMemberModel::collectTypeMembers(
     //     and the NativeSharp object, two hidden pointer fields that the conversion to the interface pointer binds.
     // ES: X3-04. Una clase que implementa una interfaz C++ abstracta guarda el objeto que ve C++: su puntero de
     //     vtable y el objeto NativeSharp, dos campos puntero ocultos que enlaza la conversion al puntero de interfaz.
+    // X3-07: one adapter per C++ base, so a class may implement several interfaces (COM). / Un adaptador por base
+    //     C++: una clase puede implementar varias interfaces.
+    std::size_t interfaceIndex = 0;
     if (type.kind == NamedTypeDeclarationKind::Class)
         for (const NamedTypeDeclarationPart& part : type.parts)
         {
@@ -274,7 +277,8 @@ bool ProjectMemberModel::collectTypeMembers(
                 const std::uint64_t recordBytes = imported->objectLayout ? imported->objectLayout->sizeBytes : 8;
                 std::vector<std::string> names{"__nsc_cpp_interface_vptr"};
                 for (std::uint64_t slot = 1; slot < (recordBytes + 7) / 8 + 1; ++slot)
-                    names.push_back("__nsc_cpp_interface_" + std::to_string(slot));
+                    names.push_back("__nsc_cpp_interface_" + std::to_string(interfaceIndex) + "_" + std::to_string(slot));
+                ++interfaceIndex;
                 for (const std::string& name : names)
                 {
                     ClassMemberSymbol field;
@@ -290,7 +294,6 @@ bool ProjectMemberModel::collectTypeMembers(
                     membersByType_[typeOrdinal].push_back(memberOrdinal);
                     membersByName_[typeOrdinal][name].push_back(memberOrdinal);
                 }
-                break;
             }
         }
     return !diagnostics.hasErrors();

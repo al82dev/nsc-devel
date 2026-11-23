@@ -276,4 +276,38 @@ rechazo(Caso('x3-base-sin-defecto', HN, SN, **CPP), 'return 0;', 'must call base
 positivo(Caso('x3-base-destructor', HO, SO, **CPP), BODYO,
          preludio='class X : lib.Owning { public int f() { return 32; } }\nclass Y : lib.VOwning { public int g() { return 33; } }\n',
          modes=['directo', 'dll'])
+# X3-07: a class implements several C++ interfaces (COM, both from one IUnknown): an adapter per interface, each in its
+# own hidden fields; QueryInterface hands out either pointer and both reach the same object.
+# X3-07: una clase implementa varias interfaces C++ (COM): un adaptador por interfaz.
+HMULTI = r'''
+struct IUnk { virtual long QueryInterface(int iid, void** out) = 0; virtual unsigned long AddRef() = 0; virtual unsigned long Release() = 0; };
+struct ICalc : IUnk { virtual int Add(int a, int b) = 0; };
+struct IName : IUnk { virtual int Code() = 0; };
+extern "C" int UseBoth(ICalc* c);
+'''
+SMULTI = r'''
+extern "C" int UseBoth(ICalc* c) {
+  void* q = nullptr; if (c->QueryInterface(2, &q) != 0 || !q) return 1;
+  IName* n = static_cast<IName*>(q);
+  void* back = nullptr; if (n->QueryInterface(1, &back) != 0 || back != c) return 2;
+  int r = c->Add(30, n->Code()); n->Release(); return c->Release() == 1 ? r : 3;
+}
+'''
+PREMULTI = r'''
+class Both : ICalc, IName
+{
+    public uint refs = 1;
+    public int QueryInterface(int iid, void** out)
+    {
+        if (iid == 1) *out = (void*)(ICalc*)this; else *out = (void*)(IName*)this;
+        refs += 1; return 0;
+    }
+    public uint AddRef() { refs += 1; return refs; }
+    public uint Release() { refs -= 1; return refs; }
+    public int Add(int a, int b) { return a + b; }
+    public int Code() { return 12; }
+}
+'''
+positivo(Caso('x3-com-multiple', HMULTI, SMULTI, **CPP), 'var b = new Both(); return UseBoth((ICalc*)b);',
+         preludio=PREMULTI, modes=['directo', 'dll'])
 fin()
