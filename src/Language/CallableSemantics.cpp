@@ -213,6 +213,64 @@ bool consumePointerLevelsSuffix(std::string_view identity, std::size_t& cursor, 
     return true;
 }
 
+// EN: C3-02. Widths of narrow C `_BitInt(N)` positions: an optional suffix `:bitint:` with two hex digits per
+//     parameter and two for the result, written only when some width is not zero.
+// ES: C3-02. Anchos de las posiciones `_BitInt(N)` estrechas: un sufijo opcional, escrito solo si alguno no es cero.
+constexpr std::string_view kBitIntTag = ":bitint:";
+
+std::uint8_t parameterBitInt(const FunctionType& type, std::size_t index) noexcept
+{
+    return index < type.parameterBitIntWidths.size() ? type.parameterBitIntWidths[index] : 0U;
+}
+
+void appendBitIntSuffix(std::string& identity, const FunctionType& type)
+{
+    bool any = type.resultBitIntWidth != 0U;
+    for (std::size_t index = 0; index < type.parameters.size(); ++index) any = any || parameterBitInt(type, index);
+    if (!any) return;
+    constexpr char digits[] = "0123456789abcdef";
+    identity += kBitIntTag;
+    const auto push = [&](std::uint8_t value)
+    {
+        identity.push_back(digits[value >> 4U]);
+        identity.push_back(digits[value & 15U]);
+    };
+    for (std::size_t index = 0; index < type.parameters.size(); ++index) push(parameterBitInt(type, index));
+    push(type.resultBitIntWidth);
+}
+
+bool consumeBitIntSuffix(std::string_view identity, std::size_t& cursor, FunctionType& type)
+{
+    if (!identity.substr(cursor).starts_with(kBitIntTag)) return true;
+    const std::size_t width = 2U * (type.parameters.size() + 1U);
+    const std::string_view text = identity.substr(cursor + kBitIntTag.size(), width);
+    if (text.size() != width) return false;
+    std::vector<std::uint8_t> values;
+    for (std::size_t index = 0; index < width; index += 2U)
+    {
+        unsigned value = 0;
+        const auto parsed = std::from_chars(text.data() + index, text.data() + index + 2U, value, 16);
+        if (parsed.ec != std::errc{} || parsed.ptr != text.data() + index + 2U) return false;
+        values.push_back(static_cast<std::uint8_t>(value));
+    }
+    type.resultBitIntWidth = values.back();
+    values.pop_back();
+    bool any = type.resultBitIntWidth != 0U;
+    for (const std::uint8_t value : values) any = any || value != 0U;
+    if (!any) return false;
+    type.parameterBitIntWidths = std::move(values);
+    cursor += kBitIntTag.size() + width;
+    return true;
+}
+
+bool sameBitInt(const FunctionType& source, const FunctionType& target) noexcept
+{
+    if (source.resultBitIntWidth != target.resultBitIntWidth) return false;
+    for (std::size_t index = 0; index < source.parameters.size(); ++index)
+        if (parameterBitInt(source, index) != parameterBitInt(target, index)) return false;
+    return true;
+}
+
 bool samePointerLevels(const FunctionType& source, const FunctionType& target) noexcept
 {
     if (source.resultPointerLevelQualifiers != target.resultPointerLevelQualifiers) return false;
@@ -330,6 +388,7 @@ std::string functionTypeIdentity(const FunctionType& type)
     appendQualifierSuffix(identity, type, kPointeeVolatile);
     appendQualifierSuffix(identity, type, kPointeeAtomic);
     appendPointerLevelsSuffix(identity, type);
+    appendBitIntSuffix(identity, type);
     return identity;
 }
 
@@ -392,7 +451,8 @@ std::optional<FunctionType> parseFunctionTypeIdentity(std::string_view identity)
         !consumeQualifierSuffix(identity, cursor, type, kPointeeReadonly) ||
         !consumeQualifierSuffix(identity, cursor, type, kPointeeVolatile) ||
         !consumeQualifierSuffix(identity, cursor, type, kPointeeAtomic) ||
-        !consumePointerLevelsSuffix(identity, cursor, type) || cursor != identity.size() ||
+        !consumePointerLevelsSuffix(identity, cursor, type) || !consumeBitIntSuffix(identity, cursor, type) ||
+        cursor != identity.size() ||
         type.result.empty())
         return std::nullopt;
     return type;
@@ -470,6 +530,13 @@ FunctionType lambdaSignatureForTarget(const FunctionType& lambda, const Function
     FunctionType adapted = lambda;
     if (lambda.callingConvention == CallingConvention::NativeSharp && win64(target.callingConvention))
         adapted.callingConvention = target.callingConvention;
+    // C3-02: a lambda over the carriers serves a C `_BitInt(N)` pointer through its thunk. / Una lambda sobre los
+    //     portadores sirve a un puntero C `_BitInt(N)` por su thunk.
+    if (lambda.parameterBitIntWidths.empty() && lambda.resultBitIntWidth == 0U)
+    {
+        adapted.parameterBitIntWidths = target.parameterBitIntWidths;
+        adapted.resultBitIntWidth = target.resultBitIntWidth;
+    }
     return adapted;
 }
 
@@ -486,7 +553,8 @@ bool functionTypesAssignable(const FunctionType& source, const FunctionType& tar
         source.isAsync == target.isAsync &&
         (!source.nullable || target.nullable) &&
         sameQualifier(source, target, kPointeeReadonly) && sameQualifier(source, target, kPointeeVolatile) &&
-        sameQualifier(source, target, kPointeeAtomic) && samePointerLevels(source, target);
+        sameQualifier(source, target, kPointeeAtomic) && samePointerLevels(source, target) &&
+        sameBitInt(source, target);
 }
 
 bool computeClosureLayout(

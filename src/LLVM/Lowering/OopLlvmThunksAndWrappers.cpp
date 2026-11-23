@@ -463,6 +463,10 @@ LLVMValueRef OopLlvmImplementation::callbackGuardThunk(
 {
         if (sysvCall && sysvCallbackPlans_.contains(std::string(sysvTypeKey)))
             return sysvPlannedCallbackThunk(targetName, sysvTypeKey, defineBody, error);
+        if (!vectorCall && !sysvCall && !sysvTypeKey.empty())
+            if (const auto bitInt = language::parseFunctionTypeIdentity(sysvTypeKey);
+                bitInt && (bitInt->resultBitIntWidth != 0U || !bitInt->parameterBitIntWidths.empty()))
+                return bitIntCallbackThunk(targetName, sysvTypeKey, defineBody, error);
         const std::string cacheKey = targetName + (vectorCall ? "|vectorcall" : sysvCall ? "|sysv" : "|c");
         const auto cached = callbackGuardThunks_.find(cacheKey);
         if (cached != callbackGuardThunks_.end()) return cached->second.function;
@@ -1056,6 +1060,92 @@ LLVMValueRef OopLlvmImplementation::sysvPlannedCallbackThunk(
         else if (resultKey == "builtin:void") LLVMBuildRetVoid(builder_);
         else LLVMBuildRet(builder_, logicalResult);
         restore();
+        applyOdrDefinition(thunk);
+        callbackGuardThunks_[cacheKey] = FunctionInfo{thunk, thunkType, nullptr};
+        return thunk;
+}
+
+LLVMValueRef OopLlvmImplementation::bitIntCallbackThunk(
+        const std::string& targetName, std::string_view typeKey, bool defineBody, std::string& error)
+{
+        const auto signature = language::parseFunctionTypeIdentity(typeKey);
+        if (!signature) return failValue(error, "_BitInt callback lost its pointer type");
+        std::string suffix = "__bitint";
+        for (std::size_t index = 0; index < signature->parameters.size(); ++index)
+            suffix += "_" + std::to_string(index < signature->parameterBitIntWidths.size()
+                ? signature->parameterBitIntWidths[index] : 0U);
+        suffix += "_r" + std::to_string(signature->resultBitIntWidth);
+        const std::string cacheKey = targetName + "|bitint|" + suffix;
+        if (const auto cached = callbackGuardThunks_.find(cacheKey); cached != callbackGuardThunks_.end())
+            return cached->second.function;
+        LLVMValueRef boundary = callbackGuardThunk(targetName, error, false, defineBody, false);
+        if (!boundary) return nullptr;
+        LLVMTypeRef boundaryType = LLVMGlobalGetValueType(boundary);
+        const unsigned count = LLVMCountParamTypes(boundaryType);
+        std::vector<LLVMTypeRef> parameterTypes(count);
+        if (count != 0U) LLVMGetParamTypes(boundaryType, parameterTypes.data());
+        if (count < signature->parameters.size())
+            return failValue(error, "_BitInt callback boundary has fewer parameters than its pointer type");
+        const std::size_t first = count - signature->parameters.size();
+        std::vector<LLVMTypeRef> boundaryParameters = parameterTypes;
+        for (std::size_t index = 0; index < signature->parameterBitIntWidths.size(); ++index)
+            if (signature->parameterBitIntWidths[index] != 0U)
+            {
+                if (LLVMGetTypeKind(parameterTypes[first + index]) != LLVMIntegerTypeKind)
+                    return failValue(error, "_BitInt callback parameter is not an integer carrier");
+                parameterTypes[first + index] = LLVMIntTypeInContext(context_, signature->parameterBitIntWidths[index]);
+            }
+        LLVMTypeRef boundaryReturn = LLVMGetReturnType(boundaryType);
+        LLVMTypeRef returnType = boundaryReturn;
+        if (signature->resultBitIntWidth != 0U)
+        {
+            if (LLVMGetTypeKind(boundaryReturn) != LLVMIntegerTypeKind)
+                return failValue(error, "_BitInt callback result is not an integer carrier");
+            returnType = LLVMIntTypeInContext(context_, signature->resultBitIntWidth);
+        }
+        LLVMTypeRef thunkType = LLVMFunctionType(returnType, parameterTypes.empty() ? nullptr : parameterTypes.data(),
+            count, 0);
+        const std::string thunkName = targetName + "__c_boundary" + suffix;
+        LLVMValueRef thunk = LLVMGetNamedFunction(module_, thunkName.c_str());
+        if (thunk == nullptr) thunk = LLVMAddFunction(module_, thunkName.c_str(), thunkType);
+        applyUwtableAttribute(thunk);
+        if (!defineBody)
+        {
+            callbackGuardThunks_[cacheKey] = FunctionInfo{thunk, thunkType, nullptr};
+            return thunk;
+        }
+        LLVMValueRef savedFunction = currentFunction_;
+        const std::size_t savedBlockCounter = blockCounter_;
+        LLVMBasicBlockRef savedBlock = LLVMGetInsertBlock(builder_);
+        LLVMMetadataRef savedLocation = LLVMGetCurrentDebugLocation2(builder_);
+        currentFunction_ = thunk;
+        blockCounter_ = 0;
+        LLVMSetCurrentDebugLocation2(builder_, nullptr);
+        enterBlock(appendBlock("bitint.callback.entry"));
+        std::vector<LLVMValueRef> arguments;
+        for (unsigned index = 0; index < count; ++index)
+        {
+            LLVMValueRef value = LLVMGetParam(thunk, index);
+            if (parameterTypes[index] != boundaryParameters[index])
+            {
+                const std::string& carrierKey = signature->parameters[index - first];
+                value = unsignedBitIntCarrier(carrierKey)
+                    ? LLVMBuildZExt(builder_, value, boundaryParameters[index], "bitint.callback.zext")
+                    : LLVMBuildSExt(builder_, value, boundaryParameters[index], "bitint.callback.sext");
+            }
+            arguments.push_back(value);
+        }
+        LLVMValueRef result = LLVMBuildCall2(builder_, boundaryType, boundary,
+            arguments.empty() ? nullptr : arguments.data(), count,
+            boundaryReturn == LLVMVoidTypeInContext(context_) ? "" : "bitint.callback.result");
+        if (boundaryReturn == LLVMVoidTypeInContext(context_)) LLVMBuildRetVoid(builder_);
+        else if (returnType != boundaryReturn)
+            LLVMBuildRet(builder_, LLVMBuildTrunc(builder_, result, returnType, "bitint.callback.trunc"));
+        else LLVMBuildRet(builder_, result);
+        currentFunction_ = savedFunction;
+        blockCounter_ = savedBlockCounter;
+        if (savedBlock) enterBlock(savedBlock);
+        LLVMSetCurrentDebugLocation2(builder_, savedLocation);
         applyOdrDefinition(thunk);
         callbackGuardThunks_[cacheKey] = FunctionInfo{thunk, thunkType, nullptr};
         return thunk;

@@ -1120,6 +1120,10 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         const bool halfReturn = win64DefaultConvention && !sretReturn && !vectorCall &&
             returnTypeKey == interop::kCppHalfTypeKey;
         if (halfReturn) returnType = LLVMHalfTypeInContext(context_);
+        // C3-02: a narrow `_BitInt(N)` result comes back as `iN`. / Un resultado `_BitInt(N)` estrecho vuelve como `iN`.
+        const unsigned bitIntReturn = win64DefaultConvention && returnConvention && !sretReturn && !vectorCall
+            ? returnConvention->resultBitIntWidth : 0U;
+        if (bitIntReturn != 0U) returnType = LLVMIntTypeInContext(context_, bitIntReturn);
         const std::optional<language::FunctionType> structuralFunction =
             language::parseFunctionTypeIdentity(delegateTypeKey);
         const bool sysvCall = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::SysV;
@@ -1238,6 +1242,11 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
                 // C3-01: a `_Float16` argument goes in XMM. / Un argumento `_Float16` va en XMM.
                 if (argumentTypeKeys[index] == interop::kCppHalfTypeKey)
                     parameterTypes[index + (sretReturn ? 1U : 0U)] = LLVMHalfTypeInContext(context_);
+                // C3-02: a narrow `_BitInt(N)` argument goes as `iN`. / Un argumento `_BitInt(N)` va como `iN`.
+                if (index < returnConvention->parameterBitIntWidths.size() &&
+                    returnConvention->parameterBitIntWidths[index] != 0U)
+                    parameterTypes[index + (sretReturn ? 1U : 0U)] =
+                        LLVMIntTypeInContext(context_, returnConvention->parameterBitIntWidths[index]);
             }
         LLVMTypeRef functionType = LLVMFunctionType(
             returnType, parameterTypes.empty() ? nullptr : parameterTypes.data(),
@@ -1259,6 +1268,11 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             //     direccion de una copia alineada.
             if (wideArguments && index < fixedParameterCount && argumentTypeKeys[index] == interop::kCppHalfTypeKey)
                 value = halfFromCarrier(value);
+            if (wideArguments && index < fixedParameterCount &&
+                index < returnConvention->parameterBitIntWidths.size() &&
+                returnConvention->parameterBitIntWidths[index] != 0U)
+                value = LLVMBuildTrunc(builder_, value,
+                    LLVMIntTypeInContext(context_, returnConvention->parameterBitIntWidths[index]), "c.bitint.ptr.arg");
             if (wideArguments && wideInteger(argumentTypeKeys[index]))
             {
                 LLVMValueRef slot = entryBlockAlloca(LLVMIntTypeInContext(context_, 128), 16U, "c.i128.ptr.copy");
@@ -1324,6 +1338,16 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         // T19-044: XMM0 back to the 128-bit integer. / XMM0 de vuelta al entero de 128 bits.
         if (wideReturn) return LLVMBuildBitCast(builder_, call, LLVMIntTypeInContext(context_, 128), "c.i128.result");
         if (halfReturn) return carrierFromHalf(call, error);
+        // C3-02: `iN` extends to its carrier by the carrier's signedness, as C converts it. / `iN` se extiende a su
+        //     portador segun el signo del portador, como lo convierte C.
+        if (bitIntReturn != 0U)
+        {
+            LLVMTypeRef carrier = llvmType(returnTypeKey, error);
+            if (carrier == nullptr) return nullptr;
+            return unsignedBitIntCarrier(returnTypeKey)
+                ? LLVMBuildZExt(builder_, call, carrier, "c.bitint.ptr.result")
+                : LLVMBuildSExt(builder_, call, carrier, "c.bitint.ptr.result");
+        }
         return call;
     }
 

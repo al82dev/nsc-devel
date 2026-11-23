@@ -516,14 +516,30 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
             function.callingConvention != language::CallingConvention::C &&
             function.callingConvention != language::CallingConvention::Win64)
             return std::nullopt;
-        // C3-02: so does a callback with a `_BitInt(N)` narrower than its carrier. / Tambien un callback con un
-        //     `_BitInt(N)` mas estrecho que su portador.
-        const auto narrowBitInt = [](const CppType& slot) {
-            return slot.bitIntWidth && slot.sizeBits && *slot.bitIntWidth < *slot.sizeBits;
+        // EN: C3-02. A `_BitInt(N)` narrower than its carrier travels as `iN` (the register's upper bits are
+        //     undefined): N is kept in the function type identity, the call through the pointer truncates to N and
+        //     the callback thunk extends from N. Only N <= 64 with the Win64 C convention; wider ones (by memory)
+        //     and other conventions stay unmapped.
+        // ES: C3-02. Un `_BitInt(N)` mas estrecho que su portador viaja como `iN` (los bits altos del registro son
+        //     indefinidos): N queda en la identidad del tipo funcion, la llamada por el puntero trunca a N y el thunk
+        //     del callback extiende desde N. Solo N <= 64 con la convencion C de Win64.
+        const auto narrowBitInt = [](const CppType& slot) -> std::uint8_t {
+            return slot.bitIntWidth && slot.sizeBits && *slot.bitIntWidth < *slot.sizeBits
+                ? static_cast<std::uint8_t>(*slot.bitIntWidth > 64U ? 255U : *slot.bitIntWidth) : 0U;
         };
-        if (narrowBitInt(signature.returnType) ||
-            std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), narrowBitInt))
-            return std::nullopt;
+        std::vector<std::uint8_t> bitIntWidths;
+        for (const CppType& parameter : signature.parameterTypes) bitIntWidths.push_back(narrowBitInt(parameter));
+        const std::uint8_t resultBitInt = narrowBitInt(signature.returnType);
+        if (resultBitInt != 0U || std::any_of(bitIntWidths.begin(), bitIntWidths.end(), [](std::uint8_t w) { return w; }))
+        {
+            if (resultBitInt == 255U || std::find(bitIntWidths.begin(), bitIntWidths.end(), 255U) != bitIntWidths.end() ||
+                (function.callingConvention != language::CallingConvention::C &&
+                 function.callingConvention != language::CallingConvention::Win64) ||
+                function.variadic || bitIntWidths.size() != function.parameters.size())
+                return std::nullopt;
+            function.parameterBitIntWidths = std::move(bitIntWidths);
+            function.resultBitIntWidth = resultBitInt;
+        }
         return CppScalarTypeMapping{language::functionTypeIdentity(function), type.canonicalSpelling, false, false};
     }
     if (type.kind != CppTypeKind::Pointer) return mapCppScalarType(type);

@@ -86,6 +86,10 @@ public:
     //     de los niveles intermedios de punteros.
     std::uint8_t pointerLevelQualifiers() const noexcept;
     void setPointerLevelQualifiers(std::uint8_t value) noexcept;
+    // C3-02: the N of a C `_BitInt(N)` narrower than this carrier, from a C typedef (0 otherwise). / El N de un
+    //     `_BitInt(N)` C mas estrecho que este portador, de un typedef C (0 si no).
+    std::uint8_t cppBitIntWidth() const noexcept { return cppBitIntWidth_; }
+    void setCppBitIntWidth(std::uint8_t value) noexcept { cppBitIntWidth_ = value; }
 
     void addTypeArgument(TypeSyntax* typeArgument);
     const std::vector<TypeSyntax*>& typeArguments() const noexcept;
@@ -197,6 +201,7 @@ private:
     bool isPointeeConst_ = false;
     bool isPointeeVolatile_ = false;
     std::uint8_t pointerLevelQualifiers_ = 0;
+    std::uint8_t cppBitIntWidth_ = 0;
     std::vector<TypeSyntax*> typeArguments_;
     bool isTuple_ = false;
     std::vector<std::string> tupleElementNames_;

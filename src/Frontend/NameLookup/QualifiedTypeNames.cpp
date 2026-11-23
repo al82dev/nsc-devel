@@ -890,6 +890,10 @@ bool ProjectNameLookup::expandCppTypeAlias(
                 auto* result = arena.make<ast::TypeSyntax>(syntax->range(), type.token, std::string(type.name));
                 result->prependModifiers(cppPointerModifiers(source));
                 result->setPointeeConst(type.pointeeConst);
+                // C3-02: a narrow `_BitInt(N)` value keeps N. / Un valor `_BitInt(N)` estrecho conserva N.
+                if (source.kind != interop::CppTypeKind::Pointer && source.bitIntWidth && source.sizeBits &&
+                    *source.bitIntWidth < *source.sizeBits && *source.bitIntWidth <= 64U)
+                    result->setCppBitIntWidth(static_cast<std::uint8_t>(*source.bitIntWidth));
                 return result;
             };
             auto* mutableSyntax = const_cast<ast::TypeSyntax*>(syntax);
@@ -1056,6 +1060,11 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     value->prependModifiers(cppPointerModifiers(type));
                     value->setPointeeConst(builtin->pointeeConst);
                     value->setPointeeVolatile(pointeeVolatile);
+                    // C3-02: a narrow `_BitInt(N)` value keeps N for the callback type. / Un valor `_BitInt(N)`
+                    //     estrecho conserva N para el tipo de callback.
+                    if (type.kind != interop::CppTypeKind::Pointer && type.bitIntWidth && type.sizeBits &&
+                        *type.bitIntWidth < *type.sizeBits && *type.bitIntWidth <= 64U)
+                        value->setCppBitIntWidth(static_cast<std::uint8_t>(*type.bitIntWidth));
                     return value;
                 }
                 const auto enumType = cppAliasEnumType(unqualified);

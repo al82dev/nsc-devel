@@ -484,6 +484,17 @@ private:
     //     puntero: un adaptador x86_64_sysvcc rearma los valores logicos con el plan y llama al limite C del destino.
     LLVMValueRef sysvPlannedCallbackThunk(
         const std::string& targetName, std::string_view typeKey, bool defineBody, std::string& error);
+    // EN: C3-02. A callback of a C pointer type with narrow `_BitInt(N)` positions: an adapter receives `iN`,
+    //     extends each value to its carrier, calls the C boundary of the target and truncates an `iN` result.
+    // ES: C3-02. Un callback de un puntero C con posiciones `_BitInt(N)` estrechas: un adaptador recibe `iN`,
+    //     extiende cada valor a su portador, llama al limite C del destino y trunca un resultado `iN`.
+    LLVMValueRef bitIntCallbackThunk(
+        const std::string& targetName, std::string_view typeKey, bool defineBody, std::string& error);
+    static bool unsignedBitIntCarrier(std::string_view typeKey) noexcept
+    {
+        return typeKey == "builtin:byte" || typeKey == "builtin:ushort" || typeKey == "builtin:uint" ||
+            typeKey == "builtin:ulong";
+    }
     std::unordered_map<std::string, std::shared_ptr<const interop::abi_plan::Plan>> sysvCallbackPlans_;
     // X2-05: the storage the next call to a constructed-result function builds its C++ result in. / El
     //     almacenamiento donde la siguiente llamada a una funcion de resultado construido construye su resultado.

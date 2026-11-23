@@ -42,5 +42,11 @@ struct FunctionType final
     bool resultPointeeAtomic = false;
     std::uint8_t resultPointerLevelQualifiers = 0; // C1-02: intermediate pointer level qualifiers (Language/PointerLevelQualifiers.h).
     std::vector<std::uint8_t> parameterPointerLevelQualifiers; // C1-02: intermediate pointer level qualifiers (Language/PointerLevelQualifiers.h).
+    // EN: C3-02. The N of each C `_BitInt(N)` parameter narrower than its carrier, then of the result (0 for any
+    //     other type). Empty when none: only C function types carry it, and C passes such a value as `iN`.
+    // ES: C3-02. El N de cada parametro C `_BitInt(N)` mas estrecho que su portador y del resultado (0 si no).
+    //     Vacio si no hay: solo lo llevan los tipos de funcion C, y C pasa ese valor como `iN`.
+    std::vector<std::uint8_t> parameterBitIntWidths;
+    std::uint8_t resultBitIntWidth = 0;
 };
 }

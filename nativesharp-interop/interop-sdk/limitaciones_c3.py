@@ -154,7 +154,45 @@ positivo(Caso('c3-bitint-campo', H2c, S2c, standard='c2x'), BODY2c)
 positivo(Caso('c3-sizeof-comparacion', H2c, S2c, standard='c2x'),
          'int k = 4; if (sizeof(W) != sizeof_w() || sizeof_w() != sizeof(W)) return 1;\n'
          '    if (sizeof(int) != k || k < sizeof(int) || sizeof(W) <= k) return 2; return 42;')
-rechazo(c2, 'return with_bit_cb(null);', 'with_bit_cb')
+# C3-02: a callback with a `_BitInt(N)` narrower than its carrier was a rejection ('with_bit_cb' not imported); N is
+# now part of the C function type identity: a call through the pointer passes `iN` and extends an `iN` result by the
+# carrier's sign, and a lambda reaches the pointer through a thunk that extends each `iN` (whose upper register bits are
+# undefined) and truncates its result. A `_BitInt(N)` with N > 64 in a callback stays a rejection.
+# C3-02: un callback con `_BitInt(N)` estrecho era un rechazo; ahora N forma parte de la identidad del tipo funcion C.
+positivo(Caso('c3-bitint-lambda', H2, S2, standard='c2x'), 'return with_bit_cb((v) => (int)v + 41);')
+H2cb = r'''
+typedef int (*bit_cb)(_BitInt(12));
+typedef unsigned _BitInt(7) (*u7_cb)(unsigned _BitInt(7), int);
+int with_bit_cb(bit_cb cb);
+int with_u7_cb(u7_cb cb);
+_BitInt(12) neg12(_BitInt(12) v);
+bit_cb get_cb(void);
+u7_cb get_u7(void);
+typedef int (*wide_cb)(_BitInt(100));
+int with_wide(wide_cb cb);
+'''
+S2cb = r'''
+int with_bit_cb(bit_cb cb) { return cb(-5) + cb(2047); }
+int with_u7_cb(u7_cb cb) { unsigned _BitInt(7) r = cb(100, 3); return (int)r; }
+_BitInt(12) neg12(_BitInt(12) v) { return -v; }
+static int plus(_BitInt(12) v) { return (int)v + 1; }
+static unsigned _BitInt(7) add7(unsigned _BitInt(7) a, int b) { return a + (unsigned _BitInt(7))b * 10; }
+bit_cb get_cb(void) { return plus; }
+u7_cb get_u7(void) { return add7; }
+int with_wide(wide_cb cb) { return cb(1); }
+'''
+positivo(Caso('c3-bitint-callback', H2cb, S2cb), r'''
+    bit_cb f = (v) => (int)v * 2;
+    if (with_bit_cb(f) != 4084) return 1;
+    u7_cb g = (a, b) => (byte)(a + b);
+    if (with_u7_cb(g) != 103) return 2;
+    var p = get_cb();
+    if (p((short)-7) != -6) return 3;
+    var q = get_u7();
+    if ((int)q((byte)120, 1) != 2) return 4;
+    return 42;
+''', modes=['directo', 'lib', 'dll'])
+rechazo(Caso('c3-bitint-callback-ancho', H2cb, S2cb), 'return with_wide(null);', 'with_wide')
 
 # C3-03: C23 enums with a fixed base (8-64 bits, signed and unsigned) are NativeSharp enums. An enum over a 128-bit
 # integer is carried as that integer (its positions pass like __int128); its enumerators are i128 constants when they

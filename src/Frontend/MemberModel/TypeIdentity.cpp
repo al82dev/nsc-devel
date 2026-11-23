@@ -238,6 +238,15 @@ std::string ProjectMemberModel::canonicalFunctionTypeKey(
         function.parameterPointerLevelQualifiers.clear();
     function.resultPointerLevelQualifiers = syntax->functionReturnType() != nullptr
         ? syntax->functionReturnType()->pointerLevelQualifiers() : 0U;
+    // C3-02: the N of narrow C `_BitInt(N)` positions, kept only when some position has one. / El N de las
+    //     posiciones `_BitInt(N)` C estrechas, guardado solo si alguna lo tiene.
+    for (const ast::TypeSyntax* parameter : syntax->typeArguments())
+        function.parameterBitIntWidths.push_back(parameter != nullptr ? parameter->cppBitIntWidth() : 0U);
+    if (std::all_of(function.parameterBitIntWidths.begin(), function.parameterBitIntWidths.end(),
+                    [](std::uint8_t width) { return width == 0U; }))
+        function.parameterBitIntWidths.clear();
+    function.resultBitIntWidth = syntax->functionReturnType() != nullptr
+        ? syntax->functionReturnType()->cppBitIntWidth() : 0U;
     function.result = canonicalTypeKey(syntax->functionReturnType(), nameLookup);
     function.errorType = syntax->functionErrorType() == nullptr
         ? std::string{}
