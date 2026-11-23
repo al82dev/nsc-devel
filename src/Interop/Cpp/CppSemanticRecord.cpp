@@ -584,7 +584,14 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
          field.type.kind != CppTypeKind::Record && field.type.kind != CppTypeKind::Enumeration &&
          !scalarArray && !recordArray && !enumArray && !representablePointerArray &&
          !qualifiedPointerArray))) return std::nullopt;
-    auto mapped = mapCppScalarType(field.type);
+    // EN: C3-02. A `_BitInt(N)` field with 64 < N < 128 is read and written as the 128-bit integer at Clang's offset
+    //     and alignment (8 on Windows x64, not the carrier's 16); C keeps only its N bits, as for a function value.
+    // ES: C3-02. Un campo `_BitInt(N)` con 64 < N < 128 se lee y escribe como el entero de 128 bits en el offset y la
+    //     alineacion de Clang (8 en Windows x64, no los 16 del portador); C conserva solo sus N bits.
+    CppType fieldType = field.type;
+    if (fieldType.bitIntWidth && *fieldType.bitIntWidth > 64U && *fieldType.bitIntWidth < 128U && fieldType.sizeBits == 128U)
+        fieldType.bitIntWidth.reset();
+    auto mapped = mapCppScalarType(fieldType);
     std::vector<std::uint64_t> arrayElementStrides;
     bool vectorArrayView = false;
     // A fixed vector exposes only its contiguous lanes, even if trailing padding

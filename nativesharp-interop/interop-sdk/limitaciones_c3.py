@@ -99,7 +99,7 @@ c2 = Caso('c3-bitint', H2, S2, standard='c2x')
 positivo(c2, BODY2)
 # C3-02: `wide()` (a `_BitInt(100)` result) was a rejection; with 64 < N < 128 a function value is carried as the
 # 128-bit integer, passed by the address of a copy and returned through memory as Clang's plan says, extended from N
-# bits; an argument is truncated to N bits (C's conversion). Record fields of that kind stay unmapped.
+# bits; an argument is truncated to N bits (C's conversion). Record fields of that kind: see c3-bitint-campo.
 # C3-02: `wide()` era un rechazo; con 64 < N < 128 el valor de una funcion se lleva como el entero de 128 bits.
 H2b = r'''
 _BitInt(100) wide(void);
@@ -126,6 +126,26 @@ BODY2b = r'''
     return 42;
 '''
 positivo(Caso('c3-bitint-ancho', H2b, S2b, standard='c2x'), BODY2b)
+# C3-02: a record field `_BitInt(N)` with 64 < N < 128 was not imported ('NativeSharp has no mapping for that field
+# type'); it is read and written as the 128-bit integer at Clang's offset and alignment (8 on Windows x64, not 16).
+# C3-02: un campo `_BitInt(N)` ancho no se importaba; ahora se accede como el entero de 128 bits en el offset de Clang.
+H2c = r'''
+struct W { char c; _BitInt(100) w; unsigned _BitInt(72) u; int t; };
+_BitInt(100) get_w(struct W* p);
+int sizeof_w(void);
+void fill(struct W* p);
+'''
+S2c = r'''
+_BitInt(100) get_w(struct W* p) { return p->w; }
+int sizeof_w(void) { return sizeof(struct W); }
+void fill(struct W* p) { p->c = 1; p->w = -42; p->u = 7; p->t = 9; }
+'''
+BODY2c = r'''
+    W x; fill(&x); if ((int)sizeof(W) != sizeof_w()) return 1;
+    if ((int)x.w != -42 || (int)x.u != 7 || x.t != 9 || x.c != 1) return 2; x.w = 40; x.t = 2;
+    return (int)get_w(&x) + x.t;
+'''
+positivo(Caso('c3-bitint-campo', H2c, S2c, standard='c2x'), BODY2c)
 rechazo(c2, 'return with_bit_cb(null);', 'with_bit_cb')
 
 # C3-03: C23 enums with a fixed base (8-64 bits, signed and unsigned) are NativeSharp enums. An enum over a 128-bit
