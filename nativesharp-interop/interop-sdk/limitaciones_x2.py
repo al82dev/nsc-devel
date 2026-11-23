@@ -424,4 +424,13 @@ positivo(Caso('x2-operador-resultado', HOP, SOP, **CPP),
          '{ var a = lib.make(40); var b = lib.make(2); var c = a + b; if (c.v != 42) return 1;'
          ' if ((a + lib.make(1)).v != 41) return 2; if (lib.c().ctor != 5 || lib.c().dtor != 2) return 3; }'
          ' return lib.c().ctor == 5 && lib.c().dtor == 5 ? 42 : 4;', modes=['directo', 'dll'])
+# X2-05: a member operator returning such a record (`Obj Vec::operator*(int) const`) was not found ('requires
+# compatible numeric operands'); its adapter returns the prvalue into the caller's storage, as a factory's does.
+# Un operador miembro que devuelve ese record: su adaptador lo construye en el almacenamiento del llamador.
+HOPM = HF.replace('Obj make(int v);', 'Obj make(int v);'+chr(10)+'struct Vec { int x; Obj operator*(int k) const; };')
+SOPM = SF.replace('Obj make(int v) { return Obj(v); }', 'Obj make(int v) { return Obj(v); }'+chr(10)+
+                  'Obj Vec::operator*(int k) const { return Obj(x * k); }')
+positivo(Caso('x2-operador-miembro-resultado', HOPM, SOPM, **CPP),
+         '{ lib.Vec w; w.x = 21; var c = w * 2; if (c.v != 42 || (w * 1).v != 21) return 1; }'
+         ' return lib.c().ctor == 2 && lib.c().dtor == 2 ? 42 : 2;', modes=['directo', 'dll'])
 fin()

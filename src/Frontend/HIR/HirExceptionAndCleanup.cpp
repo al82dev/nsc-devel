@@ -519,7 +519,8 @@ void ProjectOopHirModel::ownCppTemporaries()
             if (node->kind == ProjectOopHirNodeKind::TemporaryAddress && node->children.size() == 1 &&
                 node->children.front() && node->children.front()->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow &&
                 node->children.front()->children.size() == 1 &&
-                constructedCall(node->children.front()->children.front().get()))
+                (constructedCall(node->children.front()->children.front().get()) ||
+                 cppConstruction(node->children.front()->children.front().get())))
             {
                 const auto parent = parents.find(node);
                 std::unique_ptr<ProjectOopHirNode>* slot =

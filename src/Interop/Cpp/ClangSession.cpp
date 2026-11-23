@@ -1858,6 +1858,10 @@ void collectMemberOperators(const clang::DeclContext& context, clang::ASTContext
                 value.parameters.push_back(std::move(captured));
             }
             value.externalSymbol = cppMemberOperatorSymbol(*recordUsr, *methodUsr);
+            // X2-05: a non-trivial record result: the adapter returns the prvalue, constructed at the caller's storage
+            //     (first hidden pointer), as a factory's in-place adapter is. / Un resultado record no trivial: el
+            //     adaptador devuelve el prvalue, construido en el almacenamiento del llamador, como una fabrica.
+            if (cppNonTrivialRecordValue(method->getReturnType())) value.cppFactoryResult = true;
             const auto location = astContext.getSourceManager().getPresumedLoc(method->getLocation());
             if (location.isValid())
                 value.location = CppSourcePoint{
