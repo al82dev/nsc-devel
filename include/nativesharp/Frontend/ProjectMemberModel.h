@@ -151,6 +151,10 @@ public:
     // capability, so constraints, calls and method-body flow all ask one canonical service.
     bool typeIsImplicitlyCopyable(std::string_view typeKey) const;
     bool typeIsMoveOnly(std::string_view typeKey) const;
+    // X2-06: the non-trivial C++ record held by value inside a tuple or fixed array type (not the type itself), or
+    //     none. Such an aggregate is zero-initialized and copied bytewise. / El record C++ no trivial contenido por
+    //     valor en una tupla o arreglo fijo (no el tipo mismo), o ninguno.
+    std::optional<std::string> aggregateHeldCppRecord(std::string_view typeKey) const;
     // Whether shared static storage can transitively expose an Rc or WeakRc value.
     bool typeContainsThreadLocalSharedPointer(std::string_view typeKey) const;
     // EN: Freeze (receiver temporaries): plain data -- scalars, enums, and tuples, fixed

@@ -6346,6 +6346,17 @@ void ProjectMethodBodyModel::analyzeVariable(
             diagnostics::DiagnosticSeverity::Error,
             variable->range(),
             "shared static storage cannot contain a thread-local shared pointer (Rc or WeakRc)");
+    // X2-06: a tuple or fixed array local holding a non-trivial C++ record by value would be zero-initialized and
+    //     destroyed without a construction. / Un local tupla o arreglo fijo con un record C++ no trivial.
+    if (!isReferenceLocal)
+        if (const auto held = memberModel_->aggregateHeldCppRecord(typeKey))
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                variable->range(),
+                "C++ type '" + *held + "' is not trivially copyable and destructible, so a NativeSharp value "
+                "(struct field, array element, tuple element or generic argument) cannot hold it; hold it in a "
+                "class field or a local, or by pointer");
     const sema::OwnershipKind declaredOwnership = ownershipKindFromSyntax(variable->typeSyntax());
     const bool isBorrowed = declaredOwnership == sema::OwnershipKind::Borrowed;
     // EN: Freeze P3: a `ref` local aliases its place; it neither copies nor owns a move-only value

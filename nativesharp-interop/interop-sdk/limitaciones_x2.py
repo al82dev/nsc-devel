@@ -314,4 +314,9 @@ rechazo(Caso('x2-struct-campo-cpp', HF, SF, **CPP), 'Pair p; return p.k;', 'is n
         preludio='struct Pair { public lib.Obj a; public int k; }\n')
 rechazo(Caso('x2-arreglo-cpp', HF, SF, **CPP), 'var xs = new lib.Obj[2]; return 0;',
         'is not trivially copyable and destructible')
+# A tuple local holding one (`(lib.Obj, int) t;`) compiled, was zero-initialized and ran the C++ destructor on an object
+# never constructed at scope end; it is rejected the same way. / Una tupla local con uno destruia un objeto nunca
+# construido; se rechaza igual.
+rechazo(Caso('x2-tupla-cpp', HF, SF, **CPP), '{ (lib.Obj, int) t; } return 0;',
+        'is not trivially copyable and destructible')
 fin()

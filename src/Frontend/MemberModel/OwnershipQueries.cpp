@@ -345,6 +345,39 @@ bool ProjectMemberModel::typeContainsThreadLocalSharedPointer(std::string_view t
     return false;
 }
 
+std::optional<std::string> ProjectMemberModel::aggregateHeldCppRecord(std::string_view typeKey) const
+{
+    if (nameLookup_ == nullptr) return std::nullopt;
+    std::vector<std::string> pending;
+    if (const auto tuple = ProjectTypeConversion::tupleElementTypeKeys(typeKey))
+        pending = *tuple;
+    else if (const auto element = fixedArrayElementTypeKey(typeKey))
+        pending.push_back(*element);
+    while (!pending.empty())
+    {
+        std::string candidate = std::move(pending.back());
+        pending.pop_back();
+        if (const auto tuple = ProjectTypeConversion::tupleElementTypeKeys(candidate))
+        {
+            pending.insert(pending.end(), tuple->begin(), tuple->end());
+            continue;
+        }
+        if (const auto element = fixedArrayElementTypeKey(candidate))
+        {
+            pending.push_back(*element);
+            continue;
+        }
+        if (!candidate.starts_with("type:") || candidate.ends_with('*')) continue;
+        const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(candidate).substr(5));
+        if (!ordinal) continue;
+        const auto* imported = nameLookup_->cppImportedType(*ordinal);
+        if (imported && imported->origin == CppImportedTypeOrigin::CppRecord &&
+            !nameLookup_->cppTrivialValueEligible(*ordinal))
+            return candidate.substr(5);
+    }
+    return std::nullopt;
+}
+
 bool ProjectMemberModel::typeIsMoveOnly(std::string_view typeKey) const
 {
     std::vector<std::string> pending{std::string(typeKey)};
