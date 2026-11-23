@@ -83,5 +83,10 @@ struct MethodParameterSymbol final
     // C3-06: the other member types of a C transparent union parameter, accepted as arguments. / Los otros
     //     tipos miembro de un parametro union transparente C, aceptados como argumentos.
     std::vector<std::string> cppTransparentUnionAlternatives;
+    // EN: X1-04. A C++ `const T&` parameter (an `in` parameter of a C++ callable): a value written without `in` is
+    //     converted to T and materialized for the call, as C++ binds a temporary to `const T&`.
+    // ES: X1-04. Un parametro C++ `const T&` (un parametro `in` de una funcion C++): un valor escrito sin `in` se
+    //     convierte a T y se materializa para la llamada, como C++ enlaza un temporal a `const T&`.
+    bool cppConstReference = false;
 };
 }

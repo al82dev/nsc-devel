@@ -108,5 +108,7 @@ struct NamespaceFunctionSymbol final
     std::optional<bool> cppMicrosoftVolatileSemantics;
     // Carried for future validated ABI lowering; not sufficient to enable a call.
     std::shared_ptr<const interop::abi_plan::Plan> cppAbiPlan;
+    // X1-03: a C++ `= delete` function. / Una funcion C++ `= delete`.
+    bool cppDeleted = false;
 };
 }

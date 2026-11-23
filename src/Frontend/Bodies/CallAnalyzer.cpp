@@ -1183,7 +1183,12 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
     //     materialized for the call; an lvalue of that very type is rejected, as C++ does not bind it.
     // ES: T19-007. Un valor escrito sin `ref` para un parametro C++ `T&&` se convierte al tipo del referente y se
     //     materializa para la llamada; un lvalue de ese mismo tipo se rechaza, porque C++ no lo enlaza.
-    const bool rvalueArgument = parameter.cppRvalueReference &&
+    // EN: X1-04. A value for a C++ `const T&` too, unless T is a C++ record: copying one is X2-04's (its object binds
+    //     with `in`).
+    // ES: X1-04. Tambien un valor para un `const T&` C++, salvo si T es un record C++: copiarlo es de X2-04 (su objeto
+    //     se enlaza con `in`).
+    const bool rvalueArgument = (parameter.cppRvalueReference ||
+        (parameter.cppConstReference && !cppRecordTypeKey(parameter.pointeeTypeKey))) &&
         arguments[argumentOrdinal].argumentPassKind == ParameterPassKind::Value;
     std::string conversionTarget = (hasForwardedReceiver && argumentOrdinal == 0 &&
             parameter.passKind != ParameterPassKind::Value) || rvalueArgument
@@ -1262,7 +1267,7 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
                 parameter.pointerKnownAlignment,
                 parameter.pointerAddressSpace));
     const bool implicitExtensionReceiverPass = hasForwardedReceiver && argumentOrdinal == 0;
-    const bool boundLvalue = rvalueArgument && conversion.exists() &&
+    const bool boundLvalue = rvalueArgument && parameter.cppRvalueReference && conversion.exists() &&
         conversion.kind == ProjectConversionKind::Identity && arguments[argumentOrdinal].addressable;
     if (!conversion.exists() || (!rvalueArgument && (discardsPointeeConst || violatesPointerContract)) ||
         boundLvalue || decayDropsQualifier ||
@@ -1580,6 +1585,14 @@ std::optional<std::size_t> ProjectMethodBodyModel::selectNamespaceFunctionCandid
 //     Compiler) con el mismo orden: `consume` es `acquire`, como lo implementan los compiladores, y una barrera
 //     `relaxed` (sin efecto en C) es una barrera solo del compilador, lo que es conforme. El orden debe ser constante,
 //     como lo exige AtomicFence; las demas macros del sistema quedan como estan.
+// X1-04: whether a type key names an imported C++ record. / Si una clave de tipo nombra un record C++ importado.
+bool ProjectMethodBodyModel::cppRecordTypeKey(std::string_view typeKey) const
+{
+    if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
+    const auto ordinal = nameLookup_->typeOrdinalForIdentity(typeKey.substr(5));
+    return ordinal && nameLookup_->cppImportedType(*ordinal) != nullptr;
+}
+
 bool ProjectMethodBodyModel::recognizeCAtomicFence(
     const ast::AstNode* expression,
     std::size_t callerCallableOrdinal,
@@ -2226,6 +2239,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
     checkNamespaceFunctionArgumentPassKinds(
         expression, callable, functionOrdinal, arguments,
         selected, hasForwardedReceiver, diagnostics);
+    // EN: X1-03. A C++ `= delete` overload takes part in selection, as in C++; a call that selects it is rejected
+    //     instead of falling back to another overload or reaching the linker.
+    // ES: X1-03. Una sobrecarga C++ `= delete` participa en la seleccion, como en C++; una llamada que la elige se
+    //     rechaza en lugar de pasar a otra sobrecarga o llegar al enlazador.
+    if (namespaceFunctionModel_ != nullptr && functionOrdinal < namespaceFunctionModel_->functions().size() &&
+        namespaceFunctionModel_->functions()[functionOrdinal].cppDeleted)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidCall, diagnostics::DiagnosticSeverity::Error,
+            expression->range(), "call to deleted C++ function '" +
+                namespaceFunctionModel_->functions()[functionOrdinal].signatureKey +
+                "': C++ selects this '= delete' overload for these arguments");
+        call.resolution = MethodCallResolutionKind::NoViableCandidate;
+        return {};
+    }
     if (!hasForwardedReceiver && !recognizeCAtomicFence(expression, callerCallableOrdinal, scopeOrdinal,
                                                         functionOrdinal, argumentSyntaxes, diagnostics))
     {
@@ -6340,7 +6367,9 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     const bool packElement = argumentOrdinal < candidateBinding.parameterPackElements.size() &&
         candidateBinding.parameterPackElements[argumentOrdinal];
     // T19-007: as for a namespace function, a value for a C++ `T&&`. / Como en una funcion de namespace.
-    const bool rvalueArgument = !packElement && candidate.parameters[parameterOrdinal].cppRvalueReference &&
+    const bool rvalueArgument = !packElement && (candidate.parameters[parameterOrdinal].cppRvalueReference ||
+        (candidate.parameters[parameterOrdinal].cppConstReference &&
+         !cppRecordTypeKey(candidate.parameters[parameterOrdinal].pointeeTypeKey))) &&
         argument.argumentPassKind == ParameterPassKind::Value;
     std::string conversionTarget = rvalueArgument ? candidate.parameters[parameterOrdinal].pointeeTypeKey
                                                   : candidate.parameters[parameterOrdinal].typeKey;
@@ -6357,7 +6386,7 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     if (!conversion.exists() && !packElement && (candidate.isImportedC || candidate.isCppExternal))
         conversion = classifyCFrontierConversion(argument, parameter, conversionTarget,
             candidate.isImportedC || (candidate.isCppExternal && !candidate.cppExternalSymbol.starts_with('?')));
-    const bool boundLvalue = rvalueArgument && conversion.exists() &&
+    const bool boundLvalue = rvalueArgument && parameter.cppRvalueReference && conversion.exists() &&
         conversion.kind == ProjectConversionKind::Identity && argument.addressable;
     // EN: Freeze P3: as above, an `in` parameter accepts a readonly place.
     // ES: Congelamiento P3: como arriba, un parametro `in` acepta un lugar readonly.
@@ -6978,6 +7007,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
             provenVariantCase, expression, callee, selected,
             call, scopeOrdinal, diagnostics)) return result;
     const ClassMemberSymbol* directMember = methodSymbol(selected.memberOrdinal);
+    // X1-03: the selected C++ overload is `= delete`. / La sobrecarga C++ elegida es `= delete`.
+    if (directMember != nullptr && directMember->cppDeleted)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidCall, diagnostics::DiagnosticSeverity::Error,
+            expression->range(), "call to deleted C++ method '" + directMember->signatureKey +
+                "': C++ selects this '= delete' overload for these arguments");
+        return result;
+    }
     if (!coreStringForwarding && directMember != nullptr)
     {
         for (std::size_t index = 0; index < resolvedArguments.size() &&

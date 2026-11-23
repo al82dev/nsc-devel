@@ -996,7 +996,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     //     (written, possibly empty, whenever the transparent group follows).
     // ES: C3-06. Un parametro union transparente conserva sus tipos miembro en un grupo final, tras el grupo de tamano
     //     de objeto (escrito, quiza vacio, siempre que siga el grupo transparente).
-    const bool transparentUnions = std::any_of(f.parameters.begin(), f.parameters.end(),
+    // X1-03: a deleted function adds a last group, after the transparent one. / Una funcion eliminada agrega un
+    //     ultimo grupo, tras el transparente.
+    const bool transparentUnions = f.isDeleted || std::any_of(f.parameters.begin(), f.parameters.end(),
         [](const auto& p) { return p.type.transparentUnionMembers != nullptr; });
     if (transparentUnions ||
         std::any_of(f.parameters.begin(), f.parameters.end(), [](const auto& p) { return p.objectSizeMode.has_value(); }))
@@ -1022,6 +1024,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                     if (!putDependencyType(member))
                     { if (error.empty()) error = "invalid C dependency transparent union member"; return false; }
         }
+        if (f.isDeleted) writer.u8(1);
     }
     output = writer.takeBytes();
     error.clear();
@@ -1498,6 +1501,12 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                 if (!getDependencyType(member)) { error = "invalid C dependency transparent union member"; return false; }
             parameter.type.transparentUnionMembers = std::move(members);
         }
+    if (!reader.atEnd())
+    {
+        std::uint8_t deleted = 0;
+        if (!reader.u8(deleted) || deleted != 1) { error = "invalid C/C++ dependency deleted function"; return false; }
+        f.isDeleted = true;
+    }
     std::vector<std::uint8_t> canonical;
     if (!reader.atEnd() || !encodeCDependencyFunction(value, canonical, error) ||
         canonical.size() != bytes.size() || !std::equal(canonical.begin(), canonical.end(), bytes.begin()))

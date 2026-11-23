@@ -254,5 +254,6 @@ struct ClassMemberSymbol final
     std::optional<std::size_t> promotedSourceMemberOrdinal;
     std::vector<std::size_t> anonymousCarrierMemberOrdinals;
     std::uint8_t declaredPointerLevelQualifiers = 0; // C1-02: intermediate pointer level qualifiers (Language/PointerLevelQualifiers.h).
+    bool cppDeleted = false; // X1-03: a C++ `= delete` method. / Un metodo C++ `= delete`.
 };
 }

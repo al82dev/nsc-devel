@@ -4181,6 +4181,7 @@ private:
         bool matchingArity,
         NamespaceFunctionCallBinding& call,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool cppRecordTypeKey(std::string_view typeKey) const;
     bool recognizeCAtomicFence(const ast::AstNode* expression, std::size_t callerCallableOrdinal,
         std::size_t scopeOrdinal, std::size_t functionOrdinal, std::span<ast::AstNode* const> argumentSyntaxes,
         diagnostics::DiagnosticEngine& diagnostics);

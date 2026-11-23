@@ -1430,6 +1430,7 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
         value.returnType = describeType(function->getReturnType(), astContext);
         value.variadic = function->isVariadic();
         value.hasPrototype = function->getType()->getAs<clang::FunctionProtoType>() != nullptr;
+        value.isDeleted = function->isDeleted(); // X1-03
         value.externalLinkage = function->isExternallyVisible();
         const auto* definition = function->getDefinition();
         // A C `static` definition in a header gives every translation unit its own copy, with or without
@@ -2368,7 +2369,10 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                         }
                         projected.parameters.push_back(std::move(captured));
                     }
-                    if (method->isExternallyVisible() && !method->isDeleted())
+                    // X1-03: a deleted ordinary method keeps its name for selection; a call to it is rejected, so
+                    //     the symbol is never referenced. / Un metodo ordinario eliminado conserva su nombre para la
+                    //     seleccion; una llamada a el se rechaza, asi el simbolo nunca se referencia.
+                    if (method->isExternallyVisible() && (!method->isDeleted() || (!ctor && !dtor)))
                     {
                         llvm::SmallString<128> symbol;
                         llvm::raw_svector_ostream stream(symbol);

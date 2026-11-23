@@ -45,6 +45,7 @@ struct CppImportedInstanceMethod
     std::string cppDeclarationSpelling{};
     // T19-007: which parameters are C++ `T&&` (ref parameters that also bind a value). / Cuales son `T&&`.
     std::vector<bool> parameterRvalueReferences = {};
+    bool isDeleted = false; // X1-03: a `= delete` method. / Un metodo `= delete`.
 };
 
 enum class CppImportedLifetimeKind { Constructor, Destructor };

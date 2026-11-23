@@ -451,6 +451,8 @@ bool ProjectMemberModel::build(
             // T19-007: a C++ `T&&` parameter. / Un parametro C++ `T&&`.
             parameter.cppRvalueReference = i < imported.parameterRvalueReferences.size() &&
                 imported.parameterRvalueReferences[i];
+            parameter.cppConstReference = !parameter.cppRvalueReference &&
+                parameter.passKind == ParameterPassKind::In; // X1-04
             if (parameter.passKind != ParameterPassKind::Value)
             {
                 parameter.pointeeTypeKey = parameter.typeKey.substr(0, parameter.typeKey.size() - 1);
@@ -511,6 +513,7 @@ bool ProjectMemberModel::build(
         member.accessibility = imported.accessibility;
         member.declaringTypeOrdinal = ordinal;
         member.name = imported.name;
+        member.cppDeleted = imported.isDeleted; // X1-03
         member.declaredTypeKey = imported.returnTypeKey;
         member.declaredPointerPointeeReadonly = imported.returnPointeeReadonly;
         member.hasImplicitThis = true;
@@ -543,6 +546,8 @@ bool ProjectMemberModel::build(
             // T19-007: a C++ `T&&` parameter. / Un parametro C++ `T&&`.
             parameter.cppRvalueReference = i < imported.parameterRvalueReferences.size() &&
                 imported.parameterRvalueReferences[i];
+            parameter.cppConstReference = !parameter.cppRvalueReference &&
+                parameter.passKind == ParameterPassKind::In; // X1-04
             if (parameter.passKind != ParameterPassKind::Value)
             {
                 parameter.pointeeTypeKey = parameter.typeKey.substr(0, parameter.typeKey.size() - 1);
@@ -626,6 +631,8 @@ bool ProjectMemberModel::build(
             // T19-007: a C++ `T&&` parameter. / Un parametro C++ `T&&`.
             parameter.cppRvalueReference = i < imported.parameterRvalueReferences.size() &&
                 imported.parameterRvalueReferences[i];
+            parameter.cppConstReference = !parameter.cppRvalueReference &&
+                parameter.passKind == ParameterPassKind::In; // X1-04
             if (parameter.passKind != ParameterPassKind::Value)
             {
                 parameter.pointeeTypeKey = parameter.typeKey.substr(0, parameter.typeKey.size() - 1);

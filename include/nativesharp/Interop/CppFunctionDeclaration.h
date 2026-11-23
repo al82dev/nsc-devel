@@ -88,5 +88,8 @@ struct CppFunctionDeclaration
     std::string cMacroWrapper;
     // Optional experimental ABI observation; absence never implies a Win64 fallback.
     std::shared_ptr<const abi_plan::Plan> abiPlan;
+    // X1-03: a `= delete` function: it takes part in overload selection and a call that selects it is rejected.
+    //     / Una funcion `= delete`: participa en la seleccion y una llamada que la elige se rechaza.
+    bool isDeleted = false;
 };
 }

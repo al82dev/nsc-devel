@@ -188,7 +188,8 @@ void ProjectOopHirModel::acceptBoundCallChild(
         ((parameter->passKind == ParameterPassKind::In && cppOperator) || parameter->cppRvalueReference ||
          parameter->cppImplicitObject) &&
         !isNaturallyAddressable(call.argumentSyntaxes[index]);
-    const bool rvalueValue = parameter != nullptr && !target->isUserOperator && parameter->cppRvalueReference &&
+    const bool rvalueValue = parameter != nullptr && !target->isUserOperator &&
+        (parameter->cppRvalueReference || parameter->cppConstReference) &&
         !call.argumentSyntaxes[index]->auxiliaryText().starts_with("pass:");
     if (temporaryOperand || rvalueValue)
     {
@@ -490,7 +491,8 @@ bool ProjectOopHirModel::acceptOrdinaryCallArgumentChild(
                 ownedValueParameter(selectedMember.parameters[parameterIndex]), call.hasOwnedTemporary);
             // T19-007: a value for a C++ `T&&` is materialized. / Un valor para un `T&&` C++ se materializa.
             const MethodParameterSymbol& parameter = selectedMember.parameters[parameterIndex];
-            if (parameter.cppRvalueReference && !argumentSyntax->auxiliaryText().starts_with("pass:"))
+            if ((parameter.cppRvalueReference || parameter.cppConstReference) &&
+                !argumentSyntax->auxiliaryText().starts_with("pass:"))
             {
                 auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress, argumentSyntax,
                                           std::string(parameter.pointeeTypeKey));
@@ -814,7 +816,8 @@ bool ProjectOopHirModel::acceptNamespaceCallArgumentChild(
             call.hasOwnedTemporary);
         // T19-007: a value for a C++ `T&&` is materialized. / Un valor para un `T&&` C++ se materializa.
         const MethodParameterSymbol& parameter = call.target->parameters[parameterOrdinal];
-        if (parameter.cppRvalueReference && !argumentSyntax->auxiliaryText().starts_with("pass:"))
+        if ((parameter.cppRvalueReference || parameter.cppConstReference) &&
+            !argumentSyntax->auxiliaryText().starts_with("pass:"))
         {
             auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress, argumentSyntax,
                                       std::string(parameter.pointeeTypeKey));

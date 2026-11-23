@@ -1017,6 +1017,7 @@ CppSemanticFunctionResult projectFunction(
     symbol.cppDllImport = function.dllImport;
     symbol.cppTemplateSpecialization = function.templateSpecialization;
     symbol.isVariadic = function.variadic || cUnprototyped;
+    symbol.cppDeleted = function.isDeleted; // X1-03
     symbol.cppCanonicalIdentity = *function.externalSymbol + "|" +
         (referenceReturn ? function.returnType.canonicalSpelling : resultType->canonicalCppType) + "(";
     symbol.signatureKey = symbol.name + "(";
@@ -1123,6 +1124,7 @@ CppSemanticFunctionResult projectFunction(
             parameter.lifetimeName = "$p" + std::to_string(index);
             // T19-007: `T&&` also binds a materialized value. / `T&&` tambien enlaza un valor materializado.
             parameter.cppRvalueReference = rvalue;
+            parameter.cppConstReference = !rvalue && parameter.passKind == frontend::ParameterPassKind::In; // X1-04
             // T19-007: the object of a member operator adapter. / El objeto de un adaptador de operador miembro.
             parameter.cppImplicitObject = index == 0 && !rvalue && input.name == "self" &&
                 std::string_view(*function.externalSymbol).starts_with(cppMemberThunkPrefix);
@@ -1273,7 +1275,9 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
         (method.inherited ? !dispatched : method.qualifiedName != record.qualifiedName + "::" + method.name) ||
         !projectedMethodAccess(method, dispatched) || method.isStatic ||
         ((method.isVirtual || method.isPureVirtual) && !dispatched) ||
-        method.isDeleted || method.isVolatile || method.variadic ||
+        // X1-03: a deleted method is projected for selection; its call is rejected. / Un metodo eliminado se
+        //     proyecta para la seleccion; su llamada se rechaza.
+        method.isVolatile || method.variadic ||
         // Item 12.1: an `&` / `const&` receiver is an lvalue receiver, as NativeSharp calls it; `&&` stays out.
         //     / Un receptor `&` / `const&` es un receptor lvalue, como lo llama NativeSharp; `&&` queda fuera.
         method.refQualifier == CppMethodRefQualifier::RValue || method.callingConvention != "cdecl" ||
@@ -2386,13 +2390,19 @@ bool provideExperimentalCppInstanceMethods(
                 const Family family{group.identity.key(), method.name};
                 if (method.isStatic) { blocked.insert(family); continue; }
                 // EN: Items 9.1 and 9.2. A deleted overload never blocks its family: C++ cannot call it either.
+                //     X1-03: a projectable one takes part in selection, as in C++, and a call that selects it is
+                //     rejected (it no longer falls back to another overload).
                 // ES: Items 9.1 y 9.2. Una sobrecarga eliminada nunca bloquea su familia: C++ tampoco la llama.
-                if (method.isDeleted) continue;
+                //     X1-03: una proyectable participa en la seleccion, como en C++, y una llamada que la elige se
+                //     rechaza (ya no pasa a otra sobrecarga).
                 auto mapped = projectCppSemanticInstanceMethod(entry.declaration, methodIndex, group.projectOrdinal,
                     graph.projects()[group.projectOrdinal].moduleName(), entry.targetTriple, &visibleRecords, &lookup);
                 if (const auto* instance = std::get_if<CppSemanticInstanceMethod>(&mapped))
+                {
                     families[family].push_back(toCppImportedInstanceMethod(*instance));
-                else unprojectedArities[family].insert(method.parameters.size());
+                    families[family].back().isDeleted = method.isDeleted;
+                }
+                else if (!method.isDeleted) unprojectedArities[family].insert(method.parameters.size());
             }
         }
     }
