@@ -234,7 +234,9 @@ bool OopLlvmImplementation::lowerStructuredExit(
             {
                 if (lowerValueConstruction(value, error, nullptr, false, sretStorage_) == nullptr) return false;
             }
-            else if (value->kind == frontend::ProjectOopMirNodeKind::DirectStaticCall)
+            else if (value->kind == frontend::ProjectOopMirNodeKind::DirectStaticCall ||
+                     value->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall ||
+                     value->kind == frontend::ProjectOopMirNodeKind::VirtualInstanceCall)
             {
                 cppResultDestination_ = sretStorage_;
                 const LLVMValueRef built = lowerExpression(value, error);

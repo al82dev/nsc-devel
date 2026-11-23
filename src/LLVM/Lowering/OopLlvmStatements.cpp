@@ -822,7 +822,9 @@ bool OopLlvmImplementation::lowerLocalDeclarationStatement(
                     {
                         // X2-05: a NativeSharp function that constructs its C++ result here. / Una funcion
                         //     NativeSharp que construye aqui su resultado C++.
-                        const auto* callee = initializer->kind == frontend::ProjectOopMirNodeKind::DirectStaticCall
+                        const auto* callee = initializer->kind == frontend::ProjectOopMirNodeKind::DirectStaticCall ||
+                                initializer->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall ||
+                                initializer->kind == frontend::ProjectOopMirNodeKind::VirtualInstanceCall
                             ? mirModel_.functionForMangledName(initializer->calleeName) : nullptr;
                         if (callee != nullptr && callee->cppConstructedResult)
                         {

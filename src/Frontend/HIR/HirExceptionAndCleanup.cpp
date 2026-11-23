@@ -452,8 +452,43 @@ void ProjectOopHirModel::ownCppTemporaries()
             // Un temporal materializado, o una construccion cuya direccion se toma directamente.
             const auto parent = parents.find(node);
             if (parent == parents.end()) continue;
+            // X2-05: or the call of a NativeSharp function that constructs its C++ result, a receiver temporary
+            //     (`Make(4).v`). / O la llamada de una funcion NativeSharp que construye su resultado C++.
+            const auto constructedCall = [&](const ProjectOopHirNode* value) {
+                if (value == nullptr || value->referenceResult) return false;
+                const ProjectOopHirFunction* called = nullptr;
+                if (value->kind == ProjectOopHirNodeKind::StaticCall && value->namespaceFunctionOrdinal)
+                    called = functionForNamespaceFunction(*value->namespaceFunctionOrdinal);
+                else if ((value->kind == ProjectOopHirNodeKind::StaticCall ||
+                          value->kind == ProjectOopHirNodeKind::InstanceCall) && value->memberOrdinal)
+                    called = functionForMember(*value->memberOrdinal);
+                return called != nullptr && called->cppConstructedResult;
+            };
+            // X2-05: the address of an owned temporary that holds such a call's result is that owner's slot: the
+            //     result is constructed there. / La direccion de un temporal con dueno que guarda ese resultado es la
+            //     ranura del dueno: el resultado se construye alli.
+            if (node->kind == ProjectOopHirNodeKind::TemporaryAddress && node->children.size() == 1 &&
+                node->children.front() && node->children.front()->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow &&
+                node->children.front()->children.size() == 1 &&
+                constructedCall(node->children.front()->children.front().get()))
+            {
+                const auto parent = parents.find(node);
+                std::unique_ptr<ProjectOopHirNode>* slot =
+                    parent != parents.end() ? hirChildSlot(*parent->second, node) : nullptr;
+                if (slot != nullptr)
+                {
+                    auto owner = std::move(node->children.front());
+                    owner->referenceResult = true;
+                    owner->automaticDestruction = true;
+                    ProjectOopHirNode* ownerNode = owner.get();
+                    *slot = std::move(owner);
+                    parents[ownerNode] = parent->second;
+                    continue;
+                }
+            }
             const bool materialized = node->kind == ProjectOopHirNodeKind::TemporaryAddress &&
-                node->children.size() == 1 && cppConstruction(node->children.front().get());
+                node->children.size() == 1 && (cppConstruction(node->children.front().get()) ||
+                                               constructedCall(node->children.front().get()));
             // A non-trivial C++ record argument of a call always travels by address (`const T&`, `T&&`, the self
             //     of a member adapter). / Un argumento record C++ no trivial de una llamada viaja por direccion.
             //     A by-value adapter (`@nsc-byvalue`) would copy the prvalue where C++ constructs the parameter

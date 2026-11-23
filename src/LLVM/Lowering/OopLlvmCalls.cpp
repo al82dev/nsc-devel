@@ -736,6 +736,18 @@ LLVMValueRef OopLlvmImplementation::lowerCall(
             return failValue(error, "Macro A instance call is missing its explicit receiver operand");
         }
 
+        // X2-05: a NativeSharp method that constructs its C++ result takes the caller's destination, named before
+        //     the receiver is evaluated. / Un metodo NativeSharp que construye su resultado C++ toma el destino del
+        //     llamador, nombrado antes de evaluar el receptor.
+        LLVMValueRef constructedDestination = nullptr;
+        if (found->second.mirFunction != nullptr && found->second.mirFunction->cppConstructedResult &&
+            !node->referenceResult)
+        {
+            constructedDestination = cppResultDestination_;
+            cppResultDestination_ = nullptr;
+            if (constructedDestination == nullptr)
+                return failValue(error, "the C++ result of '" + node->calleeName + "' needs a destination");
+        }
         LLVMValueRef receiver = receiverOverride != nullptr
             ? receiverOverride
             : lowerExpression(node->children.front().get(), error);
@@ -781,7 +793,12 @@ LLVMValueRef OopLlvmImplementation::lowerCall(
         const bool cppMemberSret = callee != nullptr && callee->isCppExternal && !callee->isStatic &&
             callee->abi.returnPassing == frontend::ProjectOopMirAbiPassing::Indirect;
         LLVMValueRef sretSlot = nullptr;
-        if (!node->referenceResult && (isIndirectStructTypeKey(node->typeKey) || cppMemberSret))
+        if (constructedDestination != nullptr)
+        {
+            sretSlot = constructedDestination;
+            arguments.push_back(sretSlot);
+        }
+        else if (!node->referenceResult && (isIndirectStructTypeKey(node->typeKey) || cppMemberSret))
         {
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (carrier == nullptr) return nullptr;
@@ -824,6 +841,7 @@ LLVMValueRef OopLlvmImplementation::lowerCall(
         applyExternalBoolAbi(context_, found->second.mirFunction,
             [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
             { LLVMAddCallSiteAttribute(call, index, attribute); });
+        if (constructedDestination != nullptr) return constructedDestination;
         if (sretSlot != nullptr)
         {
             applySretAttributes(
@@ -2527,6 +2545,17 @@ LLVMValueRef OopLlvmImplementation::lowerVirtualCall(
             return failValue(error, "Macro A virtual call is missing its receiver operand");
         if (descriptorType_ == nullptr)
             return failValue(error, "Macro A virtual call has no class-descriptor LLVM type");
+        // X2-05: an override that constructs its C++ result takes the caller's destination. / Un override que
+        //     construye su resultado C++ toma el destino del llamador.
+        LLVMValueRef constructedDestination = nullptr;
+        if (const auto* declared = mirModel_.functionForMangledName(node->calleeName);
+            declared != nullptr && declared->cppConstructedResult && !node->referenceResult)
+        {
+            constructedDestination = cppResultDestination_;
+            cppResultDestination_ = nullptr;
+            if (constructedDestination == nullptr)
+                return failValue(error, "the C++ result of '" + node->calleeName + "' needs a destination");
+        }
         LLVMValueRef receiver = receiverOverride != nullptr
             ? receiverOverride : lowerExpression(node->children.front().get(), error);
         if (receiver == nullptr) return nullptr;
@@ -2554,6 +2583,16 @@ LLVMValueRef OopLlvmImplementation::lowerVirtualCall(
                 node, receiver, argumentOverrides, arguments, parameterTypes,
                 sretSlot, assignedValue, terminatedValue, error)) return nullptr;
         if (terminatedValue != nullptr) return terminatedValue;
+        if (constructedDestination != nullptr)
+        {
+            if (sretSlot != nullptr) arguments[1] = constructedDestination;
+            else
+            {
+                arguments.insert(arguments.begin() + 1, constructedDestination);
+                parameterTypes.insert(parameterTypes.begin() + 1, ptr);
+            }
+            sretSlot = constructedDestination;
+        }
         LLVMTypeRef returnType = node->referenceResult
             ? ptr
             : sretSlot != nullptr
@@ -2575,6 +2614,7 @@ LLVMValueRef OopLlvmImplementation::lowerVirtualCall(
             node->typeKey == "builtin:void" || sretSlot != nullptr ? "" : "vcall", error);
         if (call == nullptr) return nullptr;
         if (!applyMustTail(node, call, error)) return nullptr;
+        if (constructedDestination != nullptr) return constructedDestination;
         if (sretSlot != nullptr)
         {
             applySretAttributes(

@@ -370,6 +370,27 @@ void ProjectMemberModel::validateStaticOwnedMember(
     // EN: X2-06. For the same reason a static field cannot hold a non-trivial C++ record: its destructor would never
     //     run (the declaration reached the backend before, with no carrier). / ES: X2-06. Por lo mismo un campo
     //     estatico no puede contener un record C++ no trivial: su destructor nunca correria.
+    // X2-06: an automatic property's getter returns its backing field by copy, which a non-trivial C++ record does not
+    //     allow implicitly (it failed later as "experimental C++ local cannot copy", with no location). / El getter de
+    //     una propiedad automatica devuelve su campo por copia, que un record C++ no trivial no permite.
+    if (symbol.kind == ClassMemberKind::Field && !symbol.isStatic && symbol.name.starts_with("__nsc_backing_") &&
+        nameLookup_ != nullptr && symbol.declaredTypeKey.starts_with("type:") && !symbol.declaredTypeKey.ends_with('*'))
+        if (const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(symbol.declaredTypeKey).substr(5)))
+            if (const auto* imported = nameLookup_->cppImportedType(*ordinal);
+                imported && imported->origin == CppImportedTypeOrigin::CppRecord &&
+                !nameLookup_->cppTrivialValueEligible(*ordinal))
+            {
+                const auto end = symbol.name.find('$');
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    symbol.range,
+                    "automatic property '" + symbol.name.substr(14, end == std::string::npos ? end : end - 14) +
+                        "' of C++ type '" + symbol.declaredTypeKey.substr(5) +
+                        "' would copy it on every get, which C++ does not allow implicitly; use a field, or a "
+                        "property that returns an explicit copy (new T(in field)) or a pointer");
+                return;
+            }
     if (symbol.kind == ClassMemberKind::Field && symbol.isStatic && nameLookup_ != nullptr &&
         symbol.declaredTypeKey.starts_with("type:") && !symbol.declaredTypeKey.ends_with('*'))
         if (const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(symbol.declaredTypeKey).substr(5)))

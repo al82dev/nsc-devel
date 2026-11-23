@@ -2175,8 +2175,10 @@ bool ProjectCompilation::compileProjectOopHir(
                 {
                     // X2-05: or the call of a NativeSharp function that constructs it there. / O la llamada de una
                     //     funcion NativeSharp que lo construye alli.
+                    // X2-05: also an instance method or a property getter. / Tambien un metodo de instancia o un getter.
                     const bool constructedCall = node->children.size() == 1 && node->children[0] &&
-                        node->children[0]->kind == ProjectOopHirNodeKind::StaticCall &&
+                        (node->children[0]->kind == ProjectOopHirNodeKind::StaticCall ||
+                         node->children[0]->kind == ProjectOopHirNodeKind::InstanceCall) &&
                         node->children[0]->typeKey == node->typeKey && !node->children[0]->referenceResult;
                     if (node->staticLocal || !node->localOrdinal || !node->cleanupRegionOrdinal ||
                         !node->automaticDestruction || node->children.size() != 1 || !node->children[0] ||
@@ -2194,9 +2196,12 @@ bool ProjectCompilation::compileProjectOopHir(
                     //     temporal receptor, construido en su lugar.
                     // X2-05: a NativeSharp function's constructed result, into a local or returned again. / El
                     //     resultado construido de una funcion NativeSharp, en un local o devuelto de nuevo.
-                    !(node->kind == ProjectOopHirNodeKind::StaticCall && parent &&
+                    !((node->kind == ProjectOopHirNodeKind::StaticCall ||
+                       node->kind == ProjectOopHirNodeKind::InstanceCall) && parent &&
                       ((parent->kind == ProjectOopHirNodeKind::LocalDeclaration && !parent->referenceLocal &&
-                        !parent->staticLocal) || parent->kind == ProjectOopHirNodeKind::Return)) &&
+                        !parent->staticLocal) || parent->kind == ProjectOopHirNodeKind::Return ||
+                       (parent->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow && parent->referenceResult &&
+                        parent->automaticDestruction))) &&
                     // X2-06: the assignment of a field initializer that builds a C++ field. / La asignacion de un
                     //     inicializador que construye un campo C++.
                     !(node->kind == ProjectOopHirNodeKind::Assignment && node->children.size() == 2 && node->children[0] &&
@@ -2206,7 +2211,9 @@ bool ProjectCompilation::compileProjectOopHir(
                       (node->automaticDestruction || node->cppCalleeDestroyed) && node->localOrdinal &&
                       node->cleanupRegionOrdinal &&
                       node->children.size() == 1 && node->children[0] &&
-                      node->children[0]->kind == ProjectOopHirNodeKind::ValueConstruction) &&
+                      (node->children[0]->kind == ProjectOopHirNodeKind::ValueConstruction ||
+                       node->children[0]->kind == ProjectOopHirNodeKind::StaticCall ||
+                       node->children[0]->kind == ProjectOopHirNodeKind::InstanceCall)) &&
                     // X2-08: a call whose result is an address (`T& operator+=`, `T& operator++`) does not copy
                     //     the object; using it as a value adds a PointerLoad, which is checked. / Una llamada
                     //     cuyo resultado es una direccion no copia el objeto; usarla como valor agrega PointerLoad.

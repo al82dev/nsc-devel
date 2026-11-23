@@ -324,4 +324,36 @@ rechazo(Caso('x2-tupla-cpp', HF, SF, **CPP), '{ (lib.Obj, int) t; } return 0;',
 # backend; nada lo destruye al salir del proceso, asi que se rechaza como un estatico owned.
 rechazo(Caso('x2-estatico-cpp', HF, SF, **CPP), 'return 0;', 'cannot hold C++ type',
         preludio='class K { public static lib.Obj s = new lib.Obj(4); }\n')
+# X2-05: the constructed result of a NativeSharp instance method, property getter or virtual override (through a
+# base reference, and returned again by another function) is built in the caller's local, and that of a NativeSharp
+# function used as a receiver (`Make(4).v`) in a hidden owner destroyed at the end of the full expression. Before, only
+# namespace functions into a local were accepted ('requires direct automatic construction', 'cannot copy or transfer').
+# X2-05: el resultado construido de un metodo de instancia, getter u override virtual NativeSharp se construye en el
+# local del llamador, y el de una funcion usada como receptor en un dueno oculto destruido al final de la expresion.
+PRE_INST = ('lib.Obj Make(int k) { return lib.make(k); }\n'
+       'class H2 { lib.Obj f = new lib.Obj(7); public lib.Obj G() { return new lib.Obj(in f); }\n'
+       '  public lib.Obj P { get { return new lib.Obj(in f); } } public virtual lib.Obj V() { return lib.make(3); } }\n'
+       'class H3 : H2 { public override lib.Obj V() { return lib.make(8); } }\n'
+       'lib.Obj Fwd(H2 h) { return h.V(); }\n')
+BODY_INST = r'''
+    {
+        var h = new H2();
+        if (Make(4).v != 4) return 1;
+        if (lib.c().dtor != 1 || lib.c().ctor != 2) return 2;
+        var x = h.G();
+        var y = h.P;
+        if (x.v + y.v != 14 || lib.c().ctor != 4) return 3;
+        H2 b = new H3();
+        var v = b.V();
+        var w = Fwd(b);
+        if (v.v + w.v != 16 || lib.c().ctor != 7 || lib.c().dtor != 1) return 4;
+    }
+    return lib.c().ctor == 7 && lib.c().dtor == 7 && lib.c().assign == 0 ? 42 : 5;
+'''
+positivo(Caso('x2-resultado-metodo', HF, SF, **CPP), BODY_INST, preludio=PRE_INST, modes=['directo'])
+# An automatic property of such a record would copy its backing field on every get; it failed later with no location
+# ('experimental C++ local cannot copy'). It is rejected at the property, which names the alternatives (a getter that
+# returns an explicit copy works, as above). / Una propiedad automatica de ese record se rechaza en la propiedad.
+rechazo(Caso('x2-propiedad-auto-cpp', HF, SF, **CPP), 'return 0;', 'automatic property',
+        preludio='class K { public lib.Obj P { get; set; } }'+chr(10))
 fin()

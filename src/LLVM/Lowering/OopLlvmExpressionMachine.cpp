@@ -752,6 +752,25 @@ bool OopLlvmImplementation::lowerExpressionFrame008OwnedTemporaryBorrow(
             values.push_back(storage->second);
             return true;
         }
+        // X2-05: a NativeSharp function's constructed C++ result, built in the owner's slot. / El resultado C++
+        //     construido de una funcion NativeSharp, en la ranura del dueno.
+        if (current->referenceResult && (construction->kind == frontend::ProjectOopMirNodeKind::DirectStaticCall ||
+                                         construction->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall ||
+                                         construction->kind == frontend::ProjectOopMirNodeKind::VirtualInstanceCall))
+            if (const auto* called = mirModel_.functionForMangledName(construction->calleeName);
+                called != nullptr && called->cppConstructedResult)
+            {
+                cppResultDestination_ = storage->second;
+                const LLVMValueRef built = lowerExpression(construction, error);
+                cppResultDestination_ = nullptr;
+                if (built == nullptr) { values.push_back(nullptr); return true; }
+                const auto flag = localValueDropFlags_.find(*current->localOrdinal);
+                if (flag != localValueDropFlags_.end())
+                    LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0), flag->second);
+                activeCleanupRegions_.push_back(*current->cleanupRegionOrdinal);
+                values.push_back(storage->second);
+                return true;
+            }
         frames.push_back({current, 1, storage->second, 0});
         frames.push_back({current->children.front().get(), 0, nullptr});
         return true;
