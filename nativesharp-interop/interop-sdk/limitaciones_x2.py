@@ -319,4 +319,9 @@ rechazo(Caso('x2-arreglo-cpp', HF, SF, **CPP), 'var xs = new lib.Obj[2]; return 
 # construido; se rechaza igual.
 rechazo(Caso('x2-tupla-cpp', HF, SF, **CPP), '{ (lib.Obj, int) t; } return 0;',
         'is not trivially copyable and destructible')
+# A static field of such a record reached the backend ('cannot map named value type to LLVM carrier'); nothing runs at
+# process exit to destroy it, so it is rejected as a static owned field is. / Un campo estatico de ese record llegaba al
+# backend; nada lo destruye al salir del proceso, asi que se rechaza como un estatico owned.
+rechazo(Caso('x2-estatico-cpp', HF, SF, **CPP), 'return 0;', 'cannot hold C++ type',
+        preludio='class K { public static lib.Obj s = new lib.Obj(4); }\n')
 fin()

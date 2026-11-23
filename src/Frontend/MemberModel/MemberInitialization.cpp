@@ -367,6 +367,25 @@ void ProjectMemberModel::validateStaticOwnedMember(
     // actually caused it -- a diagnostic that sends the reader to fix the wrong line. The
     // check also covers the compiler-generated backing field of a `static owned` automatic
     // property, whose range is the property's own name.
+    // EN: X2-06. For the same reason a static field cannot hold a non-trivial C++ record: its destructor would never
+    //     run (the declaration reached the backend before, with no carrier). / ES: X2-06. Por lo mismo un campo
+    //     estatico no puede contener un record C++ no trivial: su destructor nunca correria.
+    if (symbol.kind == ClassMemberKind::Field && symbol.isStatic && nameLookup_ != nullptr &&
+        symbol.declaredTypeKey.starts_with("type:") && !symbol.declaredTypeKey.ends_with('*'))
+        if (const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(symbol.declaredTypeKey).substr(5)))
+            if (const auto* imported = nameLookup_->cppImportedType(*ordinal);
+                imported && imported->origin == CppImportedTypeOrigin::CppRecord &&
+                !nameLookup_->cppTrivialValueEligible(*ordinal))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    symbol.range,
+                    "static field '" + symbol.name + "' cannot hold C++ type '" + symbol.declaredTypeKey.substr(5) +
+                        "', which is not trivially destructible: nothing runs at process exit to destroy it; hold "
+                        "it by pointer or in an instance field");
+                return;
+            }
     if (symbol.kind != ClassMemberKind::Field || !symbol.isStatic ||
         symbol.declaredOwnership != sema::OwnershipKind::Owned)
         return;
