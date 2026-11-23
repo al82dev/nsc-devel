@@ -3842,6 +3842,37 @@ public:
                             requests.push_back({std::move(adapter), nullptr, nullptr, false, function,
                                                 function->getNumParams(), true, true});
                 }
+                // X2-05: the instantiated specializations of a function template too (`wrap<int>`), whose
+                //     adapters the projection names as for any free function. / Tambien las especializaciones
+                //     instanciadas de una plantilla de funcion.
+                else if (const auto* functionTemplate = llvm::dyn_cast<clang::FunctionTemplateDecl>(declaration))
+                {
+                    for (const auto* function : functionTemplate->specializations())
+                    {
+                        if (function == nullptr || llvm::isa<clang::CXXMethodDecl>(function) ||
+                            function->isDependentContext()) continue;
+                        const auto usr = declarationUsr(function);
+                        if (usr)
+                            for (const auto arity : defaultArities(*function))
+                            {
+                                auto adapter = cppDefaultArgumentThunkSymbol("#function", *usr, arity);
+                                if (wanted.contains(adapter) && found.insert(adapter).second)
+                                    requests.push_back({std::move(adapter), nullptr, nullptr, false, function, arity});
+                            }
+                        // X2-05: the by-value adapter. / El adaptador por valor.
+                        if (usr)
+                            if (auto adapter = cppByValueThunkSymbol(*usr);
+                                wanted.contains(adapter) && found.insert(adapter).second)
+                                requests.push_back({std::move(adapter), nullptr, nullptr, false, function,
+                                                    function->getNumParams(), true});
+                        // X2-05: the in-place return adapter. / El adaptador de retorno en sitio.
+                        if (usr)
+                            if (auto adapter = cppReturnThunkSymbol(*usr);
+                                wanted.contains(adapter) && found.insert(adapter).second)
+                                requests.push_back({std::move(adapter), nullptr, nullptr, false, function,
+                                                    function->getNumParams(), true, true});
+                    }
+                }
             }
         };
         visit(*context.getTranslationUnitDecl());
@@ -4111,6 +4142,50 @@ public:
                         return false;
                     generator->GetAddrOfGlobal(clang::GlobalDecl(function), false);
                 }
+            }
+            // EN: X2-05. As T15-014 does for the inline definitions, the vague-linkage definitions an adapter may
+            //     reach (a function template specialization such as `wrap<int>`, the members of a class template
+            //     specialization, inline functions) are offered after the adapters: Clang defers them and emits
+            //     only those the adapters reach, which Sema instantiated without this generator attached.
+            // ES: X2-05. Como T15-014 con las definiciones inline, se ofrecen tras los adaptadores las definiciones
+            //     de enlace vago que un adaptador puede alcanzar; Clang las difiere y emite solo las alcanzadas.
+            {
+                std::vector<clang::Decl*> closure;
+                std::set<const clang::Decl*> offered;
+                const auto offer = [&](const clang::FunctionDecl* function) {
+                    const auto* definition = function ? function->getDefinition() : nullptr;
+                    if (!definition || !definition->doesThisDeclarationHaveABody() || definition->isDependentContext() ||
+                        definition->isDeleted() || definition->isInvalidDecl() ||
+                        definition->hasAttr<clang::DLLImportAttr>() ||
+                        definition->getTemplatedKind() == clang::FunctionDecl::TK_FunctionTemplate) return;
+                    if ((definition->isInlined() || definition->isTemplateInstantiation()) &&
+                        offered.insert(definition).second)
+                        closure.push_back(const_cast<clang::FunctionDecl*>(definition));
+                };
+                std::function<void(const clang::DeclContext&, std::size_t)> walk =
+                    [&](const clang::DeclContext& scope, std::size_t depth) {
+                    if (depth > 64) return;
+                    for (const auto* declaration : scope.decls())
+                    {
+                        if (const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration)) offer(function);
+                        else if (const auto* functionTemplate = llvm::dyn_cast<clang::FunctionTemplateDecl>(declaration))
+                            for (const auto* specialization : functionTemplate->specializations()) offer(specialization);
+                        else if (const auto* classTemplate = llvm::dyn_cast<clang::ClassTemplateDecl>(declaration))
+                        {
+                            for (const auto* specialization : classTemplate->specializations())
+                                if (specialization->hasDefinition()) walk(*specialization, depth + 1);
+                        }
+                        else if (const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(declaration);
+                                 record && record->hasDefinition() && !record->isDependentContext())
+                            walk(*record, depth + 1);
+                        else if (llvm::isa<clang::NamespaceDecl>(declaration) ||
+                                 llvm::isa<clang::LinkageSpecDecl>(declaration))
+                            walk(*llvm::cast<clang::DeclContext>(declaration), depth + 1);
+                    }
+                };
+                walk(*thunkContext.getTranslationUnitDecl(), 0);
+                for (auto* declaration : closure)
+                    if (!generator->HandleTopLevelDecl(clang::DeclGroupRef(declaration))) return false;
             }
             generator->HandleTranslationUnit(thunkContext);
             auto module = generator->ReleaseModule();

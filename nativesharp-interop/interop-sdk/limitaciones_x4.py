@@ -113,4 +113,23 @@ positivo(Caso('x4-exceptions-false', HEXC, SEXC, extra_ref=' Exceptions="false"'
          modes=['directo', 'dll'])
 rechazo(Caso('x4-exceptions-invalido', HEXC, SEXC, extra_ref=' Exceptions="no"', **CPPEXC), 'return 0;',
         'Exceptions must be true or false')
+# X4/X2-05: a function template returning a non-trivial record by value (`Box<T> wrap(T)`): the in-place return
+# adapter of the specialization was never requested (only plain functions were walked) and, once emitted, the
+# specialization it calls was left undefined (Sema instantiated it with no code generator attached). The adapter
+# compilation now walks function template specializations and offers the vague-linkage definitions the adapters
+# reach, as T15-014 does. / Una plantilla de funcion que devuelve un record no trivial por valor.
+HTPL = r'''
+namespace lib {
+int& ct(); int& dt();
+template <typename T> struct Box { T v; explicit Box(T x) : v(x) { ++ct(); } Box(const Box& o) : v(o.v) { ++ct(); } ~Box() { ++dt(); } };
+template <typename T> Box<T> wrap(T x) { return Box<T>(x); }
+struct Maker { int base; template <typename T> Box<T> make(T x) const { return Box<T>(x + base); } };
+}
+'''
+STPL = r'''
+namespace lib { static int c, d; int& ct() { return c; } int& dt() { return d; } }
+'''
+positivo(Caso('x4-plantilla-resultado', HTPL, STPL, language='C++', standard='c++20', extra_ref=' Exceptions="false"'),
+         '{ var b = lib.wrap<int>(42); if (b.v != 42 || lib.wrap<int>(7).v != 7) return 1; }'
+         ' return lib.ct() == 2 && lib.dt() == 2 ? 42 : 2;', modes=['directo', 'dll'])
 fin()
