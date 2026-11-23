@@ -75,6 +75,9 @@ struct ProjectOopMirFunction final
     // X2-05: a NativeSharp function returning a non-trivial C++ record constructs it in the caller's storage (sret).
     //     / Una funcion NativeSharp que devuelve un record C++ no trivial lo construye en el almacenamiento del llamador.
     bool cppConstructedResult = false;
+    // X2-05: the parameters (by-value records) whose temporary the callee destroys; the caller clears their drop
+    //     flags just before the call. / Los parametros cuyo temporal destruye el llamado.
+    std::vector<std::size_t> cppCalleeDestroyedParameters;
     std::vector<std::uint8_t> cppObjectSizeModes;
     // EN: C3-02. The N of each `_BitInt(N)` parameter, then of the result (0 for any other type); empty when none.
     // ES: C3-02. El N de cada parametro `_BitInt(N)` y luego del resultado (0 para otro tipo); vacio si no hay.

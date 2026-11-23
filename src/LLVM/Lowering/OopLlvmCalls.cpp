@@ -1109,6 +1109,11 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         }
 
         const auto* imported = found->second.mirFunction;
+        // X2-05: the drop flags of callee-destroyed temporaries are cleared after the arguments are evaluated
+        //     (lowerExpressionFrame020DirectStaticCall). / Se apagan tras evaluar los argumentos.
+        if (imported && !imported->cppCalleeDestroyedParameters.empty() && argumentOverrides == nullptr)
+            return failValue(error, "X2-05 call with by-value C++ parameter temporaries needs evaluated arguments: " +
+                                        node->calleeName);
         bool hasVariadicRecord = false;
         if (imported && imported->cppSysVCall && (imported->isVariadic || imported->cppVariadicBasePlan))
         {

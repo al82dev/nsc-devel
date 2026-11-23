@@ -1534,6 +1534,9 @@ private:
     bool lowerExpressionFrame007FutureFieldAddress(
         const LlvmExpressionFrame& frame, std::vector<LlvmExpressionFrame>& frames,
         std::vector<LLVMValueRef>& values, std::string& error);
+    // X2-05: clears the drop flag of each by-value parameter temporary its callee destroys, after every argument
+    //     is evaluated and just before the call. / Apaga el indicador de cada temporal que destruye el llamado.
+    bool clearCalleeDestroyedDropFlags(const frontend::ProjectOopMirNode* call, std::string& error);
     bool lowerExpressionFrame008OwnedTemporaryBorrow(
         const LlvmExpressionFrame& frame, std::vector<LlvmExpressionFrame>& frames,
         std::vector<LLVMValueRef>& values, std::string& error);

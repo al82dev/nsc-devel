@@ -2648,6 +2648,9 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             // It does not assert that all C++ types or calling conventions share the C ABI.
             function.isImportedC = true;
             function.cppDllImport = symbol.cppDllImport;
+            if (symbol.cppByValueDirect) // X2-05
+                for (std::size_t index = 0; index < symbol.parameters.size(); ++index)
+                    if (symbol.parameters[index].cppByValueRecord) function.cppCalleeDestroyedParameters.push_back(index);
             function.cAbiName = symbol.mangledName;
             function.mangledName = symbol.mangledName;
             const auto functions = namespaceFunctionModel_->functions();

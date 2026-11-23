@@ -263,10 +263,37 @@ static bool appendCppInlineObjects(frontend::ProjectCompilation &compilation,
     error.clear();
     if (compilation.cppProjectSessions().empty()) return true;
     std::vector<std::string> remaining;
+    // EN: X2-05. A by-value adapter is generated only when a call reaches it: a call whose by-value records are all
+    //     prvalues calls the original function instead, and an unused adapter of several non-trivial records would
+    //     still bring Clang's EH cleanup (`__CxxFrameHandler3`) into a link without the CRT.
+    // ES: X2-05. Un adaptador por valor se genera solo si una llamada lo alcanza: una llamada cuyos records por valor
+    //     son todos prvalues llama a la funcion original, y un adaptador sin uso de varios records no triviales
+    //     traeria igual la limpieza EH de Clang a un enlace sin CRT.
+    std::set<std::string> called;
+    {
+        std::vector<const frontend::ProjectOopMirNode*> pending;
+        for (const auto& function : mir.functions()) pending.push_back(function.body.get());
+        while (!pending.empty())
+        {
+            const auto* node = pending.back();
+            pending.pop_back();
+            if (node == nullptr) continue;
+            if (!node->calleeName.empty()) called.insert(node->calleeName);
+            for (const auto& child : node->children) pending.push_back(child.get());
+        }
+    }
+    const auto* namespaceFunctions = compilation.namespaceFunctionModel();
     for (const auto& function : mir.functions())
     {
         if ((!function.isImportedC && !function.isCppExternal) || function.cppDllImport ||
             !function.importDllName.empty()) continue;
+        if (namespaceFunctions && function.namespaceFunctionOrdinal &&
+            *function.namespaceFunctionOrdinal < namespaceFunctions->functions().size())
+        {
+            const auto& symbol = namespaceFunctions->functions()[*function.namespaceFunctionOrdinal];
+            if (symbol.cppClangUsr && symbol.cppClangUsr->ends_with("@nsc-byvalue") &&
+                !called.contains(function.mangledName)) continue;
+        }
         const auto& symbol = function.cAbiName.empty() ? function.mangledName : function.cAbiName;
         if (!symbol.empty()) remaining.push_back(symbol);
     }

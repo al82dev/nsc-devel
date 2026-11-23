@@ -1433,6 +1433,10 @@ bool restoreMirFunctionCore(
     if (!restoreMirFunctionCoreWithSyntax(bytes, function, syntaxTable)) return false;
     // The plan belongs to the current HIR declaration, not to cached syntax.
     function.cppVariadicBasePlan = source.cppVariadicBasePlan;
+    // X2-05: so do the C++ construction contracts. / Tambien los contratos de construccion C++.
+    function.cppFactoryConstruction = source.cppFactoryConstruction;
+    function.cppConstructedResult = source.cppConstructedResult;
+    function.cppCalleeDestroyedParameters = source.cppCalleeDestroyedParameters;
     return true;
 }
 

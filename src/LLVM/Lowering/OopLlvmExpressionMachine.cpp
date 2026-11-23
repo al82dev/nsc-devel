@@ -744,13 +744,6 @@ bool OopLlvmImplementation::lowerExpressionFrame008OwnedTemporaryBorrow(
                 values.push_back(nullptr);
                 return true;
             }
-            // X2-05: a by-value parameter's temporary is destroyed by its callee (Microsoft x64), never here.
-            //     / El temporal de un parametro por valor lo destruye su llamado, nunca aqui.
-            if (!current->automaticDestruction)
-            {
-                values.push_back(storage->second);
-                return true;
-            }
             const auto flag = localValueDropFlags_.find(*current->localOrdinal);
             if (flag != localValueDropFlags_.end())
                 LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0), flag->second);
@@ -1247,6 +1240,28 @@ bool OopLlvmImplementation::lowerExpressionFrame019DelegateInvoke(
     return true;
 }
 
+bool OopLlvmImplementation::clearCalleeDestroyedDropFlags(
+        const frontend::ProjectOopMirNode* call, std::string& error)
+{
+    const auto found = functions_.find(call->calleeName);
+    const auto* callee = found != functions_.end() ? found->second.mirFunction : nullptr;
+    if (callee == nullptr || callee->cppCalleeDestroyedParameters.empty()) return true;
+    for (std::size_t index = 0; index < call->children.size(); ++index)
+    {
+        const std::size_t parameter = index < call->argumentParameterOrdinals.size()
+            ? call->argumentParameterOrdinals[index] : index;
+        if (std::find(callee->cppCalleeDestroyedParameters.begin(), callee->cppCalleeDestroyedParameters.end(),
+                      parameter) == callee->cppCalleeDestroyedParameters.end()) continue;
+        const auto* argument = call->children[index].get();
+        const auto flag = argument != nullptr && argument->kind == frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow &&
+                argument->localOrdinal ? localValueDropFlags_.find(*argument->localOrdinal) : localValueDropFlags_.end();
+        if (flag == localValueDropFlags_.end())
+            return fail(error, "X2-05 by-value C++ parameter temporary has no drop flag for " + call->calleeName);
+        LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0), flag->second);
+    }
+    return true;
+}
+
 bool OopLlvmImplementation::lowerExpressionFrame020DirectStaticCall(
         const LlvmExpressionFrame& frame, std::vector<LlvmExpressionFrame>& frames,
         std::vector<LLVMValueRef>& values, std::string& error)
@@ -1270,6 +1285,11 @@ bool OopLlvmImplementation::lowerExpressionFrame020DirectStaticCall(
     {
         argumentOverrides[i - 1] = values.back();
         values.pop_back();
+    }
+    if (!clearCalleeDestroyedDropFlags(current, error))
+    {
+        values.push_back(nullptr);
+        return true;
     }
     values.push_back(lowerStaticCall(current, error, &argumentOverrides));
     return true;

@@ -7,6 +7,7 @@ NativeSharp construye el resultado en el local (adaptador en sitio, elision gara
   atraviesa el frame NativeSharp, `a` se destruye y `b`, que nunca se construyo, no (anotacion `12`);
 - un retorno temprano destruye el local una sola vez;
 - ni `make` ni `make_only` copian ni mueven: el objeto se construye una vez en el destino;
+- `take_two(make(3), make(4))` (dos records por valor) construye cada prvalue en su parametro, sin copias;
 - el resultado se compara con el mismo programa escrito en C++ (Clang 23.1.0), O0-O3.
 En estatica el ejecutable arranca por el runtime de C (`--crt-startup`); con --dll la biblioteca es una DLL con su
 propio runtime. Una plantilla precompilada que devuelve el record queda fuera (catalogo, R2).
@@ -63,6 +64,7 @@ private:
 };
 API Obj make(int v);
 API Only make_only(int v);
+API int take_two(Obj a, Obj b);
 API int run(Cb f);
 API int trace() noexcept;
 API int copies() noexcept;
@@ -82,6 +84,7 @@ Only::Only(Only&& o) noexcept : v_(o.v_) { ++moved; ++live; }
 Only::~Only() { --live; }
 Obj make(int v) { if (v < 0) throw 7; return Obj(v); }
 Only make_only(int v) { return Only(v); }
+int take_two(Obj a, Obj b) { return a.value() + b.value(); }
 int run(Cb f) { try { return f(); } catch (int e) { return 100 + e; } }
 int trace() noexcept { return marks; }
 int copies() noexcept { return copied; }
@@ -93,18 +96,21 @@ CONTROL = '''#include "api.h"
 static int throwing() { auto a = X2::make(1); auto b = X2::make(-1); return a.value() + b.value(); }
 static int early() { auto a = X2::make(5); if (a.value() == 5) return 40; return 0; }
 static int only() { auto m = X2::make_only(2); return m.value(); }
+static int pair() { return X2::take_two(X2::make(3), X2::make(4)); }
 int main()
 {
     int r = X2::run(throwing);
     int t = X2::trace();
     int e = early();
     int o = only();
-    return r * 1000000 + t * 1000 + (e + o) * 10 + X2::copies() + X2::moves() + X2::alive();
+    int p = pair();
+    return r * 1000000 + t * 1000 + (e + o + p) * 10 + X2::copies() + X2::moves() + X2::alive();
 }
 '''
 NS = '''int Throwing() { var a = X2.make(1); var b = X2.make(-1); return a.value() + b.value(); }
 int Early() { var a = X2.make(5); if (a.value() == 5) return 40; return 0; }
 int OnlyValue() { var m = X2.make_only(2); return m.value(); }
+int Pair() { return X2.take_two(X2.make(3), X2.make(4)); }
 int Main()
 {
     X2.Cb throwing = () => Throwing();
@@ -112,7 +118,8 @@ int Main()
     int t = X2.trace();
     int e = Early();
     int o = OnlyValue();
-    return r * 1000000 + t * 1000 + (e + o) * 10 + X2.copies() + X2.moves() + X2.alive();
+    int p = Pair();
+    return r * 1000000 + t * 1000 + (e + o + p) * 10 + X2.copies() + X2.moves() + X2.alive();
 }
 '''
 
@@ -132,8 +139,9 @@ def run(label, command, cwd, expected=0, extra_env=None):
 if 'clang version 23.1.0' not in run('clang-version', ['clang.exe', '--version'], root).stdout:
     raise SystemExit('Se requiere Clang 23.1.0')
 # a(1) is built (1), make(-1) throws before b exists, a is destroyed (2): marks 12, read before early(); early()
-# and only() add 40 + 2; no copy, no move, nothing alive at the end: 107 * 1e6 + 12 * 1e3 + 42 * 10.
-EXPECTED = 107 * 1000000 + 12 * 1000 + 42 * 10
+# and only() add 40 + 2; pair() passes two prvalues by value (each built in its parameter, destroyed by the callee)
+# and adds 7; no copy, no move, nothing alive at the end: 107 * 1e6 + 12 * 1e3 + 49 * 10.
+EXPECTED = 107 * 1000000 + 12 * 1000 + 49 * 10
 for opt in range(4):
     case = root / f'O{opt}'
     case.mkdir()

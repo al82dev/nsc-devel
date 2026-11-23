@@ -434,7 +434,9 @@ void ProjectOopHirModel::ownCppTemporaries()
             const bool destroyedByCallee = calleeDestroyed.contains(node);
             auto owner = ownTemporary(materialized ? std::move(node->children.front()) : std::move(*slot));
             owner->referenceResult = true;
-            owner->automaticDestruction = !destroyedByCallee;
+            // X2-05: a by-value parameter's temporary keeps its cleanup until its call, which clears its drop flag
+            //     (the callee destroys it). / Conserva su limpieza hasta su llamada, que apaga su indicador.
+            owner->automaticDestruction = true;
             owner->cppCalleeDestroyed = destroyedByCallee;
             ProjectOopHirNode* ownerNode = owner.get();
             *slot = std::move(owner);

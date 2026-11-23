@@ -111,7 +111,8 @@ rechazo(c, 'var o = new lib.Obj(1); return o("x");', "no C++ 'operator()'")
 # X2-05: a factory prvalue passed to a by-value parameter was a rejection ("no viable overload of namespace function
 # 'lib.take_val'"): the by-value adapter would have copied it. It is now constructed in the temporary the original
 # function receives and destroys (Microsoft x64), as C++ constructs the parameter in place: one constructor, no copy or
-# move, one destructor (the callee's). A copy is written as a prvalue too (`new T(in o)`).
+# move, one destructor (the callee's). A copy is written as a prvalue too (`new T(in o)`). With several such
+# arguments each keeps its cleanup until the call (an exception while building a later one destroys it).
 # X2-05: un prvalue de fabrica a un parametro por valor era un rechazo; ahora se construye en el temporal que recibe y
 # destruye la funcion original, como C++ construye el parametro en su lugar.
 BODY_PRVALUE = r'''
@@ -119,7 +120,7 @@ BODY_PRVALUE = r'''
     ref lib.Counters k = ref lib.counters();
     if (lib.take_val(lib.make(40)) != 40) return 1;
     if (k.ctor != 1 || k.copy + k.move != 0 || k.dtor != 1) return 2;
-    if (lib.take_val(new lib.Obj(1)) + lib.take_val(new lib.Obj(1)) + lib.take_val(lib.make(1)) != 3) return 3;
+    if (lib.take_val(new lib.Obj(1)) + lib.take_two(new lib.Obj(1), lib.make(1)) != 3) return 3;
     if (k.ctor != 4 || k.copy + k.move != 0 || k.dtor != 4) return 4;
     { var o = new lib.Obj(7); if (lib.take_val(new lib.Obj(in o)) != 7) return 5; }
     if (k.ctor != 5 || k.copy != 1 || k.move != 0 || k.dtor != 6) return 6;
