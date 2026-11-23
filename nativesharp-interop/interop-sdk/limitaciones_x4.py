@@ -60,6 +60,20 @@ positivo(Caso('x4-plantilla-variable', HV, None, **CPP),
          'int a = lib.sz<int>; bool s = lib.same<int, int>; if (!s || lib.same<int, long>) return 1;\n'
          'long v = lib.sq<6>; return lib.sz<long> * 5 + 2 == 42 && a == 4 && v == 36 ? 42 : 2;',
          modes=['directo', 'dll'])
+# X4-04: a `float`/`double` constexpr variable template was rejected (only integers and bool were read); its bits are
+# read through `__builtin_bit_cast` and it becomes the decimal literal that converts back to the same value.
+# X4-04: una plantilla de variable constexpr float/double se rechazaba; ahora se lee por sus bits.
+HVF = r'''
+namespace lib {
+template<class T> constexpr T pi = T(3.25);
+template<class T> constexpr T tenth = T(0.1);
+template<int N> constexpr double half = N / 2.0;
+}
+'''
+positivo(Caso('x4-plantilla-variable-flotante', HVF, None, **CPP),
+         'double d = lib.pi<double>; float f = lib.pi<float>; double t = lib.tenth<double>;\n'
+         '    if (d != 3.25 || f != 3.25f || t != 0.1 || lib.tenth<float> != 0.1f || lib.half<5> != 2.5) return 1;\n'
+         '    return 42;', modes=['directo', 'dll'])
 positivo(Caso('x4-comparacion', HV, None, **CPP), 'int a = 3, b = 2, c = 1; bool x = a < b; return x || c > a ? 1 : 42;',
          modes=['directo'])
 rechazo(Caso('x4-plantilla-variable-double', HV, None, **CPP), 'return (int)lib.zero<double>;',

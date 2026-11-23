@@ -20,6 +20,9 @@
 #include "nativesharp/Source/SourceFile.h"
 #include "nativesharp/Source/SourcePosition.h"
 
+#include <cmath>
+#include <cstdio>
+#include <cstring>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -3887,6 +3890,44 @@ void evaluateVariableTemplatesInTree(ast::AstNode& node, ast::AstArena& arena, c
         for (const auto& session : sessions)
         {
             if (!session) continue;
+            // EN: X4-04. A `float` or `double` constant is read through its bits (`__builtin_bit_cast` is an integer
+            //     constant expression) and written as the decimal literal that converts back to the same value.
+            // ES: X4-04. Una constante `float` o `double` se lee por sus bits y se escribe como el literal decimal
+            //     que vuelve al mismo valor.
+            for (const bool single : {false, true})
+            {
+                const std::string type = single ? "float" : "double";
+                const auto isFloating = session->evaluateIntegerConstantExpression(
+                    "__is_same(__remove_cvref(decltype(" + *spelling + ")), " + type + ") ? 1 : 0");
+                if (!isFloating || !isFloating->first) continue;
+                const auto bits = session->evaluateIntegerConstantExpression("__builtin_bit_cast(" +
+                    std::string(single ? "unsigned int" : "unsigned long long") + ", (" + type + ")(" + *spelling + "))");
+                if (!bits) break;
+                double value = 0.0;
+                if (single)
+                {
+                    const auto raw = static_cast<std::uint32_t>(bits->first);
+                    float narrow = 0.0F;
+                    std::memcpy(&narrow, &raw, sizeof narrow);
+                    value = narrow;
+                }
+                else
+                {
+                    const std::uint64_t raw = bits->first;
+                    std::memcpy(&value, &raw, sizeof value);
+                }
+                if (!std::isfinite(value)) break;
+                char text[64];
+                std::snprintf(text, sizeof text, single ? "%.9g" : "%.17g", value);
+                std::string literalText(text);
+                if (literalText.find_first_of(".eE") == std::string::npos) literalText += ".0";
+                if (single) literalText += "f";
+                auto* literal = arena.make<ast::AstNode>(ast::AstNodeKind::FloatingLiteralExpression, child->range());
+                literal->setTokenKind(lexer::TokenKind::FloatingLiteral);
+                literal->setText(literalText);
+                literal->setFloatingValue(single ? static_cast<double>(static_cast<float>(value)) : value);
+                return literal;
+            }
             // The probe accepts integer types; a bool is read through `? 1 : 0`. / La sonda acepta enteros; un bool
             //     se lee con `? 1 : 0`.
             const auto isBool = session->evaluateIntegerConstantExpression(
