@@ -254,6 +254,10 @@ SN = ('namespace lib { Node::Node(int i) : id(i) {} int Node::value() const { re
 positivo(Caso('x3-base-argumentos', HN, SN, **CPP), 'var l = new Leaf(12); return lib.read((lib.Node*)l);',
          preludio='class Leaf : lib.Node { public Leaf(int k) : base(k) { } public int value() { return 30; } }\n',
          modes=['directo', 'dll'])
+rechazo(Caso('x3-base-sin-defecto', HN, SN, **CPP), 'return 0;', 'must declare a constructor that calls base(...)',
+        preludio='class Leaf : lib.Node { public int value() { return 30; } }\n')
+rechazo(Caso('x3-base-sin-defecto', HN, SN, **CPP), 'return 0;', 'must call base(...)',
+        preludio='class Leaf : lib.Node { public Leaf() { } public int value() { return 30; } }\n')
 positivo(Caso('x3-base-destructor', HO, SO, **CPP), BODYO,
          preludio='class X : lib.Owning { public int f() { return 32; } }\nclass Y : lib.VOwning { public int g() { return 33; } }\n',
          modes=['directo', 'dll'])

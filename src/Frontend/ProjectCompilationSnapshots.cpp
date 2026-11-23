@@ -594,6 +594,25 @@ bool ProjectCompilation::buildInheritanceModel()
                         interface->identity.fullyQualifiedName() + "': " + message);
                 implemented = false;
             };
+            // X3-01: without a default constructor the C++ object is built by `base(args)` only. / Sin constructor
+            //     por defecto, el objeto C++ solo lo construye `base(args)`.
+            if (!interface->cppInterfaceDefaultConstructible)
+            {
+                bool constructors = false;
+                for (const auto ordinal : memberModel_->membersOfType(field.declaringTypeOrdinal))
+                {
+                    const auto& member = memberModel_->members()[ordinal];
+                    if (member.kind != ClassMemberKind::Constructor || member.isStatic) continue;
+                    constructors = true;
+                    const auto* initializer = member.syntax != nullptr ? member.syntax->second() : nullptr;
+                    if (initializer == nullptr || initializer->kind() != ast::AstNodeKind::BaseConstructorInitializer)
+                        report("its constructor '" + member.signatureKey + "' must call base(...): the C++ class has no "
+                               "accessible default constructor");
+                }
+                if (!constructors)
+                    report("it must declare a constructor that calls base(...): the C++ class has no accessible default "
+                           "constructor");
+            }
             for (const auto& name : interface->cppInterfaceMethods)
             {
                 const ClassMemberSymbol* cpp = nullptr;

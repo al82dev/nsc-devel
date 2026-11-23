@@ -174,6 +174,10 @@ struct CppImportedTypeDeclaration final
     // X3-01: the record has a non-trivial destructor, which runs when the NativeSharp object is destroyed. / El record
     //     tiene un destructor no trivial, que se ejecuta cuando se destruye el objeto NativeSharp.
     bool cppInterfaceDestructor = false;
+    // X3-01: the record can be constructed by default (a public, not deleted default constructor, also implicit);
+    //     otherwise every constructor of a derived NativeSharp class calls `base(args)`. / El record se construye por
+    //     defecto; si no, cada constructor de una clase derivada llama a `base(args)`.
+    bool cppInterfaceDefaultConstructible = false;
 };
 
 class ProjectNameLookup final

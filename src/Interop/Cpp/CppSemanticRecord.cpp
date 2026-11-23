@@ -4756,6 +4756,20 @@ bool selectExperimentalCppRecordTypesForCompilation(
                 type.cppInterfaceMethods = std::move(names);
                 type.cppInterfacePureMethods = std::move(pure);
                 type.cppInterfaceDestructor = destructor;
+                bool userConstructors = false;
+                bool defaultConstructor = false;
+                for (const auto& method : declaration.methods)
+                    if (method.kind == CppMethodKind::Constructor && !method.inherited)
+                    {
+                        userConstructors = true;
+                        const bool noArguments = std::all_of(method.parameters.begin(), method.parameters.end(),
+                            [](const auto& parameter) { return parameter.hasDefaultArgument; });
+                        if (noArguments && !method.isDeleted && method.access == CppAccess::Public)
+                            defaultConstructor = true;
+                    }
+                type.cppInterfaceDefaultConstructible = defaultConstructor ||
+                    (!userConstructors && declaration.implicitLifetimeMembers &&
+                     declaration.implicitLifetimeMembers->defaultConstructor);
             }
         }
         const auto value = observeCppRecordValueForEntry(observation.inventory[*selected], compilation.cppProjectSessions());
