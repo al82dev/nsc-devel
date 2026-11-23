@@ -110,7 +110,12 @@ int use_mode(enum mode m, mode n);
 '''
 c6b = Caso('c5-nombres-etiqueta', H6b, 'int use_mode(enum mode m, mode n) { return (int)m + n; }\n', standard='c23')
 positivo(c6b, 'return use_mode(slow, 1);')
-rechazo(c6b, 'mode n = 1; return use_mode(slow, n);', "C/C++ type alias conflicts with a native type 'mode'")
+# C5-06: naming the type was a rejection ("C/C++ type alias conflicts with a native type 'mode'"); as in C, the ordinary
+# name `mode` written as a type is the typedef (`int`), while `enum mode` stays the tag of use_mode's first parameter.
+# C5-06: nombrar el tipo era un rechazo; como en C, el nombre ordinario `mode` es el typedef.
+S6b = 'int use_mode(enum mode m, mode n) { return (int)m + n; }\n'
+positivo(Caso('c5-nombres-etiqueta-typedef', H6b, S6b, standard='c23'),
+         'mode n = 1; int k = n + 0; return use_mode(slow, k);')
 
 H7 = r'''
 typedef struct P { int x, y; } P;

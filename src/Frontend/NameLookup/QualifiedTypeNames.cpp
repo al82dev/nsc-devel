@@ -568,7 +568,28 @@ bool ProjectNameLookup::expandCppTypeAlias(
                         selected->declaration.underlyingType.canonicalSpelling;
             });
         };
-        if (!nativeCandidates.empty())
+        // EN: C5-06. C keeps tags apart from ordinary names: with `enum mode` and `typedef int mode` the name `mode`
+        //     written as a type is the typedef, as in C. When every other type of that name is a C tag of the same
+        //     project (an imported enum, struct or union that is not the alias's own target), the typedef wins; the
+        //     tag stays reachable by its identity (the signatures that name `enum mode`).
+        // ES: C5-06. C separa las etiquetas de los nombres ordinarios: con `enum mode` y `typedef int mode`, el nombre
+        //     `mode` escrito como tipo es el typedef, como en C. Si todos los otros tipos de ese nombre son etiquetas C
+        //     del mismo proyecto (y no el destino del propio alias), gana el typedef.
+        const bool cOrdinaryName = !nativeCandidates.empty() && !record && !enumeration &&
+            std::all_of(nativeCandidates.begin(), nativeCandidates.end(), [&](const auto candidate) {
+                const auto* declaration = typeForOrdinal(candidate);
+                if (!declaration) return false;
+                return std::any_of(cppImportedTypes_.begin(), cppImportedTypes_.end(), [&](const auto& imported) {
+                    return imported.projectOrdinal == selected->projectOrdinal &&
+                        (imported.identity.key() == declaration->identity.key() ||
+                         (imported.reconciledIdentityKey &&
+                          *imported.reconciledIdentityKey == declaration->identity.key())) &&
+                        (imported.origin == CppImportedTypeOrigin::CEnum ||
+                         imported.origin == CppImportedTypeOrigin::CStruct ||
+                         imported.origin == CppImportedTypeOrigin::CUnion);
+                });
+            });
+        if (!nativeCandidates.empty() && !cOrdinaryName)
         {
             if (record && record->pointerDepth == 0 && !record->pointeeConst &&
                 selected->projectOrdinal == owner && (!selected->equivalentRecordFunctionAliases.empty() ||
