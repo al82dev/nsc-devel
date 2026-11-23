@@ -309,7 +309,23 @@ void ProjectOopHirModel::ownCppTemporaries()
             if (node == nullptr || node->kind == ProjectOopHirNodeKind::LambdaCreate) continue;
             for (const auto& child : node->children) pending.push_back(child.get());
             if (node->kind != ProjectOopHirNodeKind::Return || node->children.size() != 1 ||
-                node->children[0] == nullptr || node->children[0]->kind != ProjectOopHirNodeKind::LocalValue ||
+                node->children[0] == nullptr) continue;
+            // `return move(o);` is the same move in C++; o, moved from, is still destroyed by its scope.
+            // `return move(o);` es el mismo movimiento en C++; o, ya movido, lo sigue destruyendo su ambito.
+            if (node->children[0]->kind == ProjectOopHirNodeKind::MoveValue)
+            {
+                const auto& moved = *node->children[0];
+                const std::optional<std::size_t> ordinal = moved.localOrdinal ? moved.localOrdinal
+                    : moved.children.size() == 1 && moved.children[0] ? moved.children[0]->localOrdinal
+                    : std::nullopt;
+                if (ordinal)
+                {
+                    auto local = makeNode(ProjectOopHirNodeKind::LocalValue, moved.syntax, moved.typeKey);
+                    local->localOrdinal = ordinal;
+                    node->children[0] = std::move(local);
+                }
+            }
+            if (node->children[0]->kind != ProjectOopHirNodeKind::LocalValue ||
                 !node->children[0]->localOrdinal || node->children[0]->typeKey != function.returnTypeKey) continue;
             auto& value = node->children[0];
             const ast::AstNode* syntax = value->syntax;

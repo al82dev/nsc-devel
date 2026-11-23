@@ -146,8 +146,10 @@ BODY_NRVO = r'''
 '''
 positivo(Caso('x2-retorno-local', H, S, **CPP), BODY_NRVO,
          preludio='lib.Obj Keep() { var o = lib.make(42); return o; }\n', modes=['directo'])
-rechazo(c, 'var o = Keep(); return o.v;', 'cannot copy or transfer a C++ value',
-        preludio='lib.Obj Keep() { var o = lib.make(42); return move(o); }\n')
+# X2-05: `return move(o);` was a rejection ('cannot copy or transfer a C++ value'); it is the same move in C++, and
+# the moved-from local is still destroyed. / Era un rechazo; es el mismo movimiento y el local movido se destruye.
+positivo(Caso('x2-retorno-move', H, S, **CPP), BODY_NRVO,
+         preludio='lib.Obj Keep() { var o = lib.make(42); return move(o); }\n', modes=['directo'])
 # X2-05: this temporary used as a receiver was a rejection ('cannot copy or transfer a C++ value'); it is now
 # constructed in a hidden owner and destroyed at the end of the full expression (counters), as a C++ temporary.
 # X2-05: este temporal receptor era un rechazo; ahora se construye en un dueno oculto y se destruye al final de la
