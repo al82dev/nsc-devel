@@ -2476,33 +2476,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
     checkNamespaceFunctionArgumentPassKinds(
         expression, callable, functionOrdinal, arguments,
         selected, hasForwardedReceiver, diagnostics);
-    // EN: X2-05. A prvalue for a record parameter by value is constructed in the callee's parameter, which the
-    //     original function receives and destroys; an object lent with `in`/`ref` in the same call would need its
-    //     own copy there, so that mix is rejected.
-    // ES: X2-05. Un prvalue para un parametro record por valor se construye en el parametro del llamado, que recibe y
-    //     destruye la funcion original; un objeto prestado con `in`/`ref` en la misma llamada necesitaria ahi su
-    //     propia copia, asi que esa mezcla se rechaza.
-    if (!hasForwardedReceiver && functionOrdinal < namespaceCallableAdapters().size())
-    {
-        bool prvalue = false;
-        bool lent = false;
-        for (std::size_t index = 0; index < arguments.size() && index < selected.argumentParameterOrdinals.size(); ++index)
-        {
-            const std::size_t ordinal = selected.argumentParameterOrdinals[index];
-            if (ordinal >= callable.parameters.size() || !callable.parameters[ordinal].cppByValueRecord) continue;
-            if (arguments[index].argumentPassKind == ParameterPassKind::Value) prvalue = true;
-            else lent = true;
-        }
-        if (prvalue && lent)
-        {
-            diagnostics.report(diagnostics::DiagnosticId::InvalidCall, diagnostics::DiagnosticSeverity::Error,
-                expression->range(), "a C++ record prvalue argument is constructed in the by-value parameter, but "
-                    "another by-value record argument of this call is lent with 'in' or 'ref': pass each as a value "
-                    "(new T(in o) copies one)");
-            call.resolution = MethodCallResolutionKind::NoViableCandidate;
-            return {};
-        }
-    }
     // EN: X1-03. A C++ `= delete` overload takes part in selection, as in C++; a call that selects it is rejected
     //     instead of falling back to another overload or reaching the linker.
     // ES: X1-03. Una sobrecarga C++ `= delete` participa en la seleccion, como en C++; una llamada que la elige se

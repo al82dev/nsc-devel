@@ -360,7 +360,30 @@ void ProjectOopHirModel::ownCppTemporaries()
         //     C++ materializadas llama en su lugar a la funcion original (su variante directa oculta): cada prvalue
         //     se construye en el temporal que recibe y destruye el llamado, asi que el llamador no registra su
         //     destructor, como C++ construye el parametro en su lugar.
+        // EN: An object lent with `in` (`ref` for a move-only record) is the copy (the move) C++ constructs in that
+        //     parameter: it becomes that construction, built in the same temporary.
+        // ES: Un objeto prestado con `in` (`ref` si solo se mueve) es la copia (el movimiento) que C++ construye en ese
+        //     parametro: se vuelve esa construccion, en el mismo temporal.
+        const auto lifetimeConstructor = [&](const std::string& typeKey, bool move) -> std::optional<std::size_t> {
+            const auto ordinal = typeKey.starts_with("type:")
+                ? nameLookup_->typeOrdinalForIdentity(std::string_view(typeKey).substr(5)) : std::nullopt;
+            if (!ordinal || memberModel_ == nullptr) return std::nullopt;
+            for (const std::size_t member : memberModel_->findMembers(*ordinal, ".ctor"))
+            {
+                if (member >= memberModel_->members().size()) continue;
+                const auto& constructor = memberModel_->members()[member];
+                if (!constructor.isCppExternal || constructor.cppDeleted || constructor.cppFactoryConstructor ||
+                    constructor.parameters.size() != 1 ||
+                    constructor.accessibility != ClassMemberAccessibility::Public) continue;
+                const auto& parameter = constructor.parameters[0];
+                if (parameter.pointeeTypeKey != typeKey) continue;
+                if (move ? parameter.passKind == ParameterPassKind::Ref && parameter.cppRvalueReference
+                         : parameter.passKind == ParameterPassKind::In) return member;
+            }
+            return std::nullopt;
+        };
         std::unordered_set<const ProjectOopHirNode*> calleeDestroyed;
+        bool rewritten = false;
         if (namespaceFunctionModel_ != nullptr)
             for (ProjectOopHirNode* node : order)
             {
@@ -375,6 +398,7 @@ void ProjectOopHirModel::ownCppTemporaries()
                         functions[ordinal].projectOrdinal == callee.projectOrdinal) direct = ordinal;
                 if (!direct) continue;
                 std::vector<const ProjectOopHirNode*> temporaries;
+                std::vector<std::pair<std::size_t, std::size_t>> lent; // argument index, constructor
                 bool all = true;
                 for (std::size_t index = 0; index < node->children.size(); ++index)
                 {
@@ -382,16 +406,46 @@ void ProjectOopHirModel::ownCppTemporaries()
                         ? node->argumentParameterOrdinals[index] : index;
                     if (parameter >= callee.parameters.size() || !callee.parameters[parameter].cppByValueRecord) continue;
                     const ProjectOopHirNode* argument = node->children[index].get();
+                    const auto& declared = callee.parameters[parameter];
                     if (argument != nullptr && argument->kind == ProjectOopHirNodeKind::TemporaryAddress &&
                         argument->children.size() == 1 && cppConstruction(argument->children.front().get()))
                         temporaries.push_back(argument);
+                    else if (const auto constructor = argument != nullptr &&
+                                 argument->typeKey == declared.pointeeTypeKey + "*"
+                                 ? lifetimeConstructor(declared.pointeeTypeKey, declared.cppRvalueReference)
+                                 : std::nullopt)
+                        lent.emplace_back(index, *constructor);
                     else
                         all = false;
                 }
-                if (!all || temporaries.empty()) continue;
+                if (!all || (temporaries.empty() && lent.empty())) continue;
+                for (const auto& [index, constructor] : lent)
+                {
+                    auto& argument = node->children[index];
+                    const ast::AstNode* syntax = argument->syntax;
+                    const std::string typeKey = argument->typeKey.substr(0, argument->typeKey.size() - 1);
+                    auto construction = makeNode(ProjectOopHirNodeKind::ValueConstruction, syntax, typeKey);
+                    construction->targetTypeOrdinal =
+                        nameLookup_->typeOrdinalForIdentity(std::string_view(typeKey).substr(5));
+                    construction->memberOrdinal = constructor;
+                    construction->argumentCount = 1;
+                    construction->children.push_back(std::move(argument));
+                    auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress, syntax, typeKey);
+                    temporary->elementTypeKey = typeKey;
+                    temporary->children.push_back(std::move(construction));
+                    temporaries.push_back(temporary.get());
+                    argument = std::move(temporary);
+                    rewritten = true;
+                }
                 node->namespaceFunctionOrdinal = *direct;
                 calleeDestroyed.insert(temporaries.begin(), temporaries.end());
             }
+        if (rewritten)
+        {
+            parents.clear();
+            order.clear();
+            indexHirParents(root.get(), parents, order);
+        }
         for (ProjectOopHirNode* node : order)
         {
             // A materialized temporary, or a construction whose address is taken directly.

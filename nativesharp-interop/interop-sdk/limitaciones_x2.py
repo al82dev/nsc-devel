@@ -10,7 +10,7 @@ que destruye el llamado) o `T&&` si solo se mueve (`ref m`, un movimiento). Devo
 en el local (`var o = lib.make(42)`: un constructor, ninguna copia ni movimiento, un destructor) y un resultado descartado
 se construye y se destruye; las excepciones y los tipos move-only los verifica pruebas-x2-retorno-valor/validar.py
 (con CRT, frente a Clang). Un prvalue (`lib.take_val(lib.make(42))`) se construye en el parametro que recibe y
-destruye la funcion original (ABI Microsoft x64), sin copia: mezclarlo con un objeto prestado con `in` se rechaza.
+destruye la funcion original (ABI Microsoft x64), sin copia; un objeto prestado con `in` es la copia construida ahi.
 X2-08: `+=` con resultado `T&`, `++`/`--` prefijos, `*o` (resultado `T&` asignable), `o(args)` y `==`, cada uno sobre el
 objeto en su lugar, sin copiarlo.
 """
@@ -129,9 +129,27 @@ BODY_PRVALUE = r'''
     return 42;
 '''
 positivo(Caso('x2-prvalue-por-valor', H, S, **CPP), BODY_PRVALUE, modes=['directo', 'dll'])
-# Mixing a prvalue with an object lent with `in` in the same call keeps a rejection (the lent one needs its own copy).
-# / Mezclar un prvalue con un objeto prestado con `in` en la misma llamada se rechaza.
-rechazo(c, 'var o = new lib.Obj(1); return lib.take_two(in o, lib.make(2));', 'is lent with')
+# X2-05: mixing a prvalue with an object lent with `in` was a rejection ('is lent with'); the lent object is now the
+# copy C++ constructs in its parameter (`ref m` the move of a move-only record), built in the temporary the callee
+# destroys, so the by-value adapter is not needed: `take_two(in o, in p)`, which did not link without the CRT
+# (`__CxxFrameHandler3` of the adapter), runs too.
+# X2-05: mezclar un prvalue con un objeto prestado con `in` era un rechazo; el objeto prestado es ahora la copia que C++
+# construye en su parametro, en el temporal que destruye el llamado.
+BODY_LENT = r'''
+    lib.reset();
+    ref lib.Counters k = ref lib.counters();
+    { var o = new lib.Obj(40); var p = new lib.Obj(2); if (lib.take_two(in o, in p) != 42) return 1;
+      if (k.ctor != 2 || k.copy != 2 || k.move != 0 || k.dtor != 2) return 2; }
+    if (k.dtor != 4) return 3;
+    lib.reset();
+    { var o = new lib.Obj(40); if (lib.take_two(in o, lib.make(2)) != 42) return 4;
+      if (k.ctor != 2 || k.copy != 1 || k.move != 0 || k.dtor != 2) return 5; }
+    lib.reset();
+    { var m = new lib.MoveOnly(42); if (lib.take_mo(ref m) != 42 || m.v != -1) return 6;
+      if (k.ctor != 1 || k.move != 1 || k.dtor != 1) return 7; }
+    return k.dtor == 2 ? 42 : 8;
+'''
+positivo(Caso('x2-prestado-por-valor', H, S, **CPP), BODY_LENT, modes=['directo', 'dll'])
 rechazo(c, 'var m = new lib.MoveOnly(1); var m2 = new lib.MoveOnly(in m); return 0;', 'constructor')
 # X2-05: the forms that still need a non-local destination keep the former rejection's coverage.
 # X2-05: las formas que aun necesitan un destino no local conservan la cobertura del rechazo anterior.
