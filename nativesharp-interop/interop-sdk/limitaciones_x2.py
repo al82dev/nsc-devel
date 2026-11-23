@@ -363,4 +363,25 @@ positivo(Caso('x2-resultado-asignacion', HF, SF, **CPP),
          '{ var h = new H2(); var x = Make(1); x = h.G(); if (x.v != 7) return 1; x = Make(5); if (x.v != 5) return 2;'
          ' if (lib.c().assign != 2) return 3; }'
          ' return lib.c().ctor == lib.c().dtor && lib.c().ctor == 4 ? 42 : 4;', preludio=PRE_INST, modes=['directo'])
+# X2-05: a C++ record prvalue (`lib.make(3)`, `new lib.Obj(4)`, a NativeSharp `Make(5)`) binds a `const T&`
+# parameter as in C++, materialized for the call with no copy and destroyed at the end of the full expression; a
+# place still binds with `in` (X1-04 left records out: an lvalue would need a copy). Namespace functions and member
+# functions, directo and dll. / Un prvalue record C++ enlaza un parametro `const T&` como en C++, sin copia; un lugar
+# sigue enlazandose con `in`.
+HF2 = HF.replace('Obj make(int v);', 'Obj make(int v); int peek(const Obj& o); struct Cmp { int base; int diff(const Obj& o) const; };')
+SF2 = SF.replace('Obj make(int v) { return Obj(v); }', 'Obj make(int v) { return Obj(v); } int peek(const Obj& o) { return o.v; } int Cmp::diff(const Obj& o) const { return o.v - base; }')
+PRE_CR = 'lib.Obj Make(int k) { return lib.make(k); }\n'
+BODY_CR = r'''
+    if (lib.peek(lib.make(3)) != 3) return 1;
+    if (lib.c().ctor != 1 || lib.c().dtor != 1) return 2;
+    if (lib.peek(new lib.Obj(4)) != 4) return 3;
+    if (lib.peek(Make(5)) != 5) return 4;
+    { var x = Make(6); if (lib.peek(in x) != 6) return 5; }
+    return lib.c().ctor == 4 && lib.c().dtor == 4 && lib.c().assign == 0 ? 42 : 6;
+'''
+positivo(Caso('x2-constref-prvalue', HF2, SF2, **CPP), BODY_CR, preludio=PRE_CR, modes=['directo'])
+positivo(Caso('x2-constref-miembro', HF2, SF2, **CPP),
+         'lib.Cmp k; k.base = 1; int d = k.diff(lib.make(43)); return d == 42 && lib.c().ctor == 1 && lib.c().dtor == 1 ? 42 : 1;',
+         modes=['directo', 'dll'])
+rechazo(Caso('x2-constref-lugar', HF2, SF2, **CPP), 'var x = lib.make(1); return lib.peek(x);', 'lib.peek')
 fin()

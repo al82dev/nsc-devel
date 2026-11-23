@@ -1198,8 +1198,12 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
     //     se enlaza con `in`).
     // X2-05: a prvalue for a C++ record parameter by value is constructed in the callee's parameter (no copy).
     //     / Un prvalue para un parametro record C++ por valor se construye en el parametro del llamado.
+    // X2-05: a C++ record prvalue (a construction or a constructed result, not a place) binds a `const T&` as in
+    //     C++, materialized for the call with no copy; a place still binds with `in`. / Un prvalue record C++ enlaza
+    //     un `const T&` como en C++, materializado sin copia; un lugar sigue enlazandose con `in`.
     const bool rvalueArgument = (parameter.cppRvalueReference ||
-        (parameter.cppConstReference && !cppRecordTypeKey(parameter.pointeeTypeKey)) ||
+        (parameter.cppConstReference && (!cppRecordTypeKey(parameter.pointeeTypeKey) ||
+                                         !arguments[argumentOrdinal].addressable)) ||
         (parameter.cppByValueRecord && !arguments[argumentOrdinal].addressable)) &&
         arguments[argumentOrdinal].argumentPassKind == ParameterPassKind::Value;
     std::string conversionTarget = (hasForwardedReceiver && argumentOrdinal == 0 &&
@@ -6672,8 +6676,8 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     // T19-007: as for a namespace function, a value for a C++ `T&&`. / Como en una funcion de namespace.
     const bool rvalueArgument = !packElement && (candidate.parameters[parameterOrdinal].cppRvalueReference ||
         (candidate.parameters[parameterOrdinal].cppConstReference &&
-         !cppRecordTypeKey(candidate.parameters[parameterOrdinal].pointeeTypeKey))) &&
-        argument.argumentPassKind == ParameterPassKind::Value;
+         (!cppRecordTypeKey(candidate.parameters[parameterOrdinal].pointeeTypeKey) || !argument.addressable))) &&
+        argument.argumentPassKind == ParameterPassKind::Value; // X2-05: a C++ record prvalue too. / Un prvalue tambien.
     std::string conversionTarget = rvalueArgument ? candidate.parameters[parameterOrdinal].pointeeTypeKey
                                                   : candidate.parameters[parameterOrdinal].typeKey;
     if (packElement)
