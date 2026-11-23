@@ -1838,7 +1838,7 @@ bool ProjectMethodBodyModel::recognizeCAtomicFence(
     std::size_t scopeOrdinal,
     std::size_t functionOrdinal,
     std::span<ast::AstNode* const> argumentSyntaxes,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     if (namespaceFunctionModel_ == nullptr || functionOrdinal >= namespaceFunctionModel_->functions().size())
         return true;

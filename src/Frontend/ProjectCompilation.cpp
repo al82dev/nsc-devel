@@ -2271,13 +2271,13 @@ bool ProjectCompilation::compileProjectOopHir(
                     parent->children.size() == 2 && parent->children[0] &&
                     parent->children[0]->kind == ProjectOopHirNodeKind::FieldAddress && parent->children[1].get() == node;
                 if (fieldInitializer) continue;
-                const bool local = returned || experimentalCppLocalLifetimeAnalysisForTests_ && parent &&
+                const bool local = returned || (experimentalCppLocalLifetimeAnalysisForTests_ && parent &&
                     ((parent->kind == ProjectOopHirNodeKind::LocalDeclaration && !parent->referenceLocal &&
                       !parent->staticLocal) ||
                      (parent->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow && parent->referenceResult)) &&
                     parent->children.size() == 1 && parent->children[0].get() == node &&
                     parent->typeKey == node->typeKey && parent->localOrdinal && parent->cleanupRegionOrdinal &&
-                    (parent->automaticDestruction || parent->cppCalleeDestroyed);
+                    (parent->automaticDestruction || parent->cppCalleeDestroyed));
                 if (node->kind != ProjectOopHirNodeKind::ValueConstruction || (!discarded && !local) ||
                     !node->memberOrdinal || *node->memberOrdinal >= memberModel_->members().size())
                 {
