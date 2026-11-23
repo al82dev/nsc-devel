@@ -4799,9 +4799,21 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                     // ES: C5-02. Un `sbyte` que una funcion C devuelve como `signed char` conserva ese tipo C:
                     //     `_Generic` lo distingue de `char`, que es un `sbyte` en otro caso (item 5.5).
                     bool signedCharOrigin = false;
-                    if (!place && value.typeKey == "builtin:sbyte" && argument != nullptr &&
+                    // C5-02: a local declared with `var` from such a value has that C type too, as a C variable has
+                    //     its declared type. / Un local declarado con `var` desde ese valor tambien tiene ese tipo C.
+                    const ast::AstNode* origin = argument;
+                    if (!place && argument != nullptr && value.typeKey == "builtin:sbyte")
+                        if (const MethodNameBinding* name = nameBinding(argument, methodMemberOrdinal);
+                            name && name->kind == MethodNameBindingKind::Local && name->localOrdinal &&
+                            *name->localOrdinal < locals_.size())
+                            if (const auto* declaration = locals_[*name->localOrdinal].syntax;
+                                declaration && declaration->typeSyntax() &&
+                                declaration->typeSyntax()->baseTokenKind() == lexer::TokenKind::KwVar &&
+                                declaration->first())
+                                origin = declaration->first();
+                    if (!place && value.typeKey == "builtin:sbyte" && origin != nullptr &&
                         namespaceFunctionModel_ != nullptr)
-                        if (const auto* call = namespaceFunctionCall(argument);
+                        if (const auto* call = namespaceFunctionCall(origin);
                             call && call->selectedFunctionOrdinal &&
                             *call->selectedFunctionOrdinal < namespaceFunctionModel_->functions().size())
                         {

@@ -49,6 +49,13 @@ positivo(Caso('c5-generic', H2, S2),
          'var c = get_c(); sbyte s = 5;\n'
          '    if (KIND(c) != 1 || KIND(s) != 1 || KIND(get_sc()) != 2 || KIND(get_c()) != 1 || KIND(get_uc()) != 3) return 1;\n'
          '    return 42;')
+# C5-02 (item 5.5): a local lost the C origin of its value; a local declared with `var` from a C `signed char` value now
+# has that C type, as a C variable has its declared type. A local written `sbyte` is NativeSharp's 8-bit signed type,
+# which goes back to C as `char` (item 5.5). / Un local `var` desde un valor C `signed char` tiene ese tipo C.
+positivo(Caso('c5-generic-local', H2, S2),
+         'var v = get_sc(); sbyte e = get_sc(); var c = get_c();\n'
+         '    if (KIND(v) != 2 || KIND(e) != 1 || KIND(c) != 1 || v != -1) return 1;\n'
+         '    return 42;')
 
 H3 = r'''
 extern int arr1[];
