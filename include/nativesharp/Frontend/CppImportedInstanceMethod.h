@@ -72,5 +72,7 @@ struct CppImportedLifetimeMethod
     std::vector<bool> parameterRvalueReferences = {};
     // X2-05: a factory function that constructs the owner in place (`T f(...)`). / Una funcion fabrica.
     bool factory = false;
+    // X2-05: a hidden move constructor, only for C++'s implicit move. / Solo para el movimiento implicito.
+    bool implicitMoveOnly = false;
 };
 }

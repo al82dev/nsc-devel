@@ -7375,6 +7375,13 @@ bool ProjectMethodBodyModel::reportDirectOwnerReturnWithoutMove(
     // EN: Freeze (plan item 136): the classifier names the owner local or parameter.
     // ES: Congelamiento (elemento 136 del plan): el clasificador nombra el local o parametro owner.
     const KnownLifeSources returned = knownLifeSourcesOfValue(statement->first(), &method, scopeOrdinal);
+    // EN: X2-05. `return o;` of a non-trivial C++ local is C++'s implicit move: the caller's result is move-
+    //     constructed (or copy-constructed) from o, which its scope then destroys.
+    // ES: X2-05. `return o;` de un local C++ no trivial es el movimiento implicito de C++: el resultado del llamador
+    //     se construye por movimiento (o copia) desde o, que su ambito destruye despues.
+    if (returned.moveOnlyOwner && returned.local && *returned.local < locals_.size() &&
+        cppNonTrivialTemporary(ExpressionResult{.typeKey = locals_[*returned.local].typeKey, .valid = true}))
+        return false;
     if (returned.raiiOwner || returned.moveOnlyOwner)
     {
         const MethodLocalSymbol& local = locals_[*returned.local];
@@ -7481,6 +7488,10 @@ bool ProjectMethodBodyModel::rejectMoveOnlyPlaceReturn(
     if (directOwnerReturnWithoutMove || memberModel_ == nullptr || !value.addressable ||
         statement->first()->kind() == ast::AstNodeKind::MoveExpression ||
         !memberModel_->typeIsMoveOnly(value.typeKey)) return false;
+    // X2-05: a non-trivial C++ local returned by name is moved into the result (implicit move). / Un local C++ no
+    //     trivial devuelto por nombre se mueve al resultado (movimiento implicito).
+    if (statement->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+        cppNonTrivialTemporary(ExpressionResult{.typeKey = value.typeKey, .valid = true})) return false;
     diagnostics.report(
         diagnostics::DiagnosticId::NS3020InvalidValueCategory,
         diagnostics::DiagnosticSeverity::Error,

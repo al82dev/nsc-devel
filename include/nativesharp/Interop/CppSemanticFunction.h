@@ -166,6 +166,9 @@ struct CppSemanticLifetimeMethod
     std::string cppDeclarationSpelling = {};
     // T19-007: which parameters are C++ `T&&` (ref parameters that also bind a value). / Cuales son `T&&`.
     std::vector<bool> rvalueReferences = {};
+    // X2-05: a move constructor a copy constructor hides (T11-016), kept only for C++'s implicit move. / Un
+    //     constructor de movimiento que oculta uno de copia, conservado solo para el movimiento implicito de C++.
+    bool implicitMoveOnly = false;
 };
 using CppSemanticLifetimeMethodResult = std::variant<CppSemanticLifetimeMethod, CppSemanticFunctionFailure>;
 // Metadata only: no storage, construction, destruction, or unwinding is implied.

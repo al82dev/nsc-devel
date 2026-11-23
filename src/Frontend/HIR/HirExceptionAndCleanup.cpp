@@ -278,6 +278,52 @@ void ProjectOopHirModel::ownCppTemporaries()
         const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
         function.cppConstructedResult = imported != nullptr && imported->origin == CppImportedTypeOrigin::CppRecord &&
             !nameLookup_->cppTrivialValueEligible(*ordinal);
+        if (!function.cppConstructedResult || memberModel_ == nullptr) continue;
+        // EN: X2-05. `return o;` of a local of that record is C++'s implicit move: the result is constructed in the
+        //     caller's storage by the move constructor from o (the copy constructor when there is none, as overload
+        //     resolution picks for an xvalue); o stays a live local its scope destroys.
+        // ES: X2-05. `return o;` de un local de ese record es el movimiento implicito de C++: el resultado se construye
+        //     en el almacenamiento del llamador con el constructor de movimiento desde o (el de copia si no hay); o
+        //     sigue siendo un local vivo que su ambito destruye.
+        std::optional<std::size_t> moveConstructor;
+        std::optional<std::size_t> copyConstructor;
+        for (const std::size_t member : memberModel_->findMembers(*ordinal, ".ctor"))
+        {
+            if (member >= memberModel_->members().size()) continue;
+            const auto& constructor = memberModel_->members()[member];
+            if (!constructor.isCppExternal || constructor.cppDeleted || constructor.cppFactoryConstructor ||
+                constructor.parameters.size() != 1 ||
+                constructor.accessibility != ClassMemberAccessibility::Public) continue;
+            const auto& parameter = constructor.parameters[0];
+            if (parameter.pointeeTypeKey != function.returnTypeKey) continue;
+            if (parameter.passKind == ParameterPassKind::Ref && parameter.cppRvalueReference) moveConstructor = member;
+            else if (parameter.passKind == ParameterPassKind::In) copyConstructor = member;
+        }
+        const auto selected = moveConstructor ? moveConstructor : copyConstructor;
+        if (!selected) continue;
+        std::vector<ProjectOopHirNode*> pending{function.body.get()};
+        while (!pending.empty())
+        {
+            ProjectOopHirNode* node = pending.back();
+            pending.pop_back();
+            if (node == nullptr || node->kind == ProjectOopHirNodeKind::LambdaCreate) continue;
+            for (const auto& child : node->children) pending.push_back(child.get());
+            if (node->kind != ProjectOopHirNodeKind::Return || node->children.size() != 1 ||
+                node->children[0] == nullptr || node->children[0]->kind != ProjectOopHirNodeKind::LocalValue ||
+                !node->children[0]->localOrdinal || node->children[0]->typeKey != function.returnTypeKey) continue;
+            auto& value = node->children[0];
+            const ast::AstNode* syntax = value->syntax;
+            auto address = makeNode(ProjectOopHirNodeKind::LocalAddress, syntax, function.returnTypeKey);
+            address->localOrdinal = value->localOrdinal;
+            auto pointer = makeNode(ProjectOopHirNodeKind::AddressValue, syntax, function.returnTypeKey + "*");
+            pointer->children.push_back(std::move(address));
+            auto construction = makeNode(ProjectOopHirNodeKind::ValueConstruction, syntax, function.returnTypeKey);
+            construction->targetTypeOrdinal = *ordinal;
+            construction->memberOrdinal = *selected;
+            construction->argumentCount = 1;
+            construction->children.push_back(std::move(pointer));
+            value = std::move(construction);
+        }
     }
     const auto visit = [&](std::unique_ptr<ProjectOopHirNode>& root) {
         if (root == nullptr) return;

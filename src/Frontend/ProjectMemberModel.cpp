@@ -476,8 +476,9 @@ bool ProjectMemberModel::build(
         members_.push_back(std::move(member));
         membersByType_[*ordinal].push_back(index);
         membersByName_[*ordinal][members_[index].name].push_back(index);
-        // X2-05: a factory constructor is reached only through its function. / Solo se alcanza por su funcion.
-        if (imported.kind == CppImportedLifetimeKind::Constructor && !imported.factory)
+        // X2-05: a factory constructor is reached only through its function, a hidden move constructor only by an
+        //     implicit move. / Solo se alcanzan por su funcion o por un movimiento implicito.
+        if (imported.kind == CppImportedLifetimeKind::Constructor && !imported.factory && !imported.implicitMoveOnly)
             constructorsByType_[*ordinal].push_back(index);
     }
     for (const auto& imported : experimentalCppInstanceMethods_)

@@ -288,7 +288,9 @@ bool OopLlvmImplementation::prepareFunctionCleanupState(
         const bool hasExceptionalControl = function.exceptionFlow.requiresPersonality;
         if (hasExceptionalControl || !ownedCaptureCells_.empty() || !coroutineCapturedLocals_.empty())
             LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
-        if (function.constructor || function.returnTypeKey == "builtin:void" ||
+        // X2-05: a constructed C++ result is already in the caller's storage; no value is spilled. / Un resultado
+        //     C++ construido ya esta en el almacenamiento del llamador; no se guarda ningun valor.
+        if (function.constructor || function.returnTypeKey == "builtin:void" || function.cppConstructedResult ||
             !hasExceptionalControl) return true;
         LLVMTypeRef returnType = function.referenceReturn
             ? LLVMPointerTypeInContext(context_, 0)

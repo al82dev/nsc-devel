@@ -131,8 +131,21 @@ BODY_RET = r'''
     return 42;
 '''
 positivo(Caso('x2-retorno-ns', H, S, **CPP), BODY_RET, preludio=PRE_RET, modes=['directo'])
-rechazo(c, 'var o = Keep(); return o.v;', 'requires return move(value)',
-        preludio='lib.Obj Keep() { var o = lib.make(42); return o; }\n')
+# X2-05: `return o;` of a C++ local was a rejection ('requires return move(value)'); it is now C++'s implicit move:
+# the caller's result is move-constructed from o, which the function's scope destroys.
+# X2-05: `return o;` era un rechazo; ahora es el movimiento implicito de C++.
+BODY_NRVO = r'''
+    lib.reset();
+    ref lib.Counters k = ref lib.counters();
+    {
+        var o = Keep();
+        if (o.v != 42 || k.ctor != 1 || k.move != 1 || k.copy != 0 || k.dtor != 1) return 1;
+    }
+    if (k.dtor != 2) return 2;
+    return 42;
+'''
+positivo(Caso('x2-retorno-local', H, S, **CPP), BODY_NRVO,
+         preludio='lib.Obj Keep() { var o = lib.make(42); return o; }\n', modes=['directo'])
 rechazo(c, 'var o = Keep(); return o.v;', 'cannot copy or transfer a C++ value',
         preludio='lib.Obj Keep() { var o = lib.make(42); return move(o); }\n')
 # X2-05: this temporary used as a receiver was a rejection ('cannot copy or transfer a C++ value'); it is now

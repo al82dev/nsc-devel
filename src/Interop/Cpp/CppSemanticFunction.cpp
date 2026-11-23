@@ -1649,6 +1649,7 @@ frontend::CppImportedLifetimeMethod toCppImportedLifetimeMethod(const CppSemanti
     }
     result.parameterPassKinds = method.passKinds;
     result.parameterRvalueReferences = method.rvalueReferences;
+    result.implicitMoveOnly = method.implicitMoveOnly; // X2-05
     result.cppParameterSpellings = method.cppParameterSpellings;
     result.cppSignatureSuffix = method.cppSignatureSuffix;
     result.cppDeclarationSpelling = method.cppDeclarationSpelling;
@@ -1736,13 +1737,20 @@ bool collectCppSemanticLifetimeFamilies(
             //     a copy constructor hides stays out (T11-016).
             // ES: T19-007. Otro parametro `T&&` es un ref que tambien enlaza un valor; solo queda fuera el
             //     constructor de movimiento que oculta un constructor de copia (T11-016).
+            // EN: X2-05. The move constructor a copy constructor hides is still projected, outside overload
+            //     resolution, for C++'s implicit move (`return o;`).
+            // ES: X2-05. El constructor de movimiento que oculta uno de copia se proyecta igual, fuera de la resolucion
+            //     de sobrecarga, para el movimiento implicito de C++ (`return o;`).
+            const bool hiddenMove = !moveConstructor && selfReference(declared, CppTypeKind::RValueReference) &&
+                !declared.parameters[0].type.element->isConst;
             if (kind == CppMethodKind::Constructor &&
                 (declared.isDeleted ||
-                 (!moveConstructor && selfReference(declared, CppTypeKind::RValueReference)))) continue;
+                 (!moveConstructor && !hiddenMove && selfReference(declared, CppTypeKind::RValueReference)))) continue;
             auto projected = projectCppSemanticLifetimeMethod(entry.declaration, index, group.projectOrdinal,
                 graph.projects()[group.projectOrdinal].moduleName(), entry.targetTriple, &visibleRecords, &lookup);
             if (auto* method = std::get_if<CppSemanticLifetimeMethod>(&projected))
             {
+                method->implicitMoveOnly = hiddenMove;
                 std::vector<std::string> parameters;
                 for (std::size_t i = 0; i < method->parameters.size(); ++i)
                 {
