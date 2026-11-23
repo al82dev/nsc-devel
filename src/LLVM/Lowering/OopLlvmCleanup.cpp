@@ -2420,6 +2420,30 @@ bool OopLlvmImplementation::emitCleanupAction(std::size_t ordinal, std::string& 
         const frontend::ProjectOopMirNode* cleanup = found->second;
         // X2-06: a C++ field built by an inline construction that did not complete. / Un campo C++ de una
         //     construccion en linea que no termino.
+        // X3-01: the C++ base of a constructor that did not complete. / La base C++ de un constructor que no
+        //     termino.
+        if (cleanup->stringValue == "constructor.cpp.base.cleanup")
+        {
+            const auto flag = localStorage_.find(ordinal);
+            if (thisValue_ == nullptr || flag == localStorage_.end())
+                return fail(error, "constructor C++ base cleanup lost its state");
+            LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
+            LLVMValueRef alive = LLVMBuildLoad2(builder_, flagType, flag->second, "constructor.cpp.base.live");
+            LLVMBasicBlockRef destroy = appendBlock("constructor.cpp.base.destroy");
+            LLVMBasicBlockRef done = appendBlock("constructor.cpp.base.done");
+            LLVMBuildCondBr(builder_, alive, destroy, done);
+            enterBlock(destroy);
+            LLVMBuildStore(builder_, LLVMConstInt(flagType, 0, 0), flag->second);
+            LLVMTypeRef pointer = LLVMPointerTypeInContext(context_, 0);
+            LLVMTypeRef destroyType = LLVMFunctionType(LLVMVoidTypeInContext(context_), &pointer, 1, 0);
+            LLVMValueRef function = LLVMGetNamedFunction(module_, cleanup->calleeName.c_str());
+            if (function == nullptr) function = LLVMAddFunction(module_, cleanup->calleeName.c_str(), destroyType);
+            LLVMValueRef arguments[] = {thisValue_};
+            buildNoUnwindCall(destroyType, function, arguments, 1, "");
+            if (!terminated()) LLVMBuildBr(builder_, done);
+            enterBlock(done);
+            return true;
+        }
         if (cleanup->stringValue == "construction.cpp.field.cleanup")
         {
             const auto flag = localStorage_.find(ordinal);

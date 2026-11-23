@@ -1,3 +1,4 @@
+#include "nativesharp/Interop/CppMemberThunk.h"
 #include "../Internal/OopLlvmImplementation.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/LlvmExpressionFrame.h"
@@ -269,6 +270,33 @@ bool OopLlvmImplementation::lowerBlockStatement(
                 std::vector<LLVMValueRef> delegationFlags;
                 const auto addDeferredBase = [&](std::size_t typeOrdinal)
                 {
+                    // EN: X3-01. A C++ base built by `base(args)` is destroyed through the adapter if the
+                    //     constructor fails afterwards, as C++ destroys a constructed base subobject.
+                    // ES: X3-01. Una base C++ construida por `base(args)` se destruye por el adaptador si el
+                    //     constructor falla despues, como C++ destruye un subobjeto base construido.
+                    if (const auto* imported = nameLookup_.cppImportedType(typeOrdinal);
+                        imported != nullptr && imported->cppInterfaceDestructor && imported->clangUsr &&
+                        currentMirFunction_->declaringTypeOrdinal < nameLookup_.namedTypes().size())
+                    {
+                        std::size_t ordinal = std::numeric_limits<std::size_t>::max();
+                        while (cleanupRegions_.contains(ordinal) || localStorage_.contains(ordinal)) --ordinal;
+                        auto cleanup = std::make_unique<frontend::ProjectOopMirNode>();
+                        cleanup->stringValue = "constructor.cpp.base.cleanup";
+                        cleanup->calleeName = interop::cppInterfaceAdapterName(
+                            nameLookup_.namedTypes()[currentMirFunction_->declaringTypeOrdinal].identity.key(),
+                            *imported->clangUsr) + "_destroy";
+                        LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
+                        LLVMValueRef flag = entryBlockAlloca(flagType, 0, "constructor.cpp.base.live");
+                        LLVMBuildStore(builder_, LLVMConstInt(flagType, 0, 0), flag);
+                        cleanupRegions_.emplace(ordinal, cleanup.get());
+                        localStorage_.emplace(ordinal, flag);
+                        cleanupChainCache_.erase(ordinal);
+                        activeCleanupRegions_.push_back(ordinal);
+                        delegationFlags.push_back(flag);
+                        completedBases.emplace_back(ordinal, std::move(cleanup));
+                        LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+                        return;
+                    }
                     const bool localEntry = objectDestructionFunctions_.contains(typeOrdinal);
                     const bool importedEntry = typeOrdinal < nameLookup_.namedTypes().size() &&
                         nameLookup_.namedTypes()[typeOrdinal].isPrecompiled &&
@@ -565,6 +593,7 @@ bool OopLlvmImplementation::lowerBlockStatement(
                         const auto entry = cleanupRegions_.find(ordinal);
                         if (entry != cleanupRegions_.end() && entry->second != nullptr &&
                             (entry->second->stringValue == "constructor.completed.base.cleanup" ||
+                             entry->second->stringValue == "constructor.cpp.base.cleanup" ||
                              entry->second->stringValue == "constructor.owned.field.cleanup" ||
                              entry->second->stringValue == "constructor.shared.field.cleanup" ||
                              entry->second->stringValue == "constructor.delegated.base.cleanup")) continue;
