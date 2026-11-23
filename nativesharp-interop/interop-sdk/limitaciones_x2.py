@@ -433,4 +433,7 @@ SOPM = SF.replace('Obj make(int v) { return Obj(v); }', 'Obj make(int v) { retur
 positivo(Caso('x2-operador-miembro-resultado', HOPM, SOPM, **CPP),
          '{ lib.Vec w; w.x = 21; var c = w * 2; if (c.v != 42 || (w * 1).v != 21) return 1; }'
          ' return lib.c().ctor == 2 && lib.c().dtor == 2 ? 42 : 2;', modes=['directo', 'dll'])
+# X2: `(int)h` of an imported C/C++ record with no conversion reached the backend ('unsupported Stage 34 LLVM
+# conversion'); it is a frontend diagnostic now. / Un cast de un record importado sin conversion es un diagnostico.
+rechazo(Caso('x2-cast-record', HF, SF, **CPP), 'var o = lib.make(3); return (int)o;', 'no conversion from C/C++ type')
 fin()

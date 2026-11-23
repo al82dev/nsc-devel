@@ -484,6 +484,26 @@ ProjectMethodBodyModel::analyzeExpressionKindCastExpression(
     validateReferenceCast(
         result, operand, expression, classifier,
         methodMemberOrdinal, scopeOrdinal, diagnostics);
+    // EN: X2. An imported C/C++ record cast to a builtin value with no user-defined conversion has no meaning (its
+    //     bytes are not a number); it reached the backend and failed there ("unsupported Stage 34 LLVM conversion").
+    // ES: X2. Un record C/C++ importado convertido a un valor builtin sin conversion de usuario no tiene sentido; llegaba
+    //     al backend y fallaba alli.
+    if (result.valid && operand.typeKey != result.typeKey && result.typeKey.starts_with("builtin:") &&
+        !ProjectTypeConversion::isPointer(result.typeKey) && operand.typeKey.starts_with("type:") &&
+        !operand.typeKey.ends_with('*'))
+        if (const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(operand.typeKey).substr(5)))
+            if (const auto* imported = nameLookup_->cppImportedType(*ordinal);
+                imported && (imported->origin == CppImportedTypeOrigin::CppRecord ||
+                             imported->origin == CppImportedTypeOrigin::CStruct ||
+                             imported->origin == CppImportedTypeOrigin::CUnion))
+            {
+                diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+                    diagnostics::DiagnosticSeverity::Error, expression->range(),
+                    "no conversion from C/C++ type '" + operand.typeKey.substr(5) + "' to '" +
+                        result.typeKey.substr(8) + "'; read one of its fields or call one of its methods");
+                result.valid = false;
+                return result;
+            }
     const NamedTypeDeclaration* targetType = operand.readonlyBorrowedObject
         ? namedTypeForTypeKey(result.typeKey) : nullptr;
     if (result.valid && operand.readonlyBorrowedObject &&
