@@ -2177,6 +2177,23 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         const auto functionCandidates = selectCppPublishedTemplateFunctions(compilation, metadata, functions);
         if (!captureCppTemplateFunctionCandidates(*graph, functionCandidates, functions, dependencies.functions, error))
             return false;
+        // EN: X2-05. Every `=` of a template body demands `operator=`; the assignment adapter of a C++ record that is
+        //     not a transport value is not a dependency, since a precompiled template cannot carry that record (R2).
+        // ES: X2-05. Cada `=` de un cuerpo de plantilla demanda `operator=`; el adaptador de asignacion de un record C++
+        //     que no es un valor transportable no es una dependencia: una plantilla precompilada no lleva ese record.
+        std::erase_if(dependencies.functions, [&](const auto& dependency) {
+            return std::any_of(projectedFunctions.begin(), projectedFunctions.end(), [&](const auto& function) {
+                if (function.moduleName != dependency.moduleName || function.mangledName != dependency.linkSymbol ||
+                    function.cppClangUsr != dependency.declaration.clangUsr ||
+                    !function.name.starts_with("__nsc_cpp_assign_") || function.parameters.empty()) return false;
+                const auto self = metadata_detail::metadataBaseTypeKey(function.parameters.front().typeKey);
+                const auto ordinal = self.starts_with("type:")
+                    ? lookup->typeOrdinalForIdentity(std::string_view(self).substr(5)) : std::nullopt;
+                const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+                return imported != nullptr && imported->origin == frontend::CppImportedTypeOrigin::CppRecord &&
+                    !lookup->cppTrivialValueEligible(*ordinal);
+            });
+        });
         for (auto& dependency : dependencies.functions)
         {
             const auto& declaration = dependency.declaration;

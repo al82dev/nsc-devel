@@ -409,9 +409,25 @@ void ProjectOopHirModel::ownCppTemporaries()
                     parent->second->namespaceFunctionOrdinal && namespaceFunctionModel_ != nullptr &&
                     *parent->second->namespaceFunctionOrdinal < namespaceFunctionModel_->functions().size()
                 ? &namespaceFunctionModel_->functions()[*parent->second->namespaceFunctionOrdinal] : nullptr;
+            // Only for a parameter that takes an address: a C record or union by value travels as its bytes.
+            //     / Solo para un parametro que toma una direccion: un record o union C por valor viaja como bytes.
+            const auto byAddressParameter = [&]() {
+                const auto& arguments = parent->second->children;
+                const auto position = std::find_if(arguments.begin(), arguments.end(),
+                    [&](const auto& child) { return child.get() == node; });
+                if (position == arguments.end()) return false;
+                const auto index = static_cast<std::size_t>(position - arguments.begin());
+                const std::size_t ordinal = index < parent->second->argumentParameterOrdinals.size()
+                    ? parent->second->argumentParameterOrdinals[index] : index;
+                if (ordinal >= callee->parameters.size()) return false;
+                const auto& parameter = callee->parameters[ordinal];
+                return parameter.passKind != ParameterPassKind::Value || parameter.cppConstReference ||
+                    parameter.cppRvalueReference || parameter.cppImplicitObject;
+            };
             const bool addressed = cppConstruction(node) &&
                 (parent->second->kind == ProjectOopHirNodeKind::AddressValue ||
-                 (callee != nullptr && !(callee->cppClangUsr && callee->cppClangUsr->ends_with("@nsc-byvalue"))));
+                 (callee != nullptr && !(callee->cppClangUsr && callee->cppClangUsr->ends_with("@nsc-byvalue")) &&
+                  byAddressParameter()));
             if (!materialized && !addressed) continue;
             std::unique_ptr<ProjectOopHirNode>* slot = hirChildSlot(*parent->second, node);
             if (slot == nullptr) continue;
