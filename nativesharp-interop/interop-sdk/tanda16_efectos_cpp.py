@@ -13,5 +13,9 @@ S = 'int log_at(const char* f, int line) { return line; }\n'
 c = Caso('t16-c', H, S)
 positivo(c, 'return TWO + 40;', modes=['directo', 'dll'])
 rechazo(c, 'return HERE_LINE;', "unknown identifier 'HERE_LINE'")
-rechazo(c, 'return LOG();', 'the macro uses __FILE__')
+# EN: Since C2-06 a function-like macro that uses `__FILE__`/`__LINE__` expands at the NativeSharp call site (one
+#     `#line` per site), so the former rejection is a positive call: the line is the call's line in Main.ns.
+# ES: Desde C2-06 una macro de funcion que usa `__FILE__`/`__LINE__` se expande en el sitio de la llamada NativeSharp
+#     (un `#line` por sitio), asi que el rechazo anterior es una llamada positiva: la linea es la de la llamada.
+positivo(Caso('t16-c-sitio', H, S), 'int line = LOG(); return line > 0 && line < 100 ? 42 : 1;', modes=['directo', 'dll'])
 fin()
