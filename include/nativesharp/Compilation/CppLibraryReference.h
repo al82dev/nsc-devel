@@ -28,6 +28,10 @@ struct CppLibraryReference final
     //     uses the same option, so the vtables NSC emits need no `type_info` from the C runtime.
     // ES: Rtti="false": la biblioteca se compila sin RTTI; la sesion de Clang de NSC usa la misma opcion.
     bool rtti = true;
+    // EN: Exceptions="false": the library is compiled without C++ exceptions (-fno-exceptions); NSC's Clang session
+    //     too, so the inline C++ code NSC emits needs no `__CxxFrameHandler3` from the C runtime.
+    // ES: Exceptions="false": la biblioteca se compila sin excepciones C++; la sesion de Clang de NSC tambien.
+    bool exceptions = true;
     // EN: T08-D25. PublicTypes="Header": the library publishes this header's own C types in its NSMeta catalog.
     // ES: T08-D25. PublicTypes="Header": la biblioteca publica en su catalogo NSMeta los tipos C de este encabezado.
     bool publicTypes = false;

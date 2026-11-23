@@ -54,6 +54,8 @@ struct CppSessionOptions
     CppVolatileMode volatileMode = CppVolatileMode::Default;
     // Rtti="false" of the reference: `-fno-rtti`. / `-fno-rtti` de la referencia.
     bool rtti = true;
+    // Exceptions="false" of the reference: `-fno-exceptions`. / `-fno-exceptions` de la referencia.
+    bool exceptions = true;
     // Optional because ordinary compilation does not need the extra token tracing.
     bool capturePreprocessingFingerprint = false;
     // EN: T19-003. A session over the preprocessed source a precompiled producer carries, used only to expand

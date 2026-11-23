@@ -32,6 +32,7 @@ struct CppLibraryReferenceDescriptor final
     std::vector<interop::CppMacroOption> macros;
     interop::CppVolatileMode volatileMode = interop::CppVolatileMode::Default;
     bool rtti = true; // Rtti="false"
+    bool exceptions = true; // Exceptions="false"
     // R1: `<Contract>` children. / Hijos `<Contract>`.
     std::vector<interop::CppContract> contracts;
 };

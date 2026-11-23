@@ -90,4 +90,27 @@ inline int read_counter() { return counter<int>; }
 positivo(Caso('x4-plantilla-variable-double', HVN, None, **CPP),
          'if ((int)lib.zero<double> != 0) return 1; lib.counter<int> = 40; lib.counter<int> += 2;\n'
          '    return lib.read_counter() == 42 && lib.counter<int> == 42 ? 42 : 2;', modes=['directo', 'dll'])
+# X4/X2-06: Exceptions="false" on the reference (a library built with -fno-exceptions) compiles NSC's Clang session
+# with -fno-exceptions too: the inline template constructor and destructor NSC emits for a class field of
+# `lib.Box<int>` then need no __CxxFrameHandler3 from the C runtime (they did before). A bad value is rejected.
+# Exceptions="false" compila la sesion de Clang sin excepciones; el codigo inline de la plantilla no exige el CRT.
+HEXC = r'''
+namespace lib {
+int& ct(); int& dt();
+template <typename T> struct Box { T v; Box() : v(T(7)) { ++ct(); } explicit Box(T x) : v(x) { ++ct(); } ~Box() { ++dt(); }
+  Box& operator=(const Box& o) { v = o.v; return *this; } };
+inline int touch(Box<int>* b) { return b->v; }
+}
+'''
+SEXC = r'''
+namespace lib { static int c, d; int& ct() { return c; } int& dt() { return d; } }
+'''
+CPPEXC = dict(language='C++', standard='c++20')
+positivo(Caso('x4-exceptions-false', HEXC, SEXC, extra_ref=' Exceptions="false"', **CPPEXC),
+         '{ var h = new H(); if (h.a.v != 7 || h.b.v != 5 || lib.touch(&h.b) != 5) return 1; }'
+         ' return lib.dt() * 10 + lib.ct() == 22 ? 42 : 2;',
+         preludio='class H { public lib.Box<int> a; public lib.Box<int> b = new lib.Box<int>(5); }'+chr(10),
+         modes=['directo', 'dll'])
+rechazo(Caso('x4-exceptions-invalido', HEXC, SEXC, extra_ref=' Exceptions="no"', **CPPEXC), 'return 0;',
+        'Exceptions must be true or false')
 fin()

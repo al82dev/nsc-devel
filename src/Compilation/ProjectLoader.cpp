@@ -724,7 +724,7 @@ bool adaptRuntimeTlsImportDirectory(const std::filesystem::path& projectDirector
 bool parseCppLibraryReferenceItem(
     const SimpleXmlElement& item, ProjectDescriptor& descriptor, std::string& error)
 {
-    if (!hasOnlyAttributes(item, {"Header", "Language", "Standard", "Library", "Runtime", "VolatileMode", "Rtti", "RuntimeTls",
+    if (!hasOnlyAttributes(item, {"Header", "Language", "Standard", "Library", "Runtime", "VolatileMode", "Rtti", "Exceptions", "RuntimeTls",
                                   "PublicTypes", "Implementation"}, error))
         return false;
     if (!trim(item.text).empty())
@@ -754,6 +754,15 @@ bool parseCppLibraryReferenceItem(
     {
         if (trim(*rtti) == "false") reference.rtti = false;
         else if (trim(*rtti) != "true") { error = "CppLibraryReference Rtti must be true or false"; return false; }
+    }
+    if (const auto* exceptions = attribute(item, "Exceptions"))
+    {
+        if (trim(*exceptions) == "false") reference.exceptions = false;
+        else if (trim(*exceptions) != "true")
+        {
+            error = "CppLibraryReference Exceptions must be true or false";
+            return false;
+        }
     }
     if (trim(*language) == "C") reference.language = interop::CppLanguageMode::C;
     else if (trim(*language) == "C++") reference.language = interop::CppLanguageMode::Cpp;
@@ -1723,6 +1732,7 @@ std::optional<std::vector<CppLibraryReference>> loadCppLibraryReferences(
         reference.languageStandard = input.languageStandard;
         reference.volatileMode = input.volatileMode;
         reference.rtti = input.rtti;
+        reference.exceptions = input.exceptions;
         reference.macros = input.macros;
         reference.implementationMacro = input.implementationMacro;
         reference.contracts = input.contracts; // R1

@@ -25,6 +25,7 @@ std::string cppSessionConfigurationIdentity(const CppSessionOptions& options)
     number(static_cast<std::uint64_t>(options.language));
     number(static_cast<std::uint64_t>(options.volatileMode));
     if (!options.rtti) number(0x52545449U); // Rtti="false" changes the identity only when used.
+    if (!options.exceptions) number(0x45584350U); // Exceptions="false", likewise.
     text(options.languageStandard);
     text(options.targetTriple);
     path(options.driverReferencePath);
