@@ -40,6 +40,9 @@
 
 namespace nativesharp::frontend
 {
+// C3-09: a C11 fence whose memory_order is a run-time operand. / Una barrera C11 cuyo orden es un operando.
+inline constexpr std::uint8_t kDynamicCFenceOrder = 0xFF;
+
 struct MethodCoreBinding final
 {
     MethodCoreOperationKind kind = MethodCoreOperationKind::ArrayAllocation;

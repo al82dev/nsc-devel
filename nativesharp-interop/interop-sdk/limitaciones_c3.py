@@ -324,7 +324,7 @@ rechazo(c8, 'var f = get_krs(); return f();', 'get_krs')
 
 # C3-09: C11 `atomic_thread_fence` / `atomic_signal_fence` (functions no library defines; C reaches them through
 # macros to Clang builtins) become NativeSharp.Core.Threading.AtomicFence: `consume` is `acquire`, a `relaxed`
-# fence is a compiler-only fence, a signal fence is single-thread. The order must be a constant. Other system
+# fence is a compiler-only fence, a signal fence is single-thread. A run-time order switches as in Clang. Other system
 # macros stay as they are. The NativeSharp alternative, AtomicFence.Thread/Compiler, is verified too.
 import comun
 from pathlib import Path
@@ -333,7 +333,24 @@ S9 = 'int value(void) { return 42; }\n'
 c9 = Caso('c3-barreras', H9, S9)
 positivo(c9, 'atomic_thread_fence(memory_order_seq_cst); atomic_thread_fence(memory_order_relaxed); '
              'atomic_thread_fence(memory_order_consume); atomic_signal_fence(memory_order_acquire); return value();')
-rechazo(c9, 'int o = 5; atomic_thread_fence((memory_order)o); return 0;', 'constant memory_order')
+# C3-09: a run-time order was a rejection ('constant memory_order'); it now switches over the order as Clang does
+# (consume/acquire -> acquire, release, acq_rel, seq_cst, anything else no fence; a signal fence is single-thread).
+# Un orden en ejecucion era un rechazo; ahora se recorre con un switch como en Clang.
+positivo(Caso('c3-barreras-dinamicas', H9, S9),
+         'int o = 5; atomic_thread_fence((memory_order)o); atomic_signal_fence((memory_order)(o - 3)); '
+         'atomic_thread_fence((memory_order)0); return value();')
+if not ONLY or any('c3-barreras-dinamicas-ir' in o for o in ONLY):
+    result = ir(Caso('c3-barreras-dinamicas-ir', H9, S9),
+                'int o = 4; atomic_thread_fence((memory_order)o); atomic_signal_fence((memory_order)o); return value();',
+                opt=0)
+    fences = [l.strip() for l in result.stdout.splitlines() if l.strip().startswith('fence')]
+    expected = ['fence acquire', 'fence release', 'fence acq_rel', 'fence seq_cst',
+                'fence syncscope("singlethread") acquire', 'fence syncscope("singlethread") release',
+                'fence syncscope("singlethread") acq_rel', 'fence syncscope("singlethread") seq_cst']
+    if result.returncode or fences != expected or result.stdout.count('switch i32') != 2:
+        _fail('c3-barreras-dinamicas-ir', 'barreras inesperadas: ' + repr(fences))
+    else:
+        print('ok c3-barreras-dinamicas-ir', flush=True)
 if not ONLY or any('c3-barreras-ir' in o for o in ONLY):
     result = ir(Caso('c3-barreras-ir', H9, S9), 'atomic_thread_fence(memory_order_seq_cst); '
                 'atomic_thread_fence(memory_order_consume); atomic_signal_fence(memory_order_release); return value();', opt=0)

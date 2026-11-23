@@ -2094,7 +2094,22 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
     // C3-09: a C11 fence call is an AtomicFence. / Una llamada a una barrera C11 es un AtomicFence.
     if (const MethodCoreBinding* fence = coreBinding(expression);
         namespaceCall != nullptr && fence != nullptr && isAtomicFenceCoreCall(fence->kind))
+    {
+        // C3-09: a run-time memory_order is the fence's operand (integerValue 0). / Un orden en ejecucion es el
+        //     operando de la barrera.
+        if (fence->atomicMemoryOrder == kDynamicCFenceOrder && !addressContext && expression->children().size() == 1U)
+        {
+            auto order = lowerExpression(expression->children()[0], memberOrdinal, false, error);
+            if (order == nullptr) return nullptr;
+            auto node = makeNode(fence->kind == MethodCoreOperationKind::AtomicThreadFence
+                    ? ProjectOopHirNodeKind::CoreAtomicThreadFence : ProjectOopHirNodeKind::CoreAtomicCompilerFence,
+                expression, fence->resultTypeKey);
+            node->integerValue = 0U;
+            node->children.push_back(std::move(order));
+            return node;
+        }
         return lowerAtomicFenceCoreCall(expression, addressContext, *fence, error);
+    }
     if (namespaceCall != nullptr)
     {
         return lowerNamespaceFunctionCall(expression, addressContext, *namespaceCall, error);

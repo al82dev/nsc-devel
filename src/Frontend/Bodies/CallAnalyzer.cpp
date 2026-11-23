@@ -1840,13 +1840,20 @@ bool ProjectMethodBodyModel::recognizeCAtomicFence(
         return true;
     const std::optional<ProjectIntegerValue> folded =
         foldIntegerConstant(argumentSyntaxes[0], std::nullopt, callerCallableOrdinal);
+    // EN: C3-09. An order known only at run time selects the fence as Clang does: consume and acquire give an acquire
+    //     fence, release, acq_rel and seq_cst their own, any other value (relaxed) none; atomic_signal_fence keeps
+    //     its single-thread scope. The order is then an operand (kDynamicCFenceOrder).
+    // ES: C3-09. Un orden conocido solo en ejecucion elige la barrera como Clang: consume y acquire dan una barrera
+    //     acquire, release, acq_rel y seq_cst la suya, cualquier otro valor (relaxed) ninguna; atomic_signal_fence
+    //     conserva su ambito de un hilo. El orden pasa a ser un operando.
     if (!folded.has_value() || folded->bits > 5U)
     {
-        diagnostics.report(diagnostics::DiagnosticId::ConstRequiresConstant, diagnostics::DiagnosticSeverity::Error,
-            argumentSyntaxes[0] != nullptr ? argumentSyntaxes[0]->range() : expression->range(),
-            "the order of C '" + function.name + "' must be a constant memory_order (it becomes "
-            "NativeSharp.Core.Threading.AtomicFence)");
-        return false;
+        MethodCoreBinding binding{
+            thread ? MethodCoreOperationKind::AtomicThreadFence : MethodCoreOperationKind::AtomicCompilerFence,
+            expression, callerCallableOrdinal, scopeOrdinal, "builtin:void", "", false, std::nullopt, std::nullopt};
+        binding.atomicMemoryOrder = kDynamicCFenceOrder;
+        coreBindings_.push_back(std::move(binding));
+        return true;
     }
     // C: relaxed 0, consume 1, acquire 2, release 3, acq_rel 4, seq_cst 5.
     static constexpr language::MemoryOrder orders[] = {

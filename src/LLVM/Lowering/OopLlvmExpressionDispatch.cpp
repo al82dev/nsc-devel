@@ -875,15 +875,43 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup07(
             case frontend::ProjectOopMirNodeKind::CoreAtomicThreadFence:
             case frontend::ProjectOopMirNodeKind::CoreAtomicCompilerFence:
             {
+                const bool compilerFence =
+                    node->kind == frontend::ProjectOopMirNodeKind::CoreAtomicCompilerFence;
+                // C3-09: a C11 fence with a run-time memory_order switches over it as Clang does. / Una barrera C11
+                //     con orden en ejecucion lo recorre con un switch como Clang.
+                if (node->integerValue == 0U && node->children.size() == 1U)
+                {
+                    LLVMValueRef order = lowerExpression(node->children.front().get(), error);
+                    if (order == nullptr || terminated()) return order;
+                    if (LLVMGetTypeKind(LLVMTypeOf(order)) != LLVMIntegerTypeKind)
+                        return failValue(error, "a C11 fence order must be an integer memory_order");
+                    LLVMBasicBlockRef done = appendBlock("c.fence.done");
+                    LLVMValueRef choice = LLVMBuildSwitch(builder_, order, done, 5);
+                    const std::pair<unsigned, LLVMAtomicOrdering> cases[] = {
+                        {1U, LLVMAtomicOrderingAcquire}, {2U, LLVMAtomicOrderingAcquire},
+                        {3U, LLVMAtomicOrderingRelease}, {4U, LLVMAtomicOrderingAcquireRelease},
+                        {5U, LLVMAtomicOrderingSequentiallyConsistent}};
+                    LLVMBasicBlockRef acquire = nullptr;
+                    for (const auto& [value, ordering] : cases)
+                    {
+                        LLVMBasicBlockRef target = value == 2U ? acquire : appendBlock("c.fence.case");
+                        if (value == 1U) acquire = target;
+                        LLVMAddCase(choice, LLVMConstInt(LLVMTypeOf(order), value, 0), target);
+                        if (value == 2U) continue;
+                        enterBlock(target);
+                        LLVMBuildFence(builder_, ordering, compilerFence ? 1 : 0, "");
+                        LLVMBuildBr(builder_, done);
+                    }
+                    enterBlock(done);
+                    return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+                }
                 if (!node->children.empty())
                     return failValue(error, "AtomicFence cannot carry runtime operands");
                 const std::optional<LLVMAtomicOrdering> ordering =
                     orderedAtomicRmwOrdering(node->integerValue);
                 if (!ordering.has_value() || *ordering == LLVMAtomicOrderingMonotonic)
                     return failValue(error, "AtomicFence carries an invalid MemoryOrder");
-                const bool compilerOnly =
-                    node->kind == frontend::ProjectOopMirNodeKind::CoreAtomicCompilerFence;
-                LLVMBuildFence(builder_, *ordering, compilerOnly ? 1 : 0, "");
+                LLVMBuildFence(builder_, *ordering, compilerFence ? 1 : 0, "");
                 return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
             }
         }
