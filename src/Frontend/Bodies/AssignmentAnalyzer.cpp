@@ -955,6 +955,14 @@ bool ProjectMethodBodyModel::rejectMoveOnlyAssignmentCopy(
     if (expression->tokenKind() != TokenKind::Equal ||
         !memberModel_->typeIsMoveOnly(left.typeKey) || !right.addressable ||
         expression->second()->kind() == ast::AstNodeKind::MoveExpression) return false;
+    // X2-05: a non-trivial C++ record is assigned by its operator= (tryCppAssignment), which decides. / Un record
+    //     C++ no trivial se asigna con su operator=, que decide.
+    if (nameLookup_ != nullptr && left.typeKey.starts_with("type:"))
+        if (const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(left.typeKey).substr(5));
+            ordinal && nameLookup_->cppImportedType(*ordinal) != nullptr &&
+            nameLookup_->cppImportedType(*ordinal)->origin == CppImportedTypeOrigin::CppRecord &&
+            !nameLookup_->cppTrivialValueEligible(*ordinal))
+            return false;
     diagnostics.report(
         diagnostics::DiagnosticId::NS3020InvalidValueCategory,
         diagnostics::DiagnosticSeverity::Error,
@@ -2533,6 +2541,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishPlainAssi
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    if (ExpressionResult cppAssignment;
+        tryCppAssignment(expression, left, right, methodMemberOrdinal, scopeOrdinal, diagnostics, cppAssignment))
+        return cppAssignment;
     if (!validatePlainAssignmentConversion(expression, left, right, diagnostics)) return {};
     rejectOwnedTemporaryBorrowEscape(right, expression->second(), "the assignment", diagnostics);
     // EN: Freeze C-01: `x = new T();` into a local that is neither raii nor owned leaves the
@@ -4274,6 +4285,82 @@ bool ProjectMethodBodyModel::tryCppPrefixIncrement(
     result.addressable = false;
     result.valid = true;
     out = result;
+    return true;
+}
+
+// EN: X2-05. `o = value` where o is a non-trivial C++ record is C++ assignment, not a byte copy: a prvalue (a
+//     factory result) uses the operator= C++ selects for an rvalue (move, or copy when there is no move), an lvalue
+//     the one for a const lvalue (copy). The call takes o's address and the value's (a prvalue becomes a temporary
+//     destroyed at the end of the full expression). A record whose selected operator is deleted or inaccessible is
+//     rejected with that reason.
+// ES: X2-05. `o = valor` con o un record C++ no trivial es asignacion C++, no copia de bytes: un prvalue usa el
+//     operator= que C++ elige para un rvalue (movimiento, o copia si no hay), un lvalue el de un lvalue const. La
+//     llamada recibe la direccion de o y la del valor (un prvalue se vuelve un temporal destruido al final de la
+//     expresion completa). Si el operador elegido esta borrado o es inaccesible, se rechaza con ese motivo.
+bool ProjectMethodBodyModel::tryCppAssignment(
+    const ast::AstNode* expression, const ExpressionResult& left, const ExpressionResult& right,
+    std::size_t methodMemberOrdinal, std::size_t scopeOrdinal, diagnostics::DiagnosticEngine& diagnostics,
+    ExpressionResult& out)
+{
+    if (namespaceFunctionModel_ == nullptr || nameLookup_ == nullptr || !left.valid || !right.valid ||
+        !left.assignable || !left.typeKey.starts_with("type:") || right.typeKey != left.typeKey ||
+        expression->tokenKind() != lexer::TokenKind::Equal)
+        return false;
+    const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(left.typeKey).substr(5));
+    const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+    if (imported == nullptr || imported->origin != CppImportedTypeOrigin::CppRecord ||
+        nameLookup_->cppTrivialValueEligible(*ordinal))
+        return false;
+    const auto& functions = namespaceFunctionModel_->functions();
+    const auto find = [&](std::string_view name) -> std::optional<std::size_t> {
+        for (std::size_t index = 0; index < functions.size(); ++index)
+        {
+            const auto& function = functions[index];
+            if (function.name != name || function.parameters.size() != 2) continue;
+            if (function.parameters[0].passKind != ParameterPassKind::Ref ||
+                function.parameters[0].pointeeTypeKey != left.typeKey ||
+                function.parameters[1].passKind == ParameterPassKind::Value ||
+                function.parameters[1].pointeeTypeKey != left.typeKey) continue;
+            return index;
+        }
+        return std::nullopt;
+    };
+    const bool prvalue = !right.addressable;
+    std::optional<std::size_t> selected = prvalue ? find("__nsc_cpp_assign_move") : std::nullopt;
+    if (!selected) selected = find("__nsc_cpp_assign_copy");
+    if (!selected)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand, diagnostics::DiagnosticSeverity::Error,
+            expression->range(), "C++ type '" + imported->identity.fullyQualifiedName() + "' has no accessible "
+            "assignment from " + std::string(prvalue ? "an rvalue" : "an lvalue") + " (its selected operator= is "
+            "deleted or not public); assigning it as bytes would skip its copy semantics");
+        out = {};
+        return true;
+    }
+    NamespaceFunctionCallBinding call;
+    call.resolution = MethodCallResolutionKind::Resolved;
+    call.syntax = expression;
+    call.callerCallableOrdinal = methodMemberOrdinal;
+    call.scopeOrdinal = scopeOrdinal;
+    call.writtenName = functions[*selected].name;
+    call.candidateFunctionOrdinals = {*selected};
+    call.viableCandidateFunctionOrdinals = {*selected};
+    call.selectedFunctionOrdinal = *selected;
+    call.selectedConversions = {
+        ProjectImplicitConversion{ProjectConversionKind::Identity, 0, left.typeKey + "*", left.typeKey + "*",
+                                  std::nullopt},
+        ProjectImplicitConversion{ProjectConversionKind::Identity, 0, right.typeKey + "*",
+                                  functions[*selected].parameters[1].typeKey, std::nullopt}};
+    call.selectedArgumentParameterOrdinals = {0, 1};
+    call.selectedArgumentSyntaxes = {expression->first(), expression->second()};
+    call.resultTypeKey = functions[*selected].declaredTypeKey;
+    call.cComplexCompoundAssignment = true;
+    storeNamespaceFunctionCall(expression, call);
+    invalidateAssignedStorage(expression->first(), scopeOrdinal);
+    out = left;
+    out.assignable = false;
+    out.addressable = false;
+    out.valid = true;
     return true;
 }
 

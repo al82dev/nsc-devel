@@ -1008,6 +1008,13 @@ CppSemanticFunctionResult projectFunction(
         //     llama como `o(args)`.
         else if (!function.parameters.empty() && !function.variadic && spelling == "()")
             symbol.name = "__nsc_cpp_call";
+        // EN: X2-05. The `operator=` C++ selects for a non-trivial record (member adapter: self first) is called by
+        //     `o = value`: the one taking `T&&` from an rvalue, the other from an lvalue.
+        // ES: X2-05. El `operator=` que C++ elige para un record no trivial se llama con `o = valor`: el que toma
+        //     `T&&` desde un rvalue, el otro desde un lvalue.
+        else if (function.parameters.size() == 2 && !function.variadic && spelling == "=")
+            symbol.name = function.parameters[1].type.kind == CppTypeKind::RValueReference
+                ? "__nsc_cpp_assign_move" : "__nsc_cpp_assign_copy";
         else
         {
             const auto method = language::operatorMethodName(spelling, function.parameters.size());

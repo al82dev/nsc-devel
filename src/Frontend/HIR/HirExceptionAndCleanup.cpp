@@ -258,6 +258,74 @@ bool hirLentTemporaryArgument(const ProjectOopHirNode& argument) noexcept
 }
 }
 
+// EN: X2-05. A non-trivial C++ object built only to lend its address (`o = lib.make(42)` passes it to operator=,
+//     a `const T&` argument) is constructed in a hidden owner's storage and destroyed at the end of the enclosing
+//     full expression, as a C++ temporary. The owner's drop flag is set after the construction returns, so a path
+//     that never built it (a `?:` branch, an exception) destroys nothing.
+// ES: X2-05. Un objeto C++ no trivial construido solo para prestar su direccion se construye en el almacenamiento de
+//     un dueno oculto y se destruye al final de la expresion completa que lo contiene, como un temporal C++. El
+//     indicador de destruccion del dueno se activa al volver la construccion, asi que un camino que no lo construyo
+//     no destruye nada.
+void ProjectOopHirModel::ownCppTemporaries()
+{
+    if (nameLookup_ == nullptr) return;
+    const auto visit = [&](std::unique_ptr<ProjectOopHirNode>& root) {
+        if (root == nullptr) return;
+        HirParentIndex parents;
+        std::vector<ProjectOopHirNode*> order;
+        indexHirParents(root.get(), parents, order);
+        const auto cppConstruction = [&](const ProjectOopHirNode* value) {
+            return value != nullptr && value->kind == ProjectOopHirNodeKind::ValueConstruction &&
+                value->targetTypeOrdinal && nameLookup_->cppImportedType(*value->targetTypeOrdinal) != nullptr &&
+                !nameLookup_->cppTrivialValueEligible(*value->targetTypeOrdinal);
+        };
+        for (ProjectOopHirNode* node : order)
+        {
+            // A materialized temporary, or a construction whose address is taken directly.
+            // Un temporal materializado, o una construccion cuya direccion se toma directamente.
+            const auto parent = parents.find(node);
+            if (parent == parents.end()) continue;
+            const bool materialized = node->kind == ProjectOopHirNodeKind::TemporaryAddress &&
+                node->children.size() == 1 && cppConstruction(node->children.front().get());
+            const bool addressed = cppConstruction(node) &&
+                parent->second->kind == ProjectOopHirNodeKind::AddressValue;
+            if (!materialized && !addressed) continue;
+            std::unique_ptr<ProjectOopHirNode>* slot = hirChildSlot(*parent->second, node);
+            if (slot == nullptr) continue;
+            auto owner = ownTemporary(materialized ? std::move(node->children.front()) : std::move(*slot));
+            owner->referenceResult = true;
+            owner->automaticDestruction = true;
+            ProjectOopHirNode* ownerNode = owner.get();
+            *slot = std::move(owner);
+            parents[ownerNode] = parent->second;
+            // The full expression: the child of the nearest statement, unless a cleanup already closes it.
+            // La expresion completa: el hijo de la sentencia mas cercana, salvo que una limpieza ya la cierre.
+            ProjectOopHirNode* expressionRoot = ownerNode;
+            bool closed = false;
+            while (true)
+            {
+                const auto up = parents.find(expressionRoot);
+                if (up == parents.end()) break;
+                if (up->second->kind == ProjectOopHirNodeKind::FullExpressionCleanup) { closed = true; break; }
+                if (hirStatementKind(up->second->kind)) break;
+                expressionRoot = up->second;
+            }
+            if (closed) continue;
+            const auto statement = parents.find(expressionRoot);
+            if (statement == parents.end()) continue;
+            std::unique_ptr<ProjectOopHirNode>* expressionSlot = hirChildSlot(*statement->second, expressionRoot);
+            if (expressionSlot == nullptr) continue;
+            const ast::AstNode* syntax = expressionRoot->syntax;
+            *expressionSlot = wrapFullExpressionCleanup(std::move(*expressionSlot), syntax, true);
+            // An address result (`T& operator=`) stays an address. / Un resultado direccion sigue siendolo.
+            (*expressionSlot)->referenceResult = expressionRoot->referenceResult;
+            parents[expressionSlot->get()] = statement->second;
+            parents[expressionRoot] = expressionSlot->get();
+        }
+    };
+    for (ProjectOopHirFunction& function : functions_) visit(function.body);
+}
+
 bool ProjectOopHirModel::isFreshDroppableTemporary(const ProjectOopHirNode* node) const
 {
     if (node == nullptr || node->referenceResult || memberModel_ == nullptr) return false;

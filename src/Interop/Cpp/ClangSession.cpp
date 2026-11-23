@@ -1746,14 +1746,14 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
 //     El operador pertenece al namespace mas interno de su record, donde lo encuentra la busqueda dependiente
 //     de argumentos.
 void collectMemberOperators(const clang::DeclContext& context, clang::ASTContext& astContext,
-                            std::vector<CppFunctionDeclaration>& result)
+                            std::vector<CppFunctionDeclaration>& result, clang::Sema* sema = nullptr)
 {
     for (const clang::Decl* declaration : context.decls())
     {
         if (llvm::isa<clang::NamespaceDecl>(declaration) || llvm::isa<clang::LinkageSpecDecl>(declaration) ||
             llvm::isa<clang::ExportDecl>(declaration))
         {
-            collectMemberOperators(*llvm::cast<clang::DeclContext>(declaration), astContext, result);
+            collectMemberOperators(*llvm::cast<clang::DeclContext>(declaration), astContext, result, sema);
             continue;
         }
         const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(declaration);
@@ -1761,20 +1761,37 @@ void collectMemberOperators(const clang::DeclContext& context, clang::ASTContext
             record->isDependentContext() || record->isLambda() || !record->getIdentifier() ||
             !record->isExternallyVisible())
             continue;
-        collectMemberOperators(*record, astContext, result);
+        collectMemberOperators(*record, astContext, result, sema);
         const auto recordUsr = declarationUsr(record);
         const auto* enclosing = record->getEnclosingNamespaceContext();
         const auto path = enclosing ? fullNamespacePath(enclosing) : std::nullopt;
         if (!recordUsr || !path) continue;
+        // EN: X2-05. The assignment operators C++ selects for a non-trivial record from an rvalue and from a const
+        //     lvalue (special member lookup, implicit ones included); `o = make()` and `o = p` call them through
+        //     their member adapters, and a deleted or inaccessible one is not published.
+        // ES: X2-05. Los operadores de asignacion que C++ selecciona para un record no trivial desde un rvalue y desde
+        //     un lvalue const (busqueda de miembros especiales, implicitos incluidos); `o = make()` y `o = p` los
+        //     llaman por sus adaptadores de miembro, y uno borrado o inaccesible no se publica.
+        const clang::CXXMethodDecl* moveAssignment = nullptr;
+        const clang::CXXMethodDecl* copyAssignment = nullptr;
+        if (sema && cppNonTrivialRecordValue(astContext.getCanonicalTagType(record)))
+        {
+            auto* mutableRecord = const_cast<clang::CXXRecordDecl*>(record);
+            sema->ForceDeclarationOfImplicitMembers(mutableRecord);
+            moveAssignment = sema->LookupMovingAssignment(mutableRecord, 0, false, 0);
+            copyAssignment = sema->LookupCopyingAssignment(mutableRecord, clang::Qualifiers::Const, false, 0);
+        }
         for (const clang::CXXMethodDecl* method : record->methods())
         {
+            const bool assignment = method == moveAssignment || method == copyAssignment;
             if (!method->isOverloadedOperator() || method->isStatic() || method->isDeleted() ||
-                method->isImplicit() || method->getAccess() != clang::AS_public || method->isVariadic() ||
+                (method->isImplicit() && !assignment) || method->getAccess() != clang::AS_public ||
+                method->isVariadic() ||
                 method->getDescribedFunctionTemplate() || method->isDependentContext() ||
                 method->getRefQualifier() != clang::RQ_None || method->isVolatile() ||
                 llvm::isa<clang::CXXConversionDecl>(method))
                 continue;
-            switch (method->getOverloadedOperator())
+            switch (assignment ? clang::OO_None : method->getOverloadedOperator())
             {
             // X2-08: `operator()` has an adapter too, called as `o(args)`. / `operator()` tambien tiene adaptador.
             case clang::OO_Equal: case clang::OO_Subscript: case clang::OO_Arrow:
@@ -2873,7 +2890,9 @@ public:
             collectFreeFunctions(*context.getTranslationUnitDecl(), context, *mangler, generator.get(), seen, result,
                                  &functionSpecializationNames_);
         }
-        if (context.getLangOpts().CPlusPlus) collectMemberOperators(*context.getTranslationUnitDecl(), context, result);
+        if (context.getLangOpts().CPlusPlus)
+            collectMemberOperators(*context.getTranslationUnitDecl(), context, result,
+                                   ast_->hasSema() ? &ast_->getSema() : nullptr);
         addAlternateFunctionNames(context, result);
         // EN: T19-039. A C operator of a `_Complex` carrier is reported as the C++ operator it stands for
         //     (`operator*`), so NativeSharp demands it from an expression as it demands a C++ free operator; it

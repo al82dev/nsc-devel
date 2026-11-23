@@ -1937,6 +1937,10 @@ void ProjectNamespaceFunctionModel::walkNamespaceNode(
         captureCppFunctionDemand(nameLookup, unit, node, lexicalNamespace, environment, "operator()", false);
     // EN: Item 11.4. `a op= b` may resolve to a C++ `operator op=`, so it is demanded too.
     // ES: Item 11.4. `a op= b` puede resolverse con un `operator op=` de C++, asi que tambien se demanda.
+    // X2-05: `o = value` may call the operator= of a C++ record. / Puede llamar el operator= de un record C++.
+    if (captureCppFunctionDemands_ && node->kind() == ast::AstNodeKind::AssignmentExpression &&
+        node->tokenKind() == lexer::TokenKind::Equal)
+        captureCppFunctionDemand(nameLookup, unit, node, lexicalNamespace, environment, "operator=", false);
     if (captureCppFunctionDemands_ && node->kind() == ast::AstNodeKind::AssignmentExpression)
         if (const auto base = lexer::compoundAssignmentBaseOperator(node->tokenKind());
             base != lexer::TokenKind::Invalid)

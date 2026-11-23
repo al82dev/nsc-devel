@@ -125,5 +125,51 @@ BODY_TEMP = r'''
     return a + b;
 '''
 positivo(Caso('x2-temporal-receptor', H, S, **CPP), BODY_TEMP, modes=['directo', 'dll'])
-rechazo(c, 'var o = lib.make(1); o = lib.make(42); return o.v;', 'cannot copy or transfer a C++ value')
+# X2-05: `o = value` calls the operator= C++ selects. Obj declares a move constructor, so C++ deletes its implicit
+# copy assignment: the reassignment stays rejected, now with that reason (it was 'cannot copy or transfer a C++ value').
+# X2-05: `o = valor` llama al operator= que elige C++; el de Obj esta borrado, asi que sigue rechazado con ese motivo.
+rechazo(c, 'var o = lib.make(1); o = lib.make(42); return o.v;', 'has no accessible assignment from an rvalue')
+HA = r'''
+namespace lib {
+struct Counters2 { int ctor, copy, move, copyAssign, moveAssign, dtor; };
+Counters2& counters2();
+struct A {
+  int v;
+  A(int x);
+  A(const A& o);
+  A(A&& o);
+  A& operator=(const A& o);
+  A& operator=(A&& o);
+  ~A();
+};
+A mk(int v);
+}
+'''
+SA = r'''
+namespace lib {
+static Counters2 c2;
+Counters2& counters2() { return c2; }
+A::A(int x) : v(x) { ++c2.ctor; }
+A::A(const A& o) : v(o.v) { ++c2.copy; }
+A::A(A&& o) : v(o.v) { o.v = -1; ++c2.move; }
+A& A::operator=(const A& o) { v = o.v; ++c2.copyAssign; return *this; }
+A& A::operator=(A&& o) { v = o.v; o.v = -1; ++c2.moveAssign; return *this; }
+A::~A() { ++c2.dtor; }
+A mk(int v) { return A(v); }
+}
+'''
+BODY_ASSIGN = r'''
+    {
+        var o = lib.mk(1);
+        o = lib.mk(40);
+        if (o.v != 40 || lib.counters2().ctor != 2 || lib.counters2().moveAssign != 1 || lib.counters2().dtor != 1)
+            return 1;
+        var p = lib.mk(2);
+        o = p;
+        if (o.v != 2 || p.v != 2 || lib.counters2().copyAssign != 1 || lib.counters2().dtor != 1) return 2;
+    }
+    if (lib.counters2().copy + lib.counters2().move != 0 || lib.counters2().dtor != 3) return 3;
+    return 42;
+'''
+positivo(Caso('x2-asignacion', HA, SA, **CPP), BODY_ASSIGN, modes=['directo', 'dll'])
 fin()

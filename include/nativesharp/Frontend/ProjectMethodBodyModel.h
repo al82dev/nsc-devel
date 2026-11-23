@@ -5169,6 +5169,10 @@ private:
     // Item 11.4: `a op= b` through a C++ compound assignment operator. / A traves de un operador C++ compuesto.
     bool tryCppPrefixIncrement(const ast::AstNode* expression, const ExpressionResult& operand,
         std::size_t methodMemberOrdinal, std::size_t scopeOrdinal, ExpressionResult& out);
+    // X2-05: `o = value` on a non-trivial C++ record calls its selected operator=. / Llama a su operator= elegido.
+    bool tryCppAssignment(const ast::AstNode* expression, const ExpressionResult& left, const ExpressionResult& right,
+        std::size_t methodMemberOrdinal, std::size_t scopeOrdinal, diagnostics::DiagnosticEngine& diagnostics,
+        ExpressionResult& out);
     bool tryCppCompoundAssignment(const ast::AstNode* expression, const ExpressionResult& left,
         const ExpressionResult& right, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal,
         ExpressionResult& out);

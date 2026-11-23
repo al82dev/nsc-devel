@@ -2134,6 +2134,7 @@ bool ProjectCompilation::compileProjectOopHir(
                 return plan;
             }, loadError))
             return false;
+        oopHirModel_->ownCppTemporaries(); // X2-05
         if (experimentalCppDiscardedLifetimeLoweringForTests_ || experimentalCppLocalLifetimeAnalysisForTests_)
         {
             using HirNode = ProjectOopHirNode;
@@ -2211,7 +2212,11 @@ bool ProjectCompilation::compileProjectOopHir(
                     parent->automaticDestruction;
                 if (node->kind != ProjectOopHirNodeKind::ValueConstruction || (!discarded && !local) ||
                     !node->memberOrdinal || *node->memberOrdinal >= memberModel_->members().size())
-                { loadError = "experimental C++ lifetime requires direct local or discarded construction"; return false; }
+                {
+                    loadError = std::string("experimental C++ lifetime requires direct local or discarded construction (") +
+                        "under " + (parent ? projectOopHirNodeKindName(parent->kind) : "the body") + ")";
+                    return false;
+                }
                 const auto& constructor = memberModel_->members()[*node->memberOrdinal];
                 const auto destructors = memberModel_->findMembers(*node->targetTypeOrdinal, ".dtor");
                 // EN: T11-006. The member model admitted only scalars, pointers, enums and trivial records by

@@ -135,6 +135,10 @@ public:
         driver::CompilationWorkerPool* workerPool);
 
     std::span<const ProjectOopHirFunction> functions() const noexcept;
+    // X2-05: a non-trivial C++ object materialized for its address is owned and destroyed at the end of its full
+    //     expression. / Un objeto C++ no trivial materializado por su direccion se posee y destruye al final de
+    //     su expresion completa.
+    void ownCppTemporaries();
     // EN: C5-07. Attaches to each NativeSharp callback converted to a sysv_abi pointer whose values need it the
     //     Clang plan of that pointer type (`planFor`); a missing plan rejects the callback.
     // ES: C5-07. Adjunta a cada callback NativeSharp convertido a un puntero sysv_abi que lo necesita el plan de
