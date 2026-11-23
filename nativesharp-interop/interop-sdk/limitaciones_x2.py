@@ -405,4 +405,12 @@ BODY_MR = r'''
     return lib.c().ctor == 4 && lib.c().dtor == 4 ? 42 : 4;
 '''
 positivo(Caso('x2-metodo-resultado', HMR, SMR, extra_ref=' Rtti="false"', **CPP), BODY_MR, modes=['directo', 'dll'])
+# X2-05: a static C++ method returning a non-trivial record by value (not imported before) constructs it in the
+# caller's destination, through the first hidden pointer as a free function. / Un metodo estatico C++ que devuelve un
+# record no trivial por valor lo construye en el destino del llamador.
+HSM = HF.replace('Obj make(int v);', 'Obj make(int v);'+chr(10)+'struct Maker2 { static Obj build(int v); };')
+SSM = SF.replace('Obj make(int v) { return Obj(v); }', 'Obj make(int v) { return Obj(v); }'+chr(10)+'Obj Maker2::build(int v) { return Obj(v); }')
+positivo(Caso('x2-estatico-resultado', HSM, SSM, **CPP),
+         '{ var o = lib.Maker2.build(42); if (o.v != 42) return 1; if (lib.Maker2.build(3).v != 3) return 2; }'
+         ' return lib.c().ctor == 2 && lib.c().dtor == 2 ? 42 : 3;', modes=['directo', 'dll'])
 fin()

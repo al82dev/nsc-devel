@@ -600,7 +600,7 @@ bool ProjectMemberModel::build(
         };
         if (!owner || owner->projectOrdinal != imported.projectOrdinal ||
             !cppCallableRecordIsVisible(imported.returnTypeKey, imported.projectOrdinal, nameLookup) ||
-            !valueTypeIsEnum(imported.returnTypeKey) ||
+            (!imported.constructedResult && !valueTypeIsEnum(imported.returnTypeKey)) || // X2-05
             std::any_of(imported.parameterTypeKeys.begin(), imported.parameterTypeKeys.end(), [&](const auto& key) {
                 return !cppCallableRecordIsVisible(key, imported.projectOrdinal, nameLookup) || !valueTypeIsEnum(key);
             }))
@@ -628,6 +628,7 @@ bool ProjectMemberModel::build(
         //     almacenamiento estatico, como en una funcion libre C++ (T10-003).
         member.isReferenceReturn = imported.returnsReference;
         member.cppReadonlyReferenceReturn = imported.returnsReadonlyReference;
+        member.cppConstructedResult = imported.constructedResult; // X2-05
         std::vector<std::string> referenceInputs;
         member.signatureKey = member.name + "(";
         for (std::size_t i = 0; i < imported.parameterTypeKeys.size(); ++i)

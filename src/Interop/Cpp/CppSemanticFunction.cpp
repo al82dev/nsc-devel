@@ -1538,6 +1538,21 @@ CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
     auto result = mapFunctionType(returnCarrier ? *returnCarrier : method.returnType, true,
                                   records ? &recordIndex : nullptr, moduleName, 0, lookup,
                                   projectOrdinal, false, false, true);
+    // X2-05: a non-trivial C++ record by value, constructed by the method in the caller's destination (a static
+    //     member returns as a free function, through the first hidden pointer). / Un record C++ no trivial por
+    //     valor, construido en el destino del llamador.
+    bool constructedResult = false;
+    if (!result && !referenceReturn && lookup != nullptr && method.returnType.kind == CppTypeKind::Record)
+        if (const auto resultIdentity = projectCppRecordTypeIdentity(method.returnType, moduleName))
+            if (const auto ordinal = lookup->typeOrdinalForIdentity(resultIdentity->key());
+                ordinal && lookup->cppImportedType(*ordinal) &&
+                lookup->cppImportedType(*ordinal)->origin == frontend::CppImportedTypeOrigin::CppRecord &&
+                !lookup->cppTrivialValueEligible(*ordinal))
+            {
+                result = CppScalarTypeMapping{"type:" + resultIdentity->key(), method.returnType.canonicalSpelling,
+                                              false, false};
+                constructedResult = true;
+            }
     if (!result) return fail("C++ static method return type is not yet mapped");
     std::vector<CppScalarTypeMapping> parameters;
     std::vector<std::uint8_t> objectSizeModes;
@@ -1588,6 +1603,7 @@ CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
     projected.passKinds = std::move(passKinds);
     projected.rvalueReferences = std::move(rvalueReferences);
     projected.referenceReturn = referenceReturn;
+    projected.constructedResult = constructedResult; // X2-05
     projected.readonlyReferenceReturn = referenceReturn &&
         (method.returnType.element->isConst || method.returnType.kind == CppTypeKind::RValueReference);
     describeCppMethodOverload(method, projected.cppParameterSpellings, projected.cppSignatureSuffix,
@@ -1616,6 +1632,7 @@ frontend::CppImportedStaticMethod toCppImportedStaticMethod(const CppSemanticSta
     result.parameterRvalueReferences = method.rvalueReferences;
     result.returnsReference = method.referenceReturn;
     result.returnsReadonlyReference = method.readonlyReferenceReturn;
+    result.constructedResult = method.constructedResult; // X2-05
     if (method.referenceReturn && result.returnTypeKey.ends_with('*')) result.returnTypeKey.pop_back();
     // T10-007: a protected or private C++ method is a member NativeSharp code cannot reach, with its diagnostic.
     result.accessibility = method.access == CppAccess::Private ? frontend::ClassMemberAccessibility::Private :

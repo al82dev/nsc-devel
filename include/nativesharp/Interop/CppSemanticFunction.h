@@ -116,6 +116,7 @@ struct CppSemanticStaticMethod
     std::vector<frontend::ParameterPassKind> passKinds = {};
     bool referenceReturn = false;
     bool readonlyReferenceReturn = false;
+    bool constructedResult = false; // X2-05: a non-trivial record by value. / Un record no trivial.
     // T19-006: see CppImportedStaticMethod. / Ver CppImportedStaticMethod.
     std::vector<std::string> cppParameterSpellings{};
     std::string cppSignatureSuffix{};

@@ -43,6 +43,7 @@ struct CppImportedStaticMethod final
     std::vector<ParameterPassKind> parameterPassKinds = {};
     bool returnsReference = false;
     bool returnsReadonlyReference = false;
+    bool constructedResult = false; // X2-05: a non-trivial record by value. / Un record no trivial por valor.
     // T19-007: which parameters are C++ `T&&` (ref parameters that also bind a value). / Cuales son `T&&`.
     std::vector<bool> parameterRvalueReferences = {};
 };
