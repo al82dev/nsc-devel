@@ -755,6 +755,21 @@ LLVMValueRef OopLlvmImplementation::lowerCall(
             }
         }
 
+        // EN: X3-01. `base(args)` of a class derived from a C++ class calls the adapter's constructor entry (the same
+        //     ABI as the base constructor) on the hidden storage of the C++ object.
+        // ES: X3-01. `base(args)` de una clase derivada de una clase C++ llama a la entrada de construccion del
+        //     adaptador (la misma ABI que el constructor base) sobre el almacenamiento oculto del objeto C++.
+        LLVMValueRef target = found->second.function;
+        if (!node->secondaryCalleeName.empty() && node->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall &&
+            found->second.mirFunction != nullptr && found->second.mirFunction->isCppExternal)
+        {
+            LLVMValueRef offset = LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0);
+            receiver = LLVMBuildGEP2(builder_, LLVMInt8TypeInContext(context_), receiver, &offset, 1,
+                                     "cpp.base.storage");
+            target = LLVMGetNamedFunction(module_, node->secondaryCalleeName.c_str());
+            if (target == nullptr)
+                target = LLVMAddFunction(module_, node->secondaryCalleeName.c_str(), found->second.functionType);
+        }
         std::vector<LLVMValueRef> arguments;
         arguments.reserve(node->children.size() + 1);
         arguments.push_back(receiver);
@@ -801,7 +816,7 @@ LLVMValueRef OopLlvmImplementation::lowerCall(
         }
         releaseTransferredArguments(node);
         LLVMValueRef call = buildPotentiallyThrowingCall(
-            found->second.functionType, found->second.function,
+            found->second.functionType, target,
             arguments.data(), static_cast<unsigned>(arguments.size()),
             node->typeKey == "builtin:void" || sretSlot != nullptr ? "" : "call", error);
         if (call == nullptr) return nullptr;

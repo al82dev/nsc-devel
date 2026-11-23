@@ -78,6 +78,19 @@ inline std::string cppInterfaceBindSymbol(std::string_view classKey, std::string
 {
     return cppInterfaceAdapterName(classKey, interfaceUsr) + "_bind";
 }
+// X3-01: the adapter's entry `void* f(void* storage, args...)` that constructs it with the base constructor whose
+//     symbol is given (the same ABI as that constructor). / La entrada del adaptador que lo construye con ese
+//     constructor de la base (la misma ABI que ese constructor).
+inline std::string cppInterfaceConstructSymbol(std::string_view adapterName, std::string_view constructorSymbol)
+{
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (const unsigned char c : constructorSymbol) { hash ^= c; hash *= 1099511628211ULL; }
+    static constexpr char digits[] = "0123456789abcdef";
+    std::string name(adapterName);
+    name += "_c";
+    for (int shift = 60; shift >= 0; shift -= 4) name.push_back(digits[(hash >> shift) & 0xF]);
+    return name;
+}
 
 inline std::string cppByValueThunkSymbol(std::string_view usr)
 {

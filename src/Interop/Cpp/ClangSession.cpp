@@ -4180,15 +4180,53 @@ public:
                 " override { " + (method->getReturnType()->isVoidType() ? "" : "return ") + callee +
                 "(__nsc_self" + arguments + "); }\n";
         }
+        // X3-01: an entry per public constructor of the base, `void* <adapter>_c<h>(void* storage, args...)`, named
+        //     after the constructor's symbol: `base(args)` calls it with the ABI of that constructor. / Una entrada por
+        //     constructor publico de la base, nombrada por su simbolo.
+        std::string constructors;
+        std::set<std::string> constructorEntries;
+        {
+            std::unique_ptr<clang::MangleContext> mangler(context.createMangleContext());
+            for (const auto* constructor : interface->ctors())
+            {
+                if (constructor->isDeleted() || constructor->getAccess() != clang::AS_public ||
+                    constructor->isCopyOrMoveConstructor() || constructor->isVariadic()) continue;
+                llvm::SmallString<128> symbol;
+                llvm::raw_svector_ostream stream(symbol);
+                mangler->mangleName(clang::GlobalDecl(constructor, clang::Ctor_Complete), stream);
+                const std::string entry = cppInterfaceConstructSymbol(request.adapterName, symbol.str().str());
+                std::string parameters;
+                std::string arguments;
+                for (unsigned parameter = 0; parameter < constructor->getNumParams(); ++parameter)
+                {
+                    parameters += ", " + constructor->getParamDecl(parameter)->getType().getAsString(policy) + " a" +
+                        std::to_string(parameter);
+                    arguments += std::string(parameter ? ", " : "") + "static_cast<decltype(a" + std::to_string(parameter) +
+                        ")&&>(a" + std::to_string(parameter) + ")";
+                }
+                constructors += "extern \"C\" void* " + entry + "(void* storage" + parameters + ") { return ::new "
+                    "(storage, __nsc_iface_place_t{}) " + request.adapterName + "(" + arguments + "); }\n";
+                constructorEntries.insert(entry);
+            }
+        }
         const std::string bind = request.adapterName + "_bind";
+        // A base without an accessible default constructor is built by `base(args)` only. / Una base sin constructor
+        //     por defecto accesible solo la construye `base(args)`.
+        bool defaultConstructible = false;
+        if (ast_->hasSema())
+            if (auto* constructor = ast_->getSema().LookupDefaultConstructor(const_cast<clang::CXXRecordDecl*>(interface)))
+                defaultConstructible = !constructor->isDeleted() && constructor->getAccess() == clang::AS_public;
         const std::string code = source_ + "\nstruct __nsc_iface_place_t {};\n"
             "inline void* operator new(decltype(sizeof(0)), void* p, __nsc_iface_place_t) noexcept { return p; }\n"
             "extern \"C\" {\n" + declarations + "}\n"
-            "struct " + request.adapterName + " final : " + interfaceName + " {\n  void* __nsc_self;\n" + overrides + "};\n"
-            // X3-01: constructed once, while its vtable pointer is still null (a new object is zeroed). / Construido
-            //     una vez, mientras su puntero de vtable sigue nulo (un objeto nuevo empieza en cero).
-            "extern \"C\" void* " + bind + "(void* storage, void* self) { if (!*static_cast<void**>(storage)) ::new "
-            "(storage, __nsc_iface_place_t{}) " + request.adapterName + "; auto* a = static_cast<" +
+            "struct " + request.adapterName + " final : " + interfaceName + " {\n  using " + interfaceName + "::" +
+            interface->getNameAsString() + ";\n  void* __nsc_self;\n" + overrides + "};\n" + constructors +
+            // X3-01: constructed once, while its vtable pointer is still null (a new object is zeroed), by default when
+            //     `base(args)` did not construct it. / Construido una vez, mientras su puntero de vtable sigue nulo,
+            //     por defecto si `base(args)` no lo construyo.
+            "extern \"C\" void* " + bind + "(void* storage, void* self) { if (!*static_cast<void**>(storage)) " +
+            (defaultConstructible ? "::new (storage, __nsc_iface_place_t{}) " + request.adapterName + ";"
+                                  : std::string("__builtin_trap();")) + " auto* a = static_cast<" +
             request.adapterName + "*>(storage); a->__nsc_self = self; return static_cast<" + interfaceName +
             "*>(a); }\n"
             // X3-01: destroyed with the NativeSharp object, when it was constructed. / Destruido con el objeto
@@ -4233,7 +4271,8 @@ public:
             for (const auto* inner : linkage->decls())
                 if (const auto* function = llvm::dyn_cast<clang::FunctionDecl>(inner);
                     function && function->getIdentifier() && function->hasBody() &&
-                    (function->getName() == bind || function->getName() == request.adapterName + "_destroy"))
+                    (function->getName() == bind || function->getName() == request.adapterName + "_destroy" ||
+                     constructorEntries.contains(function->getName().str())))
                 {
                     generator->HandleTopLevelDecl(clang::DeclGroupRef(const_cast<clang::FunctionDecl*>(function)));
                     generator->GetAddrOfGlobal(clang::GlobalDecl(function), false);
@@ -4242,11 +4281,14 @@ public:
         generator->HandleTranslationUnit(adapterContext);
         auto module = generator->ReleaseModule();
         if (!module) { error = "Clang emitted no module"; return std::nullopt; }
-        if (auto* destroy = module->getFunction(request.adapterName + "_destroy"); destroy && !destroy->isDeclaration())
-        {
-            destroy->setLinkage(llvm::GlobalValue::WeakODRLinkage);
-            if (!destroy->hasComdat()) destroy->setComdat(module->getOrInsertComdat(destroy->getName()));
-        }
+        std::vector<std::string> exported(constructorEntries.begin(), constructorEntries.end());
+        exported.push_back(request.adapterName + "_destroy");
+        for (const auto& name : exported)
+            if (auto* entry = module->getFunction(name); entry && !entry->isDeclaration())
+            {
+                entry->setLinkage(llvm::GlobalValue::WeakODRLinkage);
+                if (!entry->hasComdat()) entry->setComdat(module->getOrInsertComdat(entry->getName()));
+            }
         auto* function = module->getFunction(bind);
         if (!function || function->isDeclaration()) { error = "Clang did not emit the bind function"; return std::nullopt; }
         function->setLinkage(llvm::GlobalValue::WeakODRLinkage);

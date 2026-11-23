@@ -245,6 +245,15 @@ BODYO = r'''
     { var y = new Y(); if (lib.vuse((lib.VOwning*)y) != 42) return 4; }
     return lib.dtors() == 11 ? 42 : 5;
 '''
+# X3-01: `base(args)` of a class derived from a C++ class constructs the C++ object with that base constructor (the
+# adapter inherits it and exposes an entry with its ABI); without a default constructor only `base(args)` builds it.
+# X3-01: `base(args)` construye el objeto C++ con ese constructor de la base.
+HN = 'namespace lib { struct Node { int id; Node(int i); virtual int value() const; }; int read(Node* n); }\n'
+SN = ('namespace lib { Node::Node(int i) : id(i) {} int Node::value() const { return id; }\n'
+      'int read(Node* n) { return n->value() + n->id; } }\n')
+positivo(Caso('x3-base-argumentos', HN, SN, **CPP), 'var l = new Leaf(12); return lib.read((lib.Node*)l);',
+         preludio='class Leaf : lib.Node { public Leaf(int k) : base(k) { } public int value() { return 30; } }\n',
+         modes=['directo', 'dll'])
 positivo(Caso('x3-base-destructor', HO, SO, **CPP), BODYO,
          preludio='class X : lib.Owning { public int f() { return 32; } }\nclass Y : lib.VOwning { public int g() { return 33; } }\n',
          modes=['directo', 'dll'])

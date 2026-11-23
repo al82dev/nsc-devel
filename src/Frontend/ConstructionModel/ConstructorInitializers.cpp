@@ -27,6 +27,19 @@ bool ProjectConstructionModel::resolveConstructorInitializerTarget(
         : (binding.explicitInitializer
             ? ConstructorInitializerKind::ExplicitBase
             : ConstructorInitializerKind::ImplicitBase);
+    // EN: X3-01. `base(args)` of a class derived from a C++ class selects a constructor of that class, which builds
+    //     the C++ object in the class's hidden fields; without it the object is built by default when first bound.
+    // ES: X3-01. `base(args)` de una clase derivada de una clase C++ elige un constructor de esa clase, que construye
+    //     el objeto C++ en los campos ocultos; sin el, el objeto se construye por defecto al enlazarlo.
+    if (binding.kind == ConstructorInitializerKind::ExplicitBase)
+        for (const std::size_t member : memberModel_->membersOfType(binding.containingTypeOrdinal))
+            if (member < memberModel_->members().size() &&
+                memberModel_->members()[member].cppInterfaceTypeOrdinal &&
+                memberModel_->members()[member].name == "__nsc_cpp_interface_vptr")
+            {
+                binding.targetTypeOrdinal = memberModel_->members()[member].cppInterfaceTypeOrdinal;
+                return true;
+            }
     binding.targetTypeOrdinal = explicitThis
         ? std::optional<std::size_t>(binding.containingTypeOrdinal)
         : inheritanceModel_->baseTypeOrdinal(binding.containingTypeOrdinal);

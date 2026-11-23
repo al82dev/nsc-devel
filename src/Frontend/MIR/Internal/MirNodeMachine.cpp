@@ -1,3 +1,4 @@
+#include "nativesharp/Interop/CppMemberThunk.h"
 #include "MirNodeMachine.h"
 #include "../../Internal/TypeIndexShadowCheck.h"
 #include "nativesharp/Frontend/ProjectCompilationIndexes.h"
@@ -2063,6 +2064,31 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup19(
                 result->calleeName = target->mangledName;
             }
             result->virtualSlot = dynamicDispatch ? slot : std::nullopt;
+            // EN: X3-01. `base(args)` of a class derived from a C++ class: the adapter's constructor entry, at the
+            //     hidden storage of the C++ object (immediate offset from the receiver).
+            // ES: X3-01. `base(args)` de una clase derivada de una clase C++: la entrada de construccion del
+            //     adaptador, en el almacenamiento oculto del objeto C++.
+            if (node->kind == ProjectOopHirNodeKind::ConstructorInitializerCall && node->targetTypeOrdinal &&
+                target != nullptr && target->isCppExternal && model_.memberModel_ != nullptr)
+                for (const std::size_t member : model_.memberModel_->membersOfType(*node->targetTypeOrdinal))
+                {
+                    const auto& field = model_.memberModel_->members()[member];
+                    if (!field.cppInterfaceTypeOrdinal || field.name != "__nsc_cpp_interface_vptr") continue;
+                    const auto* interface = model_.nameLookup_->cppImportedType(*field.cppInterfaceTypeOrdinal);
+                    const ObjectFieldLayout* layout = model_.fieldLayout(member);
+                    if (interface == nullptr || !interface->clangUsr || layout == nullptr)
+                    {
+                        error = "X3-01 C++ base construction has no adapter storage";
+                        return -1;
+                    }
+                    result->secondaryCalleeName = interop::cppInterfaceConstructSymbol(
+                        interop::cppInterfaceAdapterName(
+                            model_.nameLookup_->namedTypes()[*node->targetTypeOrdinal].identity.key(),
+                            *interface->clangUsr),
+                        target->mangledName);
+                    result->immediate = layout->offset;
+                    break;
+                }
             break;
         }
 

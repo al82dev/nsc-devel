@@ -1434,10 +1434,18 @@ bool ProjectOopHirModel::appendConstructorInitializerCall(
         initializerCall->memberOrdinal = binding->selectedEntryConstructorMemberOrdinal;
         initializerCall->baseReceiver =
             binding->kind != ConstructorInitializerKind::ExplicitThis;
+        // EN: X3-01. A C++ base constructor builds the C++ object in the class's hidden fields: the receiver stays the
+        //     NativeSharp object, and the node names its class (MIR targets the adapter's constructor entry there).
+        // ES: X3-01. Un constructor de base C++ construye el objeto C++ en los campos ocultos de la clase: el receptor
+        //     sigue siendo el objeto NativeSharp y el nodo nombra su clase.
+        const bool cppBase = *binding->selectedEntryConstructorMemberOrdinal < memberModel_->members().size() &&
+            memberModel_->members()[*binding->selectedEntryConstructorMemberOrdinal].isCppExternal &&
+            binding->kind == ConstructorInitializerKind::ExplicitBase;
+        if (cppBase) initializerCall->targetTypeOrdinal = binding->containingTypeOrdinal;
         initializerCall->children.push_back(makeNode(
             ProjectOopHirNodeKind::ThisValue,
             binding->initializerSyntax,
-            inheritanceModel_->typeKeyForOrdinal(*binding->targetTypeOrdinal)));
+            inheritanceModel_->typeKeyForOrdinal(cppBase ? binding->containingTypeOrdinal : *binding->targetTypeOrdinal)));
         bool hasOwnedTemporary = false;
         if (binding->resolution == ConstructorInitializerResolutionKind::ResolvedExplicit &&
             binding->initializerSyntax != nullptr)
