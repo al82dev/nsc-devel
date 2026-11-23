@@ -269,7 +269,13 @@ bool ProjectMemberModel::collectTypeMembers(
                 const auto ordinal = base != nullptr ? nameLookup.resolvedTypeOrdinal(base) : std::nullopt;
                 const auto* imported = ordinal ? nameLookup.cppImportedType(*ordinal) : nullptr;
                 if (imported == nullptr || imported->cppInterfaceMethods.empty()) continue;
-                for (const char* name : {"__nsc_cpp_interface_vptr", "__nsc_cpp_interface_self"})
+                // X3-01: as many pointers as the adapter measures (the record, aligned to 8, and its self pointer).
+                //     / Tantos punteros como mide el adaptador.
+                const std::uint64_t recordBytes = imported->objectLayout ? imported->objectLayout->sizeBytes : 8;
+                std::vector<std::string> names{"__nsc_cpp_interface_vptr"};
+                for (std::uint64_t slot = 1; slot < (recordBytes + 7) / 8 + 1; ++slot)
+                    names.push_back("__nsc_cpp_interface_" + std::to_string(slot));
+                for (const std::string& name : names)
                 {
                     ClassMemberSymbol field;
                     field.kind = ClassMemberKind::Field;

@@ -128,10 +128,13 @@ positivo(Caso('x3-com-entrante', HCOM, SCOM, **CPP), 'var c = new MyCalc(); retu
 # A class must implement every pure virtual method with its NativeSharp signature. / Debe implementar cada metodo
 # virtual puro con su firma NativeSharp.
 rechazo(c3, 'return 0;', "it must declare one public instance method 'QueryInterface'", preludio='class MyCalc : ICalc { }\n')
-# A C++ class that is not an abstract interface (data, non-pure virtual methods) is still not a base.
-# / Una clase C++ que no es una interfaz abstracta sigue sin poder ser base.
-rechazo(Caso('x3-base-no-interfaz', H2, S2, **CPP), 'return 0;', 'cannot derive from the C/C++ record',
-        preludio='class MyShape : lib.Shape { }\n')
+# X3-01: deriving from `lib.Shape` (data with a trivial destructor, virtual methods with a body) was a rejection
+# ('cannot derive from the C/C++ record'); the override is reached through C++'s virtual dispatch, also from
+# NativeSharp through the C++ pointer. / Derivar de `lib.Shape` era un rechazo; la sobreescritura se alcanza por el
+# despacho virtual de C++, tambien desde NativeSharp por el puntero C++.
+positivo(Caso('x3-base-no-interfaz', H2, S2, **CPP),
+         'var m = new MyShape(); lib.Shape* p = (lib.Shape*)m; return p->area() + p->tag + p->scale(0);',
+         preludio='class MyShape : lib.Shape { public int area() { return 40; } }\n', modes=['directo', 'dll'])
 
 H4 = 'namespace lib { struct VB { int v = 40; }; struct M1 : virtual VB { int m1 = 1; }; struct M2 : virtual VB { int m2 = 1; };\n' \
      'struct DD : M1, M2 { int dd = 0; }; int vb_value(DD* p); }\n'
@@ -194,4 +197,24 @@ positivo(Caso('x3-observador', HOBS, 'namespace lib { int drive(Listener* l) { r
          'var d = new Doubler(); if (lib.drive((lib.Listener*)d) != 12) return 1;\n'
          '    var f = new Full(); return lib.drive((lib.Listener*)f) == 41 && f.total == 10 ? 42 : 2;',
          preludio=PREOBS, modes=['directo', 'dll'])
+# X3-01: a NativeSharp class derived from a polymorphic C++ class with data, default-constructible and with a trivial
+# destructor: the C++ object (base and adapter) lives in the hidden fields, constructed once by default (its `id = 7`
+# persists across conversions) and never destroyed there. A base with a non-trivial destructor stays a rejection.
+# X3-01: una clase NativeSharp derivada de una clase C++ polimorfica con datos y destructor trivial; el objeto C++ vive
+# en los campos ocultos, construido una sola vez.
+HW = r'''
+namespace lib {
+struct Widget { int id = 7; long long pad[2] = {1, 2}; virtual int draw() const { return id; }
+                virtual int scale(int k) { id += 1; return (id - 1) * k; } };
+int render(Widget* w);
+}
+'''
+SW = 'namespace lib { int render(Widget* w) { return w->draw() + w->scale(2) + (int)w->pad[1]; } }\n'
+positivo(Caso('x3-base-con-datos', HW, SW, **CPP),
+         'var w = new MyWidget(); if (lib.render((lib.Widget*)w) != 42) return 1;\n'
+         '    return lib.render((lib.Widget*)w) == 44 ? 42 : 2;',
+         preludio='class MyWidget : lib.Widget { public int draw() { return 26; } }\n', modes=['directo', 'dll'])
+HO = 'namespace lib { struct Owning { int* p = nullptr; virtual int f() { return 1; } ~Owning(); }; }\n'
+rechazo(Caso('x3-base-destructor', HO, 'namespace lib { Owning::~Owning() {} }\n', **CPP), 'return 0;',
+        'cannot derive from the C/C++ record', preludio='class X : lib.Owning { }\n')
 fin()

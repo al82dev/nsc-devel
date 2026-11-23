@@ -4185,9 +4185,14 @@ public:
             "inline void* operator new(decltype(sizeof(0)), void* p, __nsc_iface_place_t) noexcept { return p; }\n"
             "extern \"C\" {\n" + declarations + "}\n"
             "struct " + request.adapterName + " final : " + interfaceName + " {\n  void* __nsc_self;\n" + overrides + "};\n"
-            "extern \"C\" void* " + bind + "(void* storage, void* self) { auto* a = ::new (storage, "
-            "__nsc_iface_place_t{}) " + request.adapterName + "; a->__nsc_self = self; return static_cast<" +
-            interfaceName + "*>(a); }\n";
+            "static_assert(sizeof(" + interfaceName + ") == sizeof(void*) || __is_trivially_destructible(" +
+            interfaceName + "), \"a C++ base with data needs a trivial destructor\");\n"
+            // X3-01: constructed once, while its vtable pointer is still null (a new object is zeroed). / Construido
+            //     una vez, mientras su puntero de vtable sigue nulo (un objeto nuevo empieza en cero).
+            "extern \"C\" void* " + bind + "(void* storage, void* self) { if (!*static_cast<void**>(storage)) ::new "
+            "(storage, __nsc_iface_place_t{}) " + request.adapterName + "; auto* a = static_cast<" +
+            request.adapterName + "*>(storage); a->__nsc_self = self; return static_cast<" + interfaceName +
+            "*>(a); }\n";
         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(llvm::vfs::createPhysicalFileSystem().release());
         if (filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory))) { error = "no working directory"; return std::nullopt; }
         std::vector<CppSessionDiagnostic> adapterDiagnostics;
