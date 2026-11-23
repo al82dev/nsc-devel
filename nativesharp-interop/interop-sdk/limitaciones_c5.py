@@ -152,11 +152,37 @@ BODY7C = ('rcb r = (m, s) => { P v; v.x = (int)(m.d * 2) + s; v.y = m.i; return 
           'bcb b = (x, f, u) => { B v; v.a = x.a + u; v.b = x.b + (long)(f.a + f.b); v.c = x.c * (long)f.c; return v; };\n'
           'return call_rcb(r) == 27 && call_bcb(b) == 227 ? 42 : 1;')
 positivo(c7c, BODY7C)
-# 128-bit values: the pointer type itself is not mapped, so the import is rejected. / El tipo de puntero con 128 bits
-# no se mapea: la importacion se rechaza.
-H7d = 'typedef long long (__attribute__((sysv_abi)) *wide_cb)(__int128 v);\nlong long call_wide(wide_cb f);\n'
-rechazo(Caso('c5-sysv-ancho', H7d, 'long long call_wide(wide_cb f) { return f(1); }\n'),
-        'return (int)call_wide((v) => (long)v);', "parameter 0 ('wide_cb') is not yet mapped")
+# C5-07: a `sysv_abi` pointer with a 128-bit integer was a rejection ("parameter 0 ('wide_cb') is not yet mapped");
+# Clang passes and returns it as LLVM's direct `i128` (two integer registers, RAX:RDX), which x86_64_sysvcc lowers the
+# same way, so a NativeSharp callback and a call through the pointer use it. / Un puntero `sysv_abi` con un entero de
+# 128 bits era un rechazo; Clang lo pasa y devuelve como el `i128` directo de LLVM.
+H7d = r'''
+typedef long long (__attribute__((sysv_abi)) *wide_cb)(__int128 v);
+typedef unsigned __int128 (__attribute__((sysv_abi)) *wide_r)(long long a, __int128 b);
+long long call_wide(wide_cb f);
+long long call_r(wide_r f);
+wide_r get_r(void);
+'''
+S7d = r'''
+long long call_wide(wide_cb f) { return f(((__int128)1 << 70) + 5) - ((long long)1 << 40); }
+static unsigned __int128 __attribute__((sysv_abi)) twice(long long a, __int128 b) { return (unsigned __int128)(b * 2 + a); }
+wide_r get_r(void) { return twice; }
+long long call_r(wide_r f)
+{
+    unsigned __int128 v = f(2, ((__int128)3 << 64) + 20);
+    return (long long)(v >> 64) * 100 + (long long)(unsigned long long)v;
+}
+'''
+BODY7D = r'''
+    wide_cb w = (v) => (long)(v >> 30);
+    if (call_wide(w) != 0) return 1;
+    wide_r r = (a, b) => (u128)(b + a);
+    if (call_r(r) != 322) return 2;
+    var g = get_r();
+    if ((long)g(1, 20) != 41 || (long)(g(0, (i128)1 << 80) >> 64) != 1 << 17) return 3;
+    return 42;
+'''
+positivo(Caso('c5-sysv-ancho', H7d, S7d), BODY7D)
 
 SINGLE = r'''
 #ifndef ONE_H

@@ -34,7 +34,8 @@ bool ProjectOopHirModel::attachSysVCallbackPlans(
     const auto scalar = [](std::string_view key) {
         return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" || key == "builtin:ulong" ||
             key == "builtin:nint" || key == "builtin:nuint" || key == "builtin:float" || key == "builtin:double" ||
-            key == "builtin:bool" || key.ends_with('*');
+            key == "builtin:bool" || key.ends_with('*') ||
+            key == "builtin:i128" || key == "builtin:u128"; // C5-07: LLVM's direct `i128`, as Clang
     };
     // A callback of the convention whose values LLVM alone does not classify as Clang does. / Un callback de la
     // convencion cuyos valores LLVM no clasifica solo como Clang.

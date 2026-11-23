@@ -3695,6 +3695,9 @@ private:
     // target's mangled name -- two `extern C delegate` conversions of the same method must yield
     // the SAME address, or delegate equality and host-side identity checks would break.
     std::unordered_map<std::string, FunctionInfo> callbackGuardThunks_;
+    // C5-07: the callback boundary being built is sysv_abi, whose 128-bit integers are LLVM's direct `i128` (not the
+    //     Win64 address and XMM0). / El limite de callback en construccion es sysv_abi.
+    bool callbackGuardSysV_ = false;
     LLVMValueRef currentFunction_ = nullptr;
     const frontend::ProjectOopMirFunction* currentMirFunction_ = nullptr;
     // EN: Freeze C-02: resume state of the poll/MoveNext being defined (inactive otherwise).

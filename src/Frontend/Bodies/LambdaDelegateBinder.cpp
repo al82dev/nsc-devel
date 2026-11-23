@@ -1619,7 +1619,10 @@ bool sysvScalarCallback(const language::FunctionType& function)
     const auto scalar = [](std::string_view key) {
         return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" || key == "builtin:ulong" ||
             key == "builtin:nint" || key == "builtin:nuint" || key == "builtin:float" || key == "builtin:double" ||
-            key == "builtin:bool" || key.ends_with('*');
+            key == "builtin:bool" || key.ends_with('*') ||
+            // A 128-bit integer is LLVM's direct `i128` under both (two integer registers, RAX:RDX). / Un entero
+            //     de 128 bits es el `i128` directo de LLVM en ambos.
+            key == "builtin:i128" || key == "builtin:u128";
     };
     if (function.variadic) return false;
     for (const auto& parameter : function.parameters)
@@ -1648,8 +1651,8 @@ bool sysvCallback(const language::FunctionType& function)
 }
 
 constexpr std::string_view kSysVCallbackLimit =
-    " (sysv_abi callbacks take and return integers, floating values, bool, pointers and C records; 128-bit and "
-    "other values need a plan Clang does not give)";
+    " (sysv_abi callbacks take and return integers, floating values, bool, pointers and C records; other values "
+    "need a plan Clang does not give)";
 }
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDelegate(

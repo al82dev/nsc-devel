@@ -1200,7 +1200,9 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" ||
                 key == "builtin:ulong" || key == "builtin:float" || key == "builtin:double" ||
                 key == "builtin:sbyte" || key == "builtin:byte" || key == "builtin:short" ||
-                key == "builtin:ushort" || key == "builtin:bool" || key.ends_with('*');
+                key == "builtin:ushort" || key == "builtin:bool" || key.ends_with('*') ||
+                // C5-07: Clang's direct `i128` under sysv_abi. / El `i128` directo de Clang con sysv_abi.
+                key == "builtin:i128" || key == "builtin:u128";
         };
         if (sysvCall && ((abiReturnKey != "builtin:void" && !sysvScalar(abiReturnKey)) ||
             std::any_of(abiArgumentKeys.begin(), abiArgumentKeys.end(),

@@ -323,7 +323,11 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         const bool win64C = signature.callingConvention == "cdecl" || signature.callingConvention == "ms_abi" ||
             signature.callingConvention == "stdcall" || signature.callingConvention == "fastcall" ||
             signature.callingConvention.empty();
-        if (!win64C && (wideInteger(signature.returnType) ||
+        // C5-07: under `sysv_abi` Clang passes and returns a 128-bit integer as LLVM's direct `i128` (two integer
+        //     registers, RAX:RDX), which x86_64_sysvcc lowers the same way. / Con `sysv_abi` Clang pasa y devuelve
+        //     un entero de 128 bits como el `i128` directo de LLVM, que x86_64_sysvcc baja igual.
+        const bool sysv = signature.callingConvention == "sysv_abi";
+        if (!win64C && !sysv && (wideInteger(signature.returnType) ||
             std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), wideInteger)))
             return std::nullopt;
         language::FunctionType function;
