@@ -320,9 +320,59 @@ bool OopLlvmImplementation::lowerBlockStatement(
                     completedBases.emplace_back(ordinal, std::move(cleanup));
                     LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
                 };
+                bool cppBasesBuilt = false;
+                const auto buildCppBases = [&]() -> bool
+                {
+                    if (cppBasesBuilt || thisValue_ == nullptr) return true;
+                    cppBasesBuilt = true;
+                    std::vector<std::string> skip;
+                    for (const auto& item : completedBases)
+                        if (item.second->stringValue == "constructor.cpp.base.cleanup")
+                            skip.push_back(item.second->calleeName);
+                    // A base(args) to a C++ base without a destructor registered nothing: skip every C++ base
+                    //     the constructor calls explicitly. / Se omiten las bases que el constructor llama.
+                    for (const auto& child : node->children)
+                    {
+                        const auto* call = child.get();
+                        if (call != nullptr && call->kind == frontend::ProjectOopMirNodeKind::FullExpressionCleanup &&
+                            call->children.size() == 1) call = call->children.front().get();
+                        if (call != nullptr && call->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall &&
+                            call->baseReceiver && !call->secondaryCalleeName.empty())
+                        {
+                            const auto cut = call->secondaryCalleeName.rfind("_c");
+                            if (cut != std::string::npos)
+                                skip.push_back(call->secondaryCalleeName.substr(0, cut) + "_destroy");
+                        }
+                    }
+                    std::vector<std::string> built;
+                    if (!constructCppBasesByDefault(thisValue_, currentMirFunction_->declaringTypeOrdinal, skip, built,
+                                                    error)) return false;
+                    for (const std::string& destroy : built)
+                    {
+                        std::size_t ordinal = std::numeric_limits<std::size_t>::max();
+                        while (cleanupRegions_.contains(ordinal) || localStorage_.contains(ordinal)) --ordinal;
+                        auto cleanup = std::make_unique<frontend::ProjectOopMirNode>();
+                        cleanup->stringValue = "constructor.cpp.base.cleanup";
+                        cleanup->calleeName = destroy;
+                        LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
+                        LLVMValueRef flag = entryBlockAlloca(flagType, 0, "constructor.cpp.base.live");
+                        LLVMBuildStore(builder_, LLVMConstInt(flagType, 1, 0), flag);
+                        cleanupRegions_.emplace(ordinal, cleanup.get());
+                        localStorage_.emplace(ordinal, flag);
+                        cleanupChainCache_.erase(ordinal);
+                        activeCleanupRegions_.push_back(ordinal);
+                        completedBases.emplace_back(ordinal, std::move(cleanup));
+                        LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+                    }
+                    return true;
+                };
                 const auto prepareFields = [&](const frontend::ProjectOopMirNode* delegatedCall)
                 {
                     const bool delegatesToThis = delegatedCall != nullptr;
+                    // X3-01: C++ bases without base(args) are built by default before the fields. / Las bases C++
+                    //     sin base(args) se construyen por defecto antes de los campos.
+                    if (delegatesToThis) cppBasesBuilt = true;
+                    else if (!buildCppBases()) cppBasesBuilt = true;
                     auto delegatedFields = provenDelegatedFields(
                         mirModel_, *memberModel_, delegatedCall, currentMirFunction_->declaringTypeOrdinal);
                     const auto* valueLayout = mirModel_.structLayoutForType(currentMirFunction_->declaringTypeOrdinal);
@@ -583,6 +633,14 @@ bool OopLlvmImplementation::lowerBlockStatement(
                     {
                         activeCleanupRegions_.push_back(*child->cleanupRegionOrdinal);
                     }
+                }
+                // X3-01: a constructor with no statement after its bases still builds its C++ bases. / Un
+                //     constructor sin sentencias tras sus bases tambien construye sus bases C++.
+                if (constructorRoot && !fieldsPrepared && !terminated() && !buildCppBases())
+                {
+                    activeCleanupRegions_.resize(cleanupDepthAtEntry);
+                    forgetCompletedBases();
+                    return false;
                 }
                 if (!terminated())
                 {
@@ -1466,4 +1524,41 @@ bool OopLlvmImplementation::emitDefaultLocalStorage(const frontend::ProjectOopMi
         return true;
     }
 
+}
+
+namespace nativesharp::llvm_backend
+{
+bool OopLlvmImplementation::constructCppBasesByDefault(LLVMValueRef object, std::size_t typeOrdinal,
+    const std::vector<std::string>& skip, std::vector<std::string>& built, std::string& error)
+{
+    if (memberModel_ == nullptr || typeOrdinal >= nameLookup_.namedTypes().size()) return true;
+    const auto* layout = mirModel_.classLayoutForType(typeOrdinal);
+    if (layout == nullptr) return true;
+    for (const auto& field : layout->fields)
+    {
+        if (field.memberOrdinal >= memberModel_->members().size()) continue;
+        const auto& member = memberModel_->members()[field.memberOrdinal];
+        if (member.name != "__nsc_cpp_interface_vptr" || member.declaringTypeOrdinal != typeOrdinal ||
+            !member.cppInterfaceTypeOrdinal) continue;
+        const auto* base = nameLookup_.cppImportedType(*member.cppInterfaceTypeOrdinal);
+        if (base == nullptr || !base->clangUsr) continue;
+        const std::string classKey = nameLookup_.namedTypes()[typeOrdinal].identity.key();
+        const std::string destroy = interop::cppInterfaceAdapterName(classKey, *base->clangUsr) + "_destroy";
+        if (std::find(skip.begin(), skip.end(), destroy) != skip.end()) continue;
+        const std::string symbol = interop::cppInterfaceBindSymbol(classKey, *base->clangUsr);
+        LLVMTypeRef pointer = LLVMPointerTypeInContext(context_, 0);
+        LLVMTypeRef parameters[] = {pointer, pointer};
+        LLVMTypeRef bindType = LLVMFunctionType(pointer, parameters, 2, 0);
+        LLVMValueRef bind = LLVMGetNamedFunction(module_, symbol.c_str());
+        if (bind == nullptr) bind = LLVMAddFunction(module_, symbol.c_str(), bindType);
+        LLVMValueRef offset = LLVMConstInt(LLVMInt64TypeInContext(context_), field.offset, 0);
+        LLVMValueRef storage = LLVMBuildGEP2(builder_, LLVMInt8TypeInContext(context_), object, &offset, 1,
+            "cpp.base.default.storage");
+        LLVMValueRef arguments[] = {storage, object};
+        if (buildPotentiallyThrowingCall(bindType, bind, arguments, 2, "cpp.base.default", error) == nullptr &&
+            !error.empty()) return false;
+        if (base->cppInterfaceDestructor) built.push_back(destroy);
+    }
+    return true;
+}
 }

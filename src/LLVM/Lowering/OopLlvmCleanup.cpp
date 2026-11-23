@@ -2422,10 +2422,14 @@ bool OopLlvmImplementation::emitCleanupAction(std::size_t ordinal, std::string& 
         //     construccion en linea que no termino.
         // X3-01: the C++ base of a constructor that did not complete. / La base C++ de un constructor que no
         //     termino.
-        if (cleanup->stringValue == "constructor.cpp.base.cleanup")
+        if (cleanup->stringValue == "constructor.cpp.base.cleanup" ||
+            cleanup->stringValue == "construction.cpp.base.cleanup")
         {
             const auto flag = localStorage_.find(ordinal);
-            if (thisValue_ == nullptr || flag == localStorage_.end())
+            const auto slot = constructionCleanupObjects_.find(ordinal);
+            const bool inlineConstruction = cleanup->stringValue == "construction.cpp.base.cleanup";
+            if ((inlineConstruction ? slot == constructionCleanupObjects_.end() : thisValue_ == nullptr) ||
+                flag == localStorage_.end())
                 return fail(error, "constructor C++ base cleanup lost its state");
             LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
             LLVMValueRef alive = LLVMBuildLoad2(builder_, flagType, flag->second, "constructor.cpp.base.live");
@@ -2438,7 +2442,9 @@ bool OopLlvmImplementation::emitCleanupAction(std::size_t ordinal, std::string& 
             LLVMTypeRef destroyType = LLVMFunctionType(LLVMVoidTypeInContext(context_), &pointer, 1, 0);
             LLVMValueRef function = LLVMGetNamedFunction(module_, cleanup->calleeName.c_str());
             if (function == nullptr) function = LLVMAddFunction(module_, cleanup->calleeName.c_str(), destroyType);
-            LLVMValueRef arguments[] = {thisValue_};
+            LLVMValueRef receiver = inlineConstruction
+                ? LLVMBuildLoad2(builder_, pointer, slot->second, "construction.cpp.base.object") : thisValue_;
+            LLVMValueRef arguments[] = {receiver};
             buildNoUnwindCall(destroyType, function, arguments, 1, "");
             if (!terminated()) LLVMBuildBr(builder_, done);
             enterBlock(done);

@@ -7,6 +7,8 @@ por Clang 23.1.0:
 - con `x = -1` la excepcion llega al `catch` de la biblioteca; `a` y la base se destruyen en orden inverso: `1342`
   (antes NativeSharp no destruia la base: `134`);
 - con `x = 2` el objeto se destruye una sola vez al salir del ambito: `133442`.
+Con `base(5)`, con constructor implicito y con constructor explicito sin `base(...)` (la base se construye por
+defecto, como en C++; antes NativeSharp la construia de forma perezosa en la primera conversion y no la destruia).
 O0-O3; en estatica el ejecutable arranca por el runtime de C (`--crt-startup`); con --dll la biblioteca es una DLL.
 """
 import argparse
@@ -39,7 +41,7 @@ HEADER = '''#pragma once
 #endif
 namespace L {
 using Cb = int(*)();
-class API Base { public: explicit Base(int v); virtual ~Base(); virtual int get() const; int v; };
+class API Base { public: explicit Base(int v); Base(); virtual ~Base(); virtual int get() const; int v; };
 class API Obj { public: explicit Obj(int v); ~Obj(); int v; };
 API int run(Cb f);
 API int trace() noexcept;
@@ -49,6 +51,7 @@ SOURCE = '''#include "api.h"
 namespace { int marks = 0; }
 namespace L {
 Base::Base(int x) : v(x) { marks = marks * 10 + 1; }
+Base::Base() : v(9) { marks = marks * 10 + 1; }
 Base::~Base() { marks = marks * 10 + 2; }
 int Base::get() const { return v; }
 Obj::Obj(int x) : v(x) { if (x < 0) throw 7; marks = marks * 10 + 3; }
@@ -58,11 +61,11 @@ int trace() noexcept { return marks; }
 }
 '''
 CONTROL = '''#include "api.h"
-struct D : L::Base { L::Obj a{1}; L::Obj b{ARG}; D() : L::Base(5) {} };
+struct D : L::Base { L::Obj a{1}; L::Obj b{ARG}; CTOR };
 static int build() { D d; return 0; }
 int main() { int r = L::run(build); return (r * 1000000 + L::trace()) % 251; }
 '''
-NS = '''class D : L.Base { public L.Obj a = new L.Obj(1); public L.Obj b = new L.Obj(ARG); public D() : base(5) { } }
+NS = '''class D : L.Base { public L.Obj a = new L.Obj(1); public L.Obj b = new L.Obj(ARG); CTOR }
 int Build() { { var d = new D(); } return 0; }
 int Main() { L.Cb build = () => Build(); int r = L.run(build); return (r * 1000000 + L.trace()) % 251; }
 '''
@@ -83,6 +86,11 @@ def run(label, command, cwd, expected=0, extra_env=None):
 if 'clang version 23.1.0' not in run('clang-version', ['clang.exe', '--version'], root).stdout:
     raise SystemExit('Se requiere Clang 23.1.0')
 EXPECTED = {'-1': (107 * 1000000 + 1342) % 251, '2': 133442 % 251}
+# base(5); an implicit constructor; an explicit constructor without base(...): C++ default-constructs the base (before,
+# NativeSharp built it lazily on the first conversion, so construction and destruction were missing).
+# base(5); constructor implicito; constructor explicito sin base(...): C++ construye la base por defecto.
+VARIANTS = {'base': ('D() : L::Base(5) {}', 'public D() : base(5) { }'), 'implicito': ('', ''),
+            'sin-base': ('D() {}', 'public D() { }')}
 for opt in range(4):
     case = root / f'O{opt}'
     case.mkdir()
@@ -101,16 +109,17 @@ for opt in range(4):
         '<Project><PropertyGroup><Name>X3Ctor</Name></PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
         '<CppLibraryReference Header="api.h" Language="C++" Standard="c++20" Library="api.lib"' + runtime + ' />'
         '</ItemGroup></Project>', encoding='utf-8')
-    for argument, expected in EXPECTED.items():
-        tag = f'O{opt}-x{argument}'
-        (case / 'control.cpp').write_text(CONTROL.replace('ARG', argument), encoding='utf-8')
+    for (variant, (cppCtor, nsCtor)), (argument, expected) in [
+            (v, e) for v in VARIANTS.items() for e in EXPECTED.items()]:
+        tag = f'O{opt}-{variant}-x{argument}'
+        (case / 'control.cpp').write_text(CONTROL.replace('ARG', argument).replace('CTOR', cppCtor), encoding='utf-8')
         run(tag + '-control-obj', [*CXX, '-O' + str(opt), '-c', 'control.cpp', '-o', 'control.obj'], case)
         run(tag + '-control-link', ['lld-link.exe', '/nologo', '/subsystem:console', '/out:control.exe', 'control.obj',
                                     'api.lib', *[str(p) for p in CRT]], case)
         control = run(tag + '-control-run', [str(case / 'control.exe')], case, expected=None).returncode
         if control != expected:
             raise SystemExit(f'{tag}: el control C++ devolvio {control}, se esperaba {expected}; evidencia: {root}')
-        (case / 'Main.ns').write_text(NS.replace('ARG', argument), encoding='utf-8')
+        (case / 'Main.ns').write_text(NS.replace('ARG', argument).replace('CTOR', nsCtor), encoding='utf-8')
         command = [args.nsc, '--emit-project-oop-exe', 'App.nsproj', '--cpp-clang-root=' + args.clang_root,
                    '--no-artifact-cache', '-O' + str(opt)]
         extra = {'NSC_LINKER': 'nslink.exe'}

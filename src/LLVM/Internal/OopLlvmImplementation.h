@@ -507,6 +507,13 @@ private:
                 LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0), flag->second);
         }
     }
+    // EN: X3-01. Builds with their default constructor (the adapter's bind entry) the C++ bases of a class that its
+    //     construction does not build with `base(args)` (destroy symbols in `skip`), as C++ default-constructs a base;
+    //     each built base with a destructor adds its destroy symbol to `built`.
+    // ES: X3-01. Construye con su constructor por defecto las bases C++ de una clase que su construccion no
+    //     construye con `base(args)`, como C++ construye una base por defecto.
+    bool constructCppBasesByDefault(LLVMValueRef object, std::size_t typeOrdinal,
+        const std::vector<std::string>& skip, std::vector<std::string>& built, std::string& error);
     LLVMValueRef bitIntCallbackThunk(
         const std::string& targetName, std::string_view typeKey, bool defineBody, std::string& error);
     static bool unsignedBitIntCarrier(std::string_view typeKey) noexcept

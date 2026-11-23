@@ -1211,6 +1211,44 @@ bool OopLlvmImplementation::invokeConstructionInitializer(
                 cleanupChainCache_.erase(ordinal);
             }
         };
+        const auto openCleanup = [&](const char* kind, std::string callee, const frontend::ProjectOopMirNode* address) {
+            std::size_t ordinal = std::numeric_limits<std::size_t>::max();
+            while (cleanupRegions_.contains(ordinal) || localStorage_.contains(ordinal)) --ordinal;
+            auto cleanup = std::make_unique<frontend::ProjectOopMirNode>();
+            cleanup->stringValue = kind;
+            cleanup->calleeName = std::move(callee);
+            if (address != nullptr)
+            {
+                cleanup->typeKey = address->typeKey;
+                cleanup->immediate = address->immediate;
+                cleanup->memberOrdinal = address->memberOrdinal;
+            }
+            LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
+            LLVMValueRef flag = entryBlockAlloca(flagType, 0, "construction.cpp.live");
+            LLVMBuildStore(builder_, LLVMConstInt(flagType, 1, 0), flag);
+            LLVMValueRef objectSlot = entryBlockAlloca(LLVMPointerTypeInContext(context_, 0), 8,
+                "construction.cpp.object");
+            LLVMBuildStore(builder_, object, objectSlot);
+            cleanupRegions_.emplace(ordinal, cleanup.get());
+            localStorage_.emplace(ordinal, flag);
+            constructionCleanupObjects_.emplace(ordinal, objectSlot);
+            cleanupChainCache_.erase(ordinal);
+            activeCleanupRegions_.push_back(ordinal);
+            syntheticCleanupNodes_.push_back(std::move(cleanup));
+            LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+        };
+        // X3-01: an implicit construction builds the class's C++ bases by default first. / Una construccion
+        //     implicita construye primero por defecto las bases C++ de la clase.
+        if (node->targetTypeOrdinal.has_value() && node->calleeName.empty())
+        {
+            std::vector<std::string> built;
+            if (!constructCppBasesByDefault(object, *node->targetTypeOrdinal, {}, built, error))
+            {
+                constructionThisOverride_ = previousOverride;
+                return false;
+            }
+            for (std::string& destroy : built) openCleanup("construction.cpp.base.cleanup", std::move(destroy), nullptr);
+        }
         for (std::size_t index = node->argumentCount; index < node->children.size(); ++index)
         {
             LLVMValueRef ignored = lowerExpression(node->children[index].get(), error);
@@ -1231,26 +1269,7 @@ bool OopLlvmImplementation::invokeConstructionInitializer(
                 nameLookup_.cppImportedType(*store->children[1]->targetTypeOrdinal) == nullptr ||
                 nameLookup_.cppTrivialValueEligible(*store->children[1]->targetTypeOrdinal) || terminated())
                 continue;
-            std::size_t ordinal = std::numeric_limits<std::size_t>::max();
-            while (cleanupRegions_.contains(ordinal) || localStorage_.contains(ordinal)) --ordinal;
-            auto cleanup = std::make_unique<frontend::ProjectOopMirNode>();
-            cleanup->stringValue = "construction.cpp.field.cleanup";
-            cleanup->typeKey = store->children[0]->typeKey;
-            cleanup->immediate = store->children[0]->immediate;
-            cleanup->memberOrdinal = store->children[0]->memberOrdinal;
-            LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
-            LLVMValueRef flag = entryBlockAlloca(flagType, 0, "construction.cpp.field.live");
-            LLVMBuildStore(builder_, LLVMConstInt(flagType, 1, 0), flag);
-            LLVMValueRef objectSlot = entryBlockAlloca(LLVMPointerTypeInContext(context_, 0), 8,
-                "construction.cpp.field.object");
-            LLVMBuildStore(builder_, object, objectSlot);
-            cleanupRegions_.emplace(ordinal, cleanup.get());
-            localStorage_.emplace(ordinal, flag);
-            constructionCleanupObjects_.emplace(ordinal, objectSlot);
-            cleanupChainCache_.erase(ordinal);
-            activeCleanupRegions_.push_back(ordinal);
-            syntheticCleanupNodes_.push_back(std::move(cleanup));
-            LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+            openCleanup("construction.cpp.field.cleanup", std::string(), store->children[0].get());
         }
         closeCleanups();
         constructionThisOverride_ = previousOverride;
