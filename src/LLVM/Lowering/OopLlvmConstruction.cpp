@@ -1195,15 +1195,64 @@ bool OopLlvmImplementation::invokeConstructionInitializer(
         // they are not source arguments and therefore must not be evaluated before allocation.
         LLVMValueRef previousOverride = constructionThisOverride_;
         constructionThisOverride_ = object;
+        // EN: X2-06. A C++ field constructed here is destroyed if a later initializer throws, as C++ destroys the
+        //     members it has built: each one opens a cleanup region (flag and object slot) until the end.
+        // ES: X2-06. Un campo C++ construido aqui se destruye si un inicializador posterior lanza, como C++ destruye
+        //     los miembros ya construidos: cada uno abre una region de limpieza hasta el final.
+        const std::size_t cleanupDepth = activeCleanupRegions_.size();
+        const auto closeCleanups = [&]() {
+            while (activeCleanupRegions_.size() > cleanupDepth)
+            {
+                const std::size_t ordinal = activeCleanupRegions_.back();
+                activeCleanupRegions_.pop_back();
+                cleanupRegions_.erase(ordinal);
+                localStorage_.erase(ordinal);
+                constructionCleanupObjects_.erase(ordinal);
+                cleanupChainCache_.erase(ordinal);
+            }
+        };
         for (std::size_t index = node->argumentCount; index < node->children.size(); ++index)
         {
             LLVMValueRef ignored = lowerExpression(node->children[index].get(), error);
             if (ignored == nullptr)
             {
+                closeCleanups();
                 constructionThisOverride_ = previousOverride;
                 return false;
             }
+            const frontend::ProjectOopMirNode* store = node->children[index].get();
+            if (store != nullptr && store->kind == frontend::ProjectOopMirNodeKind::FullExpressionCleanup &&
+                store->children.size() == 1) store = store->children.front().get();
+            if (store == nullptr || store->kind != frontend::ProjectOopMirNodeKind::Store || store->children.size() < 2 ||
+                store->children[0] == nullptr || store->children[1] == nullptr ||
+                store->children[0]->kind != frontend::ProjectOopMirNodeKind::FieldAddress ||
+                store->children[1]->kind != frontend::ProjectOopMirNodeKind::ValueConstruct ||
+                !store->children[1]->targetTypeOrdinal ||
+                nameLookup_.cppImportedType(*store->children[1]->targetTypeOrdinal) == nullptr ||
+                nameLookup_.cppTrivialValueEligible(*store->children[1]->targetTypeOrdinal) || terminated())
+                continue;
+            std::size_t ordinal = std::numeric_limits<std::size_t>::max();
+            while (cleanupRegions_.contains(ordinal) || localStorage_.contains(ordinal)) --ordinal;
+            auto cleanup = std::make_unique<frontend::ProjectOopMirNode>();
+            cleanup->stringValue = "construction.cpp.field.cleanup";
+            cleanup->typeKey = store->children[0]->typeKey;
+            cleanup->immediate = store->children[0]->immediate;
+            cleanup->memberOrdinal = store->children[0]->memberOrdinal;
+            LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
+            LLVMValueRef flag = entryBlockAlloca(flagType, 0, "construction.cpp.field.live");
+            LLVMBuildStore(builder_, LLVMConstInt(flagType, 1, 0), flag);
+            LLVMValueRef objectSlot = entryBlockAlloca(LLVMPointerTypeInContext(context_, 0), 8,
+                "construction.cpp.field.object");
+            LLVMBuildStore(builder_, object, objectSlot);
+            cleanupRegions_.emplace(ordinal, cleanup.get());
+            localStorage_.emplace(ordinal, flag);
+            constructionCleanupObjects_.emplace(ordinal, objectSlot);
+            cleanupChainCache_.erase(ordinal);
+            activeCleanupRegions_.push_back(ordinal);
+            syntheticCleanupNodes_.push_back(std::move(cleanup));
+            LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
         }
+        closeCleanups();
         constructionThisOverride_ = previousOverride;
         return true;
     }

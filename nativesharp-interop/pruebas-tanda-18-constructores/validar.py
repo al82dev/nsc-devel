@@ -73,6 +73,22 @@ static int throwing() { T18::Obj a(1); T18::Obj b(-1); return a.value() + b.valu
 static int plain() { T18::Obj a(1); T18::Obj b(2); return a.value() + b.value(); }
 int main() { int r = T18::run(throwing); int t = T18::trace(); int s = T18::run(plain); return r * 1000000 + t * 1 + 0 * s + (s == 3 ? 0 : 1); }
 '''
+CONTROL_FIELDS = '''#include "api.h"
+struct Holder { T18::Obj a{1}; T18::Obj b{-1}; };
+static int throwing() { Holder h; return h.a.value(); }
+int main() { int r = T18::run(throwing); int t = T18::trace(); return r * 1000000 + t; }
+'''
+# X2-06: the same with fields of a NativeSharp class: `a` is built, `b` throws, `a` is destroyed and the object's
+# storage released. / Lo mismo con campos de una clase NativeSharp.
+NS_FIELDS = '''class Holder { public T18.Obj a = new T18.Obj(1); public T18.Obj b = new T18.Obj(-1); }
+int Throwing() { var h = new Holder(); return h.a.value(); }
+int Main()
+{
+    T18.Cb throwing = () => Throwing();
+    int r = T18.run(throwing);
+    return r * 1000000 + T18.trace();
+}
+'''
 NS = '''int Throwing() { T18.Obj a = new T18.Obj(1); T18.Obj b = new T18.Obj(-1); return a.value() + b.value(); }
 int Plain() { T18.Obj a = new T18.Obj(1); T18.Obj b = new T18.Obj(2); return a.value() + b.value(); }
 int Main()
@@ -142,6 +158,20 @@ for opt in range(4):
         raise SystemExit(f'O{opt}: NativeSharp devolvio {result}, Clang {control}; evidencia: {root}')
     print(f'O{opt}: NativeSharp y Clang devuelven {result}: la excepcion del constructor llega al catch, '
           f'a se destruye y b no', flush=True)
+    (case / 'control-fields.cpp').write_text(CONTROL_FIELDS, encoding='utf-8')
+    run(f'O{opt}-fields-control-obj', [*CXX, '-O' + str(opt), '-c', 'control-fields.cpp', '-o', 'control-fields.obj'], case)
+    run(f'O{opt}-fields-control-link', ['lld-link.exe', '/nologo', '/subsystem:console', '/out:control-fields.exe',
+                                        'control-fields.obj', 'api.lib', *[str(p) for p in CRT]], case)
+    fieldsControl = run(f'O{opt}-fields-control-run', [str(case / 'control-fields.exe')], case, expected=None).returncode
+    if fieldsControl != EXPECTED:
+        raise SystemExit(f'O{opt}: el control C++ de campos devolvio {fieldsControl}; evidencia: {root}')
+    (case / 'Main.ns').write_text(NS_FIELDS, encoding='utf-8')
+    run(f'O{opt}-fields-nsc', command + ['-o', 'fields.exe'], case, extra_env=extra)
+    fields = run(f'O{opt}-fields-run', [str(case / 'fields.exe')], case, expected=None).returncode
+    if fields != fieldsControl:
+        raise SystemExit(f'O{opt}: campos de clase: NativeSharp devolvio {fields}, Clang {fieldsControl}; evidencia: {root}')
+    print(f'O{opt}: campos C++ de una clase NativeSharp: el constructor que lanza deja a destruido y b sin construir, '
+          f'como Clang ({fields})', flush=True)
 # A destructor that may throw stays rejected. / Un destructor que puede lanzar sigue rechazado.
 case = root / 'O0'
 (case / 'Main.ns').write_text('int Main() { T18.Risky r = new T18.Risky(); return 0; }\n', encoding='utf-8')

@@ -2442,8 +2442,15 @@ bool OopLlvmImplementation::lowerExpressionFrame044Store(
             nameLookup_.cppImportedType(*construction->targetTypeOrdinal) != nullptr &&
             !nameLookup_.cppTrivialValueEligible(*construction->targetTypeOrdinal))
         {
-            values.push_back(lowerValueConstruction(construction, error, nullptr, false, address) == nullptr
-                ? nullptr : address);
+            if (lowerValueConstruction(construction, error, nullptr, false, address) == nullptr)
+            {
+                values.push_back(nullptr);
+                return true;
+            }
+            // The constructed field is live: a later failure of the constructor destroys it. / El campo
+            //     construido esta vivo: un fallo posterior del constructor lo destruye.
+            markConstructorFieldLive(current->children[0].get());
+            values.push_back(address);
             return true;
         }
         frames.push_back({current, 2, address, 0});
@@ -2456,22 +2463,7 @@ bool OopLlvmImplementation::lowerExpressionFrame044Store(
     LLVMValueRef stored = storeFromParts(current, frame.lhs, value, error);
     if (stored != nullptr)
     {
-        const auto* address = current->children[0].get();
-        if (currentMirFunction_ != nullptr && currentMirFunction_->constructor && address != nullptr &&
-            address->kind == frontend::ProjectOopMirNodeKind::FieldAddress && address->memberOrdinal.has_value() &&
-            !address->children.empty() && address->children.front() != nullptr &&
-            address->children.front()->kind == frontend::ProjectOopMirNodeKind::ThisValue)
-        {
-            for (const std::size_t ordinal : activeCleanupRegions_)
-            {
-                const auto action = cleanupRegions_.find(ordinal);
-                const auto flag = localStorage_.find(ordinal);
-                if (action != cleanupRegions_.end() && action->second != nullptr &&
-                    action->second->stringValue == "constructor.owned.field.cleanup" &&
-                    action->second->memberOrdinal == address->memberOrdinal && flag != localStorage_.end())
-                    LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0), flag->second);
-            }
-        }
+        markConstructorFieldLive(current->children[0].get());
         const std::string fieldRecord =
             runtimeDebugFieldStoreRecord(*current, "FIELD-STORE-END");
         if (!fieldRecord.empty() &&

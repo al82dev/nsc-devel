@@ -2418,6 +2418,29 @@ bool OopLlvmImplementation::emitCleanupAction(std::size_t ordinal, std::string& 
             return fail(error, "Stage 45.10 cannot resolve MIR cleanup action");
         }
         const frontend::ProjectOopMirNode* cleanup = found->second;
+        // X2-06: a C++ field built by an inline construction that did not complete. / Un campo C++ de una
+        //     construccion en linea que no termino.
+        if (cleanup->stringValue == "construction.cpp.field.cleanup")
+        {
+            const auto flag = localStorage_.find(ordinal);
+            const auto object = constructionCleanupObjects_.find(ordinal);
+            if (flag == localStorage_.end() || object == constructionCleanupObjects_.end())
+                return fail(error, "construction C++ field cleanup lost its state");
+            LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
+            LLVMValueRef alive = LLVMBuildLoad2(builder_, flagType, flag->second, "construction.cpp.field.live");
+            LLVMBasicBlockRef destroy = appendBlock("construction.cpp.field.destroy");
+            LLVMBasicBlockRef done = appendBlock("construction.cpp.field.done");
+            LLVMBuildCondBr(builder_, alive, destroy, done);
+            enterBlock(destroy);
+            LLVMBuildStore(builder_, LLVMConstInt(flagType, 0, 0), flag->second);
+            LLVMValueRef base = LLVMBuildLoad2(builder_, LLVMPointerTypeInContext(context_, 0), object->second,
+                "construction.cpp.field.object");
+            LLVMValueRef address = byteOffset(base, cleanup->immediate, "construction.cpp.field.addr");
+            if (!emitValueDropAddress(address, cleanup->typeKey, "construction.cpp.field", error)) return false;
+            if (!terminated()) LLVMBuildBr(builder_, done);
+            enterBlock(done);
+            return true;
+        }
         if (cleanup->stringValue == "constructor.owned.field.cleanup" ||
             cleanup->stringValue == "constructor.shared.field.cleanup")
         {

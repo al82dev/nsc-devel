@@ -488,6 +488,25 @@ private:
     //     extends each value to its carrier, calls the C boundary of the target and truncates an `iN` result.
     // ES: C3-02. Un callback de un puntero C con posiciones `_BitInt(N)` estrechas: un adaptador recibe `iN`,
     //     extiende cada valor a su portador, llama al limite C del destino y trunca un resultado `iN`.
+    // The constructor field cleanup of the field this address names becomes live (its flag is set). / La limpieza
+    //     del campo que nombra esta direccion pasa a estar viva.
+    void markConstructorFieldLive(const frontend::ProjectOopMirNode* address)
+    {
+        if (currentMirFunction_ == nullptr || !currentMirFunction_->constructor || address == nullptr ||
+            address->kind != frontend::ProjectOopMirNodeKind::FieldAddress || !address->memberOrdinal.has_value() ||
+            address->children.empty() || address->children.front() == nullptr ||
+            address->children.front()->kind != frontend::ProjectOopMirNodeKind::ThisValue)
+            return;
+        for (const std::size_t ordinal : activeCleanupRegions_)
+        {
+            const auto action = cleanupRegions_.find(ordinal);
+            const auto flag = localStorage_.find(ordinal);
+            if (action != cleanupRegions_.end() && action->second != nullptr &&
+                action->second->stringValue == "constructor.owned.field.cleanup" &&
+                action->second->memberOrdinal == address->memberOrdinal && flag != localStorage_.end())
+                LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0), flag->second);
+        }
+    }
     LLVMValueRef bitIntCallbackThunk(
         const std::string& targetName, std::string_view typeKey, bool defineBody, std::string& error);
     static bool unsignedBitIntCarrier(std::string_view typeKey) noexcept
@@ -3757,6 +3776,10 @@ private:
     std::unordered_map<std::string, LLVMValueRef> closureContextDestroyFunctions_;
     std::unordered_map<std::size_t, LLVMBasicBlockRef> exceptionDispatchBlocks_;
     std::unordered_map<std::size_t, const frontend::ProjectOopMirNode*> cleanupRegions_;
+    // X2-06: the object slot of each C++ field cleanup of an inline construction, and the synthetic cleanup
+    //     nodes. / El slot del objeto de cada limpieza de campo C++ de una construccion en linea.
+    std::unordered_map<std::size_t, LLVMValueRef> constructionCleanupObjects_;
+    std::vector<std::unique_ptr<frontend::ProjectOopMirNode>> syntheticCleanupNodes_;
     std::unordered_map<std::size_t, CachedCleanup> cleanupChainCache_;
     std::vector<std::size_t> activeCleanupRegions_;
     // T03-F03. The value/address pair for each nested match governing expression. The value is
