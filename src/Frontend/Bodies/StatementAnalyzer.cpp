@@ -6862,6 +6862,17 @@ ast::AstNode* ProjectMethodBodyModel::chooseForeachCandidate(
             "foreach ref mut cannot iterate ReadOnlySpan<T>; use foreach ref or value iteration");
     }
     if (isArray) return const_cast<ast::AstNode*>(statement->second());
+    // X2: a C++ range. / Un rango C++.
+    if (statement->children().size() > 2U && memberModel_ != nullptr && memberModel_->isCppRangeType(sourceTypeKey))
+    {
+        // Its element is `*it`, a value: a mutable reference to it would write a copy. / Su elemento es `*it`, un
+        //     valor: una referencia mutable escribiria una copia.
+        if (statement->auxiliaryText() == "foreach:ref-mut")
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand, diagnostics::DiagnosticSeverity::Error,
+                statement->range(), "foreach ref mut cannot iterate a C++ range (begin()/end()); iterate by value, "
+                "or write through the container's own accessors");
+        return const_cast<ast::AstNode*>(statement->children()[2]);
+    }
     if (isSpan && statement->children().size() > 1U)
     {
         return const_cast<ast::AstNode*>(statement->children()[1]);

@@ -1965,6 +1965,8 @@ ast::AstNode* Parser::lowerForeachStatement(ForeachParseState&& state, ast::AstN
 
     ast::AstNode* patternCandidate = makeForeachPatternCandidate(state, body, range);
 
+    ast::AstNode* cppRangeCandidate = makeForeachCppRangeCandidate(state, body, range);
+
     ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::ForeachStatement, range);
     node->setFirst(sourceDecl);
     node->setSecond(arrayCandidate);
@@ -1976,6 +1978,8 @@ ast::AstNode* Parser::lowerForeachStatement(ForeachParseState&& state, ast::AstN
     // a second analysis pass over `collection` itself.
     node->addChild(collectionProbe);
     node->addChild(spanCandidate);
+    // X2: children()[2], the C++ range candidate. / El candidato de rango C++.
+    node->addChild(cppRangeCandidate);
     node->setAuxiliaryText(elementByReference
         ? (elementMutableReference ? "foreach:ref-mut" : "foreach:ref")
         : "foreach:value");
@@ -2337,6 +2341,49 @@ ast::AstNode* Parser::makeForeachSpanCandidate(
     }
 
     return spanCandidate;
+}
+
+// EN: X2. A C++ range (a record with begin() and end(), as std::vector is) iterates as a C++ range-for does:
+//     `{ var end = source.end(); for (var it = source.begin(); it != end; ++it) { T x = *it; body } }`. A pointer
+//     iterator uses NativeSharp's pointer operators; a class iterator its C++ `!=`, `*` and prefix `++`.
+// ES: X2. Un rango C++ (un record con begin() y end(), como std::vector) se recorre como un range-for de C++.
+ast::AstNode* Parser::makeForeachCppRangeCandidate(
+    const ForeachParseState& state,
+    ast::AstNode* body,
+    SourceRange range)
+{
+    const std::string endName = state.temporaryPrefix + "_cpp_end";
+    const std::string cursorName = state.temporaryPrefix + "_cpp_cursor";
+    ast::AstNode* endDecl = makeVariableDeclaration(makeForeachVarMarker(range), endName,
+        makeZeroArgCallExpression(makeMemberExpression(makeIdentifierExpression(range, state.sourceName), "end")),
+        false);
+    ast::AstNode* cursorDecl = makeVariableDeclaration(makeForeachVarMarker(range), cursorName,
+        makeZeroArgCallExpression(makeMemberExpression(makeIdentifierExpression(range, state.sourceName), "begin")),
+        false);
+    ast::AstNode* condition = makeBinaryExpression(TokenKind::BangEqual,
+        makeIdentifierExpression(range, cursorName), makeIdentifierExpression(range, endName));
+    ast::AstNode* increment = arena_.make<ast::AstNode>(ast::AstNodeKind::UnaryExpression, range);
+    increment->setTokenKind(TokenKind::PlusPlus);
+    increment->setFirst(makeIdentifierExpression(range, cursorName));
+    ast::AstNode* element = arena_.make<ast::AstNode>(ast::AstNodeKind::UnaryExpression, range);
+    element->setTokenKind(TokenKind::Star);
+    element->setFirst(makeIdentifierExpression(range, cursorName));
+    ast::AstNode* elementDecl = makeVariableDeclaration(state.elementType, state.elementName, element,
+        state.elementIsRaii, /*isConst=*/!state.elementMutableReference);
+    configureForeachElementBinding(state, elementDecl);
+    ast::AstNode* forBody = arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, range);
+    forBody->addChild(elementDecl);
+    emitForeachElementBindings(state, range, forBody);
+    forBody->addChild(body);
+    ast::AstNode* forNode = arena_.make<ast::AstNode>(ast::AstNodeKind::ForStatement, range);
+    forNode->setFirst(cursorDecl);
+    forNode->setSecond(condition);
+    forNode->setThird(increment);
+    forNode->addChild(forBody);
+    ast::AstNode* candidate = arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, range);
+    candidate->addChild(endDecl);
+    candidate->addChild(forNode);
+    return candidate;
 }
 
 ast::AstNode* Parser::makeForeachPatternCandidate(

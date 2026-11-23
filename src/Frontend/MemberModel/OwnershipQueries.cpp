@@ -345,6 +345,16 @@ bool ProjectMemberModel::typeContainsThreadLocalSharedPointer(std::string_view t
     return false;
 }
 
+bool ProjectMemberModel::isCppRangeType(std::string_view typeKey) const
+{
+    if (nameLookup_ == nullptr || !typeKey.starts_with("type:") || typeKey.ends_with('*')) return false;
+    const auto ordinal = nameLookup_->typeOrdinalForIdentity(typeKey.substr(5));
+    const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+    return imported != nullptr && imported->origin == CppImportedTypeOrigin::CppRecord &&
+        !findMembers(*ordinal, "begin").empty() && !findMembers(*ordinal, "end").empty() &&
+        findMembers(*ordinal, "GetEnumerator").empty();
+}
+
 std::optional<std::string> ProjectMemberModel::aggregateHeldCppRecord(std::string_view typeKey) const
 {
     if (nameLookup_ == nullptr) return std::nullopt;

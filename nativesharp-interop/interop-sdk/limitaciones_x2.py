@@ -477,4 +477,28 @@ int take(Obj&& o);
 SRK = 'namespace lib { int take(const Obj& o) { return 1; } int take(Obj&& o) { return 2; } }'+chr(10)
 positivo(Caso('x2-rvalue-preferido', HRK, SRK, **CPP),
          'var o = new lib.Obj(1); return lib.take(in o) * 10 + lib.take(new lib.Obj(2)) == 12 ? 42 : 1;', modes=['directo'])
+# X2: foreach over a C++ range (a record with begin() and end(), as std::vector is) failed ('no compatible member
+# named GetEnumerator'); it iterates as a C++ range-for does, with a pointer iterator or a class iterator's C++ `!=`,
+# `*` and prefix `++`. A mutable reference to `*it` would write a copy, so `foreach ref mut` is rejected.
+# X2: foreach sobre un rango C++ (begin()/end()) se recorre como un range-for de C++; `ref mut` se rechaza.
+HRG = r'''
+namespace lib {
+struct It { int* p; int operator*() const; It& operator++(); bool operator!=(const It& o) const; };
+struct Bag { int data[4]; It begin(); It end(); };
+struct Vec3 { int data[3]; int* begin() { return data; } int* end() { return data + 3; } };
+}
+'''
+SRG = r'''
+namespace lib {
+int It::operator*() const { return *p; } It& It::operator++() { ++p; return *this; } bool It::operator!=(const It& o) const { return p != o.p; }
+It Bag::begin() { return It{data}; } It Bag::end() { return It{data + 4}; }
+}
+'''
+CRG = dict(language='C++', standard='c++20', extra_ref=' Exceptions="false"')
+positivo(Caso('x2-foreach-rango', HRG, SRG, **CRG),
+         'lib.Bag b; b.data[0] = 10; b.data[1] = 12; b.data[2] = 15; b.data[3] = 5; int s = 0; foreach (var x in b) { s += x; }'
+         ' lib.Vec3 v; v.data[0] = 0; v.data[1] = 0; v.data[2] = 0; foreach (var y in v) { s += y; } return s;',
+         modes=['directo', 'dll'])
+rechazo(Caso('x2-foreach-rango-ref-mut', HRG, SRG, **CRG), 'lib.Vec3 v; foreach (ref mut var x in v) { x = 1; } return 0;',
+        'foreach ref mut cannot iterate a C++ range')
 fin()

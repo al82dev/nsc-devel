@@ -155,6 +155,9 @@ public:
     //     none. Such an aggregate is zero-initialized and copied bytewise. / El record C++ no trivial contenido por
     //     valor en una tupla o arreglo fijo (no el tipo mismo), o ninguno.
     std::optional<std::string> aggregateHeldCppRecord(std::string_view typeKey) const;
+    // X2: a C++ record a foreach iterates as a C++ range (begin() and end(), no GetEnumerator). / Un record C++
+    //     que foreach recorre como rango C++.
+    bool isCppRangeType(std::string_view typeKey) const;
     // Whether shared static storage can transitively expose an Rc or WeakRc value.
     bool typeContainsThreadLocalSharedPointer(std::string_view typeKey) const;
     // EN: Freeze (receiver temporaries): plain data -- scalars, enums, and tuples, fixed

@@ -314,6 +314,10 @@ bool ProjectOopHirModel::initializeForeachStatementFrame(
         ProjectOopHirNodeKind::Block, statement, "builtin:void");
     frame.foreachStatement->chosenCandidate = isArray
         ? statement->second()
+        // X2: a C++ range, as analysis chose. / Un rango C++, como eligio el analisis.
+        : statement->children().size() > 2U && memberModel_ != nullptr &&
+            memberModel_->isCppRangeType(sourceLocal->typeKey)
+        ? statement->children()[2]
         : (isSpan && statement->children().size() > 1U
             ? statement->children()[1]
             : statement->third());

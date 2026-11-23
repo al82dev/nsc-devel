@@ -1541,6 +1541,11 @@ private:
         const ForeachParseState& state,
         ast::AstNode* body,
         SourceRange range);
+    // X2: the C++ range candidate (begin()/end(), `!=`, `*`, prefix `++`). / El candidato de rango C++.
+    ast::AstNode* makeForeachCppRangeCandidate(
+        const ForeachParseState& state,
+        ast::AstNode* body,
+        SourceRange range);
     ast::AstNode* makeForeachPatternCandidate(
         const ForeachParseState& state,
         ast::AstNode* body,
