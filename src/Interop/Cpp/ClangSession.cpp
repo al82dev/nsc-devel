@@ -1887,6 +1887,13 @@ void collectGlobals(const clang::DeclContext& context, clang::ASTContext& astCon
             variable->getDeclName().isEmpty() || variable->getDeclContext()->isDependentContext() ||
             !seen.insert(variable->getCanonicalDecl()).second)
             continue;
+        // EN: C5-03. The type is the composite of every redeclaration seen so far, which Clang gives the most recent
+        //     one (C11 6.2.7): `extern int a[]; extern int a[4];` is `int[4]`, as is the reverse order. The first
+        //     declaration alone kept `int[]` in the first order.
+        // ES: C5-03. El tipo es el compuesto de todas las redeclaraciones, que Clang da a la mas reciente (C11 6.2.7):
+        //     `extern int a[]; extern int a[4];` es `int[4]`, igual que el orden inverso. La primera declaracion sola
+        //     conservaba `int[]` en el primer orden.
+        variable = variable->getMostRecentDecl();
         CppGlobalDeclaration value;
         value.clangUsr = declarationUsr(variable);
         value.name = variable->getNameAsString();
