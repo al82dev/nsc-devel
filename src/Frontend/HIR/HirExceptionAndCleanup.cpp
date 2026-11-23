@@ -353,6 +353,46 @@ void ProjectOopHirModel::ownCppTemporaries()
     }
     const auto visit = [&](std::unique_ptr<ProjectOopHirNode>& root) {
         if (root == nullptr) return;
+        // EN: X2-05. A call of a C++ factory function that analysis did not turn into a construction (an operator such
+        //     as `a + b`) is the construction of its record with the function's factory constructor, as a direct call is.
+        // ES: X2-05. Una llamada a una funcion fabrica C++ que el analisis no convirtio en construccion (un operador
+        //     como `a + b`) es la construccion de su record con el constructor de fabrica, como una llamada directa.
+        if (namespaceFunctionModel_ != nullptr && memberModel_ != nullptr)
+        {
+            std::vector<ProjectOopHirNode*> calls{root.get()};
+            while (!calls.empty())
+            {
+                ProjectOopHirNode* node = calls.back();
+                calls.pop_back();
+                if (node == nullptr) continue;
+                for (const auto& child : node->children) calls.push_back(child.get());
+                if (node->kind != ProjectOopHirNodeKind::StaticCall || node->referenceResult) continue;
+                // By its ordinal, or by its symbol (an operator call). / Por su ordinal, o por su simbolo.
+                const NamespaceFunctionSymbol* found = nullptr;
+                if (node->namespaceFunctionOrdinal &&
+                    *node->namespaceFunctionOrdinal < namespaceFunctionModel_->functions().size())
+                    found = &namespaceFunctionModel_->functions()[*node->namespaceFunctionOrdinal];
+                else if (!node->stringValue.empty())
+                    for (const auto& candidate : namespaceFunctionModel_->functions())
+                        if (candidate.cppFactoryConstruction && candidate.mangledName == node->stringValue)
+                            found = &candidate;
+                if (found == nullptr) continue;
+                const auto& factory = *found;
+                if (!factory.cppFactoryConstruction || !factory.declaredTypeKey.starts_with("type:")) continue;
+                const auto record = nameLookup_->typeOrdinalForIdentity(std::string_view(factory.declaredTypeKey).substr(5));
+                std::optional<std::size_t> constructor;
+                for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+                    if (memberModel_->members()[ordinal].cppFactoryConstructor &&
+                        memberModel_->members()[ordinal].cppExternalSymbol == factory.mangledName)
+                        constructor = ordinal;
+                if (!record || !constructor) continue;
+                node->kind = ProjectOopHirNodeKind::ValueConstruction;
+                node->targetTypeOrdinal = *record;
+                node->memberOrdinal = *constructor;
+                node->namespaceFunctionOrdinal.reset();
+                node->argumentCount = node->children.size();
+            }
+        }
         HirParentIndex parents;
         std::vector<ProjectOopHirNode*> order;
         indexHirParents(root.get(), parents, order);

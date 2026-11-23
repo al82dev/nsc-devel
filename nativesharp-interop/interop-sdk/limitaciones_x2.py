@@ -413,4 +413,15 @@ SSM = SF.replace('Obj make(int v) { return Obj(v); }', 'Obj make(int v) { return
 positivo(Caso('x2-estatico-resultado', HSM, SSM, **CPP),
          '{ var o = lib.Maker2.build(42); if (o.v != 42) return 1; if (lib.Maker2.build(3).v != 3) return 2; }'
          ' return lib.c().ctor == 2 && lib.c().dtor == 2 ? 42 : 3;', modes=['directo', 'dll'])
+# X2-05: a free C++ operator returning a non-trivial record by value (`Obj operator+(const Obj&, const Obj&)`, as
+# std::string's) failed in the backend ('static call target was not declared'): the operator call is now the
+# construction of its record with the factory constructor, as a direct factory call is, into a local or as a
+# receiver temporary, with no copy. / Un operador C++ libre que devuelve un record no trivial por valor.
+HOP = HF.replace('Obj make(int v);', 'Obj make(int v);'+chr(10)+'Obj operator+(const Obj& a, const Obj& b);')
+SOP = SF.replace('Obj make(int v) { return Obj(v); }', 'Obj make(int v) { return Obj(v); }'+chr(10)+
+                 'Obj operator+(const Obj& a, const Obj& b) { return Obj(a.v + b.v); }')
+positivo(Caso('x2-operador-resultado', HOP, SOP, **CPP),
+         '{ var a = lib.make(40); var b = lib.make(2); var c = a + b; if (c.v != 42) return 1;'
+         ' if ((a + lib.make(1)).v != 41) return 2; if (lib.c().ctor != 5 || lib.c().dtor != 2) return 3; }'
+         ' return lib.c().ctor == 5 && lib.c().dtor == 5 ? 42 : 4;', modes=['directo', 'dll'])
 fin()

@@ -1882,6 +1882,18 @@ bool provideExperimentalCppLifetimeMethods(
     std::vector<CppSemanticLifetimeFamily> families;
     if (!collectCppSemanticLifetimeFamilies(graph, projects, lookup, families, error)) return false;
     std::vector<frontend::CppImportedLifetimeMethod> result;
+    // X2-05: the visible record groups, so a factory taking a C++ record by `const T&` maps (an operator). / Los
+    //     grupos de records visibles, para que una fabrica que toma un record por `const T&` se mapee.
+    std::optional<CppRecordGroups> factoryRecords;
+    {
+        auto collected = collectCppSemanticRecords(graph, projects);
+        if (const auto* entries = std::get_if<std::vector<CppSemanticRecordEntry>>(&collected))
+        {
+            auto refined = refineCppRecordGroupsForPointerTransport(*entries, groupCppSemanticRecords(*entries), projects);
+            if (const auto* groups = std::get_if<CppRecordGroups>(&refined))
+                factoryRecords = visibleMethodRecords(*groups, lookup);
+        }
+    }
     // EN: X2-05. Each factory function (a non-trivial record returned by value) is also a constructor of that record,
     //     so a local is constructed in place by its adapter and destroyed by the record's destructor.
     // ES: X2-05. Cada funcion fabrica (un record no trivial devuelto por valor) es tambien un constructor de ese
@@ -1903,7 +1915,12 @@ bool provideExperimentalCppLifetimeMethods(
             for (const auto& declaration : *declarations)
             {
                 if (!declaration.cppFactoryResult || !declaration.externalSymbol) continue;
-                auto projected = projectCppSemanticFunction(declaration, *owner, graph.projects()[*owner].moduleName());
+                // X2-05: with the name lookup, a C++ record by `const T&` maps too (a factory operator such as
+                //     `T operator+(const T&, const T&)`). / Con la busqueda de nombres tambien se mapea un `const T&`.
+                auto projected = factoryRecords
+                    ? projectCppSemanticFunctionWithRecords(declaration, *owner, graph.projects()[*owner].moduleName(),
+                                                            *factoryRecords, &lookup)
+                    : projectCppSemanticFunction(declaration, *owner, graph.projects()[*owner].moduleName());
                 const auto* function = std::get_if<frontend::NamespaceFunctionSymbol>(&projected);
                 if (!function || !function->declaredTypeKey.starts_with("type:")) continue;
                 frontend::CppImportedLifetimeMethod method{*owner, function->declaredTypeKey.substr(5),
@@ -2141,13 +2158,18 @@ bool planCppImplicitLifetimeFromValues(
         if (local && (!node->localOrdinal || !node->cleanupRegionOrdinal || !node->automaticDestruction ||
             node->staticLocal || node->referenceLocal || node->typeKey != value->typeKey))
         { error = "C++ local lifetime has incomplete cleanup or type identity"; return false; }
-        if (!value->constructionOrdinal || *value->constructionOrdinal >= constructions.size() || !value->memberOrdinal ||
-            *value->memberOrdinal >= members.members().size())
+        // X2-05: a factory call converted to its construction (an operator) has no construction binding. / Una
+        //     llamada a fabrica convertida en su construccion (un operador) no tiene binding de construccion.
+        const bool factory = !value->constructionOrdinal && value->memberOrdinal &&
+            *value->memberOrdinal < members.members().size() &&
+            members.members()[*value->memberOrdinal].cppFactoryConstructor;
+        if (!factory && (!value->constructionOrdinal || *value->constructionOrdinal >= constructions.size() ||
+            !value->memberOrdinal || *value->memberOrdinal >= members.members().size()))
         { error = "discarded C++ value has incomplete construction identity"; return false; }
-        const auto& binding = constructions[*value->constructionOrdinal];
         const auto& constructor = members.members()[*value->memberOrdinal];
-        if (binding.targetTypeOrdinal != *value->targetTypeOrdinal ||
-            binding.selectedConstructorMemberOrdinal != value->memberOrdinal ||
+        if ((!factory && (constructions[*value->constructionOrdinal].targetTypeOrdinal != *value->targetTypeOrdinal ||
+                          constructions[*value->constructionOrdinal].selectedConstructorMemberOrdinal !=
+                              value->memberOrdinal)) ||
             constructor.declaringTypeOrdinal != *value->targetTypeOrdinal ||
             constructor.kind != frontend::ClassMemberKind::Constructor || !constructor.isCppExternal)
         { error = "discarded C++ value constructor does not match its binding"; return false; }
