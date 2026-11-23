@@ -313,11 +313,15 @@ bool OopLlvmImplementation::prepareCallbackGuardArguments(
                 internalSretSlot = entryBlockAlloca(
                     carrier, structAlignmentFor(function.returnTypeKey), "vectorcall.sret.bridge");
             }
-            forwarded.push_back(internalSretSlot);
+            // X2-05: an instance method takes its hidden result pointer after this (hiddenReturnParameterOrdinal 1);
+            //     the external order stays the C one (result pointer first). / Un metodo de instancia toma su puntero
+            //     de resultado oculto tras this; el orden externo sigue siendo el de C.
+            if (function.isStatic) forwarded.push_back(internalSretSlot);
         }
         // T19-036: the external result pointer of a direct internal return is written after the call.
         else if (externalSretReturn) ++externalIndex;
         if (!function.isStatic) forwarded.push_back(LLVMGetParam(thunk, externalIndex++));
+        if (internalSretReturn && !function.isStatic) forwarded.push_back(internalSretSlot);
         const std::vector<VectorCallPassing> passing = vectorCall
             ? vectorCallPassing(function.parameterTypeKeys, function.parameterTypeKeys.size())
             : std::vector<VectorCallPassing>{};

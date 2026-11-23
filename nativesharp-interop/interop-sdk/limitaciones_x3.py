@@ -327,4 +327,33 @@ positivo(Caso('x3-rtti-false', HRTTI, None, extra_ref=' Rtti="false"', **CPPNORT
          modes=['directo', 'dll'])
 rechazo(Caso('x3-rtti-invalido', HRTTI, None, extra_ref=' Rtti="no"', **CPPNORTTI), 'return 0;',
         'Rtti must be true or false')
+# X3/X2-05: a NativeSharp class implementing a C++ interface whose methods return a non-trivial record (constructed
+# in the C++ caller's storage) and a large trivial record by value. The boundary passed the hidden result pointer
+# before this to the instance method, which takes it after this: the call crashed (access violation).
+# X3/X2-05: los metodos de interfaz que devuelven records por valor; el limite cruzaba el puntero de resultado y this.
+HFX3 = r'''
+namespace lib {
+struct C2 { int ctor, dtor, assign; };
+C2& c();
+struct Obj { int v; Obj(int x); Obj(); Obj(const Obj& o); Obj& operator=(const Obj& o); Obj& operator=(Obj&& o); ~Obj(); };
+Obj make(int v);
+struct NoDefault { int v; NoDefault(int x); ~NoDefault(); };
+}
+'''
+SFX3 = r'''
+namespace lib {
+static C2 k; C2& c() { return k; }
+Obj::Obj(int x) : v(x) { ++k.ctor; } Obj::Obj() : v(7) { ++k.ctor; } Obj::Obj(const Obj& o) : v(o.v) { ++k.ctor; }
+Obj& Obj::operator=(const Obj& o) { v = o.v; ++k.assign; return *this; }
+Obj& Obj::operator=(Obj&& o) { v = o.v; ++k.assign; return *this; }
+Obj::~Obj() { ++k.dtor; }
+Obj make(int v) { return Obj(v); }
+NoDefault::NoDefault(int x) : v(x) {}
+NoDefault::~NoDefault() {}
+}
+'''
+HIR = HFX3.replace('Obj make(int v);', 'Obj make(int v);\nstruct Big { long long a, b, c, d; };\nstruct IFactory { virtual Obj create(int v) = 0; virtual int sum(const Obj& o) = 0; virtual Big big(int k) = 0; };\nint use(IFactory* f);')
+SIR = SFX3.replace('Obj make(int v) { return Obj(v); }', 'Obj make(int v) { return Obj(v); }\nint use(IFactory* f) { Obj o = f->create(40); Big g = f->big(1); if (g.a + g.b + g.c + g.d != 10) return -1; return o.v + f->sum(Obj(2)); }')
+PREIR = 'class F : lib.IFactory { public lib.Obj create(int v) { return lib.make(v); } public int sum(in lib.Obj o) { return o.v; } public lib.Big big(int k) { lib.Big g; g.a = k; g.b = 2 * k; g.c = 3 * k; g.d = 4 * k; return g; } }\n'
+positivo(Caso('x3-interfaz-resultado-record', HIR, SIR, **CPP), '{ var f = new F(); int r = lib.use((lib.IFactory*)f); if (r != 42) return 1; } return lib.c().ctor == lib.c().dtor ? 42 : 2;', preludio=PREIR, modes=['directo'])
 fin()
