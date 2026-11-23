@@ -2219,6 +2219,36 @@ bool provideExperimentalCppStaticMethods(
                 const auto& method = entry.declaration.methods[i];
                 if (method.kind != CppMethodKind::Method) continue;
                 const Family family{group.identity.key(), method.name};
+                // EN: X2. A C++ conversion operator to a builtin value (`explicit operator bool()`, `operator int()`)
+                //     is an explicit NativeSharp conversion `(T)o`: a static `op_Explicit(in Self)` of the record,
+                //     implemented by its member adapter. C++'s implicit conversions are not applied silently.
+                // ES: X2. Un operador de conversion C++ a un valor builtin es una conversion explicita NativeSharp
+                //     `(T)o`: un `op_Explicit(in Self)` estatico del record, implementado por su adaptador de miembro.
+                if (!method.isStatic && method.name.starts_with("operator ") && method.parameters.empty() &&
+                    method.access == CppAccess::Public && !method.isDeleted && method.clangUsr &&
+                    entry.declaration.clangUsr && entry.targetTriple == "x86_64-pc-windows-msvc")
+                {
+                    const auto mapped = method.returnType.kind == CppTypeKind::LValueReference ||
+                            method.returnType.kind == CppTypeKind::RValueReference
+                        ? std::optional<CppScalarTypeMapping>{} : mapCppScalarType(method.returnType);
+                    if (mapped && mapped->nativeSharpTypeKey.starts_with("builtin:") &&
+                        !mapped->nativeSharpTypeKey.ends_with('*'))
+                    {
+                        frontend::CppImportedStaticMethod conversion{};
+                        conversion.projectOrdinal = group.projectOrdinal;
+                        conversion.ownerIdentityKey = group.identity.key();
+                        conversion.name = "op_Explicit";
+                        conversion.externalSymbol = cppMemberOperatorSymbol(*entry.declaration.clangUsr, *method.clangUsr);
+                        conversion.returnTypeKey = mapped->nativeSharpTypeKey;
+                        conversion.parameterTypeKeys = {"type:" + group.identity.key() + "*"};
+                        conversion.parameterPointeeReadonly = {true};
+                        conversion.parameterPassKinds = {frontend::ParameterPassKind::In};
+                        conversion.cppSignatureSuffix = "#conversion:" + mapped->nativeSharpTypeKey;
+                        conversion.cppDeclarationSpelling = method.name;
+                        families[Family{group.identity.key(), "op_Explicit"}].push_back(std::move(conversion));
+                    }
+                    continue;
+                }
                 if (!method.isStatic) { blocked.insert(family); continue; }
                 auto projected = projectCppSemanticStaticMethod(entry.declaration, i, group.projectOrdinal,
                     graph.projects()[group.projectOrdinal].moduleName(), entry.targetTriple, &visibleRecords, &lookup);

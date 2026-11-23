@@ -436,4 +436,33 @@ positivo(Caso('x2-operador-miembro-resultado', HOPM, SOPM, **CPP),
 # X2: `(int)h` of an imported C/C++ record with no conversion reached the backend ('unsupported Stage 34 LLVM
 # conversion'); it is a frontend diagnostic now. / Un cast de un record importado sin conversion es un diagnostico.
 rechazo(Caso('x2-cast-record', HF, SF, **CPP), 'var o = lib.make(3); return (int)o;', 'no conversion from C/C++ type')
+# X2: a C++ conversion operator to a builtin value (`explicit operator bool()`, `operator int()`) was ignored; it is
+# now the explicit NativeSharp conversion `(T)o`, a static `op_Explicit(in Self)` of the record implemented by its
+# member adapter, on a place or a temporary (a non-trivial record too). C++'s implicit conversions stay rejected.
+# X2: un operador de conversion C++ es la conversion explicita `(T)o`; las implicitas de C++ siguen rechazadas.
+HCV = r'''
+namespace lib {
+struct Handle { int v; explicit operator bool() const; operator int() const; };
+struct Owner { int* p; Owner(int x); ~Owner(); explicit operator bool() const; };
+Owner make_owner(int x);
+}
+'''
+SCV = r'''
+namespace lib {
+static int store[4];
+Handle::operator bool() const { return v != 0; } Handle::operator int() const { return v * 2; }
+Owner::Owner(int x) : p(x ? &store[x] : nullptr) {} Owner::~Owner() {} Owner::operator bool() const { return p != nullptr; }
+Owner make_owner(int x) { return Owner(x); }
+}
+'''
+positivo(Caso('x2-conversion', HCV, SCV, **CPP), r'''
+    lib.Handle h; h.v = 21;
+    if (!(bool)h) return 1;
+    lib.Handle z; z.v = 0;
+    if ((bool)z) return 2;
+    var o = lib.make_owner(1);
+    if (!(bool)o || (bool)lib.make_owner(0)) return 3;
+    return (int)h;
+''', modes=['directo', 'dll'])
+rechazo(Caso('x2-conversion-implicita', HCV, SCV, **CPP), 'lib.Handle h; h.v = 21; int k = h; return k;', 'cannot initialize')
 fin()

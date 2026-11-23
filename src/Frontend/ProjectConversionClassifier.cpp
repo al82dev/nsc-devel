@@ -329,7 +329,12 @@ ProjectImplicitConversion ProjectConversionClassifier::findUserDefined(
             {
                 continue;
             }
-            if (member.parameters[0].typeKey != sourceTypeKey || member.declaredTypeKey != targetTypeKey)
+            // X2: a C++ conversion operator takes its operand by `in` (const Self&). / Toma su operando por `in`.
+            const bool cppOperand = member.isCppExternal &&
+                member.parameters[0].passKind == ParameterPassKind::In &&
+                member.parameters[0].pointeeTypeKey == sourceTypeKey;
+            if ((member.parameters[0].typeKey != sourceTypeKey && !cppOperand) ||
+                member.declaredTypeKey != targetTypeKey)
             {
                 continue;
             }

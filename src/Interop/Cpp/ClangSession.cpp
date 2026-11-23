@@ -3802,7 +3802,9 @@ public:
                                                                 arity});
                                     }
                                 // T12-004: an own member operator, called as a free function.
-                                if (current != record || !method->isOverloadedOperator()) continue;
+                                // X2: a conversion operator too. / Tambien un operador de conversion.
+                                if (current != record || (!method->isOverloadedOperator() &&
+                                                          !llvm::isa<clang::CXXConversionDecl>(method))) continue;
                                 auto operatorSymbol = cppMemberOperatorSymbol(*recordUsr, *usr);
                                 if (wanted.contains(operatorSymbol) && found.insert(operatorSymbol).second)
                                     requests.push_back({std::move(operatorSymbol), record, method, true});

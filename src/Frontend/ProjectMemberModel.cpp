@@ -665,6 +665,12 @@ bool ProjectMemberModel::build(
         member.signatureKey += imported.cppSignatureSuffix;
         member.cppParameterSpellings = imported.cppParameterSpellings;
         member.cppDeclarationSpelling = imported.cppDeclarationSpelling;
+        // X2: a C++ conversion operator is an explicit user conversion. / Una conversion explicita de usuario.
+        if (imported.name == "op_Explicit" && imported.cppSignatureSuffix.starts_with("#conversion:"))
+        {
+            member.isUserConversion = true;
+            member.isUserOperator = true;
+        }
         const auto existing = membersByName_[*ordinal].find(imported.name);
         if (existing != membersByName_[*ordinal].end())
             for (const auto existingOrdinal : existing->second)
