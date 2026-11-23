@@ -306,4 +306,12 @@ positivo(Caso('x2-clase-campo-cpp', HF, SF, **CPP), BODYF,
          modes=['directo', 'dll'])
 rechazo(Caso('x2-clase-campo-cpp', HF, SF, **CPP), 'var h = new Holder(); return 0;', 'has no accessible default constructor',
         preludio='class Holder { public lib.NoDefault n; }\n')
+# X2-06: a struct (a value: copied, moved, zero-initialized, held in arrays and generics) cannot hold a non-trivial C++
+# record, which C++ does not allow to relocate bytewise; the diagnostic says so and points to a class field or a local
+# (it read 'has no imported object layout yet'). / Un struct no puede contener un record C++ no trivial; el diagnostico
+# lo explica y sugiere un campo de clase o un local.
+rechazo(Caso('x2-struct-campo-cpp', HF, SF, **CPP), 'Pair p; return p.k;', 'is not trivially copyable and destructible',
+        preludio='struct Pair { public lib.Obj a; public int k; }\n')
+rechazo(Caso('x2-arreglo-cpp', HF, SF, **CPP), 'var xs = new lib.Obj[2]; return 0;',
+        'is not trivially copyable and destructible')
 fin()

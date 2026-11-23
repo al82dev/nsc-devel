@@ -794,6 +794,23 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutNamedType(
         if ((cRecord || cEnum || cppTransportValue) && imported->objectLayout &&
             imported->deferredImportError.empty() && !imported->isIncomplete)
             return TypeLayout{imported->objectLayout->sizeBytes, imported->objectLayout->alignmentBytes};
+        // EN: X2-06. A non-trivial C++ record has a layout, but a NativeSharp value that holds it (a struct field, an
+        //     array element, a generic argument) would be copied or relocated bytewise, which C++ does not allow; a
+        //     class field or a local constructs and destroys it in place.
+        // ES: X2-06. Un record C++ no trivial tiene layout, pero un valor NativeSharp que lo contenga se copiaria o
+        //     reubicaria por bytes, lo que C++ no permite; un campo de clase o un local lo construyen en su lugar.
+        if (imported->origin == CppImportedTypeOrigin::CppRecord && imported->objectLayout && !imported->isIncomplete &&
+            imported->deferredImportError.empty())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::IncompleteType,
+                diagnostics::DiagnosticSeverity::Error,
+                useRange,
+                "C++ type '" + type.identity.fullyQualifiedName() +
+                    "' is not trivially copyable and destructible, so a NativeSharp value (struct field, array "
+                    "element or generic argument) cannot hold it; hold it in a class field or a local, or by pointer");
+            return std::nullopt;
+        }
         diagnostics.report(
             diagnostics::DiagnosticId::IncompleteType,
             diagnostics::DiagnosticSeverity::Error,

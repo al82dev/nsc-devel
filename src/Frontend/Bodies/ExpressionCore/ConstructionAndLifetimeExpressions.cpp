@@ -736,6 +736,25 @@ void ProjectMethodBodyModel::analyzeNativeArrayAllocation(
             expression->range(),
             "native arrays cannot have void elements");
     }
+    // EN: X2-06. Array elements are zero-initialized and copied bytewise, so a non-trivial C++ record cannot be one
+    //     (the allocation reached the backend before, with no carrier). / ES: X2-06. Los elementos de un arreglo se
+    //     inician en cero y se copian por bytes, asi que un record C++ no trivial no puede serlo.
+    bool cppElementValid = true;
+    if (nameLookup_ != nullptr && element.starts_with("type:") && !element.ends_with('*'))
+        if (const auto ordinal = nameLookup_->typeOrdinalForIdentity(element.substr(5)))
+            if (const auto* imported = nameLookup_->cppImportedType(*ordinal);
+                imported && imported->origin == CppImportedTypeOrigin::CppRecord &&
+                !nameLookup_->cppTrivialValueEligible(*ordinal))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidAllocationType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "C++ type '" + std::string(element.substr(5)) +
+                        "' is not trivially copyable and destructible, so a NativeSharp value (struct field, array "
+                        "element or generic argument) cannot hold it; hold it in a class field or a local, or by pointer");
+                cppElementValid = false;
+            }
     bool elementsValid = true;
     if (inferredInitializer)
     {
@@ -777,7 +796,7 @@ void ProjectMethodBodyModel::analyzeNativeArrayAllocation(
     }
     result.typeKey = std::string(element) + "[]";
     result.valid = !isErrorType(element) && element != "builtin:void" &&
-        countValid && elementsValid;
+        countValid && elementsValid && cppElementValid;
     if (result.valid) result.storageOwnership = sema::OwnershipKind::Owned;
     if (result.valid)
     {
