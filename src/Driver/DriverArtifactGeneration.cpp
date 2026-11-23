@@ -7,6 +7,7 @@
 #include "nativesharp/Interop/CppBinaryDependencies.h"
 #include "nativesharp/Basic/ArtifactTransaction.h"
 #include "nativesharp/Basic/Sha256.h"
+#include <map>
 #include <algorithm>
 #include <iterator>
 #include <set>
@@ -709,6 +710,19 @@ static void explainMissingCppSymbols(const frontend::ProjectCompilation &compila
         const auto &symbol = function.cAbiName.empty() ? function.mangledName : function.cAbiName;
         if (!symbol.empty()) symbols.push_back(symbol);
     }
+    // EN: R2-08 (T17-005). An imported C/C++ global variable is explained like a function: its declaration exists
+    //     and no linked library defines it. A macro accessor, a constant and a DLL import are not link symbols here.
+    // ES: R2-08 (T17-005). Una variable global C/C++ importada se explica como una funcion: su declaracion existe y
+    //     ninguna biblioteca enlazada la define. Un accesor de macro, una constante y una importacion de DLL no son
+    //     simbolos de enlace aqui.
+    std::map<std::string, std::string> globals;
+    for (const auto &field : compilation.oopMirModel()->staticFields())
+    {
+        if (!field.isCppExternal || field.cppDllImport || field.cppMacroAccessor || field.hasConstantInitializer ||
+            field.storageSymbol.empty()) continue;
+        symbols.push_back(field.storageSymbol);
+        globals.emplace(field.storageSymbol, field.debugDisplayName.empty() ? field.name : field.debugDisplayName);
+    }
     std::sort(symbols.begin(), symbols.end());
     symbols.erase(std::unique(symbols.begin(), symbols.end()), symbols.end());
     if (symbols.empty()) return;
@@ -719,6 +733,18 @@ static void explainMissingCppSymbols(const frontend::ProjectCompilation &compila
         return;
     for (const auto &[symbol, sameName] : missing)
     {
+        if (const auto global = globals.find(symbol); global != globals.end())
+        {
+            error << "nsc: error: C/C++ global variable '" << global->second << "' (symbol '" << symbol << "')"
+                  << (sameName.empty() ? " is declared by the header but not defined by any linked library\n"
+                                       : " is not defined with this declaration: the header and the library disagree "
+                                         "on it\n");
+            for (const auto &[library, other] : sameName)
+                error << "nsc: note: '" << library << "' defines '"
+                      << llvm_backend::ProjectOopObjectGenerator::demangleSymbol(other) << "' (symbol '" << other
+                      << "')\n";
+            continue;
+        }
         std::string location;
         if (compilation.namespaceFunctionModel())
             for (const auto &function : compilation.namespaceFunctionModel()->functions())
