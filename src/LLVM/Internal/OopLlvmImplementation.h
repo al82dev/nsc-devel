@@ -493,7 +493,7 @@ private:
     static bool unsignedBitIntCarrier(std::string_view typeKey) noexcept
     {
         return typeKey == "builtin:byte" || typeKey == "builtin:ushort" || typeKey == "builtin:uint" ||
-            typeKey == "builtin:ulong";
+            typeKey == "builtin:ulong" || typeKey == "builtin:u128";
     }
     std::unordered_map<std::string, std::shared_ptr<const interop::abi_plan::Plan>> sysvCallbackPlans_;
     // X2-05: the storage the next call to a constructed-result function builds its C++ result in. / El

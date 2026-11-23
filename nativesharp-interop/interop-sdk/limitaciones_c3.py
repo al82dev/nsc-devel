@@ -192,7 +192,48 @@ positivo(Caso('c3-bitint-callback', H2cb, S2cb), r'''
     if ((int)q((byte)120, 1) != 2) return 4;
     return 42;
 ''', modes=['directo', 'lib', 'dll'])
-rechazo(Caso('c3-bitint-callback-ancho', H2cb, S2cb), 'return with_wide(null);', 'with_wide')
+# C3-02: a `_BitInt(N)` with 64 < N < 128 in a callback was the remaining rejection ('with_wide'); it now travels as
+# Clang passes it: by the address of a copy extended from N and returned through memory (sret), carried as the 128-bit
+# integer, with N in the function type identity. / Un `_BitInt(N)` ancho en un callback era el rechazo restante; ahora
+# viaja como lo pasa Clang: por la direccion de una copia extendida y devuelto en memoria.
+H2cw = r'''
+typedef _BitInt(100) (*wide_cb)(_BitInt(100), int);
+typedef unsigned _BitInt(90) (*uwide_cb)(unsigned _BitInt(90));
+long long with_wide(wide_cb cb);
+long long with_uwide(uwide_cb cb);
+wide_cb get_wide(void);
+uwide_cb get_uwide(void);
+'''
+S2cw = r'''
+long long with_wide(wide_cb cb) {
+  _BitInt(100) big = ((_BitInt(100))1 << 98) + 5;
+  _BitInt(100) r = cb(big, 2);
+  if (r != (((_BitInt(100))1 << 98) + 7) * 1) return -1;
+  return (long long)cb(-40, 1);
+}
+long long with_uwide(uwide_cb cb) {
+  unsigned _BitInt(90) top = ((unsigned _BitInt(90))1 << 89);
+  unsigned _BitInt(90) r = cb(top);
+  return r == 1 ? 7 : (long long)(r >> 60);
+}
+static _BitInt(100) twice(_BitInt(100) v, int k) { return v * k; }
+static unsigned _BitInt(90) dec(unsigned _BitInt(90) v) { return v - 1; }
+wide_cb get_wide(void) { return twice; }
+uwide_cb get_uwide(void) { return dec; }
+'''
+positivo(Caso('c3-bitint-callback-ancho', H2cw, S2cw), r'''
+    wide_cb f = (v, k) => v + k;
+    if (with_wide(f) != -39) return 1;
+    uwide_cb g = (v) => v + v + 1;
+    if (with_uwide(g) != 7) return 2;
+    var p = get_wide();
+    if (p((i128)(-21), 2) != (i128)(-42)) return 3;
+    i128 big = (i128)1 << 99;
+    if (p(big, 2) != 0) return 4;
+    var q = get_uwide();
+    if (q((u128)0) != (((u128)1 << 90) - 1)) return 5;
+    return 42;
+''', modes=['directo', 'lib', 'dll'])
 
 # C3-03: C23 enums with a fixed base (8-64 bits, signed and unsigned) are NativeSharp enums. An enum over a 128-bit
 # integer is carried as that integer (its positions pass like __int128); its enumerators are i128 constants when they

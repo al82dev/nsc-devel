@@ -892,7 +892,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
                 result->setPointeeConst(type.pointeeConst);
                 // C3-02: a narrow `_BitInt(N)` value keeps N. / Un valor `_BitInt(N)` estrecho conserva N.
                 if (source.kind != interop::CppTypeKind::Pointer && source.bitIntWidth && source.sizeBits &&
-                    *source.bitIntWidth < *source.sizeBits && *source.bitIntWidth <= 64U)
+                    *source.bitIntWidth < *source.sizeBits && *source.bitIntWidth < 128U)
                     result->setCppBitIntWidth(static_cast<std::uint8_t>(*source.bitIntWidth));
                 return result;
             };
@@ -1063,7 +1063,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     // C3-02: a narrow `_BitInt(N)` value keeps N for the callback type. / Un valor `_BitInt(N)`
                     //     estrecho conserva N para el tipo de callback.
                     if (type.kind != interop::CppTypeKind::Pointer && type.bitIntWidth && type.sizeBits &&
-                        *type.bitIntWidth < *type.sizeBits && *type.bitIntWidth <= 64U)
+                        *type.bitIntWidth < *type.sizeBits && *type.bitIntWidth < 128U)
                         value->setCppBitIntWidth(static_cast<std::uint8_t>(*type.bitIntWidth));
                     return value;
                 }

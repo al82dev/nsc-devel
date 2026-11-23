@@ -423,6 +423,14 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
             if (auto chain = nestedChain(original)) return *chain;
             const auto atomic = cAtomicPointeeCarrier(original);
             const CppType& slot = atomic ? *atomic : original;
+            // C3-02: a wide `_BitInt(N)` (64 < N < 128) slot is its 128-bit carrier; N stays in the identity. / Una
+            //     posicion `_BitInt(N)` ancha es su portador de 128 bits; N queda en la identidad.
+            if (slot.bitIntWidth && *slot.bitIntWidth > 64U && *slot.bitIntWidth < 128U && slot.sizeBits == 128U)
+            {
+                CppType wide = slot;
+                wide.bitIntWidth.reset();
+                return wide;
+            }
             if (!(qualifiable(slot) && (slot.element->isConst || slot.element->isVolatile))) return slot;
             CppType unqualified = slot;
             auto element = std::make_shared<CppType>(*slot.element);
@@ -518,14 +526,14 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
             return std::nullopt;
         // EN: C3-02. A `_BitInt(N)` narrower than its carrier travels as `iN` (the register's upper bits are
         //     undefined): N is kept in the function type identity, the call through the pointer truncates to N and
-        //     the callback thunk extends from N. Only N <= 64 with the Win64 C convention; wider ones (by memory)
-        //     and other conventions stay unmapped.
+        //     the callback thunk extends from N. With the Win64 C convention only; a wider one (64 < N < 128)
+        //     travels as Clang passes it, by the address of a copy and returned through memory.
         // ES: C3-02. Un `_BitInt(N)` mas estrecho que su portador viaja como `iN` (los bits altos del registro son
         //     indefinidos): N queda en la identidad del tipo funcion, la llamada por el puntero trunca a N y el thunk
         //     del callback extiende desde N. Solo N <= 64 con la convencion C de Win64.
         const auto narrowBitInt = [](const CppType& slot) -> std::uint8_t {
             return slot.bitIntWidth && slot.sizeBits && *slot.bitIntWidth < *slot.sizeBits
-                ? static_cast<std::uint8_t>(*slot.bitIntWidth > 64U ? 255U : *slot.bitIntWidth) : 0U;
+                ? static_cast<std::uint8_t>(*slot.bitIntWidth >= 128U ? 255U : *slot.bitIntWidth) : 0U;
         };
         std::vector<std::uint8_t> bitIntWidths;
         for (const CppType& parameter : signature.parameterTypes) bitIntWidths.push_back(narrowBitInt(parameter));

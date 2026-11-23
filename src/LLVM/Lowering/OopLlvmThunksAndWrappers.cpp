@@ -1088,8 +1088,10 @@ LLVMValueRef OopLlvmImplementation::bitIntCallbackThunk(
             return failValue(error, "_BitInt callback boundary has fewer parameters than its pointer type");
         const std::size_t first = count - signature->parameters.size();
         std::vector<LLVMTypeRef> boundaryParameters = parameterTypes;
+        // A wide `_BitInt(N)` argument arrives by the address of Clang's extended copy, as the boundary reads an
+        //     i128. / Un argumento ancho llega por la direccion de la copia extendida de Clang.
         for (std::size_t index = 0; index < signature->parameterBitIntWidths.size(); ++index)
-            if (signature->parameterBitIntWidths[index] != 0U)
+            if (signature->parameterBitIntWidths[index] != 0U && signature->parameterBitIntWidths[index] <= 64U)
             {
                 if (LLVMGetTypeKind(parameterTypes[first + index]) != LLVMIntegerTypeKind)
                     return failValue(error, "_BitInt callback parameter is not an integer carrier");
@@ -1097,18 +1099,32 @@ LLVMValueRef OopLlvmImplementation::bitIntCallbackThunk(
             }
         LLVMTypeRef boundaryReturn = LLVMGetReturnType(boundaryType);
         LLVMTypeRef returnType = boundaryReturn;
-        if (signature->resultBitIntWidth != 0U)
+        // A wide `_BitInt(N)` result leaves through Clang's hidden pointer. / Un resultado ancho sale por el
+        //     puntero oculto de Clang.
+        const bool wideResult = signature->resultBitIntWidth > 64U;
+        if (wideResult)
+        {
+            if (boundaryReturn == LLVMVoidTypeInContext(context_))
+                return failValue(error, "_BitInt callback result is not an integer carrier");
+            parameterTypes.insert(parameterTypes.begin(), LLVMPointerTypeInContext(context_, 0));
+            returnType = LLVMVoidTypeInContext(context_);
+        }
+        else if (signature->resultBitIntWidth != 0U)
         {
             if (LLVMGetTypeKind(boundaryReturn) != LLVMIntegerTypeKind)
                 return failValue(error, "_BitInt callback result is not an integer carrier");
             returnType = LLVMIntTypeInContext(context_, signature->resultBitIntWidth);
         }
+        const unsigned hidden = wideResult ? 1U : 0U;
         LLVMTypeRef thunkType = LLVMFunctionType(returnType, parameterTypes.empty() ? nullptr : parameterTypes.data(),
-            count, 0);
+            count + hidden, 0);
         const std::string thunkName = targetName + "__c_boundary" + suffix;
         LLVMValueRef thunk = LLVMGetNamedFunction(module_, thunkName.c_str());
         if (thunk == nullptr) thunk = LLVMAddFunction(module_, thunkName.c_str(), thunkType);
         applyUwtableAttribute(thunk);
+        if (wideResult)
+            applySretAttributes([&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                { LLVMAddAttributeAtIndex(thunk, index, attribute); }, 0U, signature->result);
         if (!defineBody)
         {
             callbackGuardThunks_[cacheKey] = FunctionInfo{thunk, thunkType, nullptr};
@@ -1125,8 +1141,8 @@ LLVMValueRef OopLlvmImplementation::bitIntCallbackThunk(
         std::vector<LLVMValueRef> arguments;
         for (unsigned index = 0; index < count; ++index)
         {
-            LLVMValueRef value = LLVMGetParam(thunk, index);
-            if (parameterTypes[index] != boundaryParameters[index])
+            LLVMValueRef value = LLVMGetParam(thunk, index + hidden);
+            if (parameterTypes[index + hidden] != boundaryParameters[index])
             {
                 const std::string& carrierKey = signature->parameters[index - first];
                 value = unsignedBitIntCarrier(carrierKey)
@@ -1138,7 +1154,21 @@ LLVMValueRef OopLlvmImplementation::bitIntCallbackThunk(
         LLVMValueRef result = LLVMBuildCall2(builder_, boundaryType, boundary,
             arguments.empty() ? nullptr : arguments.data(), count,
             boundaryReturn == LLVMVoidTypeInContext(context_) ? "" : "bitint.callback.result");
-        if (boundaryReturn == LLVMVoidTypeInContext(context_)) LLVMBuildRetVoid(builder_);
+        if (wideResult)
+        {
+            LLVMTypeRef wide = LLVMIntTypeInContext(context_, 128);
+            LLVMValueRef value = LLVMGetTypeKind(boundaryReturn) == LLVMIntegerTypeKind ? result
+                : LLVMBuildBitCast(builder_, result, wide, "bitint.callback.wide");
+            LLVMValueRef bits = LLVMBuildTrunc(builder_, value,
+                LLVMIntTypeInContext(context_, signature->resultBitIntWidth), "bitint.callback.trunc");
+            value = unsignedBitIntCarrier(signature->result)
+                ? LLVMBuildZExt(builder_, bits, wide, "bitint.callback.zext")
+                : LLVMBuildSExt(builder_, bits, wide, "bitint.callback.sext");
+            LLVMValueRef stored = LLVMBuildStore(builder_, value, LLVMGetParam(thunk, 0));
+            LLVMSetAlignment(stored, 8U);
+            LLVMBuildRetVoid(builder_);
+        }
+        else if (boundaryReturn == LLVMVoidTypeInContext(context_)) LLVMBuildRetVoid(builder_);
         else if (returnType != boundaryReturn)
             LLVMBuildRet(builder_, LLVMBuildTrunc(builder_, result, returnType, "bitint.callback.trunc"));
         else LLVMBuildRet(builder_, result);
