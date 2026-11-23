@@ -2178,12 +2178,23 @@ bool ProjectCompilation::compileProjectOopHir(
                 else if (experimentalCppLocalLifetimeAnalysisForTests_ && guardedCppValue &&
                     node->kind != ProjectOopHirNodeKind::ValueConstruction &&
                     node->kind != ProjectOopHirNodeKind::LocalAddress &&
+                    // X2-05: the hidden owner of a receiver temporary, built in place. / El dueno oculto de un
+                    //     temporal receptor, construido en su lugar.
+                    !(node->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow && node->referenceResult &&
+                      node->automaticDestruction && node->localOrdinal && node->cleanupRegionOrdinal &&
+                      node->children.size() == 1 && node->children[0] &&
+                      node->children[0]->kind == ProjectOopHirNodeKind::ValueConstruction) &&
                     // X2-08: a call whose result is an address (`T& operator+=`, `T& operator++`) does not copy
                     //     the object; using it as a value adds a PointerLoad, which is checked. / Una llamada
                     //     cuyo resultado es una direccion no copia el objeto; usarla como valor agrega PointerLoad.
                     !node->referenceResult &&
                     !(node->kind == ProjectOopHirNodeKind::LocalDeclaration && node->referenceLocal))
-                { loadError = "experimental C++ local cannot copy or transfer a C++ value"; return false; }
+                {
+                    loadError = std::string("experimental C++ local cannot copy or transfer a C++ value (") +
+                        projectOopHirNodeKindName(node->kind) + " of '" + node->typeKey + "' under " +
+                        (parent ? projectOopHirNodeKindName(parent->kind) : "the body") + ")";
+                    return false;
+                }
                 const bool construction = node->kind == ProjectOopHirNodeKind::ValueConstruction ||
                     node->kind == ProjectOopHirNodeKind::ObjectConstruction ||
                     node->kind == ProjectOopHirNodeKind::PlacementConstruction;
@@ -2192,8 +2203,10 @@ bool ProjectCompilation::compileProjectOopHir(
                 const bool discarded = experimentalCppDiscardedLifetimeLoweringForTests_ && parent &&
                     parent->kind == ProjectOopHirNodeKind::ExpressionStatement && parent->children.size() == 1;
                 const bool local = experimentalCppLocalLifetimeAnalysisForTests_ && parent &&
-                    parent->kind == ProjectOopHirNodeKind::LocalDeclaration && !parent->referenceLocal &&
-                    !parent->staticLocal && parent->children.size() == 1 && parent->children[0].get() == node &&
+                    ((parent->kind == ProjectOopHirNodeKind::LocalDeclaration && !parent->referenceLocal &&
+                      !parent->staticLocal) ||
+                     (parent->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow && parent->referenceResult)) &&
+                    parent->children.size() == 1 && parent->children[0].get() == node &&
                     parent->typeKey == node->typeKey && parent->localOrdinal && parent->cleanupRegionOrdinal &&
                     parent->automaticDestruction;
                 if (node->kind != ProjectOopHirNodeKind::ValueConstruction || (!discarded && !local) ||

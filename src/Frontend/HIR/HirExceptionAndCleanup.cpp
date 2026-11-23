@@ -299,6 +299,28 @@ bool ProjectOopHirModel::ownReceiverTemporary(std::unique_ptr<ProjectOopHirNode>
     const bool plainDataResult = !consumer->referenceResult && memberModel_ != nullptr &&
         memberModel_->typeIsPlainData(consumer->typeKey);
     if (!consumesReceiver(*consumer) || (!hasPlainResult(*consumer) && !plainDataResult)) return false;
+    // EN: X2-05. A C++ object returned by value and used only as a receiver (`lib.make(42).v`, `lib.make(1).get()`)
+    //     is constructed in the hidden owner's storage, lent by address, and destroyed at the end of the full
+    //     expression, as a C++ temporary; it is never copied.
+    // ES: X2-05. Un objeto C++ devuelto por valor y usado solo como receptor se construye en el almacenamiento del
+    //     dueno oculto, se presta por direccion y se destruye al final de la expresion completa, como un temporal
+    //     C++; nunca se copia.
+    if (std::unique_ptr<ProjectOopHirNode>& address = consumer->children.front();
+        address != nullptr && address->kind == ProjectOopHirNodeKind::TemporaryAddress &&
+        address->children.size() == 1 && address->children.front() != nullptr &&
+        address->children.front()->kind == ProjectOopHirNodeKind::ValueConstruction &&
+        address->children.front()->targetTypeOrdinal && nameLookup_ != nullptr &&
+        nameLookup_->cppImportedType(*address->children.front()->targetTypeOrdinal) != nullptr &&
+        !nameLookup_->cppTrivialValueEligible(*address->children.front()->targetTypeOrdinal))
+    {
+        auto owner = ownTemporary(std::move(address->children.front()));
+        owner->referenceResult = true;
+        owner->automaticDestruction = true;
+        address = std::move(owner);
+        const ast::AstNode* syntax = consumer->syntax;
+        consumer = wrapFullExpressionCleanup(std::move(consumer), syntax, true);
+        return true;
+    }
     std::unique_ptr<ProjectOopHirNode>* receiver = &consumer->children.front();
     if (*receiver != nullptr && (*receiver)->kind == ProjectOopHirNodeKind::TemporaryAddress &&
         (*receiver)->children.size() == 1)

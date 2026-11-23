@@ -730,6 +730,27 @@ bool OopLlvmImplementation::lowerExpressionFrame008OwnedTemporaryBorrow(
             values.push_back(failValue(error, "NSC-LIMIT-021 owned temporary borrow has no hidden owner slot"));
             return true;
         }
+        // EN: X2-05. A C++ object is constructed in the owner's slot (no copy); its drop flag is set only after
+        //     the constructor returns, as for a local.
+        // ES: X2-05. Un objeto C++ se construye en la ranura del dueno (sin copia); su indicador de destruccion se
+        //     activa solo cuando el constructor vuelve, como en un local.
+        const auto* construction = current->children.front().get();
+        if (current->referenceResult && construction->kind == frontend::ProjectOopMirNodeKind::ValueConstruct &&
+            construction->targetTypeOrdinal && nameLookup_.cppImportedType(*construction->targetTypeOrdinal) &&
+            !nameLookup_.cppTrivialValueEligible(*construction->targetTypeOrdinal))
+        {
+            if (lowerValueConstruction(construction, error, nullptr, false, storage->second) == nullptr)
+            {
+                values.push_back(nullptr);
+                return true;
+            }
+            const auto flag = localValueDropFlags_.find(*current->localOrdinal);
+            if (flag != localValueDropFlags_.end())
+                LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0), flag->second);
+            activeCleanupRegions_.push_back(*current->cleanupRegionOrdinal);
+            values.push_back(storage->second);
+            return true;
+        }
         frames.push_back({current, 1, storage->second, 0});
         frames.push_back({current->children.front().get(), 0, nullptr});
         return true;

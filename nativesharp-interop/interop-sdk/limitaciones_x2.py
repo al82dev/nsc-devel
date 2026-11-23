@@ -111,6 +111,19 @@ rechazo(c, 'var m = new lib.MoveOnly(1); var m2 = new lib.MoveOnly(in m); return
 # X2-05: las formas que aun necesitan un destino no local conservan la cobertura del rechazo anterior.
 rechazo(c, 'var o = Make(); return o.v;', 'requires direct local or discarded construction',
         preludio='lib.Obj Make() { return lib.make(42); }\n')
-rechazo(c, 'return lib.make(42).v;', 'cannot copy or transfer a C++ value')
+# X2-05: this temporary used as a receiver was a rejection ('cannot copy or transfer a C++ value'); it is now
+# constructed in a hidden owner and destroyed at the end of the full expression (counters), as a C++ temporary.
+# X2-05: este temporal receptor era un rechazo; ahora se construye en un dueno oculto y se destruye al final de la
+# expresion completa.
+BODY_TEMP = r'''
+    lib.reset();
+    ref lib.Counters k = ref lib.counters();
+    int a = lib.make(40).v;
+    if (k.ctor != 1 || k.copy + k.move != 0 || k.dtor != 1) return 1;
+    int b = lib.make(1).v + lib.make(1).v;
+    if (k.ctor != 3 || k.copy + k.move != 0 || k.dtor != 3) return 2;
+    return a + b;
+'''
+positivo(Caso('x2-temporal-receptor', H, S, **CPP), BODY_TEMP, modes=['directo', 'dll'])
 rechazo(c, 'var o = lib.make(1); o = lib.make(42); return o.v;', 'cannot copy or transfer a C++ value')
 fin()
