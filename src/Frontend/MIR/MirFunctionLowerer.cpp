@@ -429,6 +429,12 @@ void configureFunctionAbi(
     // X2-05: a constructed C++ result always travels through the hidden pointer, as the Microsoft ABI returns a
     //     non-trivial record. / Un resultado C++ construido viaja siempre por el puntero oculto.
     if (function.cppConstructedResult) function.abi.returnPassing = ProjectOopMirAbiPassing::Indirect;
+    // C3-02: a wide `_BitInt(N)` result comes back through memory, as Clang's plan says. / Un resultado
+    //     `_BitInt(N)` ancho vuelve en memoria, como dice el plan de Clang.
+    if (function.isImportedC && function.cppAbiPlan && !function.referenceReturn &&
+        (function.returnTypeKey == "builtin:i128" || function.returnTypeKey == "builtin:u128") &&
+        function.cppAbiPlan->logicalReturn.passing == interop::abi_plan::Passing::Indirect)
+        function.abi.returnPassing = ProjectOopMirAbiPassing::Indirect;
     std::size_t physicalOrdinal = function.isStatic ? 0U : 1U;
     if (function.abi.returnPassing == ProjectOopMirAbiPassing::Indirect)
         function.abi.hiddenReturnParameterOrdinal = physicalOrdinal++;

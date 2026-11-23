@@ -2290,7 +2290,19 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     cVectorParameters[parameter] == LLVMPointerTypeInContext(context_, 0))
                 {
                     LLVMValueRef slot = entryBlockAlloca(LLVMIntTypeInContext(context_, 128), 16U, "c.i128.arg.copy");
-                    LLVMValueRef store = LLVMBuildStore(builder_, rawVectorCallArguments.at(source), slot);
+                    LLVMValueRef value = rawVectorCallArguments.at(source);
+                    // C3-02: a `_BitInt(N)` argument holds its N bits, extended as Clang stores it. / Un argumento
+                    //     `_BitInt(N)` guarda sus N bits, extendidos como los guarda Clang.
+                    if (parameter < imported->cppBitIntWidths.size() && imported->cppBitIntWidths[parameter] > 64U &&
+                        imported->cppBitIntWidths[parameter] < 128U)
+                    {
+                        LLVMTypeRef narrow = LLVMIntTypeInContext(context_, imported->cppBitIntWidths[parameter]);
+                        LLVMValueRef bits = LLVMBuildTrunc(builder_, value, narrow, "c.bitint.wide.arg");
+                        value = sourceKey == "builtin:u128"
+                            ? LLVMBuildZExt(builder_, bits, LLVMIntTypeInContext(context_, 128), "c.bitint.wide.zext")
+                            : LLVMBuildSExt(builder_, bits, LLVMIntTypeInContext(context_, 128), "c.bitint.wide.sext");
+                    }
+                    LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
                     LLVMSetAlignment(store, 16U);
                     vectorArguments.push_back(slot);
                     continue;

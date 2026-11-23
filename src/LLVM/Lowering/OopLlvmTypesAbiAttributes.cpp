@@ -667,13 +667,14 @@ bool OopLlvmImplementation::cVectorPlanValues(const frontend::ProjectOopMirFunct
             //     la llamada trunca el portador y extiende el resultado segun el signo del portador.
             if (function.cppBitIntWidths.size() == function.parameterTypeKeys.size() + 1U)
             {
+                // Above 64 bits Clang's plan passes it in memory (below). / Por encima de 64 bits, en memoria.
                 for (std::size_t index = 0; index < function.parameterTypeKeys.size(); ++index)
-                    if (function.cppBitIntWidths[index] != 0U)
+                    if (function.cppBitIntWidths[index] != 0U && function.cppBitIntWidths[index] <= 64U)
                     {
                         parameters[index] = LLVMIntTypeInContext(context_, function.cppBitIntWidths[index]);
                         halfValues = true;
                     }
-                if (function.cppBitIntWidths.back() != 0U)
+                if (function.cppBitIntWidths.back() != 0U && function.cppBitIntWidths.back() <= 64U)
                 {
                     result = LLVMIntTypeInContext(context_, function.cppBitIntWidths.back());
                     halfValues = true;

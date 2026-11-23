@@ -908,9 +908,20 @@ CppSemanticFunctionResult projectFunction(
          ((function.callingConvention == "swiftcall" || function.callingConvention == "swiftasynccall") &&
           function.abiPlan));
     std::string vectorReason;
+    // EN: C3-02. A function's `_BitInt(N)` with 64 < N < 128 value is carried as the 128-bit integer: Clang passes it
+    //     by the address of a copy and returns it through memory (its plan), sign or zero extended from N bits.
+    //     Record fields keep it unmapped (their alignment is 8, the carrier's 16).
+    // ES: C3-02. Un valor `_BitInt(N)` con 64 < N < 128 de una funcion se lleva como el entero de 128 bits: Clang lo
+    //     pasa por la direccion de una copia y lo devuelve en memoria (su plan), extendido desde N bits. Los campos de
+    //     record lo dejan sin mapear (su alineacion es 8, la del portador 16).
+    const auto wideBitInt = [](CppType type) {
+        if (type.bitIntWidth && *type.bitIntWidth > 64U && *type.bitIntWidth < 128U && type.sizeBits == 128U)
+            type.bitIntWidth.reset();
+        return type;
+    };
     auto resultType = mappedReturn.kind == CppTypeKind::FixedVector
         ? cppVectorValueType(mappedReturn, function, std::nullopt, lookup, vectorReason)
-        : mapFunctionType(mappedReturn, true, records, moduleName, 0, lookup, projectOrdinal,
+        : mapFunctionType(wideBitInt(mappedReturn), true, records, moduleName, 0, lookup, projectOrdinal,
                           cRecordValues, false, cppRecordValues);
     // X2-05: a factory's result is its record, constructed in place. / El resultado de una fabrica es su record,
     //     construido en sitio.
@@ -1127,7 +1138,7 @@ CppSemanticFunctionResult projectFunction(
         }
         const auto parameterType = mappedInput.kind == CppTypeKind::FixedVector
             ? cppVectorValueType(mappedInput, function, index, lookup, vectorReason)
-            : mapFunctionType(mappedInput, true, records, moduleName, 0, lookup, projectOrdinal,
+            : mapFunctionType(wideBitInt(mappedInput), true, records, moduleName, 0, lookup, projectOrdinal,
                               cRecordValues, false, cppRecordValues);
         if (!parameterType && !vectorReason.empty())
             return failure("C/C++ vector parameter " + std::to_string(index) + " is not yet mapped: " + vectorReason);

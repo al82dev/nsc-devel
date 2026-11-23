@@ -92,7 +92,35 @@ BODY2 = r'''
 '''
 c2 = Caso('c3-bitint', H2, S2, standard='c2x')
 positivo(c2, BODY2)
-rechazo(c2, 'return (int)wide();', 'wide')
+# C3-02: `wide()` (a `_BitInt(100)` result) was a rejection; with 64 < N < 128 a function value is carried as the
+# 128-bit integer, passed by the address of a copy and returned through memory as Clang's plan says, extended from N
+# bits; an argument is truncated to N bits (C's conversion). Record fields of that kind stay unmapped.
+# C3-02: `wide()` era un rechazo; con 64 < N < 128 el valor de una funcion se lleva como el entero de 128 bits.
+H2b = r'''
+_BitInt(100) wide(void);
+_BitInt(100) w_add(_BitInt(100) a, _BitInt(100) b);
+unsigned _BitInt(72) u72_shl(unsigned _BitInt(72) v);
+__int128 beyond(void);
+unsigned __int128 top72(void);
+int w_is_neg(_BitInt(100) v);
+'''
+S2b = r'''
+_BitInt(100) wide(void) { return 1; }
+_BitInt(100) w_add(_BitInt(100) a, _BitInt(100) b) { return a + b; }
+unsigned _BitInt(72) u72_shl(unsigned _BitInt(72) v) { return v << 8; }
+__int128 beyond(void) { return ((__int128)1 << 100) + 5; }
+unsigned __int128 top72(void) { return (unsigned __int128)0xFF << 64; }
+int w_is_neg(_BitInt(100) v) { return v < 0; }
+'''
+BODY2b = r'''
+    if ((int)wide() != 1) return 1;
+    if ((int)w_add(40, 2) != 42 || (int)w_add(-50, 8) != -42) return 2;
+    if ((int)w_add(beyond(), 37) != 42) return 3;
+    if ((int)u72_shl(1) != 256 || u72_shl(top72()) != 0) return 4;
+    if (w_is_neg(w_add(-1, 0)) != 1 || w_is_neg(w_add(1, 0)) != 0) return 5;
+    return 42;
+'''
+positivo(Caso('c3-bitint-ancho', H2b, S2b, standard='c2x'), BODY2b)
 rechazo(c2, 'return with_bit_cb(null);', 'with_bit_cb')
 
 # C3-03: C23 enums with a fixed base (8-64 bits, signed and unsigned) are NativeSharp enums. An enum over a 128-bit
