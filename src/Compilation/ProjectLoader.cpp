@@ -834,6 +834,72 @@ bool parseCppLibraryReferenceItem(
             reference.macros.push_back({child.name == "Define" ? interop::CppMacroAction::Define :
                 interop::CppMacroAction::Undefine, trim(*value)});
         }
+        // EN: R1 (D6). `<Contract Function="f" Parameter="0" Kind="Retained" Until="Static" />` or
+        //     `<Contract Function="f" Result="Owned" Release="free_f" />`.
+        // ES: R1 (D6). Un contrato de frontera de una funcion de la referencia.
+        else if (child.name == "Contract")
+        {
+            if (!hasOnlyAttributes(child, {"Function", "Parameter", "Kind", "Until", "Optional", "Result", "Release"},
+                                   error)) return false;
+            const auto* function = attribute(child, "Function");
+            if (!function || trim(*function).empty()) { error = "Contract requires Function"; return false; }
+            interop::CppContract contract;
+            contract.function = trim(*function);
+            const auto* parameter = attribute(child, "Parameter");
+            const auto* result = attribute(child, "Result");
+            if ((parameter != nullptr) == (result != nullptr))
+            { error = "Contract requires exactly one of Parameter and Result"; return false; }
+            if (result)
+            {
+                const auto* release = attribute(child, "Release");
+                if (trim(*result) != "Owned" || !release || trim(*release).empty() || attribute(child, "Kind") ||
+                    attribute(child, "Until") || attribute(child, "Optional"))
+                { error = "a Result contract is Result=\"Owned\" with a Release function"; return false; }
+                contract.kind = interop::CppContractKind::OwnedResult;
+                contract.release = trim(*release);
+            }
+            else
+            {
+                const std::string text = trim(*parameter);
+                std::size_t index = 0;
+                const auto parsed = std::from_chars(text.data(), text.data() + text.size(), index);
+                if (text.empty() || parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size())
+                { error = "Contract Parameter must be a parameter index"; return false; }
+                contract.parameter = index;
+                const auto* kind = attribute(child, "Kind");
+                const std::string name = kind ? trim(*kind) : std::string{};
+                if (name == "Borrowed") contract.kind = interop::CppContractKind::Borrowed;
+                else if (name == "Retained") contract.kind = interop::CppContractKind::Retained;
+                else if (name == "Transfer") contract.kind = interop::CppContractKind::Transfer;
+                else if (name == "Out") contract.kind = interop::CppContractKind::Out;
+                else if (name == "NonNull") contract.kind = interop::CppContractKind::NonNull;
+                else if (name == "Nullable") contract.kind = interop::CppContractKind::Nullable;
+                else
+                {
+                    error = "Contract Kind must be Borrowed, Retained, Transfer, Out, NonNull or Nullable";
+                    return false;
+                }
+                const auto* until = attribute(child, "Until");
+                if ((contract.kind == interop::CppContractKind::Retained) != (until != nullptr))
+                { error = "Contract Until is required for Kind=\"Retained\" and only for it"; return false; }
+                if (until)
+                {
+                    contract.until = trim(*until);
+                    if (contract.until != "Static" && contract.until != "Receiver" &&
+                        !(contract.until.starts_with("Call:") && contract.until.size() > 5))
+                    { error = "Contract Until must be Static, Receiver or Call:<function>"; return false; }
+                }
+                if (const auto* optional = attribute(child, "Optional"))
+                {
+                    if (contract.kind != interop::CppContractKind::Out ||
+                        (trim(*optional) != "true" && trim(*optional) != "false"))
+                    { error = "Contract Optional is true or false, for Kind=\"Out\""; return false; }
+                    contract.optional = trim(*optional) == "true";
+                }
+                if (attribute(child, "Release")) { error = "Contract Release belongs to Result=\"Owned\""; return false; }
+            }
+            reference.contracts.push_back(std::move(contract));
+        }
         else
         {
             error = "unsupported CppLibraryReference child '" + child.name + "'";
@@ -1653,6 +1719,7 @@ std::optional<std::vector<CppLibraryReference>> loadCppLibraryReferences(
         reference.volatileMode = input.volatileMode;
         reference.macros = input.macros;
         reference.implementationMacro = input.implementationMacro;
+        reference.contracts = input.contracts; // R1
         if (!reference.implementationMacro.empty() && input.language != interop::CppLanguageMode::C)
         {
             error = "CppLibraryReference Implementation requires Language=\"C\"";

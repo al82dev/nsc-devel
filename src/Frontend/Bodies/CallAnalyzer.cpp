@@ -1667,6 +1667,149 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
     return result;
 }
 
+namespace
+{
+const ast::AstNode* stripContractArgument(const ast::AstNode* node)
+{
+    while (node != nullptr && node->kind() == ast::AstNodeKind::CastExpression && node->first() != nullptr)
+        node = node->first();
+    return node;
+}
+
+bool containsOffset(const ast::AstNode* node, const SourceRange& range)
+{
+    return node != nullptr && node->range().isValid() && range.isValid() &&
+        node->range().begin().fileId() == range.begin().fileId() &&
+        node->range().begin().offset() <= range.begin().offset() &&
+        node->range().end().offset() >= range.end().offset();
+}
+
+// The innermost block of `root` that contains `range`. / El bloque mas interno de `root` que contiene `range`.
+const ast::AstNode* innermostBlock(const ast::AstNode* root, const SourceRange& range)
+{
+    const ast::AstNode* found = nullptr;
+    std::vector<const ast::AstNode*> pending{root};
+    while (!pending.empty())
+    {
+        const auto* node = pending.back();
+        pending.pop_back();
+        if (!containsOffset(node, range)) continue;
+        if (node->kind() == ast::AstNodeKind::BlockStatement) found = node;
+        for (const auto* child : node->children()) if (child) pending.push_back(child);
+        if (node->first() && std::find(node->children().begin(), node->children().end(), node->first()) ==
+                                 node->children().end()) pending.push_back(node->first());
+    }
+    return found;
+}
+
+// A call to `name` (last segment) in `block` after `offset`. / Una llamada a `name` en `block` despues de `offset`.
+bool laterCall(const ast::AstNode* block, std::uint32_t offset, std::string_view name)
+{
+    std::vector<const ast::AstNode*> pending{block};
+    while (!pending.empty())
+    {
+        const auto* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind() == ast::AstNodeKind::CallExpression && node->range().begin().offset() > offset &&
+            node->first() != nullptr)
+        {
+            const auto* callee = node->first();
+            std::string_view text = callee->text();
+            if (callee->kind() == ast::AstNodeKind::MemberExpression) text = callee->text();
+            if (text == name) return true;
+        }
+        for (const auto* child : node->children()) pending.push_back(child);
+        if (node->first() && std::find(node->children().begin(), node->children().end(), node->first()) ==
+                                 node->children().end()) pending.push_back(node->first());
+    }
+    return false;
+}
+}
+
+// EN: R1 (D6). A project contract on an imported C/C++ function: the library retains a pointer argument (until
+//     `Static`, `Call:<f>` or the receiver) or takes its ownership (Transfer). The address of a local that does not
+//     live that long, or stack memory, is rejected: the library would keep or free storage whose scope ends. A
+//     `Call:<f>` contract accepts a local whose block calls f later. Without a contract nothing is checked.
+// ES: R1 (D6). Un contrato del proyecto sobre una funcion C/C++ importada: la biblioteca retiene un argumento puntero
+//     (hasta `Static`, `Call:<f>` o el receptor) o toma su propiedad (Transfer). Se rechaza la direccion de un local
+//     que no vive tanto, o memoria de pila: la biblioteca guardaria o liberaria almacenamiento cuyo ambito termina. Un
+//     contrato `Call:<f>` acepta un local cuyo bloque llama a f despues. Sin contrato no se comprueba nada.
+bool ProjectMethodBodyModel::checkCppContracts(
+    const ast::AstNode* expression, const NamespaceFunctionSymbol& function,
+    std::span<ast::AstNode* const> argumentSyntaxes, const MethodCallCandidate& selected,
+    std::size_t callerCallableOrdinal, diagnostics::DiagnosticEngine& diagnostics)
+{
+    bool ok = true;
+    for (std::size_t index = 0; index < argumentSyntaxes.size() && index < selected.argumentParameterOrdinals.size();
+         ++index)
+    {
+        const std::size_t parameterOrdinal = selected.argumentParameterOrdinals[index];
+        if (parameterOrdinal >= function.parameters.size()) continue;
+        const auto& parameter = function.parameters[parameterOrdinal];
+        if (parameter.cppRetainedUntil.empty() && !parameter.cppTransfer) continue;
+        const ast::AstNode* argument = stripContractArgument(argumentSyntaxes[index]);
+        if (argument == nullptr) continue;
+        std::optional<std::size_t> localOrdinal;
+        bool stack = argument->kind() == ast::AstNodeKind::StackallocExpression;
+        const ast::AstNode* place = nullptr;
+        if (argument->kind() == ast::AstNodeKind::UnaryExpression &&
+            (argument->tokenKind() == lexer::TokenKind::Amp || argument->auxiliaryText().starts_with("pass:")))
+            place = argument->first();
+        else if (argument->kind() == ast::AstNodeKind::IdentifierExpression)
+            place = argument;
+        if (place != nullptr && place->kind() == ast::AstNodeKind::IdentifierExpression)
+            if (const auto* name = nameBinding(place, callerCallableOrdinal);
+                name != nullptr && name->kind == MethodNameBindingKind::Local && name->localOrdinal &&
+                *name->localOrdinal < locals_.size() && !locals_[*name->localOrdinal].isStatic)
+            {
+                const auto& local = locals_[*name->localOrdinal];
+                // A pointer local initialized with stackalloc holds stack memory. / Un local puntero inicializado
+                //     con stackalloc guarda memoria de pila.
+                const bool stackPointer = argument == place && local.syntax != nullptr && [&] {
+                    std::vector<const ast::AstNode*> pending{local.syntax};
+                    while (!pending.empty())
+                    {
+                        const auto* node = pending.back();
+                        pending.pop_back();
+                        if (node == nullptr) continue;
+                        if (node->kind() == ast::AstNodeKind::StackallocExpression) return true;
+                        for (const auto* child : node->children()) pending.push_back(child);
+                        if (node->first() && std::find(node->children().begin(), node->children().end(),
+                                                       node->first()) == node->children().end())
+                            pending.push_back(node->first());
+                    }
+                    return false;
+                }();
+                if (argument != place || stackPointer) localOrdinal = *name->localOrdinal;
+            }
+        if (!localOrdinal && !stack) continue;
+        if (parameter.cppRetainedUntil.starts_with("Call:") && !parameter.cppTransfer)
+        {
+            std::string_view release = std::string_view(parameter.cppRetainedUntil).substr(5);
+            if (const auto separator = release.rfind("::"); separator != std::string_view::npos)
+                release = release.substr(separator + 2);
+            const auto* caller = callableSymbol(callerCallableOrdinal);
+            const auto* root = caller != nullptr ? caller->syntax : nullptr;
+            const auto* block = localOrdinal ? innermostBlock(root, locals_[*localOrdinal].range) : root;
+            if (block != nullptr && laterCall(block, expression->range().end().offset(), release)) continue;
+        }
+        const std::string what = localOrdinal
+            ? "the address of local '" + locals_[*localOrdinal].name + "'"
+            : std::string("stack memory");
+        diagnostics.report(diagnostics::DiagnosticId::InvalidCall, diagnostics::DiagnosticSeverity::Error,
+            argumentSyntaxes[index]->range(), parameter.cppTransfer
+                ? "C/C++ function '" + function.name + "' takes ownership of argument " +
+                      std::to_string(parameterOrdinal) + " (project contract Transfer); " + what +
+                      " is not memory the library may free"
+                : "C/C++ function '" + function.name + "' retains argument " + std::to_string(parameterOrdinal) +
+                      " until " + parameter.cppRetainedUntil + " (project contract Retained); " + what +
+                      " does not live that long");
+        ok = false;
+    }
+    return ok;
+}
+
 // X1-04: whether a type key names an imported C++ record. / Si una clave de tipo nombra un record C++ importado.
 bool ProjectMethodBodyModel::cppRecordTypeKey(std::string_view typeKey) const
 {
@@ -2332,6 +2475,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
             expression->range(), "call to deleted C++ function '" +
                 namespaceFunctionModel_->functions()[functionOrdinal].signatureKey +
                 "': C++ selects this '= delete' overload for these arguments");
+        call.resolution = MethodCallResolutionKind::NoViableCandidate;
+        return {};
+    }
+    if (!hasForwardedReceiver && namespaceFunctionModel_ != nullptr &&
+        functionOrdinal < namespaceFunctionModel_->functions().size() &&
+        !checkCppContracts(expression, namespaceFunctionModel_->functions()[functionOrdinal], argumentSyntaxes, selected,
+                           callerCallableOrdinal, diagnostics))
+    {
         call.resolution = MethodCallResolutionKind::NoViableCandidate;
         return {};
     }

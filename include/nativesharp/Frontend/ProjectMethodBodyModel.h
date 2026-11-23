@@ -4182,6 +4182,9 @@ private:
         NamespaceFunctionCallBinding& call,
         diagnostics::DiagnosticEngine& diagnostics);
     bool cppRecordTypeKey(std::string_view typeKey) const;
+    bool checkCppContracts(const ast::AstNode* expression, const NamespaceFunctionSymbol& function,
+        std::span<ast::AstNode* const> argumentSyntaxes, const MethodCallCandidate& selected,
+        std::size_t callerCallableOrdinal, diagnostics::DiagnosticEngine& diagnostics);
     std::optional<ExpressionResult> tryCppCallOperator(const ast::AstNode* expression, const ExpressionResult& callee,
         std::span<const ExpressionResult> arguments, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);

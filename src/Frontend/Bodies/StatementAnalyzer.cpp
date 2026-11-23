@@ -2637,6 +2637,21 @@ bool ProjectMethodBodyModel::analyzeStandaloneStatement(
                 ownershipFlowReachable_ = false;
             if (isFreshObjectCreation(statement->first(), expression))
                 reportLostOwnership(statement->first(), "a discarded expression", diagnostics);
+            // EN: R1 (D6). An owned C/C++ result (project contract Result="Owned") cannot be discarded: it must be
+            //     released with its function or kept.
+            // ES: R1 (D6). Un resultado C/C++ con dueno (contrato Result="Owned") no puede descartarse: se libera
+            //     con su funcion o se conserva.
+            if (const auto* call = namespaceFunctionCall(statement->first());
+                call != nullptr && call->selectedFunctionOrdinal && namespaceFunctionModel_ != nullptr &&
+                *call->selectedFunctionOrdinal < namespaceFunctionModel_->functions().size() &&
+                !namespaceFunctionModel_->functions()[*call->selectedFunctionOrdinal].cppOwnedRelease.empty())
+            {
+                const auto& function = namespaceFunctionModel_->functions()[*call->selectedFunctionOrdinal];
+                diagnostics.report(diagnostics::DiagnosticId::InvalidCall, diagnostics::DiagnosticSeverity::Error,
+                    statement->first()->range(), "the result of C/C++ function '" + function.name +
+                    "' is owned (project contract Result=\"Owned\"); discarding it leaks it: keep it and release it with '" +
+                    function.cppOwnedRelease + "'");
+            }
             return true;
         }
         case ast::AstNodeKind::FunctionDeclaration:

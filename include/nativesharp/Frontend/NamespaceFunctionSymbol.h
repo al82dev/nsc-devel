@@ -110,5 +110,7 @@ struct NamespaceFunctionSymbol final
     std::shared_ptr<const interop::abi_plan::Plan> cppAbiPlan;
     // X1-03: a C++ `= delete` function. / Una funcion C++ `= delete`.
     bool cppDeleted = false;
+    // R1 (D6): an owned result released by this function. / Un resultado con dueno que libera esta funcion.
+    std::string cppOwnedRelease;
 };
 }

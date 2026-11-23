@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Interop/CppContract.h"
+
 #include "nativesharp/Interop/CppSessionOptions.h"
 
 #include <filesystem>
@@ -37,5 +39,8 @@ struct CppLibraryReference final
     // ES: Item 18.8. Otras bibliotecas de importacion o estaticas que el encabezado necesita al enlazar, en el orden
     //     declarado.
     std::vector<std::filesystem::path> additionalLibraryPaths;
+    // EN: R1 (D6). Boundary contracts declared next to the reference (`<Contract>`).
+    // ES: R1 (D6). Contratos de frontera declarados junto a la referencia (`<Contract>`).
+    std::vector<interop::CppContract> contracts;
 };
 }

@@ -88,5 +88,11 @@ struct MethodParameterSymbol final
     // ES: X1-04. Un parametro C++ `const T&` (un parametro `in` de una funcion C++): un valor escrito sin `in` se
     //     convierte a T y se materializa para la llamada, como C++ enlaza un temporal a `const T&`.
     bool cppConstReference = false;
+    // EN: R1 (D6). A project contract: the library retains the pointer until `Static`, `Receiver` or `Call:<f>`, or
+    //     takes its ownership (Transfer).
+    // ES: R1 (D6). Un contrato del proyecto: la biblioteca retiene el puntero hasta `Static`, `Receiver` o `Call:<f>`,
+    //     o toma su propiedad (Transfer).
+    std::string cppRetainedUntil;
+    bool cppTransfer = false;
 };
 }

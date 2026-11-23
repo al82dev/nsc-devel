@@ -23,6 +23,8 @@
 #include <iterator>
 #include <map>
 #include <optional>
+#include "nativesharp/Interop/CppContract.h"
+
 #include <set>
 #include <system_error>
 #include <tuple>
@@ -2253,6 +2255,7 @@ CppSemanticInventoryResult collectCppSemanticFunctions(
         }
         if (!owner)
             return CppSemanticInventoryFailure{group.projectFile, 0, "project owner not found in graph"};
+        std::set<std::pair<std::size_t, std::size_t>> matchedContracts;
         for (std::size_t index = 0; index < group.sessions.size(); ++index)
         {
             const auto& session = group.sessions[index];
@@ -2301,9 +2304,48 @@ CppSemanticInventoryResult collectCppSemanticFunctions(
                 // ES: T08-D13b. La funcion conserva el modo volatile de su referencia.
                 if (auto* symbol = std::get_if<frontend::NamespaceFunctionSymbol>(&projection))
                     symbol->cppMicrosoftVolatileSemantics = microsoftVolatileSemantics;
+                // EN: R1 (D6). The contracts of the reference for this function.
+                // ES: R1 (D6). Los contratos de la referencia para esta funcion.
+                const auto& references = graph.projects()[*owner].cppLibraryReferences();
+                if (index < references.size())
+                    for (std::size_t contractIndex = 0; contractIndex < references[index].contracts.size();
+                         ++contractIndex)
+                    {
+                        const auto& contract = references[index].contracts[contractIndex];
+                        if (contract.function != declaration.qualifiedName && contract.function != declaration.name)
+                            continue;
+                        auto* symbol = std::get_if<frontend::NamespaceFunctionSymbol>(&projection);
+                        if (!symbol) continue;
+                        if (contract.parameter && *contract.parameter >= symbol->parameters.size())
+                            return CppSemanticInventoryFailure{group.projectFile, index, "contract of '" +
+                                contract.function + "' names parameter " + std::to_string(*contract.parameter) +
+                                ", which the function does not have"};
+                        matchedContracts.insert({index, contractIndex});
+                        if (!contract.parameter)
+                        {
+                            symbol->cppOwnedRelease = contract.release;
+                            continue;
+                        }
+                        auto& parameter = symbol->parameters[*contract.parameter];
+                        using K = CppContractKind;
+                        if (contract.kind == K::NonNull || (contract.kind == K::Out && !contract.optional))
+                            parameter.pointerNullable = false;
+                        else if (contract.kind == K::Nullable || (contract.kind == K::Out && contract.optional))
+                            parameter.pointerNullable = true;
+                        else if (contract.kind == K::Retained) parameter.cppRetainedUntil = contract.until;
+                        else if (contract.kind == K::Transfer) parameter.cppTransfer = true;
+                    }
                 result.push_back({group.projectFile, index, *owner, options.targetTriple,
                                   std::move(declaration), std::move(projection)});
             }
+            // R1: a contract must name an imported function. / Un contrato debe nombrar una funcion importada.
+            const auto& references = graph.projects()[*owner].cppLibraryReferences();
+            if (index < references.size())
+                for (std::size_t contractIndex = 0; contractIndex < references[index].contracts.size(); ++contractIndex)
+                    if (!matchedContracts.contains({index, contractIndex}))
+                        return CppSemanticInventoryFailure{group.projectFile, index, "contract names '" +
+                            references[index].contracts[contractIndex].function +
+                            "', which is not an imported C/C++ function of this reference"};
         }
     }
     return result;

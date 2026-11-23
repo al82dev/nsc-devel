@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nativesharp/Interop/CppContract.h"
 #include "nativesharp/Interop/CppSessionOptions.h"
 
 #include <optional>
@@ -30,5 +31,7 @@ struct CppLibraryReferenceDescriptor final
     std::vector<interop::CppIncludePath> includePaths;
     std::vector<interop::CppMacroOption> macros;
     interop::CppVolatileMode volatileMode = interop::CppVolatileMode::Default;
+    // R1: `<Contract>` children. / Hijos `<Contract>`.
+    std::vector<interop::CppContract> contracts;
 };
 }
