@@ -3935,7 +3935,20 @@ void evaluateVariableTemplatesInTree(ast::AstNode& node, ast::AstArena& arena, c
             if (!isBool) continue;
             const auto value = session->evaluateIntegerConstantExpression(
                 isBool->first ? *spelling + " ? 1 : 0" : *spelling);
-            if (!value) continue;
+            if (!value)
+            {
+                // EN: X4-04. A specialization that is not a constant (`inline T zero`) is its storage: a global the
+                //     session reports through an accessor to its address, read and written like any C++ global.
+                // ES: X4-04. Una especializacion que no es constante es su almacenamiento: una global que la sesion
+                //     informa por una accesora a su direccion, leida y escrita como cualquier global C++.
+                if (const auto global = session->declareVariableTemplateAccessor(*spelling))
+                {
+                    auto* identifier = arena.make<ast::AstNode>(ast::AstNodeKind::IdentifierExpression, child->range());
+                    identifier->setText(*global);
+                    return identifier;
+                }
+                continue;
+            }
             if (isBool->first)
             {
                 auto* literal = arena.make<ast::AstNode>(ast::AstNodeKind::BooleanLiteralExpression, child->range());

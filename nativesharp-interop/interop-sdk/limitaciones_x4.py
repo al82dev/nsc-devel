@@ -76,6 +76,18 @@ positivo(Caso('x4-plantilla-variable-flotante', HVF, None, **CPP),
          '    return 42;', modes=['directo', 'dll'])
 positivo(Caso('x4-comparacion', HV, None, **CPP), 'int a = 3, b = 2, c = 1; bool x = a < b; return x || c > a ? 1 : 42;',
          modes=['directo'])
-rechazo(Caso('x4-plantilla-variable-double', HV, None, **CPP), 'return (int)lib.zero<double>;',
-        'not an integral or bool constant')
+# X4-04: a variable template that is not a constant (`inline T zero`) was a rejection ('not an integral or bool
+# constant'); its specialization is now its storage, reached through an accessor the session declares (as for a macro
+# that is not a constant, T19-041): NativeSharp reads and writes the same object C++ sees.
+# X4-04: una plantilla de variable no constante era un rechazo; su especializacion es ahora su almacenamiento.
+HVN = r'''
+namespace lib {
+template<class T> inline T zero = T(0);
+template<class T> inline T counter = T(5);
+inline int read_counter() { return counter<int>; }
+}
+'''
+positivo(Caso('x4-plantilla-variable-double', HVN, None, **CPP),
+         'if ((int)lib.zero<double> != 0) return 1; lib.counter<int> = 40; lib.counter<int> += 2;\n'
+         '    return lib.read_counter() == 42 && lib.counter<int> == 42 ? 42 : 2;', modes=['directo', 'dll'])
 fin()

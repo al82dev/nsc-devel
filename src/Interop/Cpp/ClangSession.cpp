@@ -5061,7 +5061,16 @@ public:
         //     points to, read-only when the expansion is not an lvalue.
         // ES: T19-041. Una macro no constante es una global C de enlace interno con el tipo al que apunta la
         //     accesora, de solo lectura si la expansion no es un lvalue.
+        // X4-04: also inside `extern "C" { }`, where a C++ session declares its accessors. / Tambien dentro de
+        //     `extern "C" { }`, donde una sesion C++ declara sus accesoras.
+        std::vector<const clang::Decl*> accessorCandidates;
         for (const auto* declaration : context.getTranslationUnitDecl()->decls())
+        {
+            if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
+                accessorCandidates.insert(accessorCandidates.end(), linkage->decls_begin(), linkage->decls_end());
+            else accessorCandidates.push_back(declaration);
+        }
+        for (const auto* declaration : accessorCandidates)
         {
             const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration);
             if (!function || !function->getIdentifier()) continue;
@@ -5077,6 +5086,9 @@ public:
             //     sin almacenamiento.
             value.cMacroAccessor = found->first;
             value.clangUsr = declarationUsr(function);
+            // X4-04: a variable template specialization is reached through its accessor symbol. / Una especializacion
+            //     de plantilla de variable se alcanza por el simbolo de su accesora.
+            if (value.name.starts_with("__nsc_vt_")) value.externalLinkage = true;
             result.push_back(std::move(value));
         }
         // EN: T19-003/C2-08. A macro expansion session reports only the constants of its macros: values with storage
@@ -5121,6 +5133,42 @@ public:
             return std::make_pair(value->integerBits, variable->getType()->isSignedIntegerType());
         }
         return std::nullopt;
+    }
+    std::optional<std::string> declareVariableTemplateAccessor(std::string_view spelling) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || !ast_->getASTContext().getLangOpts().CPlusPlus || options_.macroExpansionOnly) return std::nullopt;
+        std::uint64_t hash = 1469598103934665603ULL;
+        for (const unsigned char c : spelling) { hash ^= c; hash *= 1099511628211ULL; }
+        static constexpr char digits[] = "0123456789abcdef";
+        std::string name = "__nsc_vt_";
+        for (int shift = 60; shift >= 0; shift -= 4) name.push_back(digits[(hash >> shift) & 0xF]);
+        const std::string accessor = "__nsc_macro_ref_" + name;
+        if (macroOfAccessor_.contains(accessor)) return name;
+        // C linkage keeps the accessor's symbol its name, as for a C macro accessor. / El enlace C conserva el
+        //     nombre como simbolo de la accesora.
+        const std::string code = source_ + "\nextern \"C\" { inline auto* " + accessor + "() { return &(" +
+            std::string(spelling) + "); } }\n";
+        llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(llvm::vfs::createPhysicalFileSystem().release());
+        if (filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory))) return std::nullopt;
+        macroWrapperDiagnostics_.clear();
+        auto unit = detail::runClangSessionAction(code, detail::buildClangInvocationArguments(options_), inputPath_,
+            utf8(options_.driverReferencePath), &macroWrapperConsumer_, std::move(filesystem), CppCancellationToken{});
+        if (!unit || !unit->hasSema() || unit->getDiagnostics().hasErrorOccurred()) return std::nullopt;
+        unit->getDiagnostics().setClient(&consumer_, false);
+        ast_ = std::move(unit);
+        source_ = code;
+        synthesizeComplexCarriers(ast_->getASTContext());
+        // As after a macro wrapper (T19-003): the new unit instantiates again what Sema did in the old one. / Como
+        //     tras un envoltorio de macro: la nueva unidad instancia otra vez lo que Sema hizo en la anterior.
+        functionSpecializationNames_.clear();
+        nativeStructMirrors_.clear();
+        nativeStructLayouts_.clear();
+        instantiateNamedSpecializations(ast_->getASTContext(), ast_->getSema());
+        const auto uses = templateUses_;
+        for (const auto& use : uses) instantiateTemplateLocked(use.name, use.function, use.arguments);
+        macroOfAccessor_.emplace(accessor, std::make_pair(name, true));
+        return name;
     }
     std::vector<CppMacroName> macrosSnapshot() const override
     {

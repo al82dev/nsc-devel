@@ -393,6 +393,12 @@ public:
     {
         return std::nullopt;
     }
+    // EN: X4-04. A C++ variable template specialization that is not a constant (`lib::zero<double>`), written as an
+    //     expression: the session declares an accessor to its address and reports it as a global of the returned
+    //     name, as for a macro that is not a constant (T19-041). Null when Clang rejects it.
+    // ES: X4-04. Una especializacion de plantilla de variable C++ que no es constante: la sesion declara una accesora
+    //     a su direccion y la informa como una global con el nombre devuelto, como una macro no constante (T19-041).
+    virtual std::optional<std::string> declareVariableTemplateAccessor(std::string_view) const { return std::nullopt; }
     // T13-010: Sema instantiates the template with the arguments; nullopt when it is not a template here.
     virtual std::optional<CppTemplateInstantiation> instantiateTemplate(
         std::string_view, bool, std::span<const CppTemplateArgument>) const { return std::nullopt; }
