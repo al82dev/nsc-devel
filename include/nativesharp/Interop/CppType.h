@@ -98,7 +98,10 @@ struct CppFunctionType
 inline bool cppFunctionTypeCallable(const CppFunctionType& signature) noexcept
 {
     return signature.hasPrototype ||
-        (signature.callingConvention == "cdecl" && signature.parameterTypes.empty() && !signature.variadic);
+        // C3-08: also under sysv_abi, where a call sets AL as for a variadic one. / Tambien con sysv_abi, donde
+        //     una llamada fija AL como una variadica.
+        ((signature.callingConvention == "cdecl" || signature.callingConvention == "sysv_abi") &&
+         signature.parameterTypes.empty() && !signature.variadic);
 }
 
 // EN: Item 2.1. NativeSharp writes `T const**`: the readonly mark of a pointer to pointer belongs to the base type

@@ -306,7 +306,8 @@ rechazo(c7, 'var g = grid(); return g->rows[0][4];', 'outside [0, 4)')
 # C3-08: a pointer to an unprototyped C function (`int (*)()`) takes any arguments with C's default promotions
 # (`1.5f` reaches a `double` parameter); `static inline` `sysv_abi` functions with record values keep Clang's plan
 # under their link wrapper, as external ones do; and a record built from scalars (`P make(int, int)`) survives the
-# precompiled metadata. An unprototyped pointer of another convention stays unmapped.
+# precompiled metadata. An unprototyped `sysv_abi` pointer is called as a variadic sysv call (below); one of another
+# convention stays unmapped.
 H8 = r'''
 typedef struct P { int x; int y; } P;
 typedef struct Big { long long a, b, c; } Big;
@@ -346,7 +347,14 @@ BODY8 = r'''
 '''
 c8 = Caso('c3-sin-prototipo-sysv', H8, S8)
 positivo(c8, BODY8)
-rechazo(c8, 'var f = get_krs(); return f();', 'get_krs')
+# C3-08: an unprototyped `sysv_abi` pointer was a rejection ('get_krs'); a call through it now applies C's default
+# promotions and passes the arguments as a variadic sysv_abi call (same registers; AL holds the vector count, as a
+# variadic callee needs). / Un puntero `sysv_abi` sin prototipo era un rechazo; ahora se llama como una variadica sysv.
+H8b = 'typedef int (__attribute__((sysv_abi)) *krs)();\nkrs get_krs(void);\nkrs get_krs2(void);\n'
+S8b = ('static int __attribute__((sysv_abi)) krs_impl(void) { return 1; }\n'
+       'static int __attribute__((sysv_abi)) krs2_impl(int a, double d, int b) { return a + (int)(d * 2) + b; }\n'
+       'krs get_krs(void) { return (krs)krs_impl; }\nkrs get_krs2(void) { return (krs)krs2_impl; }\n')
+positivo(Caso('c3-sin-prototipo-sysv-puntero', H8b, S8b), 'var f = get_krs(); var g = get_krs2(); return f() + g(30, 1.5f, 8);')
 
 # C3-09: C11 `atomic_thread_fence` / `atomic_signal_fence` (functions no library defines; C reaches them through
 # macros to Clang builtins) become NativeSharp.Core.Threading.AtomicFence: `consume` is `acquire`, a `relaxed`
