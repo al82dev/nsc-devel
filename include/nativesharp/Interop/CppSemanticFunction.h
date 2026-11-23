@@ -194,6 +194,9 @@ struct CppSemanticLifetimeFamily
     std::optional<CppImplicitLifetimeMembers> implicitMembers;
     // Null means the owning session could not provide a complete observation.
     std::optional<std::vector<CppImplicitLifetimeDeclaration>> implicitDeclarations;
+    // X3-03: the record's USR when it has virtual bases (its lifetime goes through adapters). / El USR del record
+    //     cuando tiene bases virtuales.
+    std::optional<std::string> virtualBaseRecordUsr = std::nullopt;
 };
 // The snapshot contains observed explicit declarations only; it does not certify implicit
 // special members, overload resolution, or safe object construction and destruction.

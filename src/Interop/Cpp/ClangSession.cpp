@@ -2358,6 +2358,7 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                     else if (llvm::isa<clang::CXXDestructorDecl>(method)) implicit.destructor = true;
                 }
                 value.implicitLifetimeMembers = implicit;
+                value.hasVirtualBases = cppRecord->getNumVBases() != 0; // X3-03
                 for (const clang::CXXBaseSpecifier& base : cppRecord->bases())
                 {
                     CppBaseDeclaration projected;
@@ -3715,7 +3716,7 @@ public:
         struct Request { std::string symbol; const clang::CXXRecordDecl* record; const clang::CXXMethodDecl* method;
                          bool freeOperator = false; const clang::FunctionDecl* function = nullptr;
                          std::optional<std::size_t> defaultArity{}; bool byValueReferences = false;
-                         bool factoryResult = false; };
+                         bool factoryResult = false; bool callerStorage = false; };
         const auto defaultArities = [](const clang::FunctionDecl& function) {
             std::vector<std::size_t> arities;
             for (unsigned index = 0; index < function.getNumParams(); ++index)
@@ -3741,6 +3742,11 @@ public:
                             const auto* current = pending.back();
                             pending.pop_back();
                             if (!seen.insert(current).second) continue;
+                            // X3-03: the implicit members of a record with virtual bases are adapter targets too.
+                            //     / Los miembros implicitos de un record con bases virtuales tambien son destinos.
+                            if (current == record && record->getNumVBases() != 0 && ast_->hasSema())
+                                ast_->getSema().ForceDeclarationOfImplicitMembers(
+                                    const_cast<clang::CXXRecordDecl*>(record));
                             for (const auto* method : current->methods())
                             {
                                 const auto usr = declarationUsr(method);
@@ -3748,6 +3754,21 @@ public:
                                 auto symbol = cppMemberThunkSymbol(*recordUsr, *usr);
                                 if (wanted.contains(symbol) && found.insert(symbol).second)
                                     requests.push_back({std::move(symbol), record, method});
+                                // X3-03: the lifetime adapters of a record with virtual bases. / Los adaptadores de vida
+                                //     de un record con bases virtuales.
+                                if (current == record && record->getNumVBases() != 0 &&
+                                    (llvm::isa<clang::CXXConstructorDecl>(method) ||
+                                     llvm::isa<clang::CXXDestructorDecl>(method)))
+                                {
+                                    const auto memberUsr = method->isImplicit()
+                                        ? std::string(llvm::isa<clang::CXXDestructorDecl>(method) ? "#implicit-dtor"
+                                                                                                 : "#implicit-ctor")
+                                        : *usr;
+                                    auto adapter = cppVirtualBaseLifetimeSymbol(*recordUsr, memberUsr);
+                                    if (wanted.contains(adapter) && found.insert(adapter).second)
+                                        requests.push_back({std::move(adapter), record, method, false, nullptr,
+                                                            method->getNumParams(), false, false, true});
+                                }
                                 // T19-006: the record's own methods with default arguments. / Los propios.
                                 if (current == record)
                                     for (const auto arity : defaultArities(*method))
@@ -3875,7 +3896,10 @@ public:
                         : "a" + std::to_string(index);
                 }
                 std::string call;
-                if (constructor) call = "::new (static_cast<void*>(self), __nsc_cpp_place_t{}) " + selfType + "(" +
+                // X3-03: the caller's storage needs no placement delete (no C++ cleanup or personality). / El
+                //     almacenamiento del llamador no necesita placement delete.
+                const std::string placeTag = request.callerStorage ? "__nsc_cpp_result_place_t" : "__nsc_cpp_place_t";
+                if (constructor) call = "::new (static_cast<void*>(self), " + placeTag + "{}) " + selfType + "(" +
                     arguments + ")";
                 else if (instance) call = "self->" + method->getNameAsString() + "(" + arguments + ")";
                 else if (method)
@@ -3888,6 +3912,12 @@ public:
                 {
                     resultType = selfType + "*";
                     body = "return " + call + ";";
+                    if (request.callerStorage)
+                        aliases = "#ifndef NSC_CPP_RESULT_PLACE_TAG\n#define NSC_CPP_RESULT_PLACE_TAG\n"
+                            "struct __nsc_cpp_result_place_t {};\n"
+                            "inline void* operator new(decltype(sizeof 0), void* p, __nsc_cpp_result_place_t) noexcept "
+                            "{ return p; }\n#endif\n" + aliases;
+                    else
                     aliases = "#ifndef NSC_CPP_PLACE_TAG\n#define NSC_CPP_PLACE_TAG\nstruct __nsc_cpp_place_t {};\n"
                         "inline void* operator new(decltype(sizeof 0), void* p, __nsc_cpp_place_t) noexcept "
                         "{ return p; }\ninline void operator delete(void*, void*, __nsc_cpp_place_t) noexcept {}\n"

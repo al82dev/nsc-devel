@@ -1705,6 +1705,8 @@ bool collectCppSemanticLifetimeFamilies(
         const auto& entry = entries[*selected];
         CppSemanticLifetimeFamily family{group.projectOrdinal, group.identity.key(), {}, {}, false,
                                          entry.declaration.implicitLifetimeMembers, std::nullopt};
+        if (entry.declaration.hasVirtualBases && entry.declaration.clangUsr)
+            family.virtualBaseRecordUsr = *entry.declaration.clangUsr; // X3-03
         const CppInteropSession* definingSession = nullptr;
         bool ambiguousSession = false;
         for (const auto& project : projects)
@@ -1767,6 +1769,13 @@ bool collectCppSemanticLifetimeFamilies(
             if (auto* method = std::get_if<CppSemanticLifetimeMethod>(&projected))
             {
                 method->implicitMoveOnly = hiddenMove;
+                // X3-03: through the adapter Clang compiles (most-derived flag, vbase destructor). / Por el
+                //     adaptador que compila Clang.
+                if (family.virtualBaseRecordUsr && declared.clangUsr)
+                {
+                    method->externalSymbol = cppVirtualBaseLifetimeSymbol(*family.virtualBaseRecordUsr, *declared.clangUsr);
+                    method->dllImport = false;
+                }
                 std::vector<std::string> parameters;
                 for (std::size_t i = 0; i < method->parameters.size(); ++i)
                 {
@@ -1852,12 +1861,19 @@ bool provideExperimentalCppLifetimeMethods(
                  method.kind != CppImplicitLifetimeKind::Destructor) ||
                 method.access != CppAccess::Public || method.isDeleted ||
                 !method.parameters.empty() || !method.abiSymbol || method.abiSymbol->empty()) continue;
+            // X3-03: with virtual bases the implicit member is reached through its adapter, which Clang compiles
+            //     (so it is not an implicit emission). / Con bases virtuales se alcanza por su adaptador.
+            const bool virtualBases = family.virtualBaseRecordUsr.has_value();
             result.push_back(frontend::CppImportedLifetimeMethod{
                 family.projectOrdinal, family.ownerIdentityKey,
                 method.kind == CppImplicitLifetimeKind::Destructor
                     ? frontend::CppImportedLifetimeKind::Destructor : frontend::CppImportedLifetimeKind::Constructor,
-                *method.abiSymbol, {}, method.dllImport,
-                method.exceptionSpecification == CppExceptionSpecification::NonThrowing, true, method.isTrivial, {}});
+                virtualBases ? cppVirtualBaseLifetimeSymbol(*family.virtualBaseRecordUsr,
+                                   method.kind == CppImplicitLifetimeKind::Destructor ? "#implicit-dtor" : "#implicit-ctor")
+                             : *method.abiSymbol,
+                {}, virtualBases ? false : method.dllImport,
+                method.exceptionSpecification == CppExceptionSpecification::NonThrowing, !virtualBases, method.isTrivial,
+                {}});
         }
     }
     output = std::move(result);

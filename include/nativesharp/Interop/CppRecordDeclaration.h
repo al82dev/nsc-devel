@@ -164,6 +164,9 @@ struct CppRecordDeclaration
     // Captured from Clang's parsed buffer; unavailable for macro locations.
     std::optional<SourceProvenance> sourceProvenance;
     std::vector<CppBaseDeclaration> bases;
+    // X3-03: the record has virtual bases, directly or not (its complete constructor takes the Microsoft
+    //     most-derived flag and its complete destructor is the vbase destructor). / El record tiene bases virtuales.
+    bool hasVirtualBases = false;
     std::vector<CppRecordUpcast> upcasts;
     std::vector<CppRecordField> fields;
     std::vector<CppStaticField> staticFields;

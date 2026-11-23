@@ -63,6 +63,17 @@ inline std::string cppByValueThunkSymbol(std::string_view usr)
     return cppMemberThunkSymbol("#function#byvalue", usr);
 }
 
+// EN: X3-03. The adapter of a constructor or destructor of a record with virtual bases (`new (self) T(args)`,
+//     `self->~T()`): Clang passes the Microsoft most-derived flag and emits the vbase destructor. An implicit member
+//     is named by its kind.
+// ES: X3-03. El adaptador de un constructor o destructor de un record con bases virtuales: Clang pasa el indicador
+//     de objeto mas derivado de Microsoft y emite el destructor de bases virtuales. Un miembro implicito se nombra
+//     por su clase.
+inline std::string cppVirtualBaseLifetimeSymbol(std::string_view recordUsr, std::string_view memberUsr)
+{
+    return cppMemberThunkSymbol(std::string(recordUsr) + "#vbase-lifetime", memberUsr);
+}
+
 // X2-05: the adapter that constructs a function's non-trivial record result in place. / El adaptador que construye
 //     en sitio el resultado record no trivial de una funcion.
 inline std::string cppReturnThunkSymbol(std::string_view usr)

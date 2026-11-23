@@ -9,7 +9,7 @@ primaria); implementar desde NativeSharp un tipo C++ (override entrante) sigue r
 X3-06: punteros a miembro rechazados con su motivo (su representacion depende del modelo de herencia, T14-007).
 X3-07: COM consumido: interfaz abstracta `__stdcall` con AddRef/Release/QueryInterface por su vtable; una interfaz
 entrante implementada en NativeSharp queda pendiente con diagnostico.
-X3-03: una base virtual cuyo constructor implicito NativeSharp tendria que emitir conserva la guarda.
+X3-03: un record con bases virtuales se construye y destruye por adaptadores de Clang (indicador de mas derivado, destructor de bases virtuales).
 """
 import comun
 from comun import Caso, positivo, rechazo, fin
@@ -97,6 +97,35 @@ rechazo(c3, 'return 0;', 'cannot derive from the C/C++ record', preludio='class 
 
 H4 = 'namespace lib { struct VB { int v = 40; }; struct M1 : virtual VB { int m1 = 1; }; struct M2 : virtual VB { int m2 = 1; };\n' \
      'struct DD : M1, M2 { int dd = 0; }; int vb_value(DD* p); }\n'
-rechazo(Caso('x3-base-virtual', H4, 'namespace lib { int vb_value(DD* p) { return p->v; } }\n', **CPP),
-        'lib.DD d = new lib.DD(); return lib.vb_value(&d);', 'cannot emit the requested implicit C++ lifetime member')
+# X3-03: this record with virtual bases and implicit members was a rejection ('cannot emit the requested implicit C++
+# lifetime member'); a record with virtual bases now constructs and destroys through adapters Clang compiles
+# (`new (self) T(...)` passes the Microsoft most-derived flag, `self->~T()` runs the vbase destructor), explicit or
+# implicit. / Este record con bases virtuales era un rechazo; ahora su vida pasa por adaptadores que compila Clang.
+positivo(Caso('x3-base-virtual', H4, 'namespace lib { int vb_value(DD* p) { return p->v + p->m1 + p->m2; } }\n', **CPP),
+         'lib.DD d = new lib.DD(); return lib.vb_value(&d);', modes=['directo', 'dll'])
+H4b = r'''
+namespace lib {
+struct VB { int v; VB(); };
+struct M1 : virtual VB { int m1; M1(); };
+struct M2 : virtual VB { int m2; M2(); };
+struct DD : M1, M2 { int dd; DD(); ~DD(); };
+int vb_value(DD* p);
+int dtors();
+}
+'''
+S4b = r'''
+namespace lib {
+static int d;
+VB::VB() : v(40) {}
+M1::M1() : m1(1) {}
+M2::M2() : m2(1) {}
+DD::DD() : dd(0) {}
+DD::~DD() { ++d; }
+int vb_value(DD* p) { return p->v + p->m1 + p->m2; }
+int dtors() { return d; }
+}
+'''
+positivo(Caso('x3-base-virtual-explicita', H4b, S4b, **CPP),
+         '{ var d = new lib.DD(); if (lib.vb_value(&d) != 42) return 1; } return lib.dtors() == 1 ? 42 : 2;',
+         modes=['directo', 'dll'])
 fin()
