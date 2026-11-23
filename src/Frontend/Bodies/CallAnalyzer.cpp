@@ -1325,6 +1325,10 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
     }
     validateNamespaceFunctionCandidateArgumentOwnership(
         parameter, arguments, argumentOrdinal, packElement, evaluated);
+    // X2-05: as in C++, a record prvalue binds a `T&&` better than a `const T&`. / Como en C++, un prvalue
+    //     record enlaza mejor un `T&&` que un `const T&`.
+    if (rvalueArgument && parameter.cppConstReference && cppRecordTypeKey(parameter.pointeeTypeKey) &&
+        conversion.exists()) ++conversion.rank;
     return conversion;
 }
 
@@ -6790,6 +6794,9 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
         candidateBinding.viable = false;
         candidateBinding.invalidMoveOnlyArgumentOrdinal = argumentOrdinal;
     }
+    // X2-05: a record prvalue binds a `T&&` better than a `const T&`. / Mejor un `T&&` que un `const T&`.
+    if (rvalueArgument && parameter.cppConstReference && cppRecordTypeKey(parameter.pointeeTypeKey) &&
+        conversion.exists()) ++conversion.rank;
     candidateBinding.conversions.push_back(std::move(conversion));
 }
 

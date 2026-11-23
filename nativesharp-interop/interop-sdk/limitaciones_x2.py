@@ -465,4 +465,16 @@ positivo(Caso('x2-conversion', HCV, SCV, **CPP), r'''
     return (int)h;
 ''', modes=['directo', 'dll'])
 rechazo(Caso('x2-conversion-implicita', HCV, SCV, **CPP), 'lib.Handle h; h.v = 21; int k = h; return k;', 'cannot initialize')
+# X2-05: with `const T&` binding prvalues, `take(const Obj&)` and `take(Obj&&)` were ambiguous for `take(new Obj(2))`;
+# as in C++, a record prvalue binds `T&&` better. / Como en C++, un prvalue record enlaza mejor `T&&`.
+HRK = r'''
+namespace lib {
+struct Obj { int v; Obj(int x) : v(x) {} Obj(const Obj& o) : v(o.v) {} Obj(Obj&& o) : v(o.v) { o.v = 0; } ~Obj() {} };
+int take(const Obj& o);
+int take(Obj&& o);
+}
+'''
+SRK = 'namespace lib { int take(const Obj& o) { return 1; } int take(Obj&& o) { return 2; } }'+chr(10)
+positivo(Caso('x2-rvalue-preferido', HRK, SRK, **CPP),
+         'var o = new lib.Obj(1); return lib.take(in o) * 10 + lib.take(new lib.Obj(2)) == 12 ? 42 : 1;', modes=['directo'])
 fin()
