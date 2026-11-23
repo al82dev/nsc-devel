@@ -12,6 +12,7 @@
 #include "nativesharp/Interop/CppRecordDeclaration.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Interop/CppAbiPlan.h"
+#include "nativesharp/Interop/CppScalarTypeMapping.h"
 #include "nativesharp/Interop/CppAbiPlanQueries.h"
 #include "nativesharp/Interop/CppSysVRecordAbiValidation.h"
 #include "nativesharp/Interop/CppRegCallAbiValidation.h"
@@ -1115,6 +1116,10 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         const auto wideInteger = [](std::string_view key) { return key == "builtin:i128" || key == "builtin:u128"; };
         const bool wideReturn = win64DefaultConvention && !sretReturn && !vectorCall && wideInteger(returnTypeKey);
         if (wideReturn) returnType = LLVMVectorType(LLVMInt64TypeInContext(context_), 2);
+        // C3-01: a `_Float16` result comes back in XMM. / Un resultado `_Float16` vuelve en XMM.
+        const bool halfReturn = win64DefaultConvention && !sretReturn && !vectorCall &&
+            returnTypeKey == interop::kCppHalfTypeKey;
+        if (halfReturn) returnType = LLVMHalfTypeInContext(context_);
         const std::optional<language::FunctionType> structuralFunction =
             language::parseFunctionTypeIdentity(delegateTypeKey);
         const bool sysvCall = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::SysV;
@@ -1225,8 +1230,13 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         const bool wideArguments = win64DefaultConvention && !vectorCall;
         if (wideArguments)
             for (std::size_t index = 0; index < fixedParameterCount; ++index)
+            {
                 if (wideInteger(argumentTypeKeys[index]))
                     parameterTypes[index + (sretReturn ? 1U : 0U)] = LLVMPointerTypeInContext(context_, 0);
+                // C3-01: a `_Float16` argument goes in XMM. / Un argumento `_Float16` va en XMM.
+                if (argumentTypeKeys[index] == interop::kCppHalfTypeKey)
+                    parameterTypes[index + (sretReturn ? 1U : 0U)] = LLVMHalfTypeInContext(context_);
+            }
         LLVMTypeRef functionType = LLVMFunctionType(
             returnType, parameterTypes.empty() ? nullptr : parameterTypes.data(),
             static_cast<unsigned>(parameterTypes.size()), variadic ? 1 : 0);
@@ -1245,6 +1255,8 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             }
             // T19-044: a 128-bit integer by the address of an aligned copy. / Un entero de 128 bits por la
             //     direccion de una copia alineada.
+            if (wideArguments && index < fixedParameterCount && argumentTypeKeys[index] == interop::kCppHalfTypeKey)
+                value = halfFromCarrier(value);
             if (wideArguments && wideInteger(argumentTypeKeys[index]))
             {
                 LLVMValueRef slot = entryBlockAlloca(LLVMIntTypeInContext(context_, 128), 16U, "c.i128.ptr.copy");
@@ -1309,6 +1321,7 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             return vectorCallAbiToCarrier(call, returnTypeKey, error);
         // T19-044: XMM0 back to the 128-bit integer. / XMM0 de vuelta al entero de 128 bits.
         if (wideReturn) return LLVMBuildBitCast(builder_, call, LLVMIntTypeInContext(context_, 128), "c.i128.result");
+        if (halfReturn) return carrierFromHalf(call, error);
         return call;
     }
 

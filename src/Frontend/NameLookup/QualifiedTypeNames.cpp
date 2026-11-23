@@ -1019,6 +1019,16 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     unqualified.element = std::move(element);
                     pointeeVolatile = true;
                 }
+                // C3-01: `_Float16` is NativeSharp.Core.Numerics.Half, as in a function's own signature. / `_Float16`
+                //     es NativeSharp.Core.Numerics.Half, como en la firma de una funcion.
+                if (unqualified.kind == interop::CppTypeKind::Floating && unqualified.sizeBits == 16U)
+                {
+                    auto* value = arena.make<ast::TypeSyntax>(syntax->range(), lexer::TokenKind::Identifier,
+                                                              std::string("NativeSharp.Core.Numerics.Half"));
+                    value->prependModifiers(cppPointerModifiers(type));
+                    value->setPointeeVolatile(pointeeVolatile);
+                    return value;
+                }
                 if (const auto builtin = cppAliasBuiltinType(unqualified))
                 {
                     auto* value = arena.make<ast::TypeSyntax>(syntax->range(), builtin->token, std::string(builtin->name));

@@ -488,6 +488,10 @@ private:
     // X2-05: the storage the next call to a constructed-result function builds its C++ result in. / El
     //     almacenamiento donde la siguiente llamada a una funcion de resultado construido construye su resultado.
     LLVMValueRef cppResultDestination_ = nullptr;
+    // C3-01: the binary16 bits of a Half carrier as LLVM `half` (XMM, as C passes `_Float16`) and back. / Los bits
+    //     binary16 de un portador Half como `half` de LLVM y de vuelta.
+    LLVMValueRef halfFromCarrier(LLVMValueRef carrier);
+    LLVMValueRef carrierFromHalf(LLVMValueRef half, std::string& error);
     // C5-07: a function type with the sysv_abi convention. / Un tipo de funcion con la convencion sysv_abi.
     bool isSysVDelegateType(std::string_view typeKey) const noexcept;
 

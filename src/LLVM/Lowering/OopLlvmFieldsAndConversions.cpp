@@ -318,6 +318,26 @@ LLVMValueRef OopLlvmImplementation::convert(
         return convertScalar(value, source, target, destination, error);
 }
 
+LLVMValueRef OopLlvmImplementation::halfFromCarrier(LLVMValueRef carrier)
+{
+        LLVMValueRef slot = entryBlockAlloca(LLVMTypeOf(carrier), 2U, "half.abi.carrier");
+        LLVMSetAlignment(LLVMBuildStore(builder_, carrier, slot), 2U);
+        LLVMValueRef half = LLVMBuildLoad2(builder_, LLVMHalfTypeInContext(context_), slot, "half.abi.value");
+        LLVMSetAlignment(half, 2U);
+        return half;
+}
+
+LLVMValueRef OopLlvmImplementation::carrierFromHalf(LLVMValueRef half, std::string& error)
+{
+        LLVMTypeRef carrier = llvmType(interop::kCppHalfTypeKey, error);
+        if (carrier == nullptr) return nullptr;
+        LLVMValueRef slot = entryBlockAlloca(carrier, 2U, "half.abi.slot");
+        LLVMSetAlignment(LLVMBuildStore(builder_, half, slot), 2U);
+        LLVMValueRef value = LLVMBuildLoad2(builder_, carrier, slot, "half.abi.carrier.value");
+        LLVMSetAlignment(value, 2U);
+        return value;
+}
+
 LLVMValueRef OopLlvmImplementation::convertHalf(
         LLVMValueRef value,
         std::string_view source,

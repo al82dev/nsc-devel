@@ -2,6 +2,7 @@
 #include "../Internal/CppBoolAbi.h"
 #include "../Internal/CppSysVRecordAbi.h"
 #include "nativesharp/Interop/CppAbiPlan.h"
+#include "nativesharp/Interop/CppScalarTypeMapping.h"
 #include "nativesharp/Interop/CppVariadicAbiValidation.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "../Internal/CppDllExportHelper.h"
@@ -214,8 +215,16 @@ LLVMTypeRef OopLlvmImplementation::createCallbackGuardThunkType(
                 error)) return nullptr;
         if (!vectorCall)
             for (std::size_t index = 0; index < function.parameterTypeKeys.size(); ++index)
+            {
                 if (wideInteger(function.parameterTypeKeys[index]))
                     parameterTypes[firstParameter + index] = LLVMPointerTypeInContext(context_, 0);
+                // C3-01: C passes `_Float16` in XMM. / C pasa `_Float16` en XMM.
+                if (function.parameterTypeKeys[index] == interop::kCppHalfTypeKey)
+                    parameterTypes[firstParameter + index] = LLVMHalfTypeInContext(context_);
+            }
+        if (!vectorCall && !externalSretReturn && !function.referenceReturn &&
+            function.returnTypeKey == interop::kCppHalfTypeKey)
+            externalReturnType = LLVMHalfTypeInContext(context_);
         return LLVMFunctionType(
             externalReturnType, parameterTypes.empty() ? nullptr : parameterTypes.data(),
             static_cast<unsigned>(parameterTypes.size()), 0);
@@ -291,8 +300,11 @@ bool OopLlvmImplementation::prepareCallbackGuardArguments(
             const std::string& typeKey = function.parameterTypeKeys[index];
             LLVMValueRef value = LLVMGetParam(thunk, externalIndex++);
             const VectorCallPassing kind = index < passing.size() ? passing[index] : VectorCallPassing::Ordinary;
+            // C3-01: a `_Float16` arrives in XMM. / Un `_Float16` llega en XMM.
+            if (!vectorCall && typeKey == interop::kCppHalfTypeKey)
+                value = carrierFromHalf(value, error);
             // T19-044: the caller's aligned copy of a 128-bit integer. / La copia alineada del llamador.
-            if (!vectorCall && (typeKey == "builtin:i128" || typeKey == "builtin:u128"))
+            else if (!vectorCall && (typeKey == "builtin:i128" || typeKey == "builtin:u128"))
             {
                 LLVMValueRef load = LLVMBuildLoad2(builder_, LLVMIntTypeInContext(context_, 128), value, "c.i128.arg");
                 LLVMSetAlignment(load, 16U);
@@ -401,6 +413,9 @@ bool OopLlvmImplementation::defineCallbackGuardThunkBody(
                  (function.returnTypeKey == "builtin:i128" || function.returnTypeKey == "builtin:u128"))
             LLVMBuildRet(builder_, LLVMBuildBitCast(builder_, result,
                 LLVMVectorType(LLVMInt64TypeInContext(context_), 2), "c.i128.return"));
+        // C3-01: a `_Float16` leaves in XMM. / Un `_Float16` sale en XMM.
+        else if (!vectorCall && !function.referenceReturn && function.returnTypeKey == interop::kCppHalfTypeKey)
+            LLVMBuildRet(builder_, halfFromCarrier(result));
         else LLVMBuildRet(builder_, result);
         enterBlock(unwindBlock);
         if (!emitCallbackBoundaryHandler(error))

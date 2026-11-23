@@ -500,13 +500,17 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         //     posiciones (los flotantes tambien en registros generales), lo que sirve a un destino con prototipo o
         //     variadico, como C lo permite. Convertirlo a un puntero tipado sigue siendo un cast explicito.
         function.variadic = signature.variadic || !signature.hasPrototype;
-        // EN: C3-01. A callback with a `_Float16` value would pass it through a NativeSharp thunk in a general
-        //     register, while C uses XMM: it stays unmapped (a direct call adapts it).
-        // ES: C3-01. Un callback con un valor `_Float16` lo pasaria por un thunk NativeSharp en un registro general,
-        //     mientras C usa XMM: queda sin mapear (una llamada directa lo adapta).
-        if (function.result == kCppHalfTypeKey ||
-            std::find(function.parameters.begin(), function.parameters.end(), kCppHalfTypeKey) !=
-                function.parameters.end())
+        // EN: C3-01. A `_Float16` value of a C function pointer travels in XMM, as C passes it: the callback thunk and
+        //     a call through the pointer reinterpret the Half carrier's bits as LLVM `half`. Other conventions keep it
+        //     unmapped.
+        // ES: C3-01. Un valor `_Float16` de un puntero a funcion C viaja en XMM, como lo pasa C: el thunk del callback y
+        //     una llamada por el puntero reinterpretan los bits del portador Half como `half` de LLVM. Las demas
+        //     convenciones lo dejan sin mapear.
+        if ((function.result == kCppHalfTypeKey ||
+             std::find(function.parameters.begin(), function.parameters.end(), kCppHalfTypeKey) !=
+                 function.parameters.end()) &&
+            function.callingConvention != language::CallingConvention::C &&
+            function.callingConvention != language::CallingConvention::Win64)
             return std::nullopt;
         // C3-02: so does a callback with a `_BitInt(N)` narrower than its carrier. / Tambien un callback con un
         //     `_BitInt(N)` mas estrecho que su portador.

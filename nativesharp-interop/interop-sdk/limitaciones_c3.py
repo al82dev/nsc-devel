@@ -2,7 +2,7 @@
 
 C3-01: `_Float16` es NativeSharp.Core.Numerics.Half (IEEE binary16, `ushort Bits`). Campos, punteros y globales
 comparten el almacenamiento; por valor, una importacion C lo pasa y devuelve en XMM como `half` de LLVM, igual que
-Clang en Windows x64. Un callback con `_Float16` queda sin mapear (su thunk usaria un registro general).
+Clang en Windows x64. Un callback con `_Float16` pasa el valor en XMM, como C.
 """
 from comun import Caso, positivo, rechazo, ir, fin, _fail, ONLY
 
@@ -40,7 +40,12 @@ BODY1 = r'''
 '''
 c1 = Caso('c3-float16', H1, S1)
 positivo(c1, BODY1)
-rechazo(c1, 'return with_half_cb(null);', 'with_half_cb')
+# C3-01: a callback with `_Float16` was a rejection; its value now travels in XMM as C passes it (the thunk and a call
+# through the pointer reinterpret the Half carrier as LLVM `half`). / Un callback con `_Float16` era un rechazo; ahora su
+# valor viaja en XMM como lo pasa C.
+positivo(Caso('c3-float16-callback', H1, S1),
+         'half_cb f = (h) => half_from(half_to(h) * 21.0f); if ((int)half_to(f(half_from(2.0f))) != 42) return 1;\n'
+         'return with_half_cb(f) * 2;')
 # C promotes `_Float16` to double in `...`; a Half is not passed there implicitly (write (double)Half.ToFloat(h)).
 rechazo(c1, 'var a = half_from(1.0f); return vread(1, a);', 'vread')
 positivo(Caso('c3-float16-variadica', H1, S1), 'var a = half_from(10.5f); return vread(1, (double)NativeSharp.Core.Numerics.Half.ToFloat(a)) == 42 ? 42 : 1;', modes=['directo'])
