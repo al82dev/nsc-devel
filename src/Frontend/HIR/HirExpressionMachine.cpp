@@ -564,11 +564,19 @@ std::optional<std::string> ProjectOopHirModel::numericBinaryOperandType(
         return std::nullopt;
     const MethodExpressionTypeBinding* leftType = expressionType(expression->first());
     const MethodExpressionTypeBinding* rightType = expressionType(expression->second());
-    return ProjectTypeConversion::commonNumericType(
-        left.typeKey,
-        right.typeKey,
-        leftType != nullptr ? leftType->integerConstant : std::nullopt,
-        rightType != nullptr ? rightType->integerConstant : std::nullopt);
+    const auto leftConstant = leftType != nullptr ? leftType->integerConstant : std::nullopt;
+    const auto rightConstant = rightType != nullptr ? rightType->integerConstant : std::nullopt;
+    if (auto common = ProjectTypeConversion::commonNumericType(left.typeKey, right.typeKey, leftConstant, rightConstant))
+        return common;
+    // EN: A comparison the analyzer accepts because one operand converts implicitly to the other's type (a
+    //     `sizeof` constant, `nuint`, against an `int`) compares in that type. / Una comparacion que el analizador
+    //     acepta porque un operando convierte implicitamente al tipo del otro (una constante `sizeof` frente a un
+    //     `int`) compara en ese tipo.
+    if (ProjectTypeConversion::classifyImplicit(left.typeKey, right.typeKey, leftConstant).exists())
+        return right.typeKey;
+    if (ProjectTypeConversion::classifyImplicit(right.typeKey, left.typeKey, rightConstant).exists())
+        return left.typeKey;
+    return std::nullopt;
 }
 
 void ProjectOopHirModel::convertNumericBinaryOperands(

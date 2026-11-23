@@ -146,6 +146,12 @@ BODY2c = r'''
     return (int)get_w(&x) + x.t;
 '''
 positivo(Caso('c3-bitint-campo', H2c, S2c, standard='c2x'), BODY2c)
+# T19-002: a `sizeof` constant (`nuint`) compared with an `int` value was accepted but lowered as `icmp i64, i32`, which
+# the LLVM verifier rejected; it now compares in `int`, the type the constant converts to.
+# T19-002: una constante `sizeof` comparada con un `int` se bajaba como `icmp i64, i32`; ahora compara en `int`.
+positivo(Caso('c3-sizeof-comparacion', H2c, S2c, standard='c2x'),
+         'int k = 4; if (sizeof(W) != sizeof_w() || sizeof_w() != sizeof(W)) return 1;\n'
+         '    if (sizeof(int) != k || k < sizeof(int) || sizeof(W) <= k) return 2; return 42;')
 rechazo(c2, 'return with_bit_cb(null);', 'with_bit_cb')
 
 # C3-03: C23 enums with a fixed base (8-64 bits, signed and unsigned) are NativeSharp enums. An enum over a 128-bit
