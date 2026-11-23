@@ -70,5 +70,7 @@ struct CppImportedLifetimeMethod
     std::string cppDeclarationSpelling = {};
     // T19-007: which parameters are C++ `T&&` (ref parameters that also bind a value). / Cuales son `T&&`.
     std::vector<bool> parameterRvalueReferences = {};
+    // X2-05: a factory function that constructs the owner in place (`T f(...)`). / Una funcion fabrica.
+    bool factory = false;
 };
 }

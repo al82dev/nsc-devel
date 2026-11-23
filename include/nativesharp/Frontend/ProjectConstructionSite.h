@@ -42,5 +42,7 @@ struct ProjectConstructionSite final
     //     contiene, para que la resolucion de constructores revise un constructor `throws E`.
     std::vector<std::string> activeErrorHandlers;
     std::string enclosingErrorTypeKey;
+    // X2-05: a call to a C++ factory function, bound to its factory constructor. / Una llamada a una fabrica C++.
+    std::optional<std::size_t> factoryConstructorMemberOrdinal;
 };
 }

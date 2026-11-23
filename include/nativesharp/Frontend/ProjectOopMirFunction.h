@@ -69,6 +69,9 @@ struct ProjectOopMirFunction final
     bool cppPreserveNone = false;
     // Imported C function using the x86-64 System V calling convention.
     bool cppSysVCall = false;
+    // X2-05: a C++ factory function; its calls construct in place through its factory constructor, so it is never
+    //     declared itself. / Una fabrica C++; sus llamadas construyen en sitio por su constructor de fabrica.
+    bool cppFactoryConstruction = false;
     std::vector<std::uint8_t> cppObjectSizeModes;
     // EN: C3-02. The N of each `_BitInt(N)` parameter, then of the result (0 for any other type); empty when none.
     // ES: C3-02. El N de cada parametro `_BitInt(N)` y luego del resultado (0 para otro tipo); vacio si no hay.

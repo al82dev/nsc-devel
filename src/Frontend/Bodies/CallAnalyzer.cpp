@@ -2486,6 +2486,43 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
         call.resolution = MethodCallResolutionKind::NoViableCandidate;
         return {};
     }
+    // EN: X2-05. A call to a C++ factory function constructs its result in the destination: it is also the
+    //     construction of that record with the function's factory constructor.
+    // ES: X2-05. Una llamada a una funcion fabrica C++ construye su resultado en el destino: es tambien la
+    //     construccion de ese record con el constructor de fabrica de la funcion.
+    if (!hasForwardedReceiver && namespaceFunctionModel_ != nullptr && memberModel_ != nullptr &&
+        nameLookup_ != nullptr && functionOrdinal < namespaceFunctionModel_->functions().size() &&
+        namespaceFunctionModel_->functions()[functionOrdinal].cppFactoryConstruction)
+    {
+        const auto& factory = namespaceFunctionModel_->functions()[functionOrdinal];
+        ProjectConstructionSite site;
+        site.syntax = expression;
+        site.callableOrdinal = callerCallableOrdinal;
+        site.targetTypeKey = factory.declaredTypeKey;
+        site.targetTypeOrdinal = nameLookup_->typeOrdinalForIdentity(std::string_view(factory.declaredTypeKey).substr(5));
+        for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+            if (memberModel_->members()[ordinal].cppFactoryConstructor &&
+                memberModel_->members()[ordinal].cppExternalSymbol == factory.mangledName)
+                site.factoryConstructorMemberOrdinal = ordinal;
+        site.argumentsTyped = true;
+        for (const auto* argument : argumentSyntaxes)
+        {
+            const auto* type = argument != nullptr ? expressionTypeBinding(argument, callerCallableOrdinal) : nullptr;
+            if (type == nullptr) { site.argumentsTyped = false; break; }
+            site.argumentTypes.push_back(*type);
+        }
+        site.activeErrorHandlers = activeErrorHandlers();
+        site.enclosingErrorTypeKey = enclosingErrorTypeKey(callerCallableOrdinal);
+        if (!site.targetTypeOrdinal || !site.factoryConstructorMemberOrdinal || !site.argumentsTyped)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidCall, diagnostics::DiagnosticSeverity::Error,
+                expression->range(), "the C++ function '" + factory.name + "' returns '" +
+                    factory.declaredTypeKey.substr(5) + "' by value, but its in-place construction is not available");
+            call.resolution = MethodCallResolutionKind::NoViableCandidate;
+            return {};
+        }
+        recordConstructionSite(std::move(site));
+    }
     if (!hasForwardedReceiver && !recognizeCAtomicFence(expression, callerCallableOrdinal, scopeOrdinal,
                                                         functionOrdinal, argumentSyntaxes, diagnostics))
     {

@@ -1932,6 +1932,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             function.cppPreserveAll = symbol.cppCallingConvention == "preserve_all";
             function.cppPreserveNone = symbol.cppCallingConvention == "preserve_none";
             function.cppSysVCall = symbol.cppCallingConvention == "sysv_abi";
+            function.cppFactoryConstruction = symbol.cppFactoryConstruction; // X2-05
             function.cppObjectSizeModes = symbol.cppObjectSizeModes;
             // C3-02: the widths of the `_BitInt(N)` positions whose carrier is wider than N. / Los anchos de las
             //     posiciones `_BitInt(N)` cuyo portador es mas ancho que N.

@@ -112,5 +112,7 @@ struct NamespaceFunctionSymbol final
     bool cppDeleted = false;
     // R1 (D6): an owned result released by this function. / Un resultado con dueno que libera esta funcion.
     std::string cppOwnedRelease;
+    // X2-05: its call constructs the result in the destination. / Su llamada construye el resultado en el destino.
+    bool cppFactoryConstruction = false;
 };
 }

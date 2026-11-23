@@ -6,8 +6,11 @@ X2-04: copia explicita `new T(in o)` (constructor de copia) y tipo move-only `ne
 el origen movido tambien se destruye. Con constructor de copia presente, el de movimiento queda fuera (T11-016:
 NativeSharp no sobrecarga ref frente a in).
 X2-05: un record C++ no trivial por valor se pasa por un adaptador generado por Clang: `const T&` (`in o`, una copia
-que destruye el llamado) o `T&&` si solo se mueve (`ref m`, un movimiento). Devolverlo por valor sigue rechazado con su
-motivo (necesita construccion en el destino).
+que destruye el llamado) o `T&&` si solo se mueve (`ref m`, un movimiento). Devolverlo por valor construye el resultado
+en el local (`var o = lib.make(42)`: un constructor, ninguna copia ni movimiento, un destructor) y un resultado descartado
+se construye y se destruye; las excepciones y los tipos move-only los verifica pruebas-x2-retorno-valor/validar.py
+(con CRT, frente a Clang). Siguen rechazados: devolverlo desde una funcion NativeSharp, usarlo como temporal sin local
+(`lib.make(1).v`) y asignarlo a un local ya construido.
 X2-08: `+=` con resultado `T&`, `++`/`--` prefijos, `*o` (resultado `T&` asignable), `o(args)` y `==`, cada uno sobre el
 objeto en su lugar, sin copiarlo.
 """
@@ -86,6 +89,12 @@ BODY = r'''
     lib.reset();
     { var m = new lib.MoveOnly(42); if (lib.take_mo(ref m) != 42 || m.v != -1) return 12; }
     if (k.ctor != 1 || k.move != 1 || k.dtor != 2) return 13;
+    lib.reset();
+    { var o = lib.make(42); if (o.v != 42) return 14; }
+    if (k.ctor != 1 || k.copy != 0 || k.move != 0 || k.dtor != 1) return 15;
+    lib.reset();
+    lib.make(7);
+    if (k.ctor != 1 || k.copy + k.move != 0 || k.dtor != 1) return 16;
     lib.It it; it.p = lib.data(); *it = 30; ++it; *it += 9; ++it; int s = *it; --it; --it;
     return *it + s - 30 + 39;
 '''
@@ -98,5 +107,10 @@ positivo(Caso('x2-retorno-temprano', H, S, **CPP),
          preludio=PRE, modes=['directo'])
 rechazo(c, 'var o = new lib.Obj(1); return o("x");', "no C++ 'operator()'")
 rechazo(c, 'var m = new lib.MoveOnly(1); var m2 = new lib.MoveOnly(in m); return 0;', 'constructor')
-rechazo(c, 'var o = lib.make(42); return o.v;', 'needs in-place construction in the destination')
+# X2-05: the forms that still need a non-local destination keep the former rejection's coverage.
+# X2-05: las formas que aun necesitan un destino no local conservan la cobertura del rechazo anterior.
+rechazo(c, 'var o = Make(); return o.v;', 'requires direct local or discarded construction',
+        preludio='lib.Obj Make() { return lib.make(42); }\n')
+rechazo(c, 'return lib.make(42).v;', 'cannot copy or transfer a C++ value')
+rechazo(c, 'var o = lib.make(1); o = lib.make(42); return o.v;', 'cannot copy or transfer a C++ value')
 fin()

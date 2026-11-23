@@ -439,6 +439,7 @@ bool ProjectMemberModel::build(
         member.cppLifetimeNonThrowing = imported.isNonThrowing;
         member.cppLifetimeImplicit = imported.isImplicit;
         member.cppLifetimeTrivial = imported.isTrivial;
+        member.cppFactoryConstructor = imported.factory; // X2-05
         member.signatureKey = member.name + "(";
         for (std::size_t i = 0; i < imported.parameterTypeKeys.size(); ++i)
         {
@@ -475,7 +476,9 @@ bool ProjectMemberModel::build(
         members_.push_back(std::move(member));
         membersByType_[*ordinal].push_back(index);
         membersByName_[*ordinal][members_[index].name].push_back(index);
-        if (imported.kind == CppImportedLifetimeKind::Constructor) constructorsByType_[*ordinal].push_back(index);
+        // X2-05: a factory constructor is reached only through its function. / Solo se alcanza por su funcion.
+        if (imported.kind == CppImportedLifetimeKind::Constructor && !imported.factory)
+            constructorsByType_[*ordinal].push_back(index);
     }
     for (const auto& imported : experimentalCppInstanceMethods_)
     {

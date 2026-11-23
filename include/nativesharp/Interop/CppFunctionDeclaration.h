@@ -91,5 +91,10 @@ struct CppFunctionDeclaration
     // X1-03: a `= delete` function: it takes part in overload selection and a call that selects it is rejected.
     //     / Una funcion `= delete`: participa en la seleccion y una llamada que la elige se rechaza.
     bool isDeleted = false;
+    // EN: X2-05. A C++ function that returns a non-trivial record by value, published as its in-place adapter
+    //     `T* adapter(T* self, ...)`: the result is constructed in the destination, as a constructor would.
+    // ES: X2-05. Una funcion C++ que devuelve un record no trivial por valor, publicada como su adaptador en sitio:
+    //     el resultado se construye en el destino, como lo haria un constructor.
+    bool cppFactoryResult = false;
 };
 }

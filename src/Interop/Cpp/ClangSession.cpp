@@ -1659,6 +1659,43 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
             value.dllImport = false;
             value.abiPlan.reset();
         }
+        // EN: X2-05. A non-trivial record returned by value is constructed by the callee in storage the caller gives:
+        //     the function is published as its in-place adapter `T* a(T* self, ...)`, which constructs `f(...)` at
+        //     self (guaranteed elision, no copy or move) and returns self, as a constructor adapter. NativeSharp then
+        //     constructs a local with it, which registers its destructor only after the call returns.
+        // ES: X2-05. Un record no trivial devuelto por valor lo construye el llamado en el almacenamiento que da el
+        //     llamador: la funcion se publica como su adaptador en sitio, que construye `f(...)` en self (elision
+        //     garantizada, sin copia ni movimiento) y devuelve self, como un adaptador de constructor.
+        if (astContext.getLangOpts().CPlusPlus && value.externalSymbol && value.clangUsr && !value.variadic &&
+            value.hasPrototype && value.callingConvention == "cdecl" && !thunkStart &&
+            cppNonTrivialRecordValue(function->getReturnType()))
+        {
+            std::vector<clang::QualType> parameterTypes;
+            for (std::size_t index = 0; index < function->getNumParams(); ++index)
+            {
+                auto type = function->getParamDecl(static_cast<unsigned>(index))->getType();
+                if (cppNonTrivialRecordValue(type))
+                {
+                    type = cppByValueAdapterType(astContext, type);
+                    auto& parameter = value.parameters[index];
+                    parameter.typeSpelling = type.getAsString();
+                    parameter.canonicalTypeSpelling = type.getCanonicalType().getAsString();
+                    parameter.type = describeType(type, astContext);
+                }
+                parameterTypes.push_back(type);
+            }
+            clang::FunctionProtoType::ExtProtoInfo info;
+            if (const auto* prototype = function->getType()->getAs<clang::FunctionProtoType>())
+                info.ExceptionSpec = prototype->getExtProtoInfo().ExceptionSpec;
+            value.canonicalFunctionType =
+                astContext.getFunctionType(function->getReturnType(), parameterTypes, info).getCanonicalType().getAsString();
+            value.externalSymbol = cppReturnThunkSymbol(*value.clangUsr);
+            value.clangUsr = *value.clangUsr + "@nsc-return";
+            value.languageLinkage = CppLanguageLinkage::Cpp;
+            value.dllImport = false;
+            value.abiPlan.reset();
+            value.cppFactoryResult = true;
+        }
         result.push_back(std::move(value));
     };
     for (const clang::Decl* declaration : context.decls())
@@ -3658,7 +3695,8 @@ public:
         // record. / Un adaptador de predeterminados tiene su numero de argumentos; una funcion libre, sin record.
         struct Request { std::string symbol; const clang::CXXRecordDecl* record; const clang::CXXMethodDecl* method;
                          bool freeOperator = false; const clang::FunctionDecl* function = nullptr;
-                         std::optional<std::size_t> defaultArity{}; bool byValueReferences = false; };
+                         std::optional<std::size_t> defaultArity{}; bool byValueReferences = false;
+                         bool factoryResult = false; };
         const auto defaultArities = [](const clang::FunctionDecl& function) {
             std::vector<std::size_t> arities;
             for (unsigned index = 0; index < function.getNumParams(); ++index)
@@ -3734,6 +3772,12 @@ public:
                             wanted.contains(adapter) && found.insert(adapter).second)
                             requests.push_back({std::move(adapter), nullptr, nullptr, false, function,
                                                 function->getNumParams(), true});
+                    // X2-05: the in-place return adapter. / El adaptador de retorno en sitio.
+                    if (usr)
+                        if (auto adapter = cppReturnThunkSymbol(*usr);
+                            wanted.contains(adapter) && found.insert(adapter).second)
+                            requests.push_back({std::move(adapter), nullptr, nullptr, false, function,
+                                                function->getNumParams(), true, true});
                 }
             }
         };
@@ -3829,6 +3873,24 @@ public:
                         "inline void* operator new(decltype(sizeof 0), void* p, __nsc_cpp_place_t) noexcept "
                         "{ return p; }\ninline void operator delete(void*, void*, __nsc_cpp_place_t) noexcept {}\n"
                         "#endif\n" + aliases;
+                }
+                else if (request.factoryResult)
+                {
+                    // EN: X2-05. `T* a(T* self, ...) { return ::new (self, tag) T(f(...)); }`: the prvalue initializes
+                    //     the object at self (guaranteed elision). The tag has no matching placement delete: the storage
+                    //     is the caller's, so an exception from f passes through without a cleanup or a C++ personality.
+                    // ES: X2-05. El prvalue inicializa el objeto en self (elision garantizada). La etiqueta no tiene
+                    //     placement delete: el almacenamiento es del llamador, asi una excepcion de f pasa sin limpieza ni
+                    //     personalidad C++.
+                    const auto factoryType = alias("s", result);
+                    parameters = factoryType + "* self" + (parameters.empty() ? std::string{} : ", " + parameters);
+                    resultType = factoryType + "*";
+                    body = "return ::new (static_cast<void*>(self), __nsc_cpp_result_place_t{}) " + factoryType + "(" +
+                        call + ");";
+                    aliases = "#ifndef NSC_CPP_RESULT_PLACE_TAG\n#define NSC_CPP_RESULT_PLACE_TAG\n"
+                        "struct __nsc_cpp_result_place_t {};\n"
+                        "inline void* operator new(decltype(sizeof 0), void* p, __nsc_cpp_result_place_t) noexcept "
+                        "{ return p; }\n#endif\n" + aliases;
                 }
                 else if (classResult) body = "auto&& r = " + call + "; __builtin_memcpy(out, &r, sizeof(r));";
                 else if (referenceResult)
@@ -3933,7 +3995,10 @@ public:
                 // T19-006: the placement new of the constructor adapters. / El placement new de los adaptadores.
                 if (const auto* place = llvm::dyn_cast<clang::FunctionDecl>(declaration);
                     place && place->isOverloadedOperator() && place->hasBody() && place->getNumParams() == 3 &&
-                    place->getParamDecl(2)->getType().getAsString().find("__nsc_cpp_place_t") != std::string::npos &&
+                    // X2-05: also the result tag of the in-place return adapters. / Tambien la de retorno en sitio.
+                    (place->getParamDecl(2)->getType().getAsString().find("__nsc_cpp_place_t") != std::string::npos ||
+                     place->getParamDecl(2)->getType().getAsString().find("__nsc_cpp_result_place_t") !=
+                         std::string::npos) &&
                     !generator->HandleTopLevelDecl(clang::DeclGroupRef(const_cast<clang::FunctionDecl*>(place))))
                     return false;
                 const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration);

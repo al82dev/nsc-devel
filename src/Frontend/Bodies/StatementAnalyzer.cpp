@@ -3988,6 +3988,15 @@ bool ProjectMethodBodyModel::variableInfersRaiiOwner(
     {
         return false;
     }
+    // EN: X2-05. A call that initializes a local of a non-trivial C++ record constructs it in place (a factory
+    //     function): the local owns it as it owns `new T(...)`.
+    // ES: X2-05. Una llamada que inicializa un local de un record C++ no trivial lo construye en sitio (una funcion
+    //     fabrica): el local es su dueno como lo es de `new T(...)`.
+    if (variable->first()->kind() == ast::AstNodeKind::CallExpression && cppRecordTypeKey(typeKey) &&
+        nameLookup_ != nullptr)
+        if (const auto ordinal = nameLookup_->typeOrdinalForIdentity(typeKey.substr(5));
+            ordinal && !nameLookup_->cppTrivialValueEligible(*ordinal))
+            return typeKeyIsOwnable(typeKey);
     return variable->first()->kind() == ast::AstNodeKind::ObjectCreationExpression &&
         typeKeyIsOwnable(typeKey);
 }

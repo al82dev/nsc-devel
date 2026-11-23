@@ -232,6 +232,7 @@ void copyFunctionMetadata(
     function.cppPreserveAll = source.cppPreserveAll;
     function.cppPreserveNone = source.cppPreserveNone;
     function.cppSysVCall = source.cppSysVCall;
+    function.cppFactoryConstruction = source.cppFactoryConstruction; // X2-05
     function.cppObjectSizeModes = source.cppObjectSizeModes;
     function.cppBitIntWidths = source.cppBitIntWidths;
     function.cppSysVRecordArguments = source.cppSysVRecordArguments;

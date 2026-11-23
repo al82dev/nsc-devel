@@ -63,6 +63,13 @@ inline std::string cppByValueThunkSymbol(std::string_view usr)
     return cppMemberThunkSymbol("#function#byvalue", usr);
 }
 
+// X2-05: the adapter that constructs a function's non-trivial record result in place. / El adaptador que construye
+//     en sitio el resultado record no trivial de una funcion.
+inline std::string cppReturnThunkSymbol(std::string_view usr)
+{
+    return cppMemberThunkSymbol("#function#return", usr);
+}
+
 // T19-006: the identity of that adapter as a declaration. / La identidad de ese adaptador como declaracion.
 inline std::string cppDefaultArgumentThunkUsr(std::string_view usr, std::size_t arity)
 {

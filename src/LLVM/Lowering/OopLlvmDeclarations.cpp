@@ -504,6 +504,8 @@ bool OopLlvmImplementation::declareFunction(
             if (function.isTransportedInlineBody &&
                 (functionOrdinal >= reachableDefinitions_.size() ||
                  reachableDefinitions_[functionOrdinal] == 0U)) return true;
+            // X2-05: a C++ factory is reached through its factory constructor. / Se alcanza por su constructor.
+            if (function.cppFactoryConstruction) return true;
             // The global unit defines runtime-binding wrappers, even if no ordinary
             // function in that unit requested their declarations explicitly.
             if (partitioned_ && restrictFunctionDeclarations_ &&

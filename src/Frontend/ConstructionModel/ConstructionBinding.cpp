@@ -571,6 +571,27 @@ void ProjectConstructionModel::bindConstruction(
 
     std::optional<std::size_t> targetOrdinal;
     bool targetIsStruct = false;
+    // EN: X2-05. A call to a C++ factory function is the construction of its result with its factory constructor
+    //     only; the call already resolved which function it is.
+    // ES: X2-05. Una llamada a una funcion fabrica C++ es la construccion de su resultado solo con su constructor de
+    //     fabrica; la llamada ya resolvio que funcion es.
+    if (site.factoryConstructorMemberOrdinal && site.targetTypeOrdinal && nameLookup_ != nullptr &&
+        *site.targetTypeOrdinal < nameLookup_->namedTypes().size())
+    {
+        targetOrdinal = site.targetTypeOrdinal;
+        targetIsStruct = nameLookup_->namedTypes()[*targetOrdinal].kind == NamedTypeDeclarationKind::Struct;
+        binding.targetIsStruct = targetIsStruct;
+        binding.targetTypeOrdinal = *targetOrdinal;
+        binding.targetTypeKey = site.targetTypeKey;
+        binding.explicitConstructorMemberOrdinals = {*site.factoryConstructorMemberOrdinal};
+        bool anyAccessible = false;
+        bool anyMatchingArity = false;
+        bool accessibleMatchingArity = false;
+        evaluateConstructionCandidates(binding, callerMemberOrdinal, site.argumentTypes, site.argumentTypes.size(),
+                                       anyAccessible, anyMatchingArity, accessibleMatchingArity);
+        resolveConstructionCandidates(binding, site.argumentTypes, diagnostics);
+        return;
+    }
     if (!initializeConstructionBinding(
             site, binding, targetOrdinal, targetIsStruct, diagnostics))
     {

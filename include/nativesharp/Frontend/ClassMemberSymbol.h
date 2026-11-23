@@ -255,5 +255,8 @@ struct ClassMemberSymbol final
     std::vector<std::size_t> anonymousCarrierMemberOrdinals;
     std::uint8_t declaredPointerLevelQualifiers = 0; // C1-02: intermediate pointer level qualifiers (Language/PointerLevelQualifiers.h).
     bool cppDeleted = false; // X1-03: a C++ `= delete` method. / Un metodo C++ `= delete`.
+    // X2-05: a C++ factory function seen as a constructor of its result type; `new T(...)` never selects it.
+    //     / Una funcion fabrica C++ vista como constructor de su tipo resultado; `new T(...)` nunca la elige.
+    bool cppFactoryConstructor = false;
 };
 }

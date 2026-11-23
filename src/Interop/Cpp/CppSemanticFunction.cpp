@@ -908,10 +908,16 @@ CppSemanticFunctionResult projectFunction(
          ((function.callingConvention == "swiftcall" || function.callingConvention == "swiftasynccall") &&
           function.abiPlan));
     std::string vectorReason;
-    const auto resultType = mappedReturn.kind == CppTypeKind::FixedVector
+    auto resultType = mappedReturn.kind == CppTypeKind::FixedVector
         ? cppVectorValueType(mappedReturn, function, std::nullopt, lookup, vectorReason)
         : mapFunctionType(mappedReturn, true, records, moduleName, 0, lookup, projectOrdinal,
                           cRecordValues, false, cppRecordValues);
+    // X2-05: a factory's result is its record, constructed in place. / El resultado de una fabrica es su record,
+    //     construido en sitio.
+    if (!resultType && function.cppFactoryResult && function.returnType.kind == CppTypeKind::Record)
+        if (const auto identity = projectCppRecordTypeIdentity(function.returnType, moduleName))
+            resultType = CppScalarTypeMapping{"type:" + identity->key(), function.returnType.canonicalSpelling, false,
+                                              false};
     if (!resultType && !vectorReason.empty())
         return failure("C/C++ vector return type is not yet mapped: " + vectorReason);
     // X2-05: a C++ record returned by value is constructed by the callee; with a non-trivial copy or destructor it
@@ -1042,6 +1048,7 @@ CppSemanticFunctionResult projectFunction(
     symbol.cppTemplateSpecialization = function.templateSpecialization;
     symbol.isVariadic = function.variadic || cUnprototyped;
     symbol.cppDeleted = function.isDeleted; // X1-03
+    symbol.cppFactoryConstruction = function.cppFactoryResult; // X2-05
     symbol.cppCanonicalIdentity = *function.externalSymbol + "|" +
         (referenceReturn ? function.returnType.canonicalSpelling : resultType->canonicalCppType) + "(";
     symbol.signatureKey = symbol.name + "(";
@@ -1764,6 +1771,46 @@ bool provideExperimentalCppLifetimeMethods(
     std::vector<CppSemanticLifetimeFamily> families;
     if (!collectCppSemanticLifetimeFamilies(graph, projects, lookup, families, error)) return false;
     std::vector<frontend::CppImportedLifetimeMethod> result;
+    // EN: X2-05. Each factory function (a non-trivial record returned by value) is also a constructor of that record,
+    //     so a local is constructed in place by its adapter and destroyed by the record's destructor.
+    // ES: X2-05. Cada funcion fabrica (un record no trivial devuelto por valor) es tambien un constructor de ese
+    //     record, asi un local se construye en sitio con su adaptador y se destruye con el destructor del record.
+    for (const auto& group : projects)
+    {
+        std::optional<std::size_t> owner;
+        for (std::size_t i = 0; i < graph.projects().size(); ++i)
+        {
+            std::error_code ec;
+            if (std::filesystem::equivalent(group.projectFile, graph.projects()[i].projectFile(), ec) && !ec) owner = i;
+        }
+        if (!owner) continue;
+        for (const auto& session : group.sessions)
+        {
+            if (!session) continue;
+            const auto declarations = session->freeFunctionsSnapshot();
+            if (!declarations) continue;
+            for (const auto& declaration : *declarations)
+            {
+                if (!declaration.cppFactoryResult || !declaration.externalSymbol) continue;
+                auto projected = projectCppSemanticFunction(declaration, *owner, graph.projects()[*owner].moduleName());
+                const auto* function = std::get_if<frontend::NamespaceFunctionSymbol>(&projected);
+                if (!function || !function->declaredTypeKey.starts_with("type:")) continue;
+                frontend::CppImportedLifetimeMethod method{*owner, function->declaredTypeKey.substr(5),
+                    frontend::CppImportedLifetimeKind::Constructor, *declaration.externalSymbol, {}, false,
+                    declaration.isNonThrowing, false, false, {}};
+                for (const auto& parameter : function->parameters)
+                {
+                    method.parameterTypeKeys.push_back(parameter.typeKey);
+                    method.parameterPointeeReadonly.push_back(parameter.pointerPointeeReadonly);
+                    method.parameterPassKinds.push_back(parameter.passKind);
+                    method.parameterRvalueReferences.push_back(parameter.cppRvalueReference);
+                }
+                method.cppSignatureSuffix = "#factory:" + *declaration.externalSymbol;
+                method.factory = true;
+                result.push_back(std::move(method));
+            }
+        }
+    }
     for (const auto& family : families)
     {
         if (!family.deferred.empty() || family.hasProjectedSignatureCollision || !family.implicitDeclarations) continue;

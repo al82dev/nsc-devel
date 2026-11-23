@@ -76,6 +76,11 @@ std::optional<IterativeExpressionKind> ProjectOopHirModel::iterativeDelegateAndC
     }
     if (syntax->kind() != ast::AstNodeKind::CallExpression) return std::nullopt;
 
+    // X2-05: a call to a C++ factory function is the construction of its result. / Una llamada a una funcion
+    //     fabrica C++ es la construccion de su resultado.
+    if (const ObjectConstructionBinding* factory = constructionBinding(syntax);
+        factory != nullptr && (factory->resolution == ConstructionResolutionKind::ResolvedExplicit))
+        return IterativeExpressionKind::OrdinaryConstruction;
     const NamespaceFunctionCallBinding* namespaceCall =
         namespaceFunctionCallBinding(syntax);
     // C3-09: a C11 fence call lowers as an AtomicFence, without operands. / Una llamada a una barrera C11 se baja
@@ -240,7 +245,9 @@ std::optional<IterativeExpressionKind> ProjectOopHirModel::iterativeConstruction
         }
     }
     if (syntax->kind() == ast::AstNodeKind::ObjectCreationExpression ||
-        syntax->kind() == ast::AstNodeKind::PlacementConstructionExpression)
+        syntax->kind() == ast::AstNodeKind::PlacementConstructionExpression ||
+        // X2-05: a call to a C++ factory function. / Una llamada a una funcion fabrica C++.
+        (syntax->kind() == ast::AstNodeKind::CallExpression && constructionBinding(syntax) != nullptr))
     {
         const ObjectConstructionBinding* binding = constructionBinding(syntax);
         const bool resolved = binding != nullptr &&
