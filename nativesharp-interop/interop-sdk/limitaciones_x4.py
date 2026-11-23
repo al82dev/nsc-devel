@@ -5,8 +5,8 @@ X4-01/X4-02: deduccion de una funcion plantilla con tipos distintos (int, double
 metodo, argumento no tipo explicito; cada especializacion es la que Clang instancia.
 X4-03: especializacion parcial (`S<T*>`) elegida por Clang; una restriccion `requires` incumplida no reaparece: Clang
 no deduce y el diagnostico lo dice.
-X4-05: un struct NativeSharp como argumento de una plantilla de clase C++ se rechaza con diagnostico (sin espejo con
-layout, constructores y destructor acordados).
+X4-05: un struct NativeSharp como argumento de una plantilla de clase C++ se instancia sobre su espejo C++ (T13-007),
+con el layout que da Clang.
 X4-06: desde una DLL las mismas especializaciones funcionan. Una plantilla NativeSharp precompilada cuyo cuerpo usa
 plantillas C++ no se puede consumir sin el encabezado: el productor no cataloga sus especializaciones (13.10/13.11,
 R2); el consumidor falla con diagnostico, sin recurrir al encabezado original.
@@ -36,8 +36,13 @@ BODY = r'''
 c = Caso('x4-plantillas', H, None, **CPP)
 positivo(c, BODY, modes=['directo', 'dll'])
 rechazo(c, 'short s = 1; return lib.wide(s);', 'Clang cannot deduce the template arguments')
-rechazo(c, 'return 0;', 'is not imported in its project',
-        preludio='struct P { public int x; }\nint Use() { P p; p.x = 1; var b = new lib.Box<P>(p); return b.get().x; }\n')
+# X4-05: a NativeSharp struct as a class template argument was a rejection ('is not imported in its project'): Box<P>
+# is instantiated on the C++ mirror of P (T13-007), whose layout Clang gives and NativeSharp checks; the constructor
+# now accepts the mirrored struct as its methods already did. / Un struct NativeSharp como argumento de una plantilla
+# de clase era un rechazo; Box<P> se instancia sobre el espejo C++ de P.
+positivo(Caso('x4-struct-ns-argumento', H, None, **CPP), 'return Use() + 41;',
+         preludio='struct P { public int x; }\nint Use() { P p; p.x = 1; var b = new lib.Box<P>(p); return b.get().x; }\n',
+         modes=['directo'])
 # X4-04: a C++ variable template written as a value (`lib.sz<long>`) is a value when the token after `>` cannot
 # continue a comparison (C# disambiguation) or an argument is a predefined type; Clang evaluates the specialization and
 # an integral or bool constant replaces it. Other variable templates are rejected with the reason.

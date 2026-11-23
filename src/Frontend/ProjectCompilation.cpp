@@ -2254,6 +2254,10 @@ bool ProjectCompilation::compileProjectOopHir(
                         const auto ordinal = type.starts_with("type:")
                             ? nameLookup_->typeOrdinalForIdentity(type.substr(5)) : std::nullopt;
                         const auto* value = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+                        // X4-05: a NativeSharp struct mirrored for a C++ class template is bytes too. / Un struct
+                        //     NativeSharp reflejado para una plantilla de clase C++ tambien son bytes.
+                        if (!value && type.starts_with("type:") && nameLookup_->isCppNativeMirrorType(type.substr(5)))
+                            return true;
                         return value && (value->origin == CppImportedTypeOrigin::CppEnum ||
                                          value->origin == CppImportedTypeOrigin::CEnum ||
                                          nameLookup_->cppTrivialValueEligible(*ordinal));

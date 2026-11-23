@@ -410,6 +410,9 @@ bool ProjectMemberModel::build(
                 if (!key.starts_with("type:") || key.ends_with('*') || key.ends_with(']')) return true;
                 const auto type = nameLookup.typeOrdinalForIdentity(std::string_view(key).substr(5));
                 const auto* value = type ? nameLookup.cppImportedType(*type) : nullptr;
+                // X4-05: a NativeSharp struct mirrored for a C++ class template (`Box<P>(P x)`), as its methods
+                //     already accept. / Un struct NativeSharp reflejado para una plantilla de clase C++.
+                if (!value && nameLookup.isCppNativeMirrorType(std::string_view(key).substr(5))) return true;
                 return value && ((value->enumBase && (value->origin == CppImportedTypeOrigin::CppEnum ||
                                                       value->origin == CppImportedTypeOrigin::CEnum)) ||
                                  (value->origin == CppImportedTypeOrigin::CppRecord &&
