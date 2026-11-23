@@ -344,16 +344,36 @@ bool OopLlvmImplementation::lowerBlockStatement(
                                 skip.push_back(call->secondaryCalleeName.substr(0, cut) + "_destroy");
                         }
                     }
-                    std::vector<std::string> built;
-                    if (!constructCppBasesByDefault(thisValue_, currentMirFunction_->declaringTypeOrdinal, skip, built,
-                                                    error)) return false;
-                    for (const std::string& destroy : built)
+                    // The classes whose implicit initialization this constructor runs, from the root. / Las clases
+                    //     cuya inicializacion implicita ejecuta este constructor, desde la raiz.
+                    std::unordered_set<std::size_t> inlined{currentMirFunction_->declaringTypeOrdinal};
+                    for (const auto& child : node->children)
+                        if (child != nullptr && child->stringValue == "constructor.implicit.base.completed" &&
+                            child->targetTypeOrdinal.has_value()) inlined.insert(*child->targetTypeOrdinal);
+                    std::vector<std::size_t> chain;
+                    for (std::optional<std::size_t> type = currentMirFunction_->declaringTypeOrdinal;
+                         type.has_value() && chain.size() < 64;)
                     {
+                        if (inlined.contains(*type)) chain.push_back(*type);
+                        const auto* layout = mirModel_.classLayoutForType(*type);
+                        type = layout != nullptr ? layout->baseTypeOrdinal : std::nullopt;
+                    }
+                    std::vector<std::string> built;
+                    std::vector<std::size_t> builtTypes;
+                    for (auto type = chain.rbegin(); type != chain.rend(); ++type)
+                    {
+                        if (!constructCppBasesByDefault(thisValue_, *type, skip, built, error)) return false;
+                        builtTypes.resize(built.size(), *type);
+                    }
+                    for (std::size_t index = 0; index < built.size(); ++index)
+                    {
+                        const std::string& destroy = built[index];
                         std::size_t ordinal = std::numeric_limits<std::size_t>::max();
                         while (cleanupRegions_.contains(ordinal) || localStorage_.contains(ordinal)) --ordinal;
                         auto cleanup = std::make_unique<frontend::ProjectOopMirNode>();
                         cleanup->stringValue = "constructor.cpp.base.cleanup";
                         cleanup->calleeName = destroy;
+                        cleanup->targetTypeOrdinal = builtTypes[index];
                         LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
                         LLVMValueRef flag = entryBlockAlloca(flagType, 0, "constructor.cpp.base.live");
                         LLVMBuildStore(builder_, LLVMConstInt(flagType, 1, 0), flag);
@@ -581,6 +601,22 @@ bool OopLlvmImplementation::lowerBlockStatement(
                         child->targetTypeOrdinal.has_value() &&
                         objectDestructionFunctions_.contains(*child->targetTypeOrdinal))
                     {
+                        // X3-01: the completed base's own destruction now covers its C++ bases. / La destruccion
+                        //     de la base completa cubre ya sus bases C++.
+                        std::unordered_set<std::size_t> completedChain;
+                        for (std::optional<std::size_t> type = child->targetTypeOrdinal;
+                             type.has_value() && completedChain.size() < 64;)
+                        {
+                            completedChain.insert(*type);
+                            const auto* layout = mirModel_.classLayoutForType(*type);
+                            type = layout != nullptr ? layout->baseTypeOrdinal : std::nullopt;
+                        }
+                        for (const auto& item : completedBases)
+                            if (item.second->stringValue == "constructor.cpp.base.cleanup" &&
+                                item.second->targetTypeOrdinal.has_value() &&
+                                completedChain.contains(*item.second->targetTypeOrdinal))
+                                if (const auto flag = localStorage_.find(item.first); flag != localStorage_.end())
+                                    LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0), flag->second);
                         for (const auto& item : completedBases)
                         {
                             const auto* action = item.second.get();

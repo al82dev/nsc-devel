@@ -2538,6 +2538,31 @@ bool OopLlvmImplementation::emitCleanupAction(std::size_t ordinal, std::string& 
             enterBlock(done);
             return true;
         }
+        // X3-01: the completed base of an inline construction that did not complete. / La base completa de una
+        //     construccion en linea que no termino.
+        if (cleanup->stringValue == "construction.completed.base.cleanup")
+        {
+            const auto flag = localStorage_.find(ordinal);
+            const auto slot = constructionCleanupObjects_.find(ordinal);
+            const auto entry = cleanup->targetTypeOrdinal
+                ? objectDestructionFunctions_.find(*cleanup->targetTypeOrdinal) : objectDestructionFunctions_.end();
+            if (flag == localStorage_.end() || slot == constructionCleanupObjects_.end() ||
+                entry == objectDestructionFunctions_.end())
+                return fail(error, "construction base cleanup lost its state");
+            LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
+            LLVMValueRef alive = LLVMBuildLoad2(builder_, flagType, flag->second, "construction.base.live");
+            LLVMBasicBlockRef destroy = appendBlock("construction.base.destroy");
+            LLVMBasicBlockRef done = appendBlock("construction.base.done");
+            LLVMBuildCondBr(builder_, alive, destroy, done);
+            enterBlock(destroy);
+            LLVMBuildStore(builder_, LLVMConstInt(flagType, 0, 0), flag->second);
+            LLVMValueRef arguments[] = {LLVMBuildLoad2(builder_, LLVMPointerTypeInContext(context_, 0), slot->second,
+                "construction.base.object")};
+            buildNoUnwindCall(entry->second.functionType, entry->second.function, arguments, 1, "");
+            if (!terminated()) LLVMBuildBr(builder_, done);
+            enterBlock(done);
+            return true;
+        }
         if (cleanup->stringValue == "constructor.completed.base.cleanup")
         {
             if (!cleanup->targetTypeOrdinal.has_value() || thisValue_ == nullptr)

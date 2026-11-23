@@ -8,7 +8,9 @@ por Clang 23.1.0:
   (antes NativeSharp no destruia la base: `134`);
 - con `x = 2` el objeto se destruye una sola vez al salir del ambito: `133442`.
 Con `base(5)`, con constructor implicito y con constructor explicito sin `base(...)` (la base se construye por
-defecto, como en C++; antes NativeSharp la construia de forma perezosa en la primera conversion y no la destruia).
+defecto, como en C++; antes NativeSharp la construia de forma perezosa en la primera conversion y no la destruia), y
+con una cadena `E : D : L.Base` de constructores implicitos o explicitos (la D completa se destruye si un campo de E
+lanza).
 O0-O3; en estatica el ejecutable arranca por el runtime de C (`--crt-startup`); con --dll la biblioteca es una DLL.
 """
 import argparse
@@ -89,8 +91,30 @@ EXPECTED = {'-1': (107 * 1000000 + 1342) % 251, '2': 133442 % 251}
 # base(5); an implicit constructor; an explicit constructor without base(...): C++ default-constructs the base (before,
 # NativeSharp built it lazily on the first conversion, so construction and destruction were missing).
 # base(5); constructor implicito; constructor explicito sin base(...): C++ construye la base por defecto.
-VARIANTS = {'base': ('D() : L::Base(5) {}', 'public D() : base(5) { }'), 'implicito': ('', ''),
-            'sin-base': ('D() {}', 'public D() { }')}
+CHAIN_CONTROL = '''#include "api.h"
+struct D : L::Base { L::Obj a{1}; DCTOR };
+struct E : D { L::Obj b{ARG}; ECTOR };
+static int build() { E e; return 0; }
+int main() { int r = L::run(build); return (r * 1000000 + L::trace()) % 251; }
+'''
+CHAIN_NS = '''class D : L.Base { public L.Obj a = new L.Obj(1); DCTOR }
+class E : D { public L.Obj b = new L.Obj(ARG); ECTOR }
+int Build() { { var e = new E(); } return 0; }
+int Main() { L.Cb build = () => Build(); int r = L.run(build); return (r * 1000000 + L.trace()) % 251; }
+'''
+# (C++, NativeSharp) per variant. A chain E : D : L.Base with implicit or explicit constructors: the C++ base of D is
+# built by default and, when a field of E throws, the completed D (its field and its C++ base) is destroyed.
+# Por variante (C++, NativeSharp). Una cadena E : D : L.Base: la base C++ de D se construye por defecto y, si un campo
+# de E lanza, la D completa se destruye.
+VARIANTS = {
+    'base': (CONTROL.replace('CTOR', 'D() : L::Base(5) {}'), NS.replace('CTOR', 'public D() : base(5) { }')),
+    'implicito': (CONTROL.replace('CTOR', ''), NS.replace('CTOR', '')),
+    'sin-base': (CONTROL.replace('CTOR', 'D() {}'), NS.replace('CTOR', 'public D() { }')),
+}
+for name, dctor, ector in [('cadena-implicita', False, False), ('cadena-d', True, False), ('cadena-e', False, True)]:
+    VARIANTS[name] = (
+        CHAIN_CONTROL.replace('DCTOR', 'D() {}' if dctor else '').replace('ECTOR', 'E() {}' if ector else ''),
+        CHAIN_NS.replace('DCTOR', 'public D() { }' if dctor else '').replace('ECTOR', 'public E() { }' if ector else ''))
 for opt in range(4):
     case = root / f'O{opt}'
     case.mkdir()
@@ -109,17 +133,17 @@ for opt in range(4):
         '<Project><PropertyGroup><Name>X3Ctor</Name></PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
         '<CppLibraryReference Header="api.h" Language="C++" Standard="c++20" Library="api.lib"' + runtime + ' />'
         '</ItemGroup></Project>', encoding='utf-8')
-    for (variant, (cppCtor, nsCtor)), (argument, expected) in [
+    for (variant, (cppProgram, nsProgram)), (argument, expected) in [
             (v, e) for v in VARIANTS.items() for e in EXPECTED.items()]:
         tag = f'O{opt}-{variant}-x{argument}'
-        (case / 'control.cpp').write_text(CONTROL.replace('ARG', argument).replace('CTOR', cppCtor), encoding='utf-8')
+        (case / 'control.cpp').write_text(cppProgram.replace('ARG', argument), encoding='utf-8')
         run(tag + '-control-obj', [*CXX, '-O' + str(opt), '-c', 'control.cpp', '-o', 'control.obj'], case)
         run(tag + '-control-link', ['lld-link.exe', '/nologo', '/subsystem:console', '/out:control.exe', 'control.obj',
                                     'api.lib', *[str(p) for p in CRT]], case)
         control = run(tag + '-control-run', [str(case / 'control.exe')], case, expected=None).returncode
         if control != expected:
             raise SystemExit(f'{tag}: el control C++ devolvio {control}, se esperaba {expected}; evidencia: {root}')
-        (case / 'Main.ns').write_text(NS.replace('ARG', argument).replace('CTOR', nsCtor), encoding='utf-8')
+        (case / 'Main.ns').write_text(nsProgram.replace('ARG', argument), encoding='utf-8')
         command = [args.nsc, '--emit-project-oop-exe', 'App.nsproj', '--cpp-clang-root=' + args.clang_root,
                    '--no-artifact-cache', '-O' + str(opt)]
         extra = {'NSC_LINKER': 'nslink.exe'}
