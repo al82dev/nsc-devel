@@ -617,8 +617,26 @@ static bool provideCppSemanticFunctionsImpl(
         for (auto& group : match.candidates.groups)
         {
             auto& symbol = group.symbol;
-            if (seen.emplace(symbol.projectOrdinal, symbol.namespaceName, symbol.mangledName).second)
-                result.push_back(std::move(symbol));
+            if (!seen.emplace(symbol.projectOrdinal, symbol.namespaceName, symbol.mangledName).second) continue;
+            // EN: X2-05. The hidden direct variant of a by-value adapter: the original symbol, which the call of
+            //     a prvalue argument reaches (ProjectOopHirModel::ownCppTemporaries); no name lookup finds it.
+            // ES: X2-05. La variante directa oculta de un adaptador por valor: el simbolo original, que alcanza la
+            //     llamada con un argumento prvalue; ninguna busqueda por nombre la encuentra.
+            std::optional<frontend::NamespaceFunctionSymbol> direct;
+            if (!symbol.cppByValueDirectSymbol.empty())
+            {
+                direct = symbol;
+                direct->name = "__nsc_cpp_byvalue_direct_" + symbol.name;
+                direct->signatureKey = "__nsc_cpp_byvalue_direct_" + symbol.signatureKey;
+                direct->mangledName = symbol.cppByValueDirectSymbol;
+                direct->cppDllImport = symbol.cppByValueDirectDllImport;
+                direct->cppCanonicalIdentity = symbol.cppByValueDirectSymbol + "|" + symbol.cppCanonicalIdentity;
+                if (direct->cppClangUsr) *direct->cppClangUsr += "-direct";
+                direct->cppAlternateNamespaces.clear();
+                direct->cppByValueDirect = true;
+            }
+            result.push_back(std::move(symbol));
+            if (direct) result.push_back(std::move(*direct));
         }
     projected = std::move(result);
     deferred = std::move(std::get<std::vector<CppDeferredFunctionCandidate>>(materialized));

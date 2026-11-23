@@ -1634,20 +1634,37 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
                 return cppNonTrivialRecordValue(parameter->getType());
             }))
         {
+            // EN: X2-05. On the Microsoft x64 ABI a record that cannot travel in registers is passed as the address
+            //     of the caller's temporary, which the callee destroys: a prvalue argument is constructed there and
+            //     the original function is called directly (no copy or move, as C++). / En la ABI Microsoft x64 un
+            //     record que no viaja en registros se pasa como la direccion del temporal del llamador, que destruye
+            //     el llamado: un prvalue se construye ahi y se llama directamente a la funcion original.
+            const auto& target = astContext.getTargetInfo();
+            bool direct = target.getCXXABI().isMicrosoft() && target.getTriple().getArch() == llvm::Triple::x86_64;
             std::vector<clang::QualType> parameterTypes;
             for (std::size_t index = 0; index < function->getNumParams(); ++index)
             {
                 auto type = function->getParamDecl(static_cast<unsigned>(index))->getType();
                 if (cppNonTrivialRecordValue(type))
                 {
+                    const auto* record = type->getAsCXXRecordDecl();
+                    if (record->canPassInRegisters() || !record->isParamDestroyedInCallee()) direct = false;
                     type = cppByValueAdapterType(astContext, type);
                     auto& parameter = value.parameters[index];
                     parameter.typeSpelling = type.getAsString();
                     parameter.canonicalTypeSpelling = type.getCanonicalType().getAsString();
                     parameter.type = describeType(type, astContext);
+                    parameter.cppByValueRecord = true;
                 }
                 parameterTypes.push_back(type);
             }
+            if (direct)
+            {
+                value.cppByValueDirectSymbol = *value.externalSymbol;
+                value.cppByValueDirectDllImport = value.dllImport;
+            }
+            else
+                for (auto& parameter : value.parameters) parameter.cppByValueRecord = false;
             clang::FunctionProtoType::ExtProtoInfo info;
             if (const auto* prototype = function->getType()->getAs<clang::FunctionProtoType>())
                 info.ExceptionSpec = prototype->getExtProtoInfo().ExceptionSpec;

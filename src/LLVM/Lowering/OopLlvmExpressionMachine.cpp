@@ -744,6 +744,13 @@ bool OopLlvmImplementation::lowerExpressionFrame008OwnedTemporaryBorrow(
                 values.push_back(nullptr);
                 return true;
             }
+            // X2-05: a by-value parameter's temporary is destroyed by its callee (Microsoft x64), never here.
+            //     / El temporal de un parametro por valor lo destruye su llamado, nunca aqui.
+            if (!current->automaticDestruction)
+            {
+                values.push_back(storage->second);
+                return true;
+            }
             const auto flag = localValueDropFlags_.find(*current->localOrdinal);
             if (flag != localValueDropFlags_.end())
                 LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0), flag->second);

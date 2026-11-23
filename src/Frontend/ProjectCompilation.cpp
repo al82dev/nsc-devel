@@ -2193,7 +2193,8 @@ bool ProjectCompilation::compileProjectOopHir(
                       ((parent->kind == ProjectOopHirNodeKind::LocalDeclaration && !parent->referenceLocal &&
                         !parent->staticLocal) || parent->kind == ProjectOopHirNodeKind::Return)) &&
                     !(node->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow && node->referenceResult &&
-                      node->automaticDestruction && node->localOrdinal && node->cleanupRegionOrdinal &&
+                      (node->automaticDestruction || node->cppCalleeDestroyed) && node->localOrdinal &&
+                      node->cleanupRegionOrdinal &&
                       node->children.size() == 1 && node->children[0] &&
                       node->children[0]->kind == ProjectOopHirNodeKind::ValueConstruction) &&
                     // X2-08: a call whose result is an address (`T& operator+=`, `T& operator++`) does not copy
@@ -2229,7 +2230,7 @@ bool ProjectCompilation::compileProjectOopHir(
                      (parent->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow && parent->referenceResult)) &&
                     parent->children.size() == 1 && parent->children[0].get() == node &&
                     parent->typeKey == node->typeKey && parent->localOrdinal && parent->cleanupRegionOrdinal &&
-                    parent->automaticDestruction;
+                    (parent->automaticDestruction || parent->cppCalleeDestroyed);
                 if (node->kind != ProjectOopHirNodeKind::ValueConstruction || (!discarded && !local) ||
                     !node->memberOrdinal || *node->memberOrdinal >= memberModel_->members().size())
                 {

@@ -114,5 +114,13 @@ struct NamespaceFunctionSymbol final
     std::string cppOwnedRelease;
     // X2-05: its call constructs the result in the destination. / Su llamada construye el resultado en el destino.
     bool cppFactoryConstruction = false;
+    // EN: X2-05. A by-value adapter's original symbol, called directly when every by-value record argument is a
+    //     prvalue constructed in the caller's temporary (Microsoft x64: the callee destroys it); cppByValueDirect
+    //     marks that hidden variant, which no name lookup finds.
+    // ES: X2-05. El simbolo original de un adaptador por valor, llamado directamente cuando cada argumento record por
+    //     valor es un prvalue construido en el temporal del llamador; cppByValueDirect marca esa variante oculta.
+    std::string cppByValueDirectSymbol;
+    bool cppByValueDirectDllImport = false;
+    bool cppByValueDirect = false;
 };
 }

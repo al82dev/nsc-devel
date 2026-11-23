@@ -1071,6 +1071,11 @@ CppSemanticFunctionResult projectFunction(
     symbol.isVariadic = function.variadic || cUnprototyped;
     symbol.cppDeleted = function.isDeleted; // X1-03
     symbol.cppFactoryConstruction = function.cppFactoryResult; // X2-05
+    if (function.cppByValueDirectSymbol) // X2-05
+    {
+        symbol.cppByValueDirectSymbol = *function.cppByValueDirectSymbol;
+        symbol.cppByValueDirectDllImport = function.cppByValueDirectDllImport;
+    }
     symbol.cppCanonicalIdentity = *function.externalSymbol + "|" +
         (referenceReturn ? function.returnType.canonicalSpelling : resultType->canonicalCppType) + "(";
     symbol.signatureKey = symbol.name + "(";
@@ -1181,6 +1186,7 @@ CppSemanticFunctionResult projectFunction(
             // T19-007: the object of a member operator adapter. / El objeto de un adaptador de operador miembro.
             parameter.cppImplicitObject = index == 0 && !rvalue && input.name == "self" &&
                 std::string_view(*function.externalSymbol).starts_with(cppMemberThunkPrefix);
+            parameter.cppByValueRecord = input.cppByValueRecord && function.cppByValueDirectSymbol.has_value(); // X2-05
         }
         symbol.parameters.push_back(std::move(parameter));
         symbol.cppParameterTypes.push_back(input.type);

@@ -151,6 +151,9 @@ struct ProjectOopHirNode final
     sema::OwnershipKind ownership = sema::OwnershipKind::None;
     // Item 378. Distinguishes a scope-bound RAII owner from a manually managed owner in PDB.
     bool automaticDestruction = false;
+    // X2-05: an owned temporary that a by-value C++ parameter receives and its callee destroys. / Un temporal con
+    //     dueno que recibe un parametro C++ por valor y destruye su llamado.
+    bool cppCalleeDestroyed = false;
     bool variableLengthArray = false;
     std::size_t variableLengthArrayRank = 0;
     std::size_t nativeArrayRank = 0;

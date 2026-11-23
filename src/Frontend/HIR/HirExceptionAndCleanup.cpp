@@ -1,5 +1,6 @@
 #include "HirLoweringSupport.h"
 
+#include <unordered_set>
 #include <algorithm>
 #include <limits>
 #include <memory>
@@ -351,6 +352,46 @@ void ProjectOopHirModel::ownCppTemporaries()
                 value->targetTypeOrdinal && nameLookup_->cppImportedType(*value->targetTypeOrdinal) != nullptr &&
                 !nameLookup_->cppTrivialValueEligible(*value->targetTypeOrdinal);
         };
+        // EN: X2-05. A call to a by-value adapter whose by-value record arguments are all materialized C++
+        //     constructions calls the original function instead (its hidden direct variant): each prvalue is
+        //     constructed in the temporary the callee receives and destroys (Microsoft x64), so the caller
+        //     registers no destructor for it, as C++ constructs the parameter in place.
+        // ES: X2-05. Una llamada a un adaptador por valor cuyos argumentos record por valor son todos construcciones
+        //     C++ materializadas llama en su lugar a la funcion original (su variante directa oculta): cada prvalue
+        //     se construye en el temporal que recibe y destruye el llamado, asi que el llamador no registra su
+        //     destructor, como C++ construye el parametro en su lugar.
+        std::unordered_set<const ProjectOopHirNode*> calleeDestroyed;
+        if (namespaceFunctionModel_ != nullptr)
+            for (ProjectOopHirNode* node : order)
+            {
+                if (node->kind != ProjectOopHirNodeKind::StaticCall || !node->namespaceFunctionOrdinal) continue;
+                const auto functions = namespaceFunctionModel_->functions();
+                if (*node->namespaceFunctionOrdinal >= functions.size()) continue;
+                const NamespaceFunctionSymbol& callee = functions[*node->namespaceFunctionOrdinal];
+                if (callee.cppByValueDirectSymbol.empty()) continue;
+                std::optional<std::size_t> direct;
+                for (std::size_t ordinal = 0; ordinal < functions.size(); ++ordinal)
+                    if (functions[ordinal].cppByValueDirect && functions[ordinal].mangledName == callee.cppByValueDirectSymbol &&
+                        functions[ordinal].projectOrdinal == callee.projectOrdinal) direct = ordinal;
+                if (!direct) continue;
+                std::vector<const ProjectOopHirNode*> temporaries;
+                bool all = true;
+                for (std::size_t index = 0; index < node->children.size(); ++index)
+                {
+                    const std::size_t parameter = index < node->argumentParameterOrdinals.size()
+                        ? node->argumentParameterOrdinals[index] : index;
+                    if (parameter >= callee.parameters.size() || !callee.parameters[parameter].cppByValueRecord) continue;
+                    const ProjectOopHirNode* argument = node->children[index].get();
+                    if (argument != nullptr && argument->kind == ProjectOopHirNodeKind::TemporaryAddress &&
+                        argument->children.size() == 1 && cppConstruction(argument->children.front().get()))
+                        temporaries.push_back(argument);
+                    else
+                        all = false;
+                }
+                if (!all || temporaries.empty()) continue;
+                node->namespaceFunctionOrdinal = *direct;
+                calleeDestroyed.insert(temporaries.begin(), temporaries.end());
+            }
         for (ProjectOopHirNode* node : order)
         {
             // A materialized temporary, or a construction whose address is taken directly.
@@ -374,9 +415,11 @@ void ProjectOopHirModel::ownCppTemporaries()
             if (!materialized && !addressed) continue;
             std::unique_ptr<ProjectOopHirNode>* slot = hirChildSlot(*parent->second, node);
             if (slot == nullptr) continue;
+            const bool destroyedByCallee = calleeDestroyed.contains(node);
             auto owner = ownTemporary(materialized ? std::move(node->children.front()) : std::move(*slot));
             owner->referenceResult = true;
-            owner->automaticDestruction = true;
+            owner->automaticDestruction = !destroyedByCallee;
+            owner->cppCalleeDestroyed = destroyedByCallee;
             ProjectOopHirNode* ownerNode = owner.get();
             *slot = std::move(owner);
             parents[ownerNode] = parent->second;

@@ -41,6 +41,10 @@ struct CppFunctionParameter
     // complement bits and a floating value its IEEE binary64 bits.
     CppDefaultArgumentKind defaultArgumentKind = CppDefaultArgumentKind::None;
     std::uint64_t defaultArgumentBits = 0;
+    // X2-05: a non-trivial record by value whose prvalue argument is constructed in the callee's parameter (the
+    //     function has cppByValueDirectSymbol). / Un record no trivial por valor cuyo prvalue se construye en el
+    //     parametro del llamado.
+    bool cppByValueRecord = false;
 };
 
 struct CppFunctionDeclaration
@@ -96,5 +100,11 @@ struct CppFunctionDeclaration
     // ES: X2-05. Una funcion C++ que devuelve un record no trivial por valor, publicada como su adaptador en sitio:
     //     el resultado se construye en el destino, como lo haria un constructor.
     bool cppFactoryResult = false;
+    // EN: X2-05. For a function published as its by-value adapter: the original symbol, called directly with the
+    //     address of a prvalue argument constructed in the caller's temporary (Microsoft x64: the callee destroys it).
+    // ES: X2-05. Para una funcion publicada como su adaptador por valor: el simbolo original, llamado directamente con
+    //     la direccion de un prvalue construido en el temporal del llamador (Microsoft x64: lo destruye el llamado).
+    std::optional<std::string> cppByValueDirectSymbol;
+    bool cppByValueDirectDllImport = false;
 };
 }
