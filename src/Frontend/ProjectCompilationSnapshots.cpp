@@ -613,38 +613,57 @@ bool ProjectCompilation::buildInheritanceModel()
                     report("it must declare a constructor that calls base(...): the C++ class has no accessible default "
                            "constructor");
             }
-            for (const auto& name : interface->cppInterfaceMethods)
-            {
-                const ClassMemberSymbol* cpp = nullptr;
-                for (const auto ordinal : memberModel_->findMembers(*field.cppInterfaceTypeOrdinal, name))
-                    if (ordinal < memberModel_->members().size() &&
-                        memberModel_->members()[ordinal].kind == ClassMemberKind::Method &&
-                        !memberModel_->members()[ordinal].isStatic) cpp = &memberModel_->members()[ordinal];
-                const bool required = std::find(interface->cppInterfacePureMethods.begin(),
-                    interface->cppInterfacePureMethods.end(), name) != interface->cppInterfacePureMethods.end();
-                if (cpp == nullptr && !required && memberModel_->findMembers(field.declaringTypeOrdinal, name).empty())
-                    continue;
-                if (cpp == nullptr) { report("its method '" + name + "' has no NativeSharp signature"); continue; }
-                const ClassMemberSymbol* own = nullptr;
-                std::size_t count = 0;
-                for (const auto ordinal : memberModel_->findMembers(field.declaringTypeOrdinal, name))
-                    if (ordinal < memberModel_->members().size() &&
-                        memberModel_->members()[ordinal].kind == ClassMemberKind::Method)
-                    { own = &memberModel_->members()[ordinal]; ++count; }
-                // A virtual method with a C++ body may be left to it. / Un virtual con cuerpo C++ puede quedarse asi.
-                if (count == 0 && std::find(interface->cppInterfacePureMethods.begin(),
-                        interface->cppInterfacePureMethods.end(), name) == interface->cppInterfacePureMethods.end())
-                    continue;
-                const bool same = own != nullptr && count == 1 && !own->isStatic &&
-                    own->accessibility == ClassMemberAccessibility::Public &&
-                    own->declaredTypeKey == cpp->declaredTypeKey && own->parameters.size() == cpp->parameters.size() &&
-                    std::equal(own->parameters.begin(), own->parameters.end(), cpp->parameters.begin(),
+            // EN: Each C++ overload of a name is matched by its NativeSharp signature; a pure one must be implemented,
+            //     a NativeSharp method of that name must implement one of them.
+            // ES: Cada sobrecarga C++ de un nombre se empareja por su firma NativeSharp; una pura debe implementarse y
+            //     un metodo NativeSharp de ese nombre debe implementar alguna.
+            const auto sameSignature = [](const ClassMemberSymbol& own, const ClassMemberSymbol& cpp) {
+                return !own.isStatic && own.accessibility == ClassMemberAccessibility::Public &&
+                    own.declaredTypeKey == cpp.declaredTypeKey && own.parameters.size() == cpp.parameters.size() &&
+                    std::equal(own.parameters.begin(), own.parameters.end(), cpp.parameters.begin(),
                         [](const auto& left, const auto& right) {
                             return left.typeKey == right.typeKey && left.passKind == right.passKind;
                         });
-                if (!same)
-                    report("it must declare one public instance method '" + name + "' with the signature '" +
-                        cpp->signatureKey + "' returning '" + cpp->declaredTypeKey + "'");
+            };
+            for (const auto& name : interface->cppInterfaceMethods)
+            {
+                std::vector<const ClassMemberSymbol*> overloads;
+                for (const auto ordinal : memberModel_->findMembers(*field.cppInterfaceTypeOrdinal, name))
+                    if (ordinal < memberModel_->members().size() &&
+                        memberModel_->members()[ordinal].kind == ClassMemberKind::Method &&
+                        !memberModel_->members()[ordinal].isStatic) overloads.push_back(&memberModel_->members()[ordinal]);
+                std::vector<const ClassMemberSymbol*> own;
+                for (const auto ordinal : memberModel_->findMembers(field.declaringTypeOrdinal, name))
+                    if (ordinal < memberModel_->members().size() &&
+                        memberModel_->members()[ordinal].kind == ClassMemberKind::Method)
+                        own.push_back(&memberModel_->members()[ordinal]);
+                const bool required = std::find(interface->cppInterfacePureMethods.begin(),
+                    interface->cppInterfacePureMethods.end(), name) != interface->cppInterfacePureMethods.end();
+                if (overloads.empty())
+                {
+                    if (required || !own.empty()) report("its method '" + name + "' has no NativeSharp signature");
+                    continue;
+                }
+                for (const auto* cpp : overloads)
+                {
+                    std::string key = name + "(";
+                    for (std::size_t index = 0; index < cpp->cppParameterSpellings.size(); ++index)
+                        key += (index ? "," : "") + cpp->cppParameterSpellings[index];
+                    key += ")";
+                    const bool pure = std::find(interface->cppInterfacePureOverloads.begin(),
+                        interface->cppInterfacePureOverloads.end(), key) != interface->cppInterfacePureOverloads.end();
+                    const bool implemented = std::any_of(own.begin(), own.end(),
+                        [&](const ClassMemberSymbol* method) { return sameSignature(*method, *cpp); });
+                    if (pure && !implemented)
+                        report("it must declare one public instance method '" + name + "' with the signature '" +
+                            cpp->signatureKey + "' returning '" + cpp->declaredTypeKey + "'");
+                }
+                for (const auto* method : own)
+                    if (std::none_of(overloads.begin(), overloads.end(),
+                            [&](const ClassMemberSymbol* cpp) { return sameSignature(*method, *cpp); }))
+                        report("its method '" + method->signatureKey + "' implements no C++ virtual method '" + name +
+                            "' (" + overloads.front()->signatureKey + " returning '" + overloads.front()->declaredTypeKey +
+                            "')");
             }
         }
     return built && implemented;

@@ -4727,6 +4727,7 @@ bool selectExperimentalCppRecordTypesForCompilation(
             const auto& declaration = observation.inventory[*selected].declaration;
             std::vector<std::string> names;
             std::vector<std::string> pure;
+            std::vector<std::string> pureOverloads;
             // X3-01: a record with data too, constructed by default in the object and destroyed with it. / Tambien un
             //     record con datos, construido por defecto en el objeto y destruido con el.
             bool destructor = false;
@@ -4745,16 +4746,24 @@ bool selectExperimentalCppRecordTypesForCompilation(
                 // A virtual destructor stays the adapter's own (C++ must not delete a NativeSharp object). / Un
                 //     destructor virtual queda como el del adaptador.
                 if (method.kind == CppMethodKind::Destructor) continue;
-                if (method.kind != CppMethodKind::Method || method.variadic ||
-                    std::find(names.begin(), names.end(), method.name) != names.end())
-                { eligible = false; break; }
-                names.push_back(method.name);
-                if (method.isPureVirtual) pure.push_back(method.name);
+                if (method.kind != CppMethodKind::Method || method.variadic) { eligible = false; break; }
+                // X3-04: overloads of one name are told apart by their C++ parameter spellings. / Las sobrecargas
+                //     de un nombre se distinguen por las escrituras C++ de sus parametros.
+                if (std::find(names.begin(), names.end(), method.name) == names.end()) names.push_back(method.name);
+                if (method.isPureVirtual)
+                {
+                    if (std::find(pure.begin(), pure.end(), method.name) == pure.end()) pure.push_back(method.name);
+                    std::string key = method.name + "(";
+                    for (std::size_t index = 0; index < method.parameters.size(); ++index)
+                        key += (index ? "," : "") + method.parameters[index].type.unqualifiedCanonicalSpelling;
+                    pureOverloads.push_back(key + ")");
+                }
             }
             if (eligible && !names.empty())
             {
                 type.cppInterfaceMethods = std::move(names);
                 type.cppInterfacePureMethods = std::move(pure);
+                type.cppInterfacePureOverloads = std::move(pureOverloads);
                 type.cppInterfaceDestructor = destructor;
                 bool userConstructors = false;
                 bool defaultConstructor = false;

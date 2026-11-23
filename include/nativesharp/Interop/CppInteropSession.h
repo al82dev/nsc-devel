@@ -392,6 +392,9 @@ public:
         std::string interfaceUsr;
         std::string adapterName;
         std::vector<std::pair<std::string, std::string>> methods; // C++ method name, NativeSharp C boundary symbol
+        // X3-04: per method, the C++ parameter spellings that select an overload. / Por metodo, las escrituras C++
+        //     de los parametros que eligen una sobrecarga.
+        std::vector<std::vector<std::string>> methodParameterSpellings;
         // X3-01: the offset of the adapter storage in the NativeSharp object, for `<adapterName>_destroy(void* object)`.
         std::uint64_t storageOffset = 0;
     };

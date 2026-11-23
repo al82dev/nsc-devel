@@ -4139,7 +4139,7 @@ public:
         }
         if (!interface) { error = "the interface is not declared in this translation unit"; return std::nullopt; }
         // The pure virtual methods of the interface and its bases, by name. / Los virtuales puros por nombre.
-        std::map<std::string, const clang::CXXMethodDecl*> methods;
+        std::multimap<std::string, const clang::CXXMethodDecl*> methods;
         std::vector<const clang::CXXRecordDecl*> records{interface};
         while (!records.empty())
         {
@@ -4160,9 +4160,22 @@ public:
         for (std::size_t index = 0; index < request.methods.size(); ++index)
         {
             const auto& [name, boundary] = request.methods[index];
-            const auto found = methods.find(name);
-            if (found == methods.end()) { error = "the interface has no pure virtual method '" + name + "'"; return std::nullopt; }
-            const auto* method = found->second;
+            // X3-04: the overload whose parameter spellings the request gives. / La sobrecarga cuyas escrituras de
+            //     parametros da la solicitud.
+            const clang::CXXMethodDecl* method = nullptr;
+            const auto [first, last] = methods.equal_range(name);
+            for (auto candidate = first; candidate != last && !method; ++candidate)
+            {
+                if (index >= request.methodParameterSpellings.size()) { method = candidate->second; break; }
+                const auto& spellings = request.methodParameterSpellings[index];
+                if (spellings.size() != candidate->second->getNumParams()) continue;
+                bool same = true;
+                for (unsigned parameter = 0; same && parameter < candidate->second->getNumParams(); ++parameter)
+                    same = describeType(candidate->second->getParamDecl(parameter)->getType(), context)
+                        .unqualifiedCanonicalSpelling == spellings[parameter];
+                if (same) method = candidate->second;
+            }
+            if (!method) { error = "the interface has no virtual method '" + name + "' with these parameters"; return std::nullopt; }
             const std::string result = method->getReturnType().getAsString(policy);
             const std::string callee = request.adapterName + "_m" + std::to_string(index);
             std::string parameters;

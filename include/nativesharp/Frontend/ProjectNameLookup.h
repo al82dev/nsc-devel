@@ -171,6 +171,9 @@ struct CppImportedTypeDeclaration final
     // X3-04: those of cppInterfaceMethods that are pure, which a class must implement; the others keep the C++ body
     //     unless the class overrides them. / Los puros, que una clase debe implementar; los demas conservan el cuerpo C++.
     std::vector<std::string> cppInterfacePureMethods{};
+    // X3-04: the pure overloads by name and C++ parameter spellings (`f(int,double)`), for overloaded virtual methods.
+    //     / Las sobrecargas puras por nombre y escrituras C++ de sus parametros.
+    std::vector<std::string> cppInterfacePureOverloads{};
     // X3-01: the record has a non-trivial destructor, which runs when the NativeSharp object is destroyed. / El record
     //     tiene un destructor no trivial, que se ejecuta cuando se destruye el objeto NativeSharp.
     bool cppInterfaceDestructor = false;

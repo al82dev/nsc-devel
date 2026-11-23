@@ -355,24 +355,31 @@ static bool appendCppInlineObjects(frontend::ProjectCompilation &compilation,
                 if (&members->members()[member] == &field && compilation.objectLayoutModel())
                     if (const auto* layout = compilation.objectLayoutModel()->fieldLayoutForMember(member))
                         request.storageOffset = layout->offset;
+            // X3-04: each C++ overload the class implements, matched by its NativeSharp signature; one it does not
+            //     override keeps its C++ body. / Cada sobrecarga C++ que implementa la clase, por su firma NativeSharp.
             for (const auto& name : interface->cppInterfaceMethods)
-            {
-                const frontend::ProjectOopMirFunction* implementation = nullptr;
-                for (const auto member : members->findMembers(field.declaringTypeOrdinal, name))
-                    for (const auto& function : mir.functions())
-                        if (!function.namespaceFunctionOrdinal && function.memberOrdinal == member)
-                            implementation = &function;
-                if (!implementation)
+                for (const auto cppOrdinal : members->findMembers(*field.cppInterfaceTypeOrdinal, name))
                 {
-                    // A virtual method with a C++ body that the class does not override. / Un virtual con cuerpo
-                    //     C++ que la clase no sobrescribe.
-                    if (std::find(interface->cppInterfacePureMethods.begin(), interface->cppInterfacePureMethods.end(),
-                                  name) == interface->cppInterfacePureMethods.end()) continue;
-                    error = "C++ interface method '" + name + "' of '" + classKey + "' has no NativeSharp body";
-                    return false;
+                    const auto& cpp = members->members()[cppOrdinal];
+                    if (cpp.kind != frontend::ClassMemberKind::Method || cpp.isStatic) continue;
+                    const frontend::ProjectOopMirFunction* implementation = nullptr;
+                    for (const auto member : members->findMembers(field.declaringTypeOrdinal, name))
+                    {
+                        const auto& own = members->members()[member];
+                        if (own.kind != frontend::ClassMemberKind::Method || own.declaredTypeKey != cpp.declaredTypeKey ||
+                            own.parameters.size() != cpp.parameters.size() ||
+                            !std::equal(own.parameters.begin(), own.parameters.end(), cpp.parameters.begin(),
+                                [](const auto& left, const auto& right) {
+                                    return left.typeKey == right.typeKey && left.passKind == right.passKind;
+                                })) continue;
+                        for (const auto& function : mir.functions())
+                            if (!function.namespaceFunctionOrdinal && function.memberOrdinal == member)
+                                implementation = &function;
+                    }
+                    if (!implementation) continue;
+                    request.methods.emplace_back(name, implementation->mangledName + "__c_boundary");
+                    request.methodParameterSpellings.push_back(cpp.cppParameterSpellings);
                 }
-                request.methods.emplace_back(name, implementation->mangledName + "__c_boundary");
-            }
             std::string reason = "no Clang session declares the interface";
             bool emitted = false;
             for (const auto& project : compilation.cppProjectSessions())

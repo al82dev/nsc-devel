@@ -254,6 +254,21 @@ SN = ('namespace lib { Node::Node(int i) : id(i) {} int Node::value() const { re
 positivo(Caso('x3-base-argumentos', HN, SN, **CPP), 'var l = new Leaf(12); return lib.read((lib.Node*)l);',
          preludio='class Leaf : lib.Node { public Leaf(int k) : base(k) { } public int value() { return 30; } }\n',
          modes=['directo', 'dll'])
+# X3-04: overloaded virtual methods of one name are matched by signature (C++ parameter spellings), each with its own
+# override; a pure overload left unimplemented is diagnosed. / Las sobrecargas virtuales de un nombre se emparejan por
+# firma; una sobrecarga pura sin implementar se diagnostica.
+HSINK = r'''
+namespace lib {
+struct Sink { virtual int f(int x) = 0; virtual int f(double x) = 0; virtual int g(int x) { return x; } };
+int pour(Sink* s);
+}
+'''
+SSINK = 'namespace lib { int pour(Sink* s) { return s->f(10) + s->f(2.5) + s->g(7); } }\n'
+positivo(Caso('x3-sobrecargas-virtuales', HSINK, SSINK, **CPP), 'var c = new Cup(); return lib.pour((lib.Sink*)c);',
+         preludio='class Cup : lib.Sink { public int f(int x) { return x * 2; } public int f(double x) { return (int)(x * 6); } }\n',
+         modes=['directo', 'dll'])
+rechazo(Caso('x3-sobrecargas-virtuales', HSINK, SSINK, **CPP), 'return 0;', "it must declare one public instance method 'f'",
+        preludio='class Cup : lib.Sink { public int f(int x) { return x; } }\n')
 rechazo(Caso('x3-base-sin-defecto', HN, SN, **CPP), 'return 0;', 'must declare a constructor that calls base(...)',
         preludio='class Leaf : lib.Node { public int value() { return 30; } }\n')
 rechazo(Caso('x3-base-sin-defecto', HN, SN, **CPP), 'return 0;', 'must call base(...)',
