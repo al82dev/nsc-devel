@@ -1593,8 +1593,10 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
     const ast::AstNode* expression, const ExpressionResult& callee, std::span<const ExpressionResult> arguments,
     std::size_t methodMemberOrdinal, std::size_t scopeOrdinal, diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (namespaceFunctionModel_ == nullptr || expression->first() == nullptr || !callee.addressable ||
-        !cppRecordTypeKey(callee.typeKey)) return std::nullopt;
+    // X2-05: also on a C++ temporary (`lib.make(1)(2)`). / Tambien sobre un temporal C++.
+    const bool temporary = cppNonTrivialTemporary(callee);
+    if (namespaceFunctionModel_ == nullptr || expression->first() == nullptr ||
+        !(callee.addressable || temporary) || !cppRecordTypeKey(callee.typeKey)) return std::nullopt;
     const auto& functions = namespaceFunctionModel_->functions();
     std::vector<std::pair<std::size_t, std::vector<ProjectImplicitConversion>>> viable;
     bool anyOperator = false;
@@ -1607,7 +1609,7 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         anyOperator = true;
         if (function.parameters.size() != arguments.size() + 1 ||
             !(self.passKind == ParameterPassKind::In ||
-              (self.passKind == ParameterPassKind::Ref && callee.assignable))) continue;
+              (self.passKind == ParameterPassKind::Ref && (callee.assignable || temporary)))) continue;
         std::vector<ProjectImplicitConversion> conversions{ProjectImplicitConversion{ProjectConversionKind::Identity,
             0, callee.typeKey + "*", self.typeKey, std::nullopt}};
         bool ok = true;

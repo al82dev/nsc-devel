@@ -5169,6 +5169,10 @@ private:
     // Item 11.4: `a op= b` through a C++ compound assignment operator. / A traves de un operador C++ compuesto.
     bool tryCppPrefixIncrement(const ast::AstNode* expression, const ExpressionResult& operand,
         std::size_t methodMemberOrdinal, std::size_t scopeOrdinal, ExpressionResult& out);
+    // X2-05: a non-trivial C++ record prvalue (a factory result): a member operator may run on it, as in C++; it lives
+    //     in a hidden owner until the end of the full expression. / Un prvalue record C++ no trivial: un operador
+    //     miembro puede ejecutarse sobre el, como en C++; vive en un dueno oculto hasta el final de la expresion.
+    bool cppNonTrivialTemporary(const ExpressionResult& value) const noexcept;
     // X2-05: `o = value` on a non-trivial C++ record calls its selected operator=. / Llama a su operator= elegido.
     bool tryCppAssignment(const ast::AstNode* expression, const ExpressionResult& left, const ExpressionResult& right,
         std::size_t methodMemberOrdinal, std::size_t scopeOrdinal, diagnostics::DiagnosticEngine& diagnostics,

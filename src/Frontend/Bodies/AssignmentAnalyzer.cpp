@@ -4220,6 +4220,15 @@ std::optional<std::size_t> ProjectMethodBodyModel::automaticPropertyBackingField
     }
     return std::nullopt;
 }
+bool ProjectMethodBodyModel::cppNonTrivialTemporary(const ExpressionResult& value) const noexcept
+{
+    if (nameLookup_ == nullptr || !value.valid || value.addressable || !value.typeKey.starts_with("type:")) return false;
+    const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(value.typeKey).substr(5));
+    const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+    return imported != nullptr && imported->origin == CppImportedTypeOrigin::CppRecord &&
+        !nameLookup_->cppTrivialValueEligible(*ordinal);
+}
+
 // X2-08: `++x` / `--x` of a C++ object with a prefix operator. / `++x` / `--x` de un objeto C++ con operador prefijo.
 bool ProjectMethodBodyModel::tryCppPrefixIncrement(
     const ast::AstNode* expression, const ExpressionResult& operand, std::size_t methodMemberOrdinal,
@@ -4227,8 +4236,9 @@ bool ProjectMethodBodyModel::tryCppPrefixIncrement(
 {
     const auto operation = expression->tokenKind();
     const bool dereference = operation == lexer::TokenKind::Star;
+    const bool temporary = cppNonTrivialTemporary(operand); // X2-05: `*lib.make(0)`, `++lib.make(1)`
     if (namespaceFunctionModel_ == nullptr || !operand.typeKey.starts_with("type:") ||
-        !(operand.assignable || (dereference && operand.addressable)) || expression->first() == nullptr ||
+        !(operand.assignable || temporary || (dereference && operand.addressable)) || expression->first() == nullptr ||
         (operation != lexer::TokenKind::PlusPlus && operation != lexer::TokenKind::MinusMinus && !dereference))
         return false;
     const std::string name = dereference ? "__nsc_cpp_deref"
@@ -4243,7 +4253,7 @@ bool ProjectMethodBodyModel::tryCppPrefixIncrement(
               (dereference && function.parameters[0].passKind == ParameterPassKind::In)) ||
             function.parameters[0].pointeeTypeKey != operand.typeKey) continue;
         // A const receiver only reaches a const operator. / Un receptor const solo alcanza un operador const.
-        if (function.parameters[0].passKind == ParameterPassKind::Ref && !operand.assignable) continue;
+        if (function.parameters[0].passKind == ParameterPassKind::Ref && !operand.assignable && !temporary) continue;
         if (selected) return false;
         selected = ordinal;
     }

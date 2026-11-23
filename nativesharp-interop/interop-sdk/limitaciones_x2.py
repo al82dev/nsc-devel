@@ -106,6 +106,9 @@ positivo(Caso('x2-retorno-temprano', H, S, **CPP),
          'lib.reset(); int r = Early(); ref lib.Counters k = ref lib.counters(); return k.ctor == 1 && k.dtor == 1 ? r : 1;',
          preludio=PRE, modes=['directo'])
 rechazo(c, 'var o = new lib.Obj(1); return o("x");', "no C++ 'operator()'")
+# X2-05: a factory prvalue passed to a by-value parameter would be copied by the by-value adapter where C++ constructs
+# the parameter in place: still rejected. / Un prvalue a un parametro por valor seguiria copiandose: sigue rechazado.
+rechazo(c, 'return lib.take_val(lib.make(42));', "no viable overload of namespace function 'lib.take_val'")
 rechazo(c, 'var m = new lib.MoveOnly(1); var m2 = new lib.MoveOnly(in m); return 0;', 'constructor')
 # X2-05: the forms that still need a non-local destination keep the former rejection's coverage.
 # X2-05: las formas que aun necesitan un destino no local conservan la cobertura del rechazo anterior.
@@ -122,6 +125,9 @@ BODY_TEMP = r'''
     if (k.ctor != 1 || k.copy + k.move != 0 || k.dtor != 1) return 1;
     int b = lib.make(1).v + lib.make(1).v;
     if (k.ctor != 3 || k.copy + k.move != 0 || k.dtor != 3) return 2;
+    // Member operators on a temporary, as in C++. / Operadores miembro sobre un temporal, como en C++.
+    int d = lib.make(1)(1) + *lib.make(0);
+    if (d != 2 || k.ctor != 5 || k.copy + k.move != 0 || k.dtor != 5) return 3;
     return a + b;
 '''
 positivo(Caso('x2-temporal-receptor', H, S, **CPP), BODY_TEMP, modes=['directo', 'dll'])

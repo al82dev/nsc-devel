@@ -287,8 +287,18 @@ void ProjectOopHirModel::ownCppTemporaries()
             if (parent == parents.end()) continue;
             const bool materialized = node->kind == ProjectOopHirNodeKind::TemporaryAddress &&
                 node->children.size() == 1 && cppConstruction(node->children.front().get());
+            // A non-trivial C++ record argument of a call always travels by address (`const T&`, `T&&`, the self
+            //     of a member adapter). / Un argumento record C++ no trivial de una llamada viaja por direccion.
+            //     A by-value adapter (`@nsc-byvalue`) would copy the prvalue where C++ constructs the parameter
+            //     directly: that call keeps its rejection. / Un adaptador por valor copiaria el prvalue donde C++
+            //     construye el parametro directamente: esa llamada conserva su rechazo.
+            const auto* callee = parent->second->kind == ProjectOopHirNodeKind::StaticCall &&
+                    parent->second->namespaceFunctionOrdinal && namespaceFunctionModel_ != nullptr &&
+                    *parent->second->namespaceFunctionOrdinal < namespaceFunctionModel_->functions().size()
+                ? &namespaceFunctionModel_->functions()[*parent->second->namespaceFunctionOrdinal] : nullptr;
             const bool addressed = cppConstruction(node) &&
-                parent->second->kind == ProjectOopHirNodeKind::AddressValue;
+                (parent->second->kind == ProjectOopHirNodeKind::AddressValue ||
+                 (callee != nullptr && !(callee->cppClangUsr && callee->cppClangUsr->ends_with("@nsc-byvalue"))));
             if (!materialized && !addressed) continue;
             std::unique_ptr<ProjectOopHirNode>* slot = hirChildSlot(*parent->second, node);
             if (slot == nullptr) continue;
