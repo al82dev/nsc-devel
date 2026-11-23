@@ -956,6 +956,50 @@ bool Parser::looksLikeGenericCallTypeArguments() const noexcept
     return false;
 }
 
+// EN: X4-04. `name<args>` not followed by a call is a value only when the token after the closing `>` cannot continue
+//     a comparison chain, the disambiguation of C# (12.8.8.2): `)`, `]`, `}`, `:`, `;`, `,`, `?`, `==`, `!=` or the end;
+//     or when an argument is a predefined type, which no comparison can contain (`lib.sz<long> * 5`).
+// ES: X4-04. `name<args>` sin llamada es un valor solo si el token tras el `>` de cierre no puede continuar una cadena
+//     de comparaciones, la desambiguacion de C#; o si un argumento es un tipo predefinido, que ninguna comparacion
+//     puede contener.
+bool Parser::looksLikeVariableTemplateArguments() const noexcept
+{
+    if (!at(TokenKind::Less)) return false;
+    std::size_t cursor = index_ + 1U;
+    int genericDepth = 1;
+    int parenthesisDepth = 0;
+    bool predefined = false;
+    while (cursor < tokens_.size())
+    {
+        const TokenKind kind = tokens_[cursor].kind();
+        if (!genericLookaheadTokenIsAllowed(cursor, parenthesisDepth)) return false;
+        if (lexer::isBuiltinTypeKeyword(kind)) predefined = true;
+        if (kind == TokenKind::LeftParen) ++parenthesisDepth;
+        else if (kind == TokenKind::RightParen)
+        {
+            if (--parenthesisDepth < 0) return false;
+        }
+        else if (parenthesisDepth == 0 && kind == TokenKind::Less) ++genericDepth;
+        else if (parenthesisDepth == 0 && (kind == TokenKind::Greater || kind == TokenKind::GreaterGreater))
+        {
+            genericDepth -= kind == TokenKind::GreaterGreater ? 2 : 1;
+            if (genericDepth == 0)
+            {
+                if (cursor == index_ + 1U || cursor + 1U >= tokens_.size()) return false;
+                const TokenKind next = tokens_[cursor + 1U].kind();
+                if (next == TokenKind::LeftParen || next == TokenKind::Dot) return false;
+                return predefined || next == TokenKind::RightParen || next == TokenKind::RightBracket ||
+                    next == TokenKind::RightBrace || next == TokenKind::Colon || next == TokenKind::Semicolon ||
+                    next == TokenKind::Comma || next == TokenKind::Question || next == TokenKind::EqualEqual ||
+                    next == TokenKind::BangEqual || next == TokenKind::EndOfFile;
+            }
+            if (genericDepth < 0) return false;
+        }
+        ++cursor;
+    }
+    return false;
+}
+
 bool Parser::scanClosedGenericTypePrefix(std::size_t& cursor) const noexcept
 {
     if (cursor + 2U < tokens_.size() &&

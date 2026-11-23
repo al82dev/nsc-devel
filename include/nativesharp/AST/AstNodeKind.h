@@ -195,7 +195,12 @@ enum class AstNodeKind
     //     type. Only a C function-like macro accepts it: it passes the C spelling of the type.
     // ES: T19-042. Un tipo predefinido escrito como argumento de llamada (`SIZE(int)`, `CAST(x, long*)`); typeSyntax()
     //     es el tipo. Solo una macro de funcion C lo acepta: pasa la escritura C del tipo.
-    TypeArgumentExpression
+    TypeArgumentExpression,
+    // EN: X4-04. A C++ variable template specialization written as a value (`lib.sz<long>`): first() is the name and
+    //     typeSyntaxes() the arguments. Clang evaluates it before name binding and a literal replaces it.
+    // ES: X4-04. Una especializacion de plantilla de variable C++ escrita como valor (`lib.sz<long>`): first() es el
+    //     nombre y typeSyntaxes() los argumentos. Clang la evalua antes de enlazar nombres y un literal la reemplaza.
+    VariableTemplateExpression
 };
 
 std::string_view astNodeKindName(AstNodeKind kind) noexcept;

@@ -38,4 +38,25 @@ positivo(c, BODY, modes=['directo', 'dll'])
 rechazo(c, 'short s = 1; return lib.wide(s);', 'Clang cannot deduce the template arguments')
 rechazo(c, 'return 0;', 'is not imported in its project',
         preludio='struct P { public int x; }\nint Use() { P p; p.x = 1; var b = new lib.Box<P>(p); return b.get().x; }\n')
+# X4-04: a C++ variable template written as a value (`lib.sz<long>`) is a value when the token after `>` cannot
+# continue a comparison (C# disambiguation) or an argument is a predefined type; Clang evaluates the specialization and
+# an integral or bool constant replaces it. Other variable templates are rejected with the reason.
+# X4-04: una plantilla de variable C++ escrita como valor; Clang evalua la especializacion (constante entera o bool).
+HV = r'''
+namespace lib {
+template<class T> constexpr int sz = sizeof(T);
+template<class T, class U> constexpr bool same = false;
+template<class T> constexpr bool same<T, T> = true;
+template<int N> constexpr long long sq = (long long)N * N;
+template<class T> inline T zero = T(0);
+}
+'''
+positivo(Caso('x4-plantilla-variable', HV, None, **CPP),
+         'int a = lib.sz<int>; bool s = lib.same<int, int>; if (!s || lib.same<int, long>) return 1;\n'
+         'long v = lib.sq<6>; return lib.sz<long> * 5 + 2 == 42 && a == 4 && v == 36 ? 42 : 2;',
+         modes=['directo', 'dll'])
+positivo(Caso('x4-comparacion', HV, None, **CPP), 'int a = 3, b = 2, c = 1; bool x = a < b; return x || c > a ? 1 : 42;',
+         modes=['directo'])
+rechazo(Caso('x4-plantilla-variable-double', HV, None, **CPP), 'return (int)lib.zero<double>;',
+        'not an integral or bool constant')
 fin()

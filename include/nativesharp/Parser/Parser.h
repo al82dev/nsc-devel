@@ -385,6 +385,8 @@ private:
         int parenthesisDepth) const noexcept;
     bool canStartTypeArgumentAt(std::size_t tokenIndex) const noexcept;
     bool looksLikeGenericCallTypeArguments() const noexcept;
+    // X4-04: `name<args>` as a value (a C++ variable template). / `name<args>` como valor.
+    bool looksLikeVariableTemplateArguments() const noexcept;
     bool scanClosedGenericTypePrefix(std::size_t& cursor) const noexcept;
     bool looksLikeClosedGenericTypeReference() const noexcept;
 

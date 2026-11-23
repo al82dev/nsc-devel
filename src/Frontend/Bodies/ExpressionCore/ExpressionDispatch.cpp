@@ -164,6 +164,12 @@ bool ProjectMethodBodyModel::analyzeExpressionCoreLiteralKinds(
         //     value it is an error, as in C.
         // ES: T19-042. Un argumento de tipo solo se pasa a una macro de funcion C, que no lo analiza; como valor es
         //     un error, como en C.
+        // X4-04: Clang did not evaluate it as a constant before name binding. / Clang no la evaluo como constante.
+        case ast::AstNodeKind::VariableTemplateExpression:
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand, diagnostics::DiagnosticSeverity::Error,
+                expression->range(), "this C++ variable template specialization is not an integral or bool constant "
+                "that Clang evaluates (variable templates are imported as constexpr integral and bool values)");
+            return true;
         case ast::AstNodeKind::TypeArgumentExpression:
             diagnostics.report(diagnostics::DiagnosticId::InvalidOperand, diagnostics::DiagnosticSeverity::Error,
                 expression->range(), "a type is not a value: only a C function-like macro takes a type argument");

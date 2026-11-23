@@ -1154,6 +1154,20 @@ void Parser::PostfixIterationMachine::startPostfix(Work work)
     }
     std::vector<ast::TypeSyntax*> genericArguments;
     const bool explicitGenerics = parser_.looksLikeGenericCallTypeArguments();
+    // X4-04: a C++ variable template written as a value. / Una plantilla de variable C++ escrita como valor.
+    if (!explicitGenerics && (expression->kind() == ast::AstNodeKind::IdentifierExpression ||
+            expression->kind() == ast::AstNodeKind::MemberExpression) &&
+        parser_.looksLikeVariableTemplateArguments())
+    {
+        const SourceRange begin = expression->range();
+        parser_.parseTypeArgumentList(genericArguments);
+        ast::AstNode* value = parser_.arena_.make<ast::AstNode>(ast::AstNodeKind::VariableTemplateExpression,
+            parser_.join(begin, parser_.tokens_[parser_.index_ - 1U].range()));
+        value->setFirst(expression);
+        for (ast::TypeSyntax* type : genericArguments) value->addTypeSyntax(type);
+        continuePostfix(std::move(work), value);
+        return;
+    }
     if (explicitGenerics) parser_.parseTypeArgumentList(genericArguments);
     if (parser_.consumeIf(TokenKind::LeftParen))
     {

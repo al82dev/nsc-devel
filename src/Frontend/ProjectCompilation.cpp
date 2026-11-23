@@ -3784,6 +3784,103 @@ void evaluateMacroArrayDimensions(ast::TypeSyntax* type, ast::AstArena& arena,
     evaluateMacroArrayDimensions(type->functionReturnType(), arena, functionMacros, sessions);
 }
 
+// EN: X4-04. A C++ variable template specialization written as a value is spelled in C++ (`lib.sz<long>` is
+//     `lib::sz<long long>`) and Clang evaluates it as a constant expression of the header: a bool becomes a bool
+//     literal and an integral value an integer literal. Anything else stays and is rejected with its reason.
+// ES: X4-04. Una especializacion de plantilla de variable C++ escrita como valor se escribe en C++ y Clang la evalua
+//     como expresion constante del encabezado: un bool se vuelve literal bool y un valor entero, literal entero. Lo
+//     demas queda y se rechaza con su motivo.
+std::optional<std::string> variableTemplateSpelling(const ProjectSyntaxUnit& unit, const ast::AstNode& node)
+{
+    const auto range = node.range();
+    std::string text;
+    for (const auto& token : unit.tokens())
+    {
+        if (token.range().begin().offset() < range.begin().offset()) continue;
+        if (token.range().end().offset() > range.end().offset()) break;
+        using lexer::TokenKind;
+        std::string spelling;
+        switch (token.kind())
+        {
+        case TokenKind::Identifier: case TokenKind::IntegerLiteral: spelling = std::string(token.lexeme()); break;
+        case TokenKind::Dot: spelling = "::"; break;
+        case TokenKind::Less: spelling = "<"; break;
+        case TokenKind::Greater: spelling = ">"; break;
+        case TokenKind::GreaterGreater: spelling = "> >"; break;
+        case TokenKind::Comma: spelling = ", "; break;
+        case TokenKind::Star: spelling = "*"; break;
+        case TokenKind::Minus: spelling = "-"; break;
+        case TokenKind::KwTrue: spelling = "true"; break;
+        case TokenKind::KwFalse: spelling = "false"; break;
+        case TokenKind::KwBool: spelling = "bool"; break;
+        case TokenKind::KwSByte: spelling = "signed char"; break;
+        case TokenKind::KwByte: spelling = "unsigned char"; break;
+        case TokenKind::KwShort: spelling = "short"; break;
+        case TokenKind::KwUShort: spelling = "unsigned short"; break;
+        case TokenKind::KwInt: spelling = "int"; break;
+        case TokenKind::KwUInt: spelling = "unsigned int"; break;
+        case TokenKind::KwLong: case TokenKind::KwNInt: spelling = "long long"; break;
+        case TokenKind::KwULong: case TokenKind::KwNUInt: spelling = "unsigned long long"; break;
+        case TokenKind::KwFloat: spelling = "float"; break;
+        case TokenKind::KwDouble: spelling = "double"; break;
+        case TokenKind::KwVoid: spelling = "void"; break;
+        default: return std::nullopt;
+        }
+        if (!text.empty() && !spelling.empty() && std::isalnum(static_cast<unsigned char>(text.back())) &&
+            std::isalnum(static_cast<unsigned char>(spelling.front()))) text += ' ';
+        text += spelling;
+    }
+    return text.empty() ? std::nullopt : std::optional<std::string>("(" + text + ")");
+}
+
+void evaluateVariableTemplatesInTree(ast::AstNode& node, ast::AstArena& arena, const ProjectSyntaxUnit& unit,
+    const std::vector<std::unique_ptr<interop::CppInteropSession>>& sessions, std::set<const ast::AstNode*>& visited)
+{
+    if (!visited.insert(&node).second) return;
+    const auto evaluated = [&](ast::AstNode* child) -> ast::AstNode* {
+        if (!child || child->kind() != ast::AstNodeKind::VariableTemplateExpression) return child;
+        const auto spelling = variableTemplateSpelling(unit, *child);
+        if (!spelling) return child;
+        for (const auto& session : sessions)
+        {
+            if (!session) continue;
+            // The probe accepts integer types; a bool is read through `? 1 : 0`. / La sonda acepta enteros; un bool
+            //     se lee con `? 1 : 0`.
+            const auto isBool = session->evaluateIntegerConstantExpression(
+                "__is_same(__remove_cvref(decltype(" + *spelling + ")), bool) ? 1 : 0");
+            if (!isBool) continue;
+            const auto value = session->evaluateIntegerConstantExpression(
+                isBool->first ? *spelling + " ? 1 : 0" : *spelling);
+            if (!value) continue;
+            if (isBool->first)
+            {
+                auto* literal = arena.make<ast::AstNode>(ast::AstNodeKind::BooleanLiteralExpression, child->range());
+                literal->setTokenKind(value->first ? lexer::TokenKind::KwTrue : lexer::TokenKind::KwFalse);
+                literal->setIntegerValue(value->first ? 1U : 0U);
+                literal->setText(value->first ? "true" : "false");
+                return literal;
+            }
+            auto* literal = arena.make<ast::AstNode>(ast::AstNodeKind::IntegerLiteralExpression, child->range());
+            literal->setTokenKind(lexer::TokenKind::IntegerLiteral);
+            literal->setText(value->second ? std::to_string(static_cast<std::int64_t>(value->first))
+                                           : std::to_string(value->first));
+            literal->setIntegerValue(value->first);
+            return literal;
+        }
+        return child;
+    };
+    if (auto* replaced = evaluated(node.first()); replaced != node.first()) node.setFirst(replaced);
+    if (auto* replaced = evaluated(node.second()); replaced != node.second()) node.setSecond(replaced);
+    if (auto* replaced = evaluated(node.third()); replaced != node.third()) node.setThird(replaced);
+    for (std::size_t index = 0; index < node.children().size(); ++index)
+        if (auto* replaced = evaluated(node.children()[index]); replaced != node.children()[index])
+            node.replaceChild(index, replaced);
+    for (ast::AstNode* child : {node.first(), node.second(), node.third()})
+        if (child) evaluateVariableTemplatesInTree(*child, arena, unit, sessions, visited);
+    for (ast::AstNode* child : node.children())
+        if (child) evaluateVariableTemplatesInTree(*child, arena, unit, sessions, visited);
+}
+
 void evaluateMacroArrayDimensionsInTree(ast::AstNode& node, ast::AstArena& arena,
     const std::set<std::string, std::less<>>& functionMacros,
     const std::vector<std::unique_ptr<interop::CppInteropSession>>& sessions, std::set<const ast::AstNode*>& visited)
@@ -4278,6 +4375,17 @@ bool ProjectCompilation::parseSyntaxUnits(
     for (auto& unit : units_)
     {
         if (!unit || !unit->syntaxTree()) continue;
+        // X4-04: C++ variable templates written as values. / Plantillas de variable C++ escritas como valores.
+        for (const auto& group : cppProjectSessions_)
+        {
+            std::error_code ec;
+            if (!std::filesystem::equivalent(group.projectFile,
+                    projectGraph_->projects()[unit->projectOrdinal()].projectFile(), ec) || ec)
+                continue;
+            std::set<const ast::AstNode*> visited;
+            evaluateVariableTemplatesInTree(*unit->syntaxTree(), unit->arena(), *unit, group.sessions, visited);
+            break;
+        }
         if (const auto macros = cppFunctionMacros_.find(unit->projectOrdinal()); macros != cppFunctionMacros_.end())
             for (const auto& group : cppProjectSessions_)
             {
