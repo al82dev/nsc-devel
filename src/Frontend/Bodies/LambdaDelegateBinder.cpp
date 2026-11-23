@@ -1606,6 +1606,32 @@ std::string ProjectMethodBodyModel::lambdaResultTypeKey(
     return resultTypeKey;
 }
 
+namespace
+{
+// EN: C5-07. A sysv_abi callback whose values are 32/64-bit integers, floating values, bool or pointers: LLVM's
+//     x86_64_sysvcc classifies them as Clang does, so a NativeSharp thunk of that convention is exact. Records,
+//     narrow integers (extension rules) and 128-bit values need Clang's plan and stay out.
+// ES: C5-07. Un callback sysv_abi cuyos valores son enteros de 32/64 bits, flotantes, bool o punteros: x86_64_sysvcc
+//     de LLVM los clasifica como Clang, asi un thunk NativeSharp de esa convencion es exacto. Records, enteros
+//     estrechos y valores de 128 bits necesitan el plan de Clang y quedan fuera.
+bool sysvScalarCallback(const language::FunctionType& function)
+{
+    const auto scalar = [](std::string_view key) {
+        return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" || key == "builtin:ulong" ||
+            key == "builtin:nint" || key == "builtin:nuint" || key == "builtin:float" || key == "builtin:double" ||
+            key == "builtin:bool" || key.ends_with('*');
+    };
+    if (function.variadic) return false;
+    for (const auto& parameter : function.parameters)
+        if (!scalar(parameter)) return false;
+    return function.result == "builtin:void" || scalar(function.result);
+}
+
+constexpr std::string_view kSysVCallbackLimit =
+    " (sysv_abi callbacks take and return 32/64-bit integers, floating values, bool and pointers; records, narrow "
+    "integers and 128-bit values need Clang's plan)";
+}
+
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDelegate(
     const ast::AstNode* syntax,
     std::string_view delegateTypeKey,
@@ -1619,11 +1645,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
         return result;
     }
     if (const auto target = language::parseFunctionTypeIdentity(delegateTypeKey);
-        target && target->callingConvention == language::CallingConvention::SysV)
+        target && target->callingConvention == language::CallingConvention::SysV && !sysvScalarCallback(*target))
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error, syntax->range(),
-            "conversion of a lambda to a sysv_abi function pointer is not yet supported");
+            "conversion of a lambda to this sysv_abi function pointer is not yet supported" +
+                std::string(kSysVCallbackLimit));
         return result;
     }
     if (const auto target = language::parseFunctionTypeIdentity(delegateTypeKey);
@@ -1891,11 +1918,17 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
                 "conversion of a sysv_abi function to a delegate is not yet supported");
             return false;
         }
-        if (targetSysV && (function.cppCanonicalIdentity.empty() || function.cppCallingConvention != "sysv_abi"))
+        // C5-07: a NativeSharp function reaches a scalar sysv_abi pointer through its thunk. / Una funcion
+        //     NativeSharp llega a un puntero sysv_abi escalar por su thunk.
+        const auto sysvTarget = language::parseFunctionTypeIdentity(delegateTypeKey);
+        if (targetSysV && (function.cppCanonicalIdentity.empty()
+                ? !(sysvTarget && sysvScalarCallback(*sysvTarget))
+                : function.cppCallingConvention != "sysv_abi"))
         {
             diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
                 diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},
-                "conversion of a method to a sysv_abi function pointer is not yet supported");
+                "conversion of a method to this sysv_abi function pointer is not yet supported" +
+                    std::string(function.cppCanonicalIdentity.empty() ? kSysVCallbackLimit : std::string_view{}));
             return false;
         }
         // EN: T08-D22: a C function keeps its own address (T08-D18), so a C callback type must use the same
@@ -1946,11 +1979,13 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
             "conversion of a method to a regcall function pointer is not yet supported");
         return false;
     }
-    else if (targetSysV)
+    else if (const auto sysvTarget = language::parseFunctionTypeIdentity(delegateTypeKey);
+             targetSysV && !(sysvTarget && sysvScalarCallback(*sysvTarget)))
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},
-            "conversion of a method to a sysv_abi function pointer is not yet supported");
+            "conversion of a method to this sysv_abi function pointer is not yet supported" +
+                std::string(kSysVCallbackLimit));
         return false;
     }
     // Interop Foundation (callbacks C -> NativeSharp): an extern C delegate value IS a raw C

@@ -121,6 +121,11 @@ S7 = 'int call_scb(scb f) { P p = {30, 10}; return f(p, 2); }\n'
 c7 = Caso('c5-sysv-callback', H7, S7)
 positivo(c7, 'if (call_scb(s_impl) != 42) return 1; scb f = s_impl; P p; p.x = 30; p.y = 10; return f(p, 2);')
 rechazo(c7, 'return call_scb((p, k) => p.x + k);', 'sysv_abi function pointer is not yet supported')
+# C5-07: a scalar sysv_abi callback (32/64-bit integers, floating values, bool, pointers) is a NativeSharp thunk of
+# that convention; records stay rejected (above). / Un callback sysv_abi escalar es un thunk NativeSharp de esa convencion.
+H7b = 'typedef long long (__attribute__((sysv_abi)) *scalar_cb)(int a, double d, long long* p, _Bool f);\nlong long call_scalar(scalar_cb f);\n'
+S7b = 'long long call_scalar(scalar_cb f) { long long v = 30; return f(5, 2.5, &v, 1); }\n'
+positivo(Caso('c5-sysv-escalar', H7b, S7b), 'return (int)call_scalar((a, d, p, f) => a + (long)(d * 2) + *p + (f ? 2 : 0));')
 
 SINGLE = r'''
 #ifndef ONE_H

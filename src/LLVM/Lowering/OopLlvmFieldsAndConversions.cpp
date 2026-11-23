@@ -289,7 +289,8 @@ LLVMValueRef OopLlvmImplementation::convert(
                 return failValue(error, "invalid T08-F02 anonymous lambda function-pointer conversion");
             return callbackGuardThunk(
                 language::anonymousLambdaGeneratedName(*lambdaType), error,
-                targetFunction->callingConvention == language::CallingConvention::VectorCall);
+                targetFunction->callingConvention == language::CallingConvention::VectorCall, true,
+                targetFunction->callingConvention == language::CallingConvention::SysV);
         }
         const std::optional<std::vector<std::string>> sourceTuple =
             frontend::ProjectTypeConversion::tupleElementTypeKeys(source);

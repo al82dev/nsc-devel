@@ -475,7 +475,10 @@ private:
         const std::string& targetName,
         std::string& error,
         bool vectorCall,
-        bool defineBody = true);
+        bool defineBody = true,
+        bool sysvCall = false);
+    // C5-07: a function type with the sysv_abi convention. / Un tipo de funcion con la convencion sysv_abi.
+    bool isSysVDelegateType(std::string_view typeKey) const noexcept;
 
     const frontend::ProjectOopMirFunction* findCallbackMirFunction(
         std::string_view targetName) const noexcept;

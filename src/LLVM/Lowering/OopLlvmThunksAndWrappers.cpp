@@ -55,7 +55,7 @@ bool OopLlvmImplementation::defineFunctions(std::string& error)
 
 bool OopLlvmImplementation::defineCallbackGuardThunks(std::string& error, bool defineBodies)
 {
-        std::vector<std::pair<std::string, bool>> targets;
+        std::vector<std::tuple<std::string, bool, bool>> targets;
         const auto visit = [&](const frontend::ProjectOopMirNode* node, auto&& self) -> void
         {
             if (node == nullptr) return;
@@ -68,8 +68,8 @@ bool OopLlvmImplementation::defineCallbackGuardThunks(std::string& error, bool d
                 const auto* imported = findCallbackMirFunction(node->calleeName);
                 if (node->kind == frontend::ProjectOopMirNodeKind::DelegateCreate &&
                     directCFunctionAddress(imported)) return;
-                const std::pair<std::string, bool> target = {
-                    node->calleeName, isVectorCallDelegateType(node->typeKey)};
+                const std::tuple<std::string, bool, bool> target = {
+                    node->calleeName, isVectorCallDelegateType(node->typeKey), isSysVDelegateType(node->typeKey)};
                 if (std::find(targets.begin(), targets.end(), target) == targets.end())
                     targets.push_back(target);
             }
@@ -100,9 +100,9 @@ bool OopLlvmImplementation::defineCallbackGuardThunks(std::string& error, bool d
             for (const frontend::ProjectOopMirFieldInitializer& initializer : mirModel_.fieldInitializers())
                 visit(initializer.value.get(), visit);
         }
-        for (const auto& [target, vectorCall] : targets)
+        for (const auto& [target, vectorCall, sysvCall] : targets)
         {
-            if (callbackGuardThunk(target, error, vectorCall, defineBodies) == nullptr) return false;
+            if (callbackGuardThunk(target, error, vectorCall, defineBodies, sysvCall) == nullptr) return false;
         }
         return true;
     }
@@ -408,9 +408,10 @@ LLVMValueRef OopLlvmImplementation::callbackGuardThunk(
         const std::string& targetName,
         std::string& error,
         bool vectorCall,
-        bool defineBody )
+        bool defineBody,
+        bool sysvCall)
 {
-        const std::string cacheKey = targetName + (vectorCall ? "|vectorcall" : "|c");
+        const std::string cacheKey = targetName + (vectorCall ? "|vectorcall" : sysvCall ? "|sysv" : "|c");
         const auto cached = callbackGuardThunks_.find(cacheKey);
         if (cached != callbackGuardThunks_.end()) return cached->second.function;
         const auto found = functions_.find(targetName);
@@ -442,13 +443,16 @@ LLVMValueRef OopLlvmImplementation::callbackGuardThunk(
             vectorReturnType, externalReturnType, error);
         if (thunkType == nullptr) return nullptr;
         const std::string thunkName = targetName +
-            (vectorCall ? "__vectorcall_boundary" : "__c_boundary");
+            (vectorCall ? "__vectorcall_boundary" : sysvCall ? "__sysv_boundary" : "__c_boundary");
         LLVMValueRef thunk = LLVMAddFunction(module_, thunkName.c_str(), thunkType);
         if (thunk == nullptr)
         {
             return failValue(error, "C1.3 failed to declare the callback boundary thunk for " + targetName);
         }
         if (vectorCall) LLVMSetFunctionCallConv(thunk, LLVMX86VectorCallCallConv);
+        // C5-07: a scalar sysv_abi callback; LLVM classifies its values as Clang does. / Un callback sysv_abi
+        //     escalar; LLVM clasifica sus valores como Clang.
+        if (sysvCall) LLVMSetFunctionCallConv(thunk, LLVMX8664SysVCallConv);
         applyUwtableAttribute(thunk);
         // Whatever ABI attributes the external declaration carries (sret or HVA inreg) must be
         // reproduced on the thunk, because the thunk is what native code sees.
@@ -693,6 +697,12 @@ bool OopLlvmImplementation::isExternCDelegateType(std::string_view typeKey) cons
         }
         return false;
     }
+
+bool OopLlvmImplementation::isSysVDelegateType(std::string_view typeKey) const noexcept
+{
+        const auto functionType = language::parseFunctionTypeIdentity(typeKey);
+        return functionType && functionType->callingConvention == language::CallingConvention::SysV;
+}
 
 bool OopLlvmImplementation::isVectorCallDelegateType(std::string_view typeKey) const noexcept
 {
