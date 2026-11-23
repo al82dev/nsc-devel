@@ -24,6 +24,10 @@ struct CppLibraryReference final
     std::vector<interop::CppIncludePath> includePaths;
     std::vector<interop::CppMacroOption> macros;
     interop::CppVolatileMode volatileMode = interop::CppVolatileMode::Default;
+    // EN: Rtti="false": the library is compiled without RTTI (MSVC /GR-, Clang -fno-rtti); NSC's Clang session
+    //     uses the same option, so the vtables NSC emits need no `type_info` from the C runtime.
+    // ES: Rtti="false": la biblioteca se compila sin RTTI; la sesion de Clang de NSC usa la misma opcion.
+    bool rtti = true;
     // EN: T08-D25. PublicTypes="Header": the library publishes this header's own C types in its NSMeta catalog.
     // ES: T08-D25. PublicTypes="Header": la biblioteca publica en su catalogo NSMeta los tipos C de este encabezado.
     bool publicTypes = false;

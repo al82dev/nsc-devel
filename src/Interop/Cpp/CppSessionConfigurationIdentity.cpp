@@ -24,6 +24,7 @@ std::string cppSessionConfigurationIdentity(const CppSessionOptions& options)
     text("NativeSharp.CppSessionConfiguration.v2");
     number(static_cast<std::uint64_t>(options.language));
     number(static_cast<std::uint64_t>(options.volatileMode));
+    if (!options.rtti) number(0x52545449U); // Rtti="false" changes the identity only when used.
     text(options.languageStandard);
     text(options.targetTriple);
     path(options.driverReferencePath);

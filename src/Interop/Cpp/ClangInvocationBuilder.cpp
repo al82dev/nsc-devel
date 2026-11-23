@@ -23,6 +23,7 @@ std::vector<std::string> buildClangInvocationArguments(const CppSessionOptions& 
     if (!options.targetCpu.empty()) args.push_back("-march=" + options.targetCpu);
     if (options.volatileMode == CppVolatileMode::Microsoft) args.push_back("-fms-volatile");
     else if (options.volatileMode == CppVolatileMode::Iso) args.push_back("-fno-ms-volatile");
+    if (!options.rtti && options.language == CppLanguageMode::Cpp) args.push_back("-fno-rtti");
     for (const auto& path : options.includePaths)
     {
         args.push_back(path.kind == CppIncludeKind::System ? "-isystem" : "-I");

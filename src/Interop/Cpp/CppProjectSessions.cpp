@@ -64,6 +64,7 @@ CppProjectSessionsResult openCppProjectSessions(
         options.language = reference.language;
         options.languageStandard = reference.languageStandard;
         options.volatileMode = reference.volatileMode;
+        options.rtti = reference.rtti;
         options.targetTriple = environment.targetTriple;
         options.targetCpu = environment.targetCpu;
         options.driverReferencePath = environment.driverReferencePath;

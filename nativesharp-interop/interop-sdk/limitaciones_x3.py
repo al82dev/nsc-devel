@@ -310,4 +310,21 @@ class Both : ICalc, IName
 '''
 positivo(Caso('x3-com-multiple', HMULTI, SMULTI, **CPP), 'var b = new Both(); return UseBoth((ICalc*)b);',
          preludio=PREMULTI, modes=['directo', 'dll'])
+# X3-08: a polymorphic class defined entirely inline in the header makes NSC emit its vtable; with RTTI that vtable
+# needs `type_info` from the C runtime. `Rtti="false"` on the reference (the library built with /GR- or -fno-rtti)
+# compiles NSC's Clang session with -fno-rtti too, so the derivation links without the CRT; a bad value is rejected.
+# X3-08: Rtti="false" en la referencia compila la sesion de Clang sin RTTI.
+HRTTI = r'''
+namespace lib {
+struct Node { int id; Node(int i) : id(i) {} virtual int value() const { return id; } };
+inline int read(Node* n) { return n->value() + n->id; }
+}
+'''
+CPPNORTTI = dict(language='C++', standard='c++20', clang_args=['-fno-rtti'])
+positivo(Caso('x3-rtti-false', HRTTI, None, extra_ref=' Rtti="false"', **CPPNORTTI),
+         'var l = new Leaf(12); return lib.read((lib.Node*)l);',
+         preludio='class Leaf : lib.Node { public Leaf(int k) : base(k) { } public int value() { return 30; } }\n',
+         modes=['directo', 'dll'])
+rechazo(Caso('x3-rtti-invalido', HRTTI, None, extra_ref=' Rtti="no"', **CPPNORTTI), 'return 0;',
+        'Rtti must be true or false')
 fin()
