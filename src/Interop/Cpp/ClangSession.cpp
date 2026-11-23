@@ -4146,7 +4146,7 @@ public:
             const auto* record = records.back();
             records.pop_back();
             for (const auto* method : record->methods())
-                if (method->isPureVirtual() && method->getIdentifier())
+                if (method->isVirtual() && !llvm::isa<clang::CXXDestructorDecl>(method) && method->getIdentifier())
                     methods.emplace(method->getNameAsString(), method);
             for (const auto& base : record->bases())
                 if (const auto* baseRecord = base.getType()->getAsCXXRecordDecl()) records.push_back(baseRecord);
@@ -4240,15 +4240,23 @@ public:
         // The vtables of the abstract bases, which the adapter's constructor installs for an instant, point at the C
         // runtime's `_purecall`; a private trap stands for it. / Las vtables de las bases abstractas apuntan al
         // `_purecall` del runtime de C; lo sustituye una trampa privada.
-        if (auto* purecall = module->getFunction("_purecall"); purecall && purecall->isDeclaration())
+        // The same for the `operator delete` of a virtual destructor's deleting variant: C++ must not delete a
+        // NativeSharp object. / Lo mismo para el `operator delete` del destructor virtual de borrado.
+        std::vector<llvm::Function*> runtime;
+        for (auto& candidate : *module)
+            if (candidate.isDeclaration() &&
+                (candidate.getName() == "_purecall" || candidate.getName().starts_with("??3@")))
+                runtime.push_back(&candidate);
+        for (std::size_t index = 0; index < runtime.size(); ++index)
         {
-            auto* trap = llvm::Function::Create(purecall->getFunctionType(), llvm::GlobalValue::InternalLinkage,
-                request.adapterName + "_purecall", module.get());
+            auto* replaced = runtime[index];
+            auto* trap = llvm::Function::Create(replaced->getFunctionType(), llvm::GlobalValue::InternalLinkage,
+                request.adapterName + "_trap" + std::to_string(index), module.get());
             llvm::IRBuilder<> builder(llvm::BasicBlock::Create(module->getContext(), "entry", trap));
             builder.CreateIntrinsic(builder.getVoidTy(), llvm::Intrinsic::trap, llvm::ArrayRef<llvm::Value*>{});
             builder.CreateUnreachable();
-            purecall->replaceAllUsesWith(trap);
-            purecall->eraseFromParent();
+            replaced->replaceAllUsesWith(trap);
+            replaced->eraseFromParent();
         }
         if (llvm::verifyModule(*module, &llvm::errs())) { error = "the adapter module is invalid"; return std::nullopt; }
         std::string ir;

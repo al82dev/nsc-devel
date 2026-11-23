@@ -4726,6 +4726,7 @@ bool selectExperimentalCppRecordTypesForCompilation(
         {
             const auto& declaration = observation.inventory[*selected].declaration;
             std::vector<std::string> names;
+            std::vector<std::string> pure;
             bool eligible = declaration.isCxx && declaration.complete && !declaration.hasVirtualBases &&
                 declaration.sizeBits == std::optional<std::uint64_t>{64} && declaration.fields.empty() &&
                 declaration.kind != CppRecordKind::Union;
@@ -4733,12 +4734,20 @@ bool selectExperimentalCppRecordTypesForCompilation(
             {
                 if (!eligible) break;
                 if (!method.isVirtual) continue;
-                if (method.kind != CppMethodKind::Method || !method.isPureVirtual || method.variadic ||
+                // A virtual destructor stays the adapter's own (C++ must not delete a NativeSharp object). / Un
+                //     destructor virtual queda como el del adaptador.
+                if (method.kind == CppMethodKind::Destructor) continue;
+                if (method.kind != CppMethodKind::Method || method.variadic ||
                     std::find(names.begin(), names.end(), method.name) != names.end())
                 { eligible = false; break; }
                 names.push_back(method.name);
+                if (method.isPureVirtual) pure.push_back(method.name);
             }
-            if (eligible && !names.empty()) type.cppInterfaceMethods = std::move(names);
+            if (eligible && !names.empty())
+            {
+                type.cppInterfaceMethods = std::move(names);
+                type.cppInterfacePureMethods = std::move(pure);
+            }
         }
         const auto value = observeCppRecordValueForEntry(observation.inventory[*selected], compilation.cppProjectSessions());
         if (!value) continue;

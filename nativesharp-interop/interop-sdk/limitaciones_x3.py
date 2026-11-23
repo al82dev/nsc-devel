@@ -166,4 +166,32 @@ int dtors() { return d; }
 positivo(Caso('x3-base-virtual-explicita', H4b, S4b, **CPP),
          '{ var d = new lib.DD(); if (lib.vb_value(&d) != 42) return 1; } return lib.dtors() == 1 ? 42 : 2;',
          modes=['directo', 'dll'])
+# X3-04: an observer interface with a virtual destructor and a virtual method with a C++ body: the class implements the
+# pure method and may override the other (`Full`) or leave it to C++ (`Doubler`). C++ must not delete the object (its
+# deleting destructor traps). / Una interfaz de observador con destructor virtual y un virtual con cuerpo C++: la clase
+# implementa el puro y puede sobrescribir el otro o dejarlo a C++.
+HOBS = r'''
+namespace lib {
+struct Listener {
+  virtual ~Listener() = default;
+  virtual int onEvent(int x) { return x; }
+  virtual int compute(int x) const = 0;
+};
+int drive(Listener* l);
+}
+'''
+PREOBS = r'''
+class Doubler : lib.Listener { public int compute(int x) { return x * 2; } }
+class Full : lib.Listener
+{
+    public int total;
+    public int onEvent(int x) { total += x; return x * 3; }
+    public int compute(int x) { return total + x; }
+}
+'''
+positivo(Caso('x3-observador', HOBS, 'namespace lib { int drive(Listener* l) { return l->onEvent(10) + l->compute(1); } }\n',
+              **CPP),
+         'var d = new Doubler(); if (lib.drive((lib.Listener*)d) != 12) return 1;\n'
+         '    var f = new Full(); return lib.drive((lib.Listener*)f) == 41 && f.total == 10 ? 42 : 2;',
+         preludio=PREOBS, modes=['directo', 'dll'])
 fin()

@@ -358,7 +358,14 @@ static bool appendCppInlineObjects(frontend::ProjectCompilation &compilation,
                         if (!function.namespaceFunctionOrdinal && function.memberOrdinal == member)
                             implementation = &function;
                 if (!implementation)
-                { error = "C++ interface method '" + name + "' of '" + classKey + "' has no NativeSharp body"; return false; }
+                {
+                    // A virtual method with a C++ body that the class does not override. / Un virtual con cuerpo
+                    //     C++ que la clase no sobrescribe.
+                    if (std::find(interface->cppInterfacePureMethods.begin(), interface->cppInterfacePureMethods.end(),
+                                  name) == interface->cppInterfacePureMethods.end()) continue;
+                    error = "C++ interface method '" + name + "' of '" + classKey + "' has no NativeSharp body";
+                    return false;
+                }
                 request.methods.emplace_back(name, implementation->mangledName + "__c_boundary");
             }
             std::string reason = "no Clang session declares the interface";

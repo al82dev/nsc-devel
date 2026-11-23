@@ -601,6 +601,10 @@ bool ProjectCompilation::buildInheritanceModel()
                     if (ordinal < memberModel_->members().size() &&
                         memberModel_->members()[ordinal].kind == ClassMemberKind::Method &&
                         !memberModel_->members()[ordinal].isStatic) cpp = &memberModel_->members()[ordinal];
+                const bool required = std::find(interface->cppInterfacePureMethods.begin(),
+                    interface->cppInterfacePureMethods.end(), name) != interface->cppInterfacePureMethods.end();
+                if (cpp == nullptr && !required && memberModel_->findMembers(field.declaringTypeOrdinal, name).empty())
+                    continue;
                 if (cpp == nullptr) { report("its method '" + name + "' has no NativeSharp signature"); continue; }
                 const ClassMemberSymbol* own = nullptr;
                 std::size_t count = 0;
@@ -608,6 +612,10 @@ bool ProjectCompilation::buildInheritanceModel()
                     if (ordinal < memberModel_->members().size() &&
                         memberModel_->members()[ordinal].kind == ClassMemberKind::Method)
                     { own = &memberModel_->members()[ordinal]; ++count; }
+                // A virtual method with a C++ body may be left to it. / Un virtual con cuerpo C++ puede quedarse asi.
+                if (count == 0 && std::find(interface->cppInterfacePureMethods.begin(),
+                        interface->cppInterfacePureMethods.end(), name) == interface->cppInterfacePureMethods.end())
+                    continue;
                 const bool same = own != nullptr && count == 1 && !own->isStatic &&
                     own->accessibility == ClassMemberAccessibility::Public &&
                     own->declaredTypeKey == cpp->declaredTypeKey && own->parameters.size() == cpp->parameters.size() &&
