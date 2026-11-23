@@ -1404,6 +1404,26 @@ bool OopLlvmImplementation::emitObjectDestructionSteps(
                     return false;
                 return true;
             }
+            // X2-06: a non-trivial C++ record field. / Un campo record C++ no trivial.
+            if (!step.cppFieldDestructorCalleeName.empty())
+            {
+                // The destructor takes the field's address (`this`) and returns nothing. / El destructor toma la
+                //     direccion del campo y no devuelve nada.
+                LLVMTypeRef pointer = LLVMPointerTypeInContext(context_, 0);
+                LLVMTypeRef destructorType = LLVMFunctionType(LLVMVoidTypeInContext(context_), &pointer, 1, 0);
+                LLVMValueRef destructor = nullptr;
+                if (const auto declared = functions_.find(step.cppFieldDestructorCalleeName); declared != functions_.end())
+                {
+                    destructorType = declared->second.functionType;
+                    destructor = declared->second.function;
+                }
+                else if (!(destructor = LLVMGetNamedFunction(module_, step.cppFieldDestructorCalleeName.c_str())))
+                    destructor = LLVMAddFunction(module_, step.cppFieldDestructorCalleeName.c_str(), destructorType);
+                LLVMValueRef arguments[] = {byteOffset(object, step.ownedField.offset, "cpp.field.addr")};
+                if (buildPotentiallyThrowingCall(destructorType, destructor, arguments, 1, "", error) == nullptr &&
+                    !error.empty()) return false;
+                return true;
+            }
             // X3-01: the C++ object of a class derived from a C++ class. / El objeto C++ de una clase derivada.
             if (!step.cppInterfaceDestroySymbol.empty())
             {

@@ -284,10 +284,62 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerInstanceFieldInitial
         value = wrapImplicitConversion(std::move(value), conversion, field.syntax->first());
     }
 
+    // X2-06: a non-trivial C++ record field is constructed in place by its initializer (`new T(...)` or a factory).
+    //     / Un campo record C++ no trivial lo construye en su lugar su inicializador.
+    if (nameLookup_ != nullptr && field.declaredTypeKey.starts_with("type:") && !field.declaredTypeKey.ends_with('*'))
+        if (const auto type = nameLookup_->typeOrdinalForIdentity(std::string_view(field.declaredTypeKey).substr(5));
+            type && nameLookup_->cppImportedType(*type) && !nameLookup_->cppTrivialValueEligible(*type) &&
+            value->kind != ProjectOopHirNodeKind::ValueConstruction)
+        {
+            error = "C++ field '" + field.name + "' must be initialized by a construction (new T(...) or a C++ function "
+                "returning T), which builds it in place";
+            return nullptr;
+        }
     auto assignment = makeNode(ProjectOopHirNodeKind::Assignment, field.syntax, field.declaredTypeKey);
     assignment->operation = lexer::TokenKind::Equal;
     assignment->children.push_back(std::move(target));
     assignment->children.push_back(std::move(value));
+    return assignment;
+}
+
+bool ProjectOopHirModel::isCppDefaultConstructedField(const ClassMemberSymbol& field) const
+{
+    if (field.kind != ClassMemberKind::Field || field.isStatic || field.syntax == nullptr ||
+        field.syntax->first() != nullptr || nameLookup_ == nullptr || !field.declaredTypeKey.starts_with("type:") ||
+        field.declaredTypeKey.ends_with('*')) return false;
+    const auto type = nameLookup_->typeOrdinalForIdentity(std::string_view(field.declaredTypeKey).substr(5));
+    return type && nameLookup_->cppImportedType(*type) && !nameLookup_->cppTrivialValueEligible(*type);
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::cppDefaultFieldConstruction(
+    std::size_t fieldMemberOrdinal, std::string& error)
+{
+    const ClassMemberSymbol& field = memberModel_->members()[fieldMemberOrdinal];
+    const auto type = nameLookup_->typeOrdinalForIdentity(std::string_view(field.declaredTypeKey).substr(5));
+    std::optional<std::size_t> constructor;
+    for (const auto ordinal : memberModel_->findMembers(*type, ".ctor"))
+        if (ordinal < memberModel_->members().size() && memberModel_->members()[ordinal].isCppExternal &&
+            memberModel_->members()[ordinal].parameters.empty() && !memberModel_->members()[ordinal].cppDeleted &&
+            memberModel_->members()[ordinal].accessibility == ClassMemberAccessibility::Public)
+            constructor = ordinal;
+    if (!constructor)
+    {
+        error = "C++ field '" + field.name + "' of type '" + field.declaredTypeKey.substr(5) +
+            "' has no accessible default constructor; give it an initializer (= new T(...))";
+        return nullptr;
+    }
+    auto target = makeNode(ProjectOopHirNodeKind::FieldAddress, field.syntax, field.declaredTypeKey);
+    target->memberOrdinal = fieldMemberOrdinal;
+    target->children.push_back(makeNode(ProjectOopHirNodeKind::ThisValue, field.syntax,
+        inheritanceModel_->typeKeyForOrdinal(field.declaringTypeOrdinal)));
+    auto construction = makeNode(ProjectOopHirNodeKind::ValueConstruction, field.syntax, field.declaredTypeKey);
+    construction->targetTypeOrdinal = *type;
+    construction->memberOrdinal = constructor;
+    construction->argumentCount = 0;
+    auto assignment = makeNode(ProjectOopHirNodeKind::Assignment, field.syntax, field.declaredTypeKey);
+    assignment->operation = lexer::TokenKind::Equal;
+    assignment->children.push_back(std::move(target));
+    assignment->children.push_back(std::move(construction));
     return assignment;
 }
 
@@ -309,6 +361,15 @@ void ProjectOopHirModel::appendInstanceFieldInitializers(
             continue;
         }
         const ClassMemberSymbol& field = memberModel_->members()[memberOrdinal];
+        // X2-06: a non-trivial C++ record field without an initializer is constructed by default. / Un campo
+        //     record C++ no trivial sin inicializador se construye por defecto.
+        if (isCppDefaultConstructedField(field))
+        {
+            auto construction = cppDefaultFieldConstruction(memberOrdinal, error);
+            if (construction == nullptr) return;
+            output.push_back(std::move(construction));
+            continue;
+        }
         if (field.kind != ClassMemberKind::Field || field.isStatic || field.syntax == nullptr ||
             field.syntax->first() == nullptr)
         {

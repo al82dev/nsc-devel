@@ -2433,6 +2433,19 @@ bool OopLlvmImplementation::lowerExpressionFrame044Store(
         LLVMValueRef address = values.back();
         values.pop_back();
         if (address == nullptr) { values.push_back(nullptr); return true; }
+        // EN: X2-06. A field initializer of a non-trivial C++ record constructs it in the field, as a C++ member is
+        //     (an assignment of such a value is its operator=, never a store).
+        // ES: X2-06. Un inicializador de campo de un record C++ no trivial lo construye en el campo, como un miembro
+        //     C++ (una asignacion de ese valor es su operator=, nunca un store).
+        if (const auto* construction = current->children[1].get();
+            construction->kind == frontend::ProjectOopMirNodeKind::ValueConstruct && construction->targetTypeOrdinal &&
+            nameLookup_.cppImportedType(*construction->targetTypeOrdinal) != nullptr &&
+            !nameLookup_.cppTrivialValueEligible(*construction->targetTypeOrdinal))
+        {
+            values.push_back(lowerValueConstruction(construction, error, nullptr, false, address) == nullptr
+                ? nullptr : address);
+            return true;
+        }
         frames.push_back({current, 2, address, 0});
         frames.push_back({current->children[1].get(), 0, nullptr});
         return true;

@@ -18,5 +18,8 @@ struct ProjectOopMirDispatchTable::DestructionStep final
     // X3-01: the C++ adapter's destroy function (`void f(void* object)`) of a class derived from a C++ class with a
     //     non-trivial destructor. / La funcion de destruccion del adaptador C++.
     std::string cppInterfaceDestroySymbol;
+    // X2-06: the destructor of a non-trivial C++ record field, called with the field's address (ownedField.offset).
+    //     / El destructor de un campo record C++ no trivial, llamado con la direccion del campo.
+    std::string cppFieldDestructorCalleeName;
 };
 }

@@ -1475,9 +1475,20 @@ bool ProjectObjectLayoutModel::collectClassPhysicalFields(
         }
         // X3-04: the hidden pointer fields of a C++ interface implementation have no syntax. / Los campos puntero
         //     ocultos de la implementacion de una interfaz C++ no tienen sintaxis.
+        // X2-06: a non-trivial C++ record field of a class (constructed and destroyed with the object, never copied:
+        //     a class is a reference) takes Clang's layout. / Un campo record C++ no trivial de una clase toma el
+        //     layout de Clang.
+        std::optional<TypeLayout> cppField;
+        if (member.declaredTypeKey.starts_with("type:") && !member.declaredTypeKey.ends_with('*') && nameLookup_)
+            if (const auto type = nameLookup_->typeOrdinalForIdentity(std::string_view(member.declaredTypeKey).substr(5)))
+                if (const auto* imported = nameLookup_->cppImportedType(*type);
+                    imported && imported->origin == CppImportedTypeOrigin::CppRecord && imported->objectLayout &&
+                    !imported->isIncomplete && imported->deferredImportError.empty() &&
+                    !nameLookup_->cppTrivialValueEligible(*type))
+                    cppField = TypeLayout{imported->objectLayout->sizeBytes, imported->objectLayout->alignmentBytes};
         const std::optional<TypeLayout> fieldLayout = member.cppInterfaceTypeOrdinal.has_value()
             ? std::optional<TypeLayout>(targetLayout_.layoutOf(BuiltinLayoutKind::Pointer))
-            : layoutTypeSyntax(member.declaredTypeSyntax, diagnostics, member.range);
+            : cppField ? cppField : layoutTypeSyntax(member.declaredTypeSyntax, diagnostics, member.range);
         if (!fieldLayout.has_value()) return false;
         std::optional<std::uint64_t> bitWidth;
         if (!classBitFieldWidth(

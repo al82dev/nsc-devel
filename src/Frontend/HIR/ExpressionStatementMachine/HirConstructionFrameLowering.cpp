@@ -27,6 +27,26 @@ bool ProjectOopHirModel::prepareOrdinaryConstructionTail(
     construction.stage = construction.fieldMemberOrdinals.empty()
         ? OrdinaryConstructionFrameStage::Ready
         : OrdinaryConstructionFrameStage::FieldInitializers;
+    return appendCppDefaultFieldConstructions(construction, error);
+}
+
+// X2-06: the C++ fields without an initializer at the cursor are constructed by default in their place, in
+//     declaration order with the initialized ones. / Los campos C++ sin inicializador en el cursor se construyen por
+//     defecto, en orden de declaracion con los inicializados.
+bool ProjectOopHirModel::appendCppDefaultFieldConstructions(
+    OrdinaryConstructionFrameState& construction, std::string& error)
+{
+    while (construction.stage == OrdinaryConstructionFrameStage::FieldInitializers &&
+           construction.nextFieldInitializer < construction.fieldMemberOrdinals.size())
+    {
+        const std::size_t memberOrdinal = construction.fieldMemberOrdinals[construction.nextFieldInitializer];
+        if (!isCppDefaultConstructedField(memberModel_->members()[memberOrdinal])) break;
+        auto assignment = cppDefaultFieldConstruction(memberOrdinal, error);
+        if (assignment == nullptr) return false;
+        construction.node->children.push_back(std::move(assignment));
+        if (++construction.nextFieldInitializer == construction.fieldMemberOrdinals.size())
+            construction.stage = OrdinaryConstructionFrameStage::Ready;
+    }
     return true;
 }
 
@@ -123,8 +143,9 @@ void ProjectOopHirModel::collectImplicitOrdinaryConstructionFields(
         {
             if (memberOrdinal >= memberModel_->members().size()) continue;
             const ClassMemberSymbol& field = memberModel_->members()[memberOrdinal];
-            if (field.kind == ClassMemberKind::Field && !field.isStatic &&
-                field.syntax != nullptr && field.syntax->first() != nullptr)
+            if ((field.kind == ClassMemberKind::Field && !field.isStatic &&
+                 field.syntax != nullptr && field.syntax->first() != nullptr) ||
+                isCppDefaultConstructedField(field)) // X2-06
             {
                 construction.fieldMemberOrdinals.push_back(memberOrdinal);
             }
@@ -438,7 +459,7 @@ bool ProjectOopHirModel::acceptOrdinaryConstructionFieldInitializer(
     construction.node->children.push_back(std::move(assignment));
     if (construction.nextFieldInitializer == construction.fieldMemberOrdinals.size())
         construction.stage = OrdinaryConstructionFrameStage::Ready;
-    return true;
+    return appendCppDefaultFieldConstructions(construction, error); // X2-06
 }
 
 std::unique_ptr<ProjectOopHirNode>

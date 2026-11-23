@@ -4341,6 +4341,12 @@ private:
         std::vector<std::unique_ptr<ProjectOopHirNode>>& output,
         std::string& error,
         std::optional<std::size_t> callerMemberOrdinal = std::nullopt);
+    // X2-06: whether a field is a non-trivial C++ record without an initializer, and its default construction in
+    //     place (`Assignment(FieldAddress(this), ValueConstruction)`), or null with an error. / Si un campo es un
+    //     record C++ no trivial sin inicializador, y su construccion por defecto en su lugar.
+    bool isCppDefaultConstructedField(const ClassMemberSymbol& field) const;
+    std::unique_ptr<ProjectOopHirNode> cppDefaultFieldConstruction(std::size_t fieldMemberOrdinal, std::string& error);
+    bool appendCppDefaultFieldConstructions(internal::OrdinaryConstructionFrameState& construction, std::string& error);
     std::vector<std::size_t> implicitInitializerTypes(
         std::size_t targetTypeOrdinal,
         std::optional<std::size_t> entryConstructorMemberOrdinal) const;

@@ -3066,6 +3066,34 @@ bool ProjectOopHirModel::buildFieldInitializer(
             std::move(literal)});
         return true;
     }
+    // EN: X2-06. A non-trivial C++ record instance field without an initializer is constructed by default with the
+    //     object, as a C++ member is (ProjectOopHirModel::appendInstanceFieldInitializers does the same).
+    // ES: X2-06. Un campo de instancia record C++ no trivial sin inicializador se construye por defecto con el objeto.
+    if (!field.isStatic && field.syntax != nullptr && field.syntax->first() == nullptr &&
+        field.declaredTypeKey.starts_with("type:") && !field.declaredTypeKey.ends_with('*'))
+        if (const auto type = nameLookup_->typeOrdinalForIdentity(std::string_view(field.declaredTypeKey).substr(5));
+            type && nameLookup_->cppImportedType(*type) && !nameLookup_->cppTrivialValueEligible(*type))
+        {
+            std::optional<std::size_t> constructor;
+            for (const auto ordinal : memberModel_->findMembers(*type, ".ctor"))
+                if (ordinal < memberModel_->members().size() && memberModel_->members()[ordinal].isCppExternal &&
+                    memberModel_->members()[ordinal].parameters.empty() && !memberModel_->members()[ordinal].cppDeleted &&
+                    memberModel_->members()[ordinal].accessibility == ClassMemberAccessibility::Public)
+                    constructor = ordinal;
+            if (!constructor)
+            {
+                error = "C++ field '" + field.name + "' of type '" + field.declaredTypeKey.substr(5) +
+                    "' has no accessible default constructor; give it an initializer (= new T(...))";
+                return false;
+            }
+            auto construction = makeNode(ProjectOopHirNodeKind::ValueConstruction, field.syntax, field.declaredTypeKey);
+            construction->targetTypeOrdinal = *type;
+            construction->memberOrdinal = constructor;
+            construction->argumentCount = 0;
+            fieldInitializers_.push_back(ProjectOopHirFieldInitializer{
+                memberOrdinal, field.declaringTypeOrdinal, field.isStatic, field.isConst, std::move(construction)});
+            return true;
+        }
     if (field.syntax == nullptr || field.syntax->first() == nullptr) return true;
     auto value = lowerExpression(field.syntax->first(), memberOrdinal, false, error);
     if (value == nullptr) return false;

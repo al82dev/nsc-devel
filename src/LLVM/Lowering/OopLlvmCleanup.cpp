@@ -1950,8 +1950,19 @@ bool OopLlvmImplementation::emitValueDropAddress(
                 destructor = &function;
             }
             if (destructor == nullptr) return fail(error, "C++ local has no imported destructor");
+            // X2-06: a module partition that only destroys the value (a C++ field of a class) declares the
+            //     destructor itself, `void(T*)`. / Una particion que solo destruye el valor declara el destructor.
             const auto target = functions_.find(destructor->mangledName);
-            if (target == functions_.end()) return fail(error, "C++ local destructor target is missing");
+            LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+            LLVMTypeRef destructorType = LLVMFunctionType(LLVMVoidTypeInContext(context_), &pointerType, 1, 0);
+            LLVMValueRef destructorFunction = nullptr;
+            if (target != functions_.end())
+            {
+                destructorType = target->second.functionType;
+                destructorFunction = target->second.function;
+            }
+            else if (!(destructorFunction = LLVMGetNamedFunction(module_, destructor->mangledName.c_str())))
+                destructorFunction = LLVMAddFunction(module_, destructor->mangledName.c_str(), destructorType);
             if (destructor->memberOrdinal >= memberModel_->members().size())
                 return fail(error, "C++ local destructor metadata is missing");
             // EN: T11-007. A trivial C++ destructor has no effect; Clang does not call it and a library need
@@ -1968,10 +1979,10 @@ bool OopLlvmImplementation::emitValueDropAddress(
                 LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
                 LLVMTypeRef parameterTypes[] = {ptr, ptr};
                 LLVMTypeRef boundaryType = LLVMFunctionType(LLVMVoidTypeInContext(context_), parameterTypes, 2, 0);
-                LLVMValueRef boundaryArgs[] = {target->second.function, address};
+                LLVMValueRef boundaryArgs[] = {destructorFunction, address};
                 return buildNoUnwindCall(boundaryType, boundary, boundaryArgs, 2, "") != nullptr;
             }
-            return buildPotentiallyThrowingCall(target->second.functionType, target->second.function,
+            return buildPotentiallyThrowingCall(destructorType, destructorFunction,
                 arguments, 1, "", error) != nullptr || error.empty();
         }
         const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, typeKey);

@@ -2188,6 +2188,8 @@ bool ProjectCompilation::compileProjectOopHir(
                 else if (experimentalCppLocalLifetimeAnalysisForTests_ && guardedCppValue &&
                     node->kind != ProjectOopHirNodeKind::ValueConstruction &&
                     node->kind != ProjectOopHirNodeKind::LocalAddress &&
+                    // X2-06: the address of a C++ field. / La direccion de un campo C++.
+                    node->kind != ProjectOopHirNodeKind::FieldAddress &&
                     // X2-05: the hidden owner of a receiver temporary, built in place. / El dueno oculto de un
                     //     temporal receptor, construido en su lugar.
                     // X2-05: a NativeSharp function's constructed result, into a local or returned again. / El
@@ -2195,6 +2197,11 @@ bool ProjectCompilation::compileProjectOopHir(
                     !(node->kind == ProjectOopHirNodeKind::StaticCall && parent &&
                       ((parent->kind == ProjectOopHirNodeKind::LocalDeclaration && !parent->referenceLocal &&
                         !parent->staticLocal) || parent->kind == ProjectOopHirNodeKind::Return)) &&
+                    // X2-06: the assignment of a field initializer that builds a C++ field. / La asignacion de un
+                    //     inicializador que construye un campo C++.
+                    !(node->kind == ProjectOopHirNodeKind::Assignment && node->children.size() == 2 && node->children[0] &&
+                      node->children[0]->kind == ProjectOopHirNodeKind::FieldAddress && node->children[1] &&
+                      node->children[1]->kind == ProjectOopHirNodeKind::ValueConstruction) &&
                     !(node->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow && node->referenceResult &&
                       (node->automaticDestruction || node->cppCalleeDestroyed) && node->localOrdinal &&
                       node->cleanupRegionOrdinal &&
@@ -2227,6 +2234,12 @@ bool ProjectCompilation::compileProjectOopHir(
                 const bool returned = experimentalCppLocalLifetimeAnalysisForTests_ && parent &&
                     parent->kind == ProjectOopHirNodeKind::Return && parent->children.size() == 1 &&
                     parent->children[0].get() == node;
+                // X2-06: a field initializer builds a C++ field in place. / Un inicializador de campo construye un
+                //     campo C++ en su lugar.
+                const bool fieldInitializer = parent && parent->kind == ProjectOopHirNodeKind::Assignment &&
+                    parent->children.size() == 2 && parent->children[0] &&
+                    parent->children[0]->kind == ProjectOopHirNodeKind::FieldAddress && parent->children[1].get() == node;
+                if (fieldInitializer) continue;
                 const bool local = returned || experimentalCppLocalLifetimeAnalysisForTests_ && parent &&
                     ((parent->kind == ProjectOopHirNodeKind::LocalDeclaration && !parent->referenceLocal &&
                       !parent->staticLocal) ||

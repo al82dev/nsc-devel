@@ -378,6 +378,30 @@ bool ProjectOopMirModel::appendOwnedFieldDestructionSteps(
             const bool releasesHeap = member.declaredOwnership == sema::OwnershipKind::Owned &&
                 (member.declaredTypeKey == "builtin:string" || ownedArray ||
                  destroyableClassTypeKeys.contains(member.declaredTypeKey));
+            // X2-06: a non-trivial C++ record field is destroyed by its C++ destructor, in its place. / Un campo
+            //     record C++ no trivial lo destruye su destructor C++, en su lugar.
+            if (member.declaredTypeKey.starts_with("type:") && !member.declaredTypeKey.ends_with('*'))
+                if (const auto type = nameLookup.typeOrdinalForIdentity(std::string_view(member.declaredTypeKey).substr(5));
+                    type && nameLookup.cppImportedType(*type) && !nameLookup.cppTrivialValueEligible(*type))
+                {
+                    std::optional<std::size_t> destructor;
+                    for (const auto ordinal : memberModel.findMembers(*type, ".dtor"))
+                        if (ordinal < memberModel.members().size() && memberModel.members()[ordinal].isCppExternal)
+                            destructor = ordinal;
+                    const ProjectOopHirFunction* body = destructor ? hirModel.functionForMember(*destructor) : nullptr;
+                    const ObjectFieldLayout* layout = objectLayoutModel.fieldLayoutForMember(memberOrdinal);
+                    if (body == nullptr || layout == nullptr)
+                    {
+                        error = "X2-06 C++ field '" + member.name + "' has no destructor or layout";
+                        return false;
+                    }
+                    ProjectOopMirDispatchTable::DestructionStep step;
+                    step.ownedField = ProjectOopMirDispatchTable::OwnedField{
+                        memberOrdinal, layout->offset, false, false, std::string{}};
+                    step.cppFieldDestructorCalleeName = body->mangledName;
+                    table.destructionSteps.push_back(std::move(step));
+                    continue;
+                }
             if (!releasesHeap)
             {
                 if (!appendValueFieldDropStep(

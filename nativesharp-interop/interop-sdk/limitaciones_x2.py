@@ -265,4 +265,45 @@ positivo(Caso('x2-campo-transportable', HT, ST, **CPP),
          'Holder h; h.p.x = 20; h.p.y = 18; h.k = 2; Holder g = h; g.p.y += 2;\n'
          '    return h.p.y == 18 ? lib.psum(g.p) + g.k : 1;',
          preludio='struct Holder { public lib.P p; public int k; }\n', modes=['directo', 'dll'])
+# X2-06: a NativeSharp class (a reference, never copied) with fields of a non-trivial C++ record: each is constructed
+# with the object as a C++ member is, in place by its initializer (`new T(...)` or a factory) or by default, in
+# declaration order; a later `h.b = value` is its operator=; the object's destruction runs each field's destructor.
+# A struct with such a field stays a restriction (it would need C++ copies).
+# X2-06: una clase NativeSharp con campos de un record C++ no trivial: se construyen con el objeto como miembros C++ y se
+# destruyen con el.
+HF = r'''
+namespace lib {
+struct C2 { int ctor, dtor, assign; };
+C2& c();
+struct Obj { int v; Obj(int x); Obj(); Obj(const Obj& o); Obj& operator=(const Obj& o); Obj& operator=(Obj&& o); ~Obj(); };
+Obj make(int v);
+struct NoDefault { int v; NoDefault(int x); ~NoDefault(); };
+}
+'''
+SF = r'''
+namespace lib {
+static C2 k; C2& c() { return k; }
+Obj::Obj(int x) : v(x) { ++k.ctor; } Obj::Obj() : v(7) { ++k.ctor; } Obj::Obj(const Obj& o) : v(o.v) { ++k.ctor; }
+Obj& Obj::operator=(const Obj& o) { v = o.v; ++k.assign; return *this; }
+Obj& Obj::operator=(Obj&& o) { v = o.v; ++k.assign; return *this; }
+Obj::~Obj() { ++k.dtor; }
+Obj make(int v) { return Obj(v); }
+NoDefault::NoDefault(int x) : v(x) {}
+NoDefault::~NoDefault() {}
+}
+'''
+BODYF = r'''
+    {
+        var h = new Holder();
+        if (h.a.v != 30 || h.b.v != 7 || h.m.v != 1 || lib.c().ctor != 3) return 1;
+        h.b = lib.make(5);
+        if (h.b.v != 5 || lib.c().assign != 1 || lib.c().dtor != 1) return 2;
+    }
+    return lib.c().dtor == 4 && lib.c().ctor == 4 ? 42 : 3;
+'''
+positivo(Caso('x2-clase-campo-cpp', HF, SF, **CPP), BODYF,
+         preludio='class Holder { public lib.Obj a = new lib.Obj(30); public lib.Obj b; public lib.Obj m = lib.make(1); }\n',
+         modes=['directo', 'dll'])
+rechazo(Caso('x2-clase-campo-cpp', HF, SF, **CPP), 'var h = new Holder(); return 0;', 'has no accessible default constructor',
+        preludio='class Holder { public lib.NoDefault n; }\n')
 fin()
