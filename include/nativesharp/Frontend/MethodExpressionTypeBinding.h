@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Frontend/ParameterPassKind.h"
+
 #include "nativesharp/AST/AstNode.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Sema/ExpressionInfo.h"
@@ -66,5 +68,8 @@ struct MethodExpressionTypeBinding final
     bool cppFlexibleArrayDecaySafe = false;
     // C1-02: the expression's intermediate pointer level qualifiers. / Los calificadores de niveles intermedios.
     std::uint8_t pointerLevelQualifiers = 0;
+    // X2-04: the keyword an argument was written with (`ref`, `in`, `out`), for constructor selection. / La palabra
+    //     clave con que se escribio un argumento, para la seleccion de constructores.
+    ParameterPassKind argumentPassKind = ParameterPassKind::Value;
 };
 }

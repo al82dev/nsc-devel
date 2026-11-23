@@ -112,6 +112,7 @@ MethodExpressionTypeBinding ProjectMethodBodyModel::makeExpressionTypeBinding(
     }
     binding.integerConstant = result.integerConstant;
     binding.pointerPointeeReadonly = result.pointerPointeeReadonly;
+    binding.argumentPassKind = result.argumentPassKind; // X2-04
     // EN: C1-04. The binding keeps the immediate pointee qualification, the one HIR applies to a load or store
     //     through the pointer. In a `T volatile**` the mark is the base's (T08-D17), so the immediate pointee, a
     //     `T volatile*`, is ordinary storage; the mark reaches the base access through the deref's own result.

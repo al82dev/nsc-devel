@@ -169,6 +169,12 @@ void ProjectConstructionModel::evaluateConstructorArgument(
         candidate.viable = false;
     if (argumentTypes[argumentOrdinal].pointerPointeeVolatile &&
         (packElement || !parameter.pointerPointeeVolatile)) candidate.viable = false;
+    // EN: X2-04. An `in` argument is readonly: it never binds a `ref` parameter (`T&`, a move constructor's `T&&`),
+    //     as calls already check; `new T(in m)` of a move-only T moved from a readonly object.
+    // ES: X2-04. Un argumento `in` es de solo lectura: nunca enlaza un parametro `ref` (`T&`, el `T&&` de un
+    //     constructor de movimiento), como ya lo comprueban las llamadas.
+    if (!packElement && argumentTypes[argumentOrdinal].argumentPassKind == ParameterPassKind::In &&
+        parameter.passKind == ParameterPassKind::Ref) candidate.viable = false;
     // C1-02: a chain keeps every level qualifier, as for calls. / Una cadena conserva cada calificador de nivel.
     if (!packElement && language::pointerDepthOfTypeKey(argumentTypes[argumentOrdinal].typeKey) >= 2 &&
         language::pointerDepthOfTypeKey(parameter.typeKey) >= 2 &&
