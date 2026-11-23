@@ -512,6 +512,11 @@ std::optional<IterativeExpressionKind> ProjectOopHirModel::iterativeStorageKind(
     const ast::AstNode* syntax,
     bool address)
 {
+    // X2-08: a C++ prefix or dereference operator call lowers recursively. / Se baja recursivamente.
+    if (syntax->kind() == ast::AstNodeKind::UnaryExpression)
+        if (const auto* prefix = namespaceFunctionCallBinding(syntax);
+            prefix != nullptr && prefix->cComplexCompoundAssignment)
+            return std::nullopt;
     if ((syntax->kind() == ast::AstNodeKind::UnaryExpression ||
          syntax->kind() == ast::AstNodeKind::PostfixExpression) &&
         syntax->first() != nullptr)
@@ -525,6 +530,11 @@ std::optional<IterativeExpressionKind> ProjectOopHirModel::iterativeStorageKind(
         if (userOperator && syntax->tokenKind() != lexer::TokenKind::PlusPlus &&
             syntax->tokenKind() != lexer::TokenKind::MinusMinus)
             return IterativeExpressionKind::UserUnaryOperator;
+        // X2-08: a C++ prefix operator call lowers recursively. / Una llamada a operador prefijo C++ se baja
+        //     recursivamente.
+        if (const auto* prefix = namespaceFunctionCallBinding(syntax);
+            prefix != nullptr && prefix->cComplexCompoundAssignment)
+            return std::nullopt;
         if (syntax->tokenKind() == lexer::TokenKind::PlusPlus ||
             syntax->tokenKind() == lexer::TokenKind::MinusMinus)
         {

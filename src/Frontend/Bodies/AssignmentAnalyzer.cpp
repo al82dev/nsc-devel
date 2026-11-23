@@ -22,6 +22,7 @@
 #include "nativesharp/Language/MemoryModel.h"
 #include "nativesharp/Language/TraitSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
+#include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -4208,6 +4209,74 @@ std::optional<std::size_t> ProjectMethodBodyModel::automaticPropertyBackingField
     }
     return std::nullopt;
 }
+// X2-08: `++x` / `--x` of a C++ object with a prefix operator. / `++x` / `--x` de un objeto C++ con operador prefijo.
+bool ProjectMethodBodyModel::tryCppPrefixIncrement(
+    const ast::AstNode* expression, const ExpressionResult& operand, std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal, ExpressionResult& out)
+{
+    const auto operation = expression->tokenKind();
+    const bool dereference = operation == lexer::TokenKind::Star;
+    if (namespaceFunctionModel_ == nullptr || !operand.typeKey.starts_with("type:") ||
+        !(operand.assignable || (dereference && operand.addressable)) || expression->first() == nullptr ||
+        (operation != lexer::TokenKind::PlusPlus && operation != lexer::TokenKind::MinusMinus && !dereference))
+        return false;
+    const std::string name = dereference ? "__nsc_cpp_deref"
+        : operation == lexer::TokenKind::PlusPlus ? "__nsc_cpp_prefix++" : "__nsc_cpp_prefix--";
+    std::optional<std::size_t> selected;
+    const auto& functions = namespaceFunctionModel_->functions();
+    for (std::size_t ordinal = 0; ordinal < functions.size(); ++ordinal)
+    {
+        const auto& function = functions[ordinal];
+        if (function.name != name || function.parameters.size() != 1 ||
+            !(function.parameters[0].passKind == ParameterPassKind::Ref ||
+              (dereference && function.parameters[0].passKind == ParameterPassKind::In)) ||
+            function.parameters[0].pointeeTypeKey != operand.typeKey) continue;
+        // A const receiver only reaches a const operator. / Un receptor const solo alcanza un operador const.
+        if (function.parameters[0].passKind == ParameterPassKind::Ref && !operand.assignable) continue;
+        if (selected) return false;
+        selected = ordinal;
+    }
+    if (!selected) return false;
+    NamespaceFunctionCallBinding call;
+    call.resolution = MethodCallResolutionKind::Resolved;
+    call.syntax = expression;
+    call.callerCallableOrdinal = methodMemberOrdinal;
+    call.scopeOrdinal = scopeOrdinal;
+    call.writtenName = name;
+    call.candidateFunctionOrdinals = {*selected};
+    call.viableCandidateFunctionOrdinals = {*selected};
+    call.selectedFunctionOrdinal = *selected;
+    call.selectedConversions = {ProjectImplicitConversion{ProjectConversionKind::Identity, 0, operand.typeKey + "*",
+                                                          operand.typeKey + "*", std::nullopt}};
+    call.selectedArgumentParameterOrdinals = {0};
+    call.selectedArgumentSyntaxes = {expression->first()};
+    call.resultTypeKey = functions[*selected].declaredTypeKey;
+    call.cComplexCompoundAssignment = true;
+    storeNamespaceFunctionCall(expression, call);
+    if (dereference)
+    {
+        // The result is the operator's: a `T&` is assignable storage, a `const T&` readonly, a value a value.
+        // El resultado es el del operador: un `T&` es almacenamiento asignable, `const T&` de solo lectura.
+        const auto& function = functions[*selected];
+        ExpressionResult result;
+        result.typeKey = function.declaredTypeKey;
+        result.valid = true;
+        result.addressable = function.isReferenceReturn;
+        result.assignable = function.isReferenceReturn &&
+            !isReadonlyReferenceReturn(namespaceCallableAdapters()[*selected]);
+        result.cppCOrigin = true;
+        out = result;
+        return true;
+    }
+    invalidateAssignedStorage(expression->first(), scopeOrdinal);
+    ExpressionResult result = operand;
+    result.assignable = false;
+    result.addressable = false;
+    result.valid = true;
+    out = result;
+    return true;
+}
+
 bool ProjectMethodBodyModel::tryCppCompoundAssignment(
     const ast::AstNode* expression, const ExpressionResult& left, const ExpressionResult& right,
     std::size_t methodMemberOrdinal, std::size_t scopeOrdinal, ExpressionResult& out)

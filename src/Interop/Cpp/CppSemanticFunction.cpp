@@ -978,6 +978,22 @@ CppSemanticFunctionResult projectFunction(
         if (function.parameters.size() == 2 && !function.variadic &&
             std::find(std::begin(compound), std::end(compound), spelling) != std::end(compound))
             symbol.name = "__nsc_cpp_compound" + std::string(spelling);
+        // EN: X2-08. A C++ prefix `operator++`/`operator--` (one operand, member or free) mutates its operand in place:
+        //     `++x` calls it with x's address through an internal name, as `a += b` does (Item 11.4), instead of
+        //     NativeSharp's `x = op_Increment(x)`, which would copy a C++ object.
+        // ES: X2-08. Un `operator++`/`operator--` C++ prefijo (un operando, miembro o libre) muta su operando en su
+        //     lugar: `++x` lo llama con la direccion de x por un nombre interno, como `a += b` (Item 11.4), en lugar
+        //     del `x = op_Increment(x)` de NativeSharp, que copiaria un objeto C++.
+        else if (function.parameters.size() == 1 && !function.variadic && (spelling == "++" || spelling == "--"))
+            symbol.name = "__nsc_cpp_prefix" + std::string(spelling);
+        // X2-08: a unary C++ `operator*` (an iterator's or a handle's) is called on its operand's address; NativeSharp
+        //     has no unary `*` operator. / Un `operator*` unario C++ se llama con la direccion de su operando.
+        else if (function.parameters.size() == 1 && !function.variadic && spelling == "*")
+            symbol.name = "__nsc_cpp_deref";
+        // X2-08: a C++ `operator()` (member adapter: self first) is called as `o(args)`. / Un `operator()` C++ se
+        //     llama como `o(args)`.
+        else if (!function.parameters.empty() && !function.variadic && spelling == "()")
+            symbol.name = "__nsc_cpp_call";
         else
         {
             const auto method = language::operatorMethodName(spelling, function.parameters.size());

@@ -1680,7 +1680,8 @@ void collectMemberOperators(const clang::DeclContext& context, clang::ASTContext
                 continue;
             switch (method->getOverloadedOperator())
             {
-            case clang::OO_Equal: case clang::OO_Call: case clang::OO_Subscript: case clang::OO_Arrow:
+            // X2-08: `operator()` has an adapter too, called as `o(args)`. / `operator()` tambien tiene adaptador.
+            case clang::OO_Equal: case clang::OO_Subscript: case clang::OO_Arrow:
             case clang::OO_ArrowStar: case clang::OO_New: case clang::OO_Delete: case clang::OO_Array_New:
             case clang::OO_Array_Delete: case clang::OO_Coawait:
                 continue;

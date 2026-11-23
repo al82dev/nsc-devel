@@ -2157,6 +2157,10 @@ bool ProjectCompilation::compileProjectOopHir(
                 else if (experimentalCppLocalLifetimeAnalysisForTests_ && guardedCppValue &&
                     node->kind != ProjectOopHirNodeKind::ValueConstruction &&
                     node->kind != ProjectOopHirNodeKind::LocalAddress &&
+                    // X2-08: a call whose result is an address (`T& operator+=`, `T& operator++`) does not copy
+                    //     the object; using it as a value adds a PointerLoad, which is checked. / Una llamada
+                    //     cuyo resultado es una direccion no copia el objeto; usarla como valor agrega PointerLoad.
+                    !node->referenceResult &&
                     !(node->kind == ProjectOopHirNodeKind::LocalDeclaration && node->referenceLocal))
                 { loadError = "experimental C++ local cannot copy or transfer a C++ value"; return false; }
                 const bool construction = node->kind == ProjectOopHirNodeKind::ValueConstruction ||

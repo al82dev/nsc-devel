@@ -4182,6 +4182,9 @@ private:
         NamespaceFunctionCallBinding& call,
         diagnostics::DiagnosticEngine& diagnostics);
     bool cppRecordTypeKey(std::string_view typeKey) const;
+    std::optional<ExpressionResult> tryCppCallOperator(const ast::AstNode* expression, const ExpressionResult& callee,
+        std::span<const ExpressionResult> arguments, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
     bool recognizeCAtomicFence(const ast::AstNode* expression, std::size_t callerCallableOrdinal,
         std::size_t scopeOrdinal, std::size_t functionOrdinal, std::span<ast::AstNode* const> argumentSyntaxes,
         diagnostics::DiagnosticEngine& diagnostics);
@@ -5161,6 +5164,8 @@ private:
     // ES: Items 3.2 y 3.3. Las conversiones que C aplica cuando un argumento NativeSharp llega a un parametro
     //     C/C++ y no existe conversion NativeSharp: un literal de cadena a `const char*`, y las aritmeticas de C.
     // Item 11.4: `a op= b` through a C++ compound assignment operator. / A traves de un operador C++ compuesto.
+    bool tryCppPrefixIncrement(const ast::AstNode* expression, const ExpressionResult& operand,
+        std::size_t methodMemberOrdinal, std::size_t scopeOrdinal, ExpressionResult& out);
     bool tryCppCompoundAssignment(const ast::AstNode* expression, const ExpressionResult& left,
         const ExpressionResult& right, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal,
         ExpressionResult& out);

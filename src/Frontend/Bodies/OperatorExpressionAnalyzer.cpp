@@ -68,6 +68,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
     const std::optional<ExpressionResult> operand = analyzeUnaryOperand(
         expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
     if (!operand.has_value()) return {};
+    if (ExpressionResult cppPrefix; tryCppPrefixIncrement(expression, *operand, methodMemberOrdinal, scopeOrdinal,
+                                                          cppPrefix))
+        return cppPrefix;
     const std::optional<ExpressionResult> overloaded = analyzeOverloadedUnary(
         expression, *operand, methodMemberOrdinal, scopeOrdinal, diagnostics);
     if (overloaded.has_value()) return *overloaded;

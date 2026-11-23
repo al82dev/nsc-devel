@@ -1585,6 +1585,88 @@ std::optional<std::size_t> ProjectMethodBodyModel::selectNamespaceFunctionCandid
 //     Compiler) con el mismo orden: `consume` es `acquire`, como lo implementan los compiladores, y una barrera
 //     `relaxed` (sin efecto en C) es una barrera solo del compilador, lo que es conforme. El orden debe ser constante,
 //     como lo exige AtomicFence; las demas macros del sistema quedan como estan.
+// EN: X2-08. `o(args)` of a C++ object calls its `operator()` through the member adapter, with `o` as the receiver (by
+//     reference, as C++ binds the implicit object) and the arguments by value or by `const T&` (materialized).
+// ES: X2-08. `o(args)` de un objeto C++ llama su `operator()` por el adaptador de miembro, con `o` como receptor (por
+//     referencia, como C++ enlaza el objeto implicito) y los argumentos por valor o por `const T&` (materializados).
+std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::tryCppCallOperator(
+    const ast::AstNode* expression, const ExpressionResult& callee, std::span<const ExpressionResult> arguments,
+    std::size_t methodMemberOrdinal, std::size_t scopeOrdinal, diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (namespaceFunctionModel_ == nullptr || expression->first() == nullptr || !callee.addressable ||
+        !cppRecordTypeKey(callee.typeKey)) return std::nullopt;
+    const auto& functions = namespaceFunctionModel_->functions();
+    std::vector<std::pair<std::size_t, std::vector<ProjectImplicitConversion>>> viable;
+    bool anyOperator = false;
+    for (std::size_t ordinal = 0; ordinal < functions.size(); ++ordinal)
+    {
+        const auto& function = functions[ordinal];
+        if (function.name != "__nsc_cpp_call" || function.parameters.empty()) continue;
+        const auto& self = function.parameters[0];
+        if (self.pointeeTypeKey != callee.typeKey) continue;
+        anyOperator = true;
+        if (function.parameters.size() != arguments.size() + 1 ||
+            !(self.passKind == ParameterPassKind::In ||
+              (self.passKind == ParameterPassKind::Ref && callee.assignable))) continue;
+        std::vector<ProjectImplicitConversion> conversions{ProjectImplicitConversion{ProjectConversionKind::Identity,
+            0, callee.typeKey + "*", self.typeKey, std::nullopt}};
+        bool ok = true;
+        for (std::size_t index = 0; ok && index < arguments.size(); ++index)
+        {
+            const auto& parameter = function.parameters[index + 1];
+            const bool byValue = parameter.passKind == ParameterPassKind::Value;
+            const bool materialized = parameter.cppConstReference && !cppRecordTypeKey(parameter.pointeeTypeKey);
+            if ((!byValue && !materialized) || arguments[index].argumentPassKind != ParameterPassKind::Value)
+            {
+                ok = false;
+                break;
+            }
+            auto conversion = classifyImplicit(arguments[index].typeKey,
+                byValue ? parameter.typeKey : parameter.pointeeTypeKey, arguments[index].integerConstant);
+            ok = conversion.exists();
+            conversions.push_back(std::move(conversion));
+        }
+        if (ok) viable.emplace_back(ordinal, std::move(conversions));
+    }
+    if (!anyOperator) return std::nullopt;
+    const std::string owner = callee.typeKey.substr(5);
+    if (viable.size() != 1)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidCall, diagnostics::DiagnosticSeverity::Error,
+            expression->range(), viable.empty()
+                ? "no C++ 'operator()' of '" + owner + "' accepts these arguments"
+                : "the call to C++ 'operator()' of '" + owner + "' is ambiguous");
+        return ExpressionResult{};
+    }
+    const auto& [selected, conversions] = viable.front();
+    NamespaceFunctionCallBinding call;
+    call.resolution = MethodCallResolutionKind::Resolved;
+    call.syntax = expression;
+    call.callerCallableOrdinal = methodMemberOrdinal;
+    call.scopeOrdinal = scopeOrdinal;
+    call.writtenName = "__nsc_cpp_call";
+    call.candidateFunctionOrdinals = {selected};
+    call.viableCandidateFunctionOrdinals = {selected};
+    call.selectedFunctionOrdinal = selected;
+    call.forwardedReceiver = true;
+    call.receiverSyntax = expression->first();
+    call.selectedConversions = conversions;
+    call.selectedArgumentSyntaxes.push_back(expression->first());
+    for (std::size_t index = 0; index <= arguments.size(); ++index)
+        call.selectedArgumentParameterOrdinals.push_back(index);
+    for (const auto* argument : expression->children()) call.selectedArgumentSyntaxes.push_back(argument);
+    call.resultTypeKey = functions[selected].declaredTypeKey;
+    storeNamespaceFunctionCall(expression, call);
+    ExpressionResult result;
+    result.typeKey = functions[selected].declaredTypeKey;
+    result.valid = true;
+    result.addressable = functions[selected].isReferenceReturn;
+    result.assignable = functions[selected].isReferenceReturn &&
+        !isReadonlyReferenceReturn(namespaceCallableAdapters()[selected]);
+    result.cppCOrigin = true;
+    return result;
+}
+
 // X1-04: whether a type key names an imported C++ record. / Si una clave de tipo nombra un record C++ importado.
 bool ProjectMethodBodyModel::cppRecordTypeKey(std::string_view typeKey) const
 {
@@ -8717,6 +8799,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     if (const auto handled = analyzeSpecialCallKinds(
             expression, callee, arguments, allArgumentsValid, call,
             methodMemberOrdinal, scopeOrdinal, diagnostics); handled.has_value()) return *handled;
+    if (!callee.methodGroup && callee.valid && allArgumentsValid && callee.typeKey.starts_with("type:"))
+        if (auto called = tryCppCallOperator(expression, callee, arguments, methodMemberOrdinal, scopeOrdinal,
+                                             diagnostics))
+            return *called;
     if (!callee.methodGroup)
     {
         call.resolution = MethodCallResolutionKind::NoViableCandidate;

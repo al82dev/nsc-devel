@@ -52,6 +52,9 @@ std::string_view cppOperatorSpelling(lexer::TokenKind kind) noexcept
         case lexer::TokenKind::LessEqual: return "<=";
         case lexer::TokenKind::Greater: return ">";
         case lexer::TokenKind::GreaterEqual: return ">=";
+        // X2-08: a C++ prefix operator is demanded too. / Tambien se demanda un operador prefijo C++.
+        case lexer::TokenKind::PlusPlus: return "++";
+        case lexer::TokenKind::MinusMinus: return "--";
         default: return {};
     }
 }
@@ -1928,6 +1931,10 @@ void ProjectNamespaceFunctionModel::walkNamespaceNode(
         if (const auto spelling = cppOperatorSpelling(node->tokenKind()); !spelling.empty())
             captureCppFunctionDemand(nameLookup, unit, node, lexicalNamespace, environment,
                                      "operator" + std::string(spelling), false);
+    // X2-08: `o(args)` may call a C++ `operator()`. / `o(args)` puede llamar un `operator()` C++.
+    if (captureCppFunctionDemands_ && node->kind() == ast::AstNodeKind::CallExpression &&
+        node->first() != nullptr && node->first()->kind() != ast::AstNodeKind::MemberExpression)
+        captureCppFunctionDemand(nameLookup, unit, node, lexicalNamespace, environment, "operator()", false);
     // EN: Item 11.4. `a op= b` may resolve to a C++ `operator op=`, so it is demanded too.
     // ES: Item 11.4. `a op= b` puede resolverse con un `operator op=` de C++, asi que tambien se demanda.
     if (captureCppFunctionDemands_ && node->kind() == ast::AstNodeKind::AssignmentExpression)

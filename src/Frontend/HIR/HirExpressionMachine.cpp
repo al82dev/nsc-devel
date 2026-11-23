@@ -910,6 +910,46 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerUnaryExpressionImplC
     const std::string& resultType,
     std::string& error)
 {
+    // X2-08: a C++ prefix operator is called with the operand's address. / Un operador prefijo C++ se llama con
+    //     la direccion del operando.
+    if (const NamespaceFunctionCallBinding* prefix = namespaceFunctionCallBinding(expression);
+        prefix != nullptr && prefix->cComplexCompoundAssignment && prefix->selectedFunctionOrdinal &&
+        namespaceFunctionModel_ != nullptr &&
+        *prefix->selectedFunctionOrdinal < namespaceFunctionModel_->functions().size() &&
+        (expression->tokenKind() == lexer::TokenKind::PlusPlus ||
+         expression->tokenKind() == lexer::TokenKind::MinusMinus ||
+         expression->tokenKind() == lexer::TokenKind::Star))
+    {
+        const bool dereference = expression->tokenKind() == lexer::TokenKind::Star;
+        if (addressContext && !(dereference && namespaceFunctionModel_->functions()[*prefix->selectedFunctionOrdinal]
+                                                   .isReferenceReturn))
+        {
+            error = "the result of a C++ prefix operator is a value, not addressable storage";
+            return nullptr;
+        }
+        const auto& target = namespaceFunctionModel_->functions()[*prefix->selectedFunctionOrdinal];
+        auto address = lowerExpression(expression->first(), memberOrdinal, true, error);
+        if (address == nullptr) return nullptr;
+        auto pointer = makeNode(ProjectOopHirNodeKind::AddressValue, expression->first(), target.parameters[0].typeKey);
+        pointer->children.push_back(std::move(address));
+        auto node = makeNode(ProjectOopHirNodeKind::StaticCall, expression, prefix->resultTypeKey);
+        node->namespaceFunctionOrdinal = *prefix->selectedFunctionOrdinal;
+        node->stringValue = target.mangledName;
+        node->children.push_back(std::move(pointer));
+        node->argumentParameterOrdinals = {0};
+        node->argumentTypeKeys = {target.parameters[0].typeKey};
+        node->argumentCount = 1;
+        node->referenceResult = target.isReferenceReturn;
+        // X2-08: the value of a `T& operator*` is loaded; its address serves an address context.
+        // X2-08: el valor de un `T& operator*` se carga; su direccion sirve a un contexto de direccion.
+        if (dereference && target.isReferenceReturn && !addressContext)
+        {
+            auto load = makeNode(ProjectOopHirNodeKind::PointerLoad, expression, target.declaredTypeKey);
+            load->children.push_back(std::move(node));
+            return load;
+        }
+        return node;
+    }
     if (expression->tokenKind() == lexer::TokenKind::PlusPlus ||
         expression->tokenKind() == lexer::TokenKind::MinusMinus)
     {
@@ -2601,6 +2641,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAssignmentExpression
         node->argumentParameterOrdinals = {0, 1};
         node->argumentTypeKeys = {target.parameters[0].typeKey, target.parameters[1].typeKey};
         node->argumentCount = 2;
+        // X2-08: a `T& operator op=` result is the target's address. / El resultado es la direccion del destino.
+        node->referenceResult = target.isReferenceReturn;
         return node;
     }
     if (namespaceSetter != nullptr &&
