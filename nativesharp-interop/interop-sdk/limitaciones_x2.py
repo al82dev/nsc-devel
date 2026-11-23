@@ -255,4 +255,14 @@ BODY_ASSIGN = r'''
     return 42;
 '''
 positivo(Caso('x2-asignacion', HA, SA, **CPP), BODY_ASSIGN, modes=['directo', 'dll'])
+# X2-06: a NativeSharp struct with a field of a C++ record that is a transport value (trivially copyable and
+# destructible) was rejected ("has no imported object layout yet"); its bytes are its value, as for a C record, so the
+# struct holds it, copies it and passes the field by value. A non-trivial C++ field stays a conscious restriction.
+# X2-06: un struct NativeSharp con un campo C++ transportable se rechazaba; ahora lo contiene y lo copia por bytes.
+HT = 'namespace lib { struct P { int x; int y; int sum() const { return x + y; } }; int psum(P p); }\n'
+ST = 'namespace lib { int psum(P p) { return p.x + p.y; } }\n'
+positivo(Caso('x2-campo-transportable', HT, ST, **CPP),
+         'Holder h; h.p.x = 20; h.p.y = 18; h.k = 2; Holder g = h; g.p.y += 2;\n'
+         '    return h.p.y == 18 ? lib.psum(g.p) + g.k : 1;',
+         preludio='struct Holder { public lib.P p; public int k; }\n', modes=['directo', 'dll'])
 fin()

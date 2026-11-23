@@ -786,7 +786,12 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutNamedType(
         const bool cRecord = imported->origin == CppImportedTypeOrigin::CStruct ||
             imported->origin == CppImportedTypeOrigin::CUnion;
         const bool cEnum = imported->kind == NamedTypeDeclarationKind::Enum && imported->enumBase;
-        if ((cRecord || cEnum) && imported->objectLayout &&
+        // X2-06: a C++ record that is a transport value (trivially copyable and destructible) is bytes too, so a
+        //     NativeSharp struct may hold one by value. / Un record C++ que es un valor transportable tambien son
+        //     bytes, asi que un struct NativeSharp puede contenerlo.
+        const bool cppTransportValue = imported->origin == CppImportedTypeOrigin::CppRecord &&
+            nameLookup_->cppTrivialValueEligible(typeOrdinal);
+        if ((cRecord || cEnum || cppTransportValue) && imported->objectLayout &&
             imported->deferredImportError.empty() && !imported->isIncomplete)
             return TypeLayout{imported->objectLayout->sizeBytes, imported->objectLayout->alignmentBytes};
         diagnostics.report(
