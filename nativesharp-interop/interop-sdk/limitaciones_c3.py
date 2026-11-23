@@ -46,8 +46,10 @@ positivo(c1, BODY1)
 positivo(Caso('c3-float16-callback', H1, S1),
          'half_cb f = (h) => half_from(half_to(h) * 21.0f); if ((int)half_to(f(half_from(2.0f))) != 42) return 1;\n'
          'return with_half_cb(f) * 2;')
-# C promotes `_Float16` to double in `...`; a Half is not passed there implicitly (write (double)Half.ToFloat(h)).
-rechazo(c1, 'var a = half_from(1.0f); return vread(1, a);', 'vread')
+# C3-01: C promotes `_Float16` to double in `...`; a Half there was a rejection ('vread'), and now reaches the call as
+# that double, as C passes it. / C promueve `_Float16` a double en `...`; un Half alli era un rechazo y ahora llega como
+# ese double.
+positivo(Caso('c3-float16-variadica-implicita', H1, S1), 'var a = half_from(10.5f); return vread(1, a);')
 positivo(Caso('c3-float16-variadica', H1, S1), 'var a = half_from(10.5f); return vread(1, (double)NativeSharp.Core.Numerics.Half.ToFloat(a)) == 42 ? 42 : 1;', modes=['directo'])
 # An explicit cast converts between Half and numbers, as C converts `_Float16` (a cast failed in the backend before).
 positivo(Caso('c3-float16-cast', H1, S1), r'''

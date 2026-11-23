@@ -19,6 +19,7 @@
 #include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
 #include "nativesharp/Interop/CppInteropSession.h"
 #include "nativesharp/Interop/CppRecordDeclaration.h"
+#include "nativesharp/Interop/CppScalarTypeMapping.h"
 #include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
@@ -1122,6 +1123,14 @@ ProjectMethodBodyModel::evaluateNamespaceVariadicCandidateArgument(
                  *imported->cppValueTraits, *imported->cppValueOperations))))
             conversion = ProjectImplicitConversion{ProjectConversionKind::Identity, 10, key, key, std::nullopt};
     }
+    // EN: C3-01. C promotes `_Float16` to double in `...` (as float); a Half reaches a C variadic call as that double.
+    // ES: C3-01. C promueve `_Float16` a double en `...` (como float); un Half llega asi a una llamada variadica C.
+    if (!conversion.exists() && key == interop::kCppHalfTypeKey && namespaceFunctionModel_ &&
+        evaluated.memberOrdinal < namespaceFunctionModel_->functions().size() &&
+        (namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppCallingConvention == "cdecl" ||
+         namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppCallingConvention == "sysv_abi") &&
+        !namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppCanonicalIdentity.empty())
+        conversion = ProjectImplicitConversion{ProjectConversionKind::Numeric, 1, key, "builtin:double", std::nullopt};
     if (!conversion.exists() || arguments[argumentOrdinal].pointerPointeeVolatile ||
         arguments[argumentOrdinal].cppPointerPointeeAtomic ||
         arguments[argumentOrdinal].argumentPassKind != ParameterPassKind::Value ||
