@@ -2141,6 +2141,17 @@ bool ProjectCompilation::compileProjectOopHir(
         if (experimentalCppDiscardedLifetimeLoweringForTests_ || experimentalCppLocalLifetimeAnalysisForTests_)
         {
             using HirNode = ProjectOopHirNode;
+            // The source position of a node, before the message, as for a HIR lowering error. / La posicion del
+            //     nodo, antes del mensaje, como en un error de bajada a HIR.
+            const auto located = [&](const HirNode* at, std::string message) {
+                if (at == nullptr || at->syntax == nullptr || !at->syntax->range().isValid()) return message;
+                const auto begin = at->syntax->range().begin();
+                const std::string_view path = sourceManager_.getPath(begin);
+                if (path.empty()) return message;
+                const source::SourcePosition position = sourceManager_.getPosition(begin);
+                return std::string(path) + ':' + std::to_string(position.line) + ':' + std::to_string(position.column) +
+                    ": " + message;
+            };
             std::vector<std::pair<const HirNode*, const HirNode*>> pending;
             for (const auto& function : oopHirModel_->functions())
                 if (function.body) pending.emplace_back(function.body.get(), nullptr);
@@ -2185,7 +2196,20 @@ bool ProjectCompilation::compileProjectOopHir(
                         (!constructedCall &&
                          (node->children[0]->kind != ProjectOopHirNodeKind::ValueConstruction ||
                           node->children[0]->targetTypeOrdinal != valueOrdinal)))
-                    { loadError = "experimental C++ local requires direct automatic construction and cleanup"; return false; }
+                    {
+                        loadError = located(node, "experimental C++ local requires direct automatic construction and cleanup");
+                        return false;
+                    }
+                }
+                // X2-05: a by-value C++ parameter of a NativeSharp function. / Un parametro C++ por valor de una
+                //     funcion NativeSharp.
+                else if (experimentalCppLocalLifetimeAnalysisForTests_ && guardedCppValue &&
+                    node->kind == ProjectOopHirNodeKind::OwnedParameterCleanup)
+                {
+                    loadError = located(node, "a NativeSharp function cannot take C++ type '" +
+                        importedValue->identity.fullyQualifiedName() + "' by value (C++ would construct it in the "
+                        "parameter and destroy it in the callee); take it by 'in' (const T&) or 'ref' (T&)");
+                    return false;
                 }
                 else if (experimentalCppLocalLifetimeAnalysisForTests_ && guardedCppValue &&
                     node->kind != ProjectOopHirNodeKind::ValueConstruction &&
@@ -2220,9 +2244,9 @@ bool ProjectCompilation::compileProjectOopHir(
                     !node->referenceResult &&
                     !(node->kind == ProjectOopHirNodeKind::LocalDeclaration && node->referenceLocal))
                 {
-                    loadError = std::string("experimental C++ local cannot copy or transfer a C++ value (") +
+                    loadError = located(node, std::string("experimental C++ local cannot copy or transfer a C++ value (") +
                         projectOopHirNodeKindName(node->kind) + " of '" + node->typeKey + "' under " +
-                        (parent ? projectOopHirNodeKindName(parent->kind) : "the body") + ")";
+                        (parent ? projectOopHirNodeKindName(parent->kind) : "the body") + ")");
                     return false;
                 }
                 const bool construction = node->kind == ProjectOopHirNodeKind::ValueConstruction ||
@@ -2257,8 +2281,8 @@ bool ProjectCompilation::compileProjectOopHir(
                 if (node->kind != ProjectOopHirNodeKind::ValueConstruction || (!discarded && !local) ||
                     !node->memberOrdinal || *node->memberOrdinal >= memberModel_->members().size())
                 {
-                    loadError = std::string("experimental C++ lifetime requires direct local or discarded construction (") +
-                        "under " + (parent ? projectOopHirNodeKindName(parent->kind) : "the body") + ")";
+                    loadError = located(node, std::string("experimental C++ lifetime requires direct local or discarded construction (") +
+                        "under " + (parent ? projectOopHirNodeKindName(parent->kind) : "the body") + ")");
                     return false;
                 }
                 const auto& constructor = memberModel_->members()[*node->memberOrdinal];
