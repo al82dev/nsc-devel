@@ -274,6 +274,15 @@ void ProjectOopHirModel::ownCppTemporaries()
     //     / Las funciones NativeSharp cuyo resultado es un record C++ no trivial lo construyen en el destino.
     for (ProjectOopHirFunction& function : functions_)
     {
+        // X2-05: a C++ method marked so constructs its result in the destination too. / Un metodo C++ asi marcado
+        //     tambien construye su resultado en el destino.
+        if (function.isCppExternal && memberModel_ != nullptr &&
+            function.memberOrdinal < memberModel_->members().size() &&
+            memberModel_->members()[function.memberOrdinal].cppConstructedResult)
+        {
+            function.cppConstructedResult = true;
+            continue;
+        }
         if (function.isCppExternal || function.referenceReturn || !function.returnTypeKey.starts_with("type:")) continue;
         const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(function.returnTypeKey).substr(5));
         const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;

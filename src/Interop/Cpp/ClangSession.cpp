@@ -3960,6 +3960,17 @@ public:
                         "inline void* operator new(decltype(sizeof 0), void* p, __nsc_cpp_result_place_t) noexcept "
                         "{ return p; }\n#endif\n" + aliases;
                 }
+                // X2-05: a non-trivial record result is constructed at out (guaranteed elision). / Un resultado record
+                //     no trivial se construye en out.
+                else if (classResult && cppNonTrivialRecordValue(result))
+                {
+                    body = "::new (static_cast<void*>(out), __nsc_cpp_result_place_t{}) " + alias("x", result) + "(" +
+                        call + ");";
+                    aliases = "#ifndef NSC_CPP_RESULT_PLACE_TAG\n#define NSC_CPP_RESULT_PLACE_TAG\n"
+                        "struct __nsc_cpp_result_place_t {};\n"
+                        "inline void* operator new(decltype(sizeof 0), void* p, __nsc_cpp_result_place_t) noexcept "
+                        "{ return p; }\n#endif\n" + aliases;
+                }
                 else if (classResult) body = "auto&& r = " + call + "; __builtin_memcpy(out, &r, sizeof(r));";
                 else if (referenceResult)
                 {
@@ -4035,7 +4046,17 @@ public:
             std::string body = call + ";";
             // A class result is trivially copyable (the projection only maps those): its bytes are copied to the
             // caller's memory. / Un resultado de clase es trivialmente copiable: se copian sus bytes.
-            if (classResult) body = "auto&& r = " + call + "; __builtin_memcpy(out, &r, sizeof(r));";
+            // X2-05: a non-trivial record result is constructed at out (guaranteed elision). / Un resultado record no
+            //     trivial se construye en out.
+            if (classResult && cppNonTrivialRecordValue(result))
+            {
+                body = "::new (static_cast<void*>(out), __nsc_cpp_result_place_t{}) " + resultAlias + "(" + call + ");";
+                aliases = "#ifndef NSC_CPP_RESULT_PLACE_TAG\n#define NSC_CPP_RESULT_PLACE_TAG\n"
+                    "struct __nsc_cpp_result_place_t {};\n"
+                    "inline void* operator new(decltype(sizeof 0), void* p, __nsc_cpp_result_place_t) noexcept "
+                    "{ return p; }\n#endif\n" + aliases;
+            }
+            else if (classResult) body = "auto&& r = " + call + "; __builtin_memcpy(out, &r, sizeof(r));";
             else if (referenceResult) { resultType = alias("q", result.getNonReferenceType()) + "*"; body = "return &" + call + ";"; }
             else if (!result->isVoidType()) { resultType = resultAlias; body = "return " + call + ";"; }
             snippets.emplace_back(requestIndex, aliases + "extern \"C\" inline " + resultType + " " + name + "(" +

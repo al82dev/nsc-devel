@@ -502,7 +502,8 @@ bool ProjectMemberModel::build(
         };
         if (!owner || owner->projectOrdinal != imported.projectOrdinal ||
             !cppCallableRecordIsVisible(imported.returnTypeKey, imported.projectOrdinal, nameLookup) ||
-            (!imported.returnsReference && !valueTypeIsAllowed(imported.returnTypeKey)) ||
+            (!imported.returnsReference && !imported.constructedResult && // X2-05: constructed in the destination
+             !valueTypeIsAllowed(imported.returnTypeKey)) ||
             std::any_of(imported.parameterTypeKeys.begin(), imported.parameterTypeKeys.end(), [&](const auto& key) {
                 return !cppCallableRecordIsVisible(key, imported.projectOrdinal, nameLookup) || !valueTypeIsAllowed(key);
             }))
@@ -541,6 +542,7 @@ bool ProjectMemberModel::build(
         // T11-005: a ref return of a C++ method is bound to the receiver, as for a NativeSharp method.
         member.isReferenceReturn = imported.returnsReference;
         member.cppReadonlyReferenceReturn = imported.returnsReadonlyReference;
+        member.cppConstructedResult = imported.constructedResult; // X2-05
         if (imported.returnsReference) member.returnLifetimeName = "this";
         member.signatureKey = member.name + "(";
         for (std::size_t i = 0; i < imported.parameterTypeKeys.size(); ++i)

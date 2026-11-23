@@ -122,6 +122,9 @@ struct ClassMemberSymbol final
     // ES: T19-007. Un callable C++ que devuelve `const T&`: su resultado por referencia es de solo lectura, como un
     //     callable NativeSharp `ref readonly T`, sin esa sintaxis de declaracion.
     bool cppReadonlyReferenceReturn = false;
+    // X2-05: a C++ method that constructs its non-trivial record result in the caller's destination. / Un metodo
+    //     C++ que construye su resultado record no trivial en el destino del llamador.
+    bool cppConstructedResult = false;
     std::string returnLifetimeName;
     std::vector<std::string> lifetimeParameters;
     std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;

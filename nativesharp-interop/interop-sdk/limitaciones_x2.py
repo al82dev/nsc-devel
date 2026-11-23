@@ -384,4 +384,25 @@ positivo(Caso('x2-constref-miembro', HF2, SF2, **CPP),
          'lib.Cmp k; k.base = 1; int d = k.diff(lib.make(43)); return d == 42 && lib.c().ctor == 1 && lib.c().dtor == 1 ? 42 : 1;',
          modes=['directo', 'dll'])
 rechazo(Caso('x2-constref-lugar', HF2, SF2, **CPP), 'var x = lib.make(1); return lib.peek(x);', 'lib.peek')
+# X2-05: a C++ method returning a non-trivial record by value was not imported ('no compatible member'). It now
+# constructs the result in the caller's destination, passed after this as MSVC does: a non-virtual method directly, a
+# virtual one through its adapter, which constructs the prvalue at that storage (guaranteed elision); into a local, as
+# a receiver temporary, and dispatched to a C++ override through a base pointer, with no copy.
+# X2-05: un metodo C++ que devuelve un record no trivial por valor construye el resultado en el destino del llamador.
+HMR = HF.replace('Obj make(int v);', 'Obj make(int v);\nstruct Maker { int base; Obj create(int v) const; virtual Obj vcreate(int v); };\nstruct Twice : Maker { Obj vcreate(int v) override; };\nMaker* twice();\nvoid drop(Maker* m);')
+SMR = SF.replace('Obj make(int v) { return Obj(v); }', 'Obj make(int v) { return Obj(v); }\nObj Maker::create(int v) const { return Obj(base + v); }\nObj Maker::vcreate(int v) { return Obj(base * v); }\nObj Twice::vcreate(int v) { return Obj(2 * v); }\n')
+BODY_MR = r'''
+    lib.Maker m = new lib.Maker(); m.base = 2;
+    {
+        var a = m.create(40);
+        var b = m.vcreate(21);
+        if (a.v != 42 || b.v != 42 || m.create(1).v != 3) return 1;
+        lib.Twice tw = new lib.Twice(); tw.base = 0; lib.Maker* t = &tw;
+        var c = t->vcreate(21);
+        if (c.v != 42) return 2;
+                if (lib.c().ctor != 4 || lib.c().dtor != 1) return 3;
+    }
+    return lib.c().ctor == 4 && lib.c().dtor == 4 ? 42 : 4;
+'''
+positivo(Caso('x2-metodo-resultado', HMR, SMR, extra_ref=' Rtti="false"', **CPP), BODY_MR, modes=['directo', 'dll'])
 fin()

@@ -79,6 +79,9 @@ struct CppSemanticInstanceMethod
     CppAccess access = CppAccess::Public;
     // T19-007. The method returns `const T&`. / El metodo devuelve `const T&`.
     bool readonlyReferenceReturn = false;
+    // X2-05: a non-trivial C++ record returned by value, constructed by the method in the caller's destination
+    //     (MSVC passes it after this). / Un record C++ no trivial devuelto por valor, construido en el destino.
+    bool constructedResult = false;
     // T19-006: see CppImportedInstanceMethod. / Ver CppImportedInstanceMethod.
     std::vector<std::string> cppParameterSpellings{};
     std::string cppSignatureSuffix{};

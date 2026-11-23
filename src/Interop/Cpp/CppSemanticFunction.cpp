@@ -1390,6 +1390,24 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
     auto result = mapFunctionType(returnCarrier ? *returnCarrier : method.returnType, true,
                                   records ? &recordIndex : nullptr, moduleName, 0, lookup, projectOrdinal,
                                   false, false, lookup != nullptr);
+    // EN: X2-05. A non-trivial C++ record returned by value by a method called directly (not through an adapter):
+    //     the method constructs it in the storage the caller passes after this (MSVC), as a NativeSharp method's
+    //     constructed result.
+    // ES: X2-05. Un record C++ no trivial devuelto por valor por un metodo llamado directamente: el metodo lo
+    //     construye en el almacenamiento que pasa el llamador tras this (MSVC).
+    bool constructedResult = false;
+    if (!result && !referenceReturn && lookup != nullptr &&
+        method.returnType.kind == CppTypeKind::Record)
+        if (const auto resultIdentity = projectCppRecordTypeIdentity(method.returnType, moduleName))
+            if (const auto ordinal = lookup->typeOrdinalForIdentity(resultIdentity->key());
+                ordinal && lookup->cppImportedType(*ordinal) &&
+                lookup->cppImportedType(*ordinal)->origin == frontend::CppImportedTypeOrigin::CppRecord &&
+                !lookup->cppTrivialValueEligible(*ordinal))
+            {
+                result = CppScalarTypeMapping{"type:" + resultIdentity->key(), method.returnType.canonicalSpelling,
+                                              false, false};
+                constructedResult = true;
+            }
     if (!result) return fail("C++ instance method return type is not yet mapped");
     std::vector<CppScalarTypeMapping> parameters;
     std::vector<std::uint8_t> objectSizeModes;
@@ -1446,6 +1464,7 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
         std::move(passKinds), referenceReturn};
     projected.rvalueReferences = std::move(rvalueReferences);
     projected.access = method.access;
+    projected.constructedResult = constructedResult; // X2-05
     projected.readonlyReferenceReturn = referenceReturn &&
         (method.returnType.element->isConst || method.returnType.kind == CppTypeKind::RValueReference);
     describeCppMethodOverload(method, projected.cppParameterSpellings, projected.cppSignatureSuffix,
@@ -1469,6 +1488,7 @@ frontend::CppImportedInstanceMethod toCppImportedInstanceMethod(const CppSemanti
     result.parameterPassKinds = method.passKinds;
     result.returnsReference = method.referenceReturn;
     result.returnsReadonlyReference = method.readonlyReferenceReturn;
+    result.constructedResult = method.constructedResult; // X2-05
     result.cppParameterSpellings = method.cppParameterSpellings;
     result.cppSignatureSuffix = method.cppSignatureSuffix;
     result.cppDeclarationSpelling = method.cppDeclarationSpelling;
