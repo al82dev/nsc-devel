@@ -3562,6 +3562,8 @@ public:
                            Instantiate instantiate, TypeUsr typeUsr, NativeStruct nativeStruct = {}, Reject reject = {})
         : tokens_(tokens), templates_(templates), instantiate_(std::move(instantiate)), typeUsr_(std::move(typeUsr)),
           nativeStruct_(std::move(nativeStruct)), reject_(std::move(reject)) {}
+    using DeferUnboundPack = std::function<bool(const std::string& qualifiedName, std::size_t explicitCount)>;
+    CppTemplateUseRewriter& deferUnboundPack(DeferUnboundPack value) { deferUnboundPack_ = std::move(value); return *this; }
 
     // A specialization use whose qualified name starts at index, or nullopt when the tokens are not one.
     std::optional<Use> match(std::size_t index, unsigned depth = 0) const
@@ -3624,6 +3626,12 @@ public:
         use.nameIndex = last;
         use.closeIndex = closeIndex;
         use.next = *closed;
+        // STL: a call to a function template whose pack the explicit arguments do not bind (`make_unique<T>(a)`)
+        //     is not instantiated here: the call deduces the rest from its arguments (T13-005, with the explicit
+        //     ones). / Una llamada cuyo paquete no fijan los explicitos deduce el resto de sus argumentos.
+        if (found->second && deferUnboundPack_ && closed->index < tokens_.size() && !closed->half &&
+            tokens_[closed->index].kind() == lexer::TokenKind::LeftParen && deferUnboundPack_(qualified, arguments.size()))
+            return std::nullopt;
         const SourceRange range(tokens_[last].range().begin(), tokens_[closeIndex].range().end());
         const auto specialization = instantiate_(qualified, found->second, arguments, range);
         if (!specialization) use.failed = true;
@@ -3780,6 +3788,7 @@ private:
     TypeUsr typeUsr_;
     NativeStruct nativeStruct_;
     Reject reject_;
+    DeferUnboundPack deferUnboundPack_;
 };
 }
 
@@ -4388,6 +4397,10 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
                         diagnostics_.report(diagnostics::DiagnosticId::UnknownTypeName,
                             diagnostics::DiagnosticSeverity::Error, range, std::move(message));
                         failed = true;
+                    }).deferUnboundPack([&](const std::string& qualifiedName, std::size_t explicitCount) {
+                        return std::any_of(project->second.sessions.begin(), project->second.sessions.end(),
+                            [&](const auto* session) {
+                                return session->functionTemplateHasUnboundPack(qualifiedName, explicitCount); });
                     }).match(index);
             if (!use || use->failed || use->next.half)
             {

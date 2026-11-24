@@ -141,4 +141,19 @@ namespace lib { static int c, d; int& ct() { return c; } int& dt() { return d; }
 positivo(Caso('x4-plantilla-resultado', HTPL, STPL, language='C++', standard='c++20', extra_ref=' Exceptions="false"'),
          '{ var b = lib.wrap<int>(42); if (b.v != 42 || lib.wrap<int>(7).v != 7) return 1; }'
          ' return lib.ct() == 2 && lib.dt() == 2 ? 42 : 2;', modes=['directo', 'dll', 'lib'])
+# EN: A call to a variadic function template with explicit arguments that do not bind its pack (`make_unique<T>(a)`,
+#     `sum<int>(40, 1, 1)`) deduces the rest from the call, as C++ does; it was instantiated with an empty pack
+#     ("no overload ... accepts 3 argument(s)"). / Una llamada a una plantilla variadica con argumentos explicitos que
+#     no fijan su paquete deduce el resto de la llamada; antes se instanciaba con el paquete vacio.
+HPK = r'''
+namespace lib {
+template <class R, class... A> R sum(A... a) { return (R)(0 + ... + a); }
+template <class R, class... A> R count(A...) { return (R)sizeof...(A); }
+}
+'''
+positivo(Caso('x4-paquete-explicito', HPK, None, language='C++', standard='c++20'),
+         'return lib.sum<int>(40, 1, 1) + lib.count<int>() + (int)lib.count<long>(1, 2) - 2;',
+         # lib: a published template that calls the deduced specialization is still rejected by the producer
+         # ("reusable template closure is incomplete"). / lib: pendiente.
+         modes=['directo', 'dll'])
 fin()

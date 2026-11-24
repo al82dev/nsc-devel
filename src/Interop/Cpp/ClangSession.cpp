@@ -5024,6 +5024,21 @@ public:
     //     also through inline namespaces. NativeSharp writes a specialization of one of them by that name.
     // ES: T13-006. Las plantillas de clase y de funcion declaradas en un namespace, por sus nombres C++
     //     calificados, tambien a traves de namespaces inline. NativeSharp escribe una especializacion con ese nombre.
+    bool functionTemplateHasUnboundPack(std::string_view qualifiedName, std::size_t explicitCount) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || !ast_->getASTContext().getLangOpts().CPlusPlus || options_.macroExpansionOnly) return false;
+        bool found = false;
+        visitNamespaceTemplates([&](const clang::TemplateDecl& declaration, bool isFunction) {
+            if (found || !isFunction) return;
+            const auto names = allTemplateNames(declaration);
+            if (std::find(names.begin(), names.end(), qualifiedName) == names.end()) return;
+            const auto* parameters = declaration.getTemplateParameters();
+            for (unsigned index = 0; parameters && index < parameters->size(); ++index)
+                if (parameters->getParam(index)->isParameterPack() && index >= explicitCount) found = true;
+        });
+        return found;
+    }
     bool recordHasMemberTemplates(std::string_view usr) const override
     {
         std::lock_guard lock(mutex_);

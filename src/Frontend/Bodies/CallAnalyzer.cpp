@@ -4796,6 +4796,18 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                 request.range = expression->range();
                 request.functionMacro = site->functionMacro;
                 bool valid = true;
+                // STL: the explicit template arguments written in the call (`make_unique<int>(42)`) come first; Clang
+                //     deduces the rest. / Los argumentos de plantilla explicitos van primero; Clang deduce el resto.
+                const ast::AstNode* callee = expression->first();
+                const auto explicitTypes = !expression->typeSyntaxes().empty() ? expression->typeSyntaxes()
+                    : callee != nullptr ? callee->typeSyntaxes() : expression->typeSyntaxes();
+                for (const ast::TypeSyntax* type : explicitTypes)
+                {
+                    auto key = type != nullptr && memberModel_ != nullptr && nameLookup_ != nullptr
+                        ? memberModel_->canonicalTypeKey(type, *nameLookup_) : std::string{};
+                    if (key.empty()) { valid = false; break; }
+                    request.explicitTemplateTypeKeys.push_back(std::move(key));
+                }
                 for (const ast::AstNode* argument : expression->children())
                 {
                     // T19-040: an argument the macro takes as tokens is not analyzed. / Un argumento que la macro

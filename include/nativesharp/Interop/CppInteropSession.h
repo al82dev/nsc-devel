@@ -409,6 +409,10 @@ public:
     // NSMeta X4-06: whether the record with this Clang USR (or a public base) declares a member function template.
     //     Si el record con este USR de Clang (o una base publica) declara una plantilla de funcion miembro.
     virtual bool recordHasMemberTemplates(std::string_view) const { return false; }
+    // STL: whether a function template of this qualified name has a template parameter pack that the first
+    //     `explicitCount` explicit arguments do not bind (`make_unique<T>(args...)`), so a call deduces the rest.
+    //     Si una plantilla de funcion tiene un paquete que los argumentos explicitos no fijan.
+    virtual bool functionTemplateHasUnboundPack(std::string_view, std::size_t) const { return false; }
     // T14-001: the macros of the header and whether each is an imported constant. / Las macros del encabezado.
     virtual std::vector<CppMacroName> macrosSnapshot() const { return {}; }
     // EN: C2-04. Evaluates a C/C++ expression written with the header's macros (`LZ4_COMPRESSBOUND(64)`) as an integer
