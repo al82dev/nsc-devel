@@ -259,6 +259,8 @@ const clang::TagDecl* findTagByUsr(const clang::DeclContext& scope, std::string_
 clang::QualType builtinTemplateArgumentType(const clang::ASTContext& context, std::string_view name)
 {
     if (name == "bool") return context.BoolTy;
+    // X2: a string literal's element, deduced as C++'s `const char[N]` decays. / El elemento de un literal.
+    if (name == "const char") return context.getConstType(context.CharTy);
     if (name == "signed char") return context.SignedCharTy;
     if (name == "unsigned char") return context.UnsignedCharTy;
     if (name == "char16_t") return context.Char16Ty;
@@ -3125,6 +3127,38 @@ public:
         if (context.getLangOpts().CPlusPlus)
             collectMemberOperators(*context.getTranslationUnitDecl(), context, result,
                                    ast_->hasSema() ? &ast_->getSema() : nullptr);
+        // EN: X2. In C++20 `a != b` is `!(a == b)` when no `!=` takes those operands; a free `operator==` (std's
+        //     basic_string one, a deduced specialization included) also publishes a `!=` whose adapter negates it.
+        // ES: X2. En C++20 `a != b` es `!(a == b)` si ningun `!=` toma esos operandos; un `operator==` libre tambien
+        //     publica un `!=` cuyo adaptador lo niega.
+        if (context.getLangOpts().CPlusPlus20)
+        {
+            std::set<std::string> inequalities;
+            for (const auto& value : result)
+                if (value.name == "operator!=") inequalities.insert(value.canonicalFunctionType);
+            std::vector<CppFunctionDeclaration> rewritten;
+            for (const auto& value : result)
+            {
+                if (value.name != "operator==" || value.parameters.size() != 2 || !value.clangUsr ||
+                    value.clangUsr->find("#rewritten-ne") != std::string::npos ||
+                    value.clangUsr->find("#member-template") != std::string::npos || !value.externalSymbol ||
+                    std::string_view(*value.externalSymbol).starts_with(cppMemberThunkPrefix) ||
+                    (value.canonicalReturnTypeSpelling != "bool" && value.canonicalReturnTypeSpelling != "_Bool") ||
+                    inequalities.contains(value.canonicalFunctionType)) continue;
+                CppFunctionDeclaration inequality = value;
+                inequality.name = "operator!=";
+                const auto separator = value.qualifiedName.rfind("::");
+                inequality.qualifiedName = separator == std::string::npos ? inequality.name
+                    : value.qualifiedName.substr(0, separator + 2) + inequality.name;
+                inequality.clangUsr = *value.clangUsr + "#rewritten-ne";
+                inequality.externalSymbol = cppMemberOperatorSymbol("#free-ne", *value.clangUsr);
+                inequality.alternateQualifiedNames.clear();
+                // The adapter is no specialization of its own. / El adaptador no es una especializacion propia.
+                inequality.templateSpecialization = {};
+                rewritten.push_back(std::move(inequality));
+            }
+            for (auto& value : rewritten) result.push_back(std::move(value));
+        }
         addAlternateFunctionNames(context, result);
         // EN: T19-039. A C operator of a `_Complex` carrier is reported as the C++ operator it stands for
         //     (`operator*`), so NativeSharp demands it from an expression as it demands a C++ free operator; it
@@ -4083,6 +4117,15 @@ public:
                             wanted.contains(adapter) && found.insert(adapter).second)
                             requests.push_back({std::move(adapter), nullptr, nullptr, false, function,
                                                 function->getNumParams(), true, true});
+                    // X2: the negating adapter of a C++20 `!=` rewritten from this `==`. / El adaptador que niega.
+                    if (usr)
+                        if (auto adapter = cppMemberOperatorSymbol("#free-ne", *usr);
+                            wanted.contains(adapter) && found.insert(adapter).second)
+                        {
+                            Request request{std::move(adapter), nullptr, nullptr, false, function, function->getNumParams()};
+                            request.negated = true;
+                            requests.push_back(std::move(request));
+                        }
                 }
                 // X2-05: the instantiated specializations of a function template too (`wrap<int>`), whose
                 //     adapters the projection names as for any free function. / Tambien las especializaciones
@@ -4113,6 +4156,15 @@ public:
                                 wanted.contains(adapter) && found.insert(adapter).second)
                                 requests.push_back({std::move(adapter), nullptr, nullptr, false, function,
                                                     function->getNumParams(), true, true});
+                        // X2: the negating adapter of a C++20 `!=` rewritten from this `==`. / El adaptador que niega.
+                        if (usr)
+                            if (auto adapter = cppMemberOperatorSymbol("#free-ne", *usr);
+                                wanted.contains(adapter) && found.insert(adapter).second)
+                            {
+                                Request request{std::move(adapter), nullptr, nullptr, false, function, function->getNumParams()};
+                                request.negated = true;
+                                requests.push_back(std::move(request));
+                            }
                     }
                 }
             }
@@ -4259,6 +4311,8 @@ public:
                     resultType = alias("r", result);
                     body = "return " + call + ";";
                 }
+                // X2: a rewritten `!=` negates the `==` it calls. / Un `!=` reescrito niega el `==` que llama.
+                if (request.negated) { resultType = "bool"; body = "return !(" + call + ");"; }
                 if (!spellable || !written.insert(name).second) continue;
                 snippets.emplace_back(requestIndex, aliases + "extern \"C\" inline " + resultType + " " + name + "(" +
                     parameters + ") { " + body + " }\n");
@@ -5021,7 +5075,34 @@ public:
         // EN: X2. `@member:<record USR>::<name>`: the member function templates of that record (and of its public
         //     bases) named so, for `m.add(40)` or `M.twice(21)`.
         // ES: X2. Las plantillas de funcion miembro de ese record (y de sus bases publicas) con ese nombre.
-        if (qualifiedName.starts_with("@member:"))
+        // EN: X2. `@operator:<record USR>::operator<op>`: the operator function templates of the record's namespace
+        //     (argument-dependent lookup), such as std's `operator==` of basic_string.
+        // ES: X2. Las plantillas de funcion operador del namespace del record (busqueda dependiente de argumentos).
+        if (qualifiedName.starts_with("@operator:"))
+        {
+            const auto separator = qualifiedName.rfind("::");
+            if (separator == std::string_view::npos || separator < 10) return std::nullopt;
+            const auto* tag = findTagByUsr(*context.getTranslationUnitDecl(),
+                                           std::string(qualifiedName.substr(10, separator - 10)));
+            const auto operatorName = qualifiedName.substr(separator + 2);
+            const auto* enclosing = tag ? tag->getDeclContext()->getEnclosingNamespaceContext() : nullptr;
+            const auto* ns = enclosing ? llvm::dyn_cast<clang::NamespaceDecl>(enclosing) : nullptr;
+            const auto collect = [&](std::string_view name) {
+                if (ns)
+                    for (const auto* redeclaration : ns->redecls())
+                        for (auto* member : redeclaration->decls())
+                            if (auto* functionTemplate = llvm::dyn_cast<clang::FunctionTemplateDecl>(member);
+                                functionTemplate && functionTemplate->getNameAsString() == name &&
+                                seenTemplates.insert(functionTemplate->getCanonicalDecl()).second)
+                                templates.push_back(functionTemplate);
+            };
+            collect(operatorName);
+            // X2: in C++20 a `!=` with no template of its own is rewritten from `==`; the `==` specialization
+            //     publishes the negating `!=`. / En C++20 un `!=` sin plantilla propia se reescribe desde `==`.
+            if (operatorName == "operator!=" && context.getLangOpts().CPlusPlus20)
+                collect("operator==");
+        }
+        else if (qualifiedName.starts_with("@member:"))
         {
             const auto separator = qualifiedName.rfind("::");
             if (separator == std::string_view::npos || separator < 8) return std::nullopt;
@@ -5164,8 +5245,12 @@ public:
         result.instantiated = true;
         result.name = templates.front()->getNameAsString();
         result.clangUsr = declarationUsr(found.front());
+        // X2: each specialization keeps its own template's name (a `!=` request also deduces `==` ones). / Cada
+        //     especializacion conserva el nombre de su propia plantilla.
         for (auto* specialization : found)
-            functionSpecializationNames_.emplace(specialization->getCanonicalDecl(), result.name);
+            functionSpecializationNames_.emplace(specialization->getCanonicalDecl(),
+                specialization->getPrimaryTemplate() ? specialization->getPrimaryTemplate()->getNameAsString()
+                                                     : result.name);
         return result;
     }
 

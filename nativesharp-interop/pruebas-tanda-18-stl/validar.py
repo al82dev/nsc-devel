@@ -77,6 +77,12 @@ CASES = [
     ('string', 'std.string s = new std.string("hola"); s.append("mundo").append("!"); s += "xy"; '
                'return (int)s.size() * 10 + (int)s[0] - 100;',
      'std::string s("hola"); s.append("mundo").append("!"); s += "xy"; return (int)s.size() * 10 + (int)s[0] - 100;'),
+    # X2: std's free operator function templates (`operator==(const basic_string&, const char*)`) deduced from the
+    #     operands, and C++20's `!=` rewritten from them. / Plantillas de operador libres de std y `!=` reescrito.
+    ('string-compare', 'std.string s = new std.string("hola"); std.string t = new std.string("hol"); '
+                       'return (s == "hola" ? 1 : 0) + (s != t ? 2 : 0) + (s == t ? 4 : 0) + (s != "hola" ? 8 : 0);',
+     'std::string s("hola"); std::string t("hol"); '
+     'return (s == "hola" ? 1 : 0) + (s != t ? 2 : 0) + (s == t ? 4 : 0) + (s != "hola" ? 8 : 0);'),
 ]
 
 

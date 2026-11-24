@@ -581,4 +581,17 @@ struct Txt { int n; Txt(const char* const s) : n(0) { while (s[n]) ++n; } Txt(co
 '''
 positivo(Caso('x2-constructor-puntero-const', HCS, '', **CRG),
          'lib.Txt t = new lib.Txt("hola"); t.add(30).add(8); return t.n;', modes=['directo', 'dll'])
+# X2: a free operator function template of a record's namespace (`template <class T> bool operator==(const Box<T>&,
+# const Box<T>&)`) is deduced from the operands as a call's (T13-005), and C++20's `!=` is rewritten from it (an
+# adapter negating `==`). / Plantilla de operador libre deducida de los operandos y `!=` reescrito de C++20.
+HOT = r'''
+namespace lib {
+template <class T> struct Box { T v; };
+template <class T> bool operator==(const Box<T>& a, const Box<T>& b) { return a.v == b.v; }
+struct Use { Box<int> a; };
+}
+'''
+positivo(Caso('x2-operador-plantilla-libre', HOT, '', **CRG),
+         'lib.Use u; u.a.v = 3; lib.Use w; w.a.v = 4; lib.Use z; z.a.v = 3;'
+         ' return (u.a == z.a ? 40 : 0) + (u.a != w.a ? 2 : 0) + (u.a != z.a ? 100 : 0);', modes=['directo', 'dll'])
 fin()

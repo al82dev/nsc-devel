@@ -1800,6 +1800,15 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
                 continue;
             }
             std::string_view base(key);
+            // X2: a string literal deduces as the `const char*` its array decays to. / Un literal se deduce como el
+            //     `const char*` al que decae su arreglo.
+            if (base == "string-literal")
+            {
+                argument.builtin = "const char";
+                argument.pointerDepth = 1;
+                arguments.push_back(std::move(argument));
+                continue;
+            }
             if (base.starts_with("lvalue:")) { argument.lvalue = true; base.remove_prefix(7); }
             // C5-02: a C `signed char` value. / Un valor C `signed char`.
             if (base.starts_with("csigned:")) { argument.cSignedChar = true; base.remove_prefix(8); }
@@ -1849,6 +1858,10 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
         //     miembro que no nombra una plantilla de funcion miembro conserva su diagnostico de miembro.
         const bool memberTemplate = !request.qualifiedNames.empty() &&
             request.qualifiedNames.front().starts_with("@member:");
+        // X2: an operator expression that may call an operator function template; when none deduces, the
+        //     expression keeps its own diagnostic. / Una expresion de operador que puede llamar una plantilla.
+        const bool operatorTemplate = !request.qualifiedNames.empty() &&
+            request.qualifiedNames.front().starts_with("@operator:");
         bool answered = false;
         std::vector<std::string> notes;
         // C2-06: the NativeSharp site of a macro call, for __FILE__ and __LINE__. / El sitio NativeSharp de una
@@ -1908,7 +1921,7 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
                             else notes.insert(notes.end(), result->diagnostics.begin(), result->diagnostics.end());
                         }
             }
-        if (deduced || (memberTemplate && !answered) ||
+        if (deduced || (memberTemplate && !answered) || operatorTemplate ||
             (namespaceFunctionModel_ && namespaceFunctionModel_->referenceBinding(request.syntax)))
         {
             // T19-003: not deduced again in a later round. / No se deduce otra vez en otra ronda.

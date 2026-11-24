@@ -327,7 +327,62 @@ bool ProjectMethodBodyModel::analyzeOverloadedBinary(
     if (operatorName.empty() || operatorTraitKey.empty() || nullLiteralOperand) return false;
     std::vector<std::size_t> candidates = stage38OperatorCandidates(
         operatorTraitKey, operatorName, left.typeKey, right.typeKey);
-    if (candidates.empty()) return false;
+    // EN: X2. A C++ record operand may take an operator function template of its namespace (std's
+    //     `operator==(const basic_string&, const char*)`): when no overload resolves, the operand types are recorded
+    //     for Clang to deduce one, as for a call (T13-005), and the bodies are analyzed again.
+    // ES: X2. Un operando record C++ puede tomar una plantilla de funcion operador de su namespace: si ninguna
+    //     sobrecarga resuelve, se registran los tipos de los operandos para que Clang deduzca una.
+    const auto recordOperatorTemplateDeduction = [&] {
+        if (namespaceFunctionModel_ == nullptr || nameLookup_ == nullptr) return;
+        std::string spelling;
+        switch (operation)
+        {
+        case TokenKind::EqualEqual: spelling = "=="; break;
+        case TokenKind::BangEqual: spelling = "!="; break;
+        case TokenKind::Less: spelling = "<"; break;
+        case TokenKind::LessEqual: spelling = "<="; break;
+        case TokenKind::Greater: spelling = ">"; break;
+        case TokenKind::GreaterEqual: spelling = ">="; break;
+        case TokenKind::Plus: spelling = "+"; break;
+        case TokenKind::Minus: spelling = "-"; break;
+        case TokenKind::Star: spelling = "*"; break;
+        case TokenKind::Slash: spelling = "/"; break;
+        case TokenKind::Percent: spelling = "%"; break;
+        case TokenKind::LessLess: spelling = "<<"; break;
+        case TokenKind::GreaterGreater: spelling = ">>"; break;
+        case TokenKind::Amp: spelling = "&"; break;
+        case TokenKind::Pipe: spelling = "|"; break;
+        case TokenKind::Caret: spelling = "^"; break;
+        default: return;
+        }
+        CppTemplateDeductionRequest request;
+        request.syntax = expression;
+        request.range = expression->range();
+        for (const ExpressionResult* operand : {&left, &right})
+        {
+            std::string_view identity = operand->typeKey;
+            if (identity.starts_with("type:"))
+            {
+                identity.remove_prefix(5);
+                const auto ordinal = nameLookup_->typeOrdinalForIdentity(identity);
+                const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+                if (imported != nullptr && imported->origin == CppImportedTypeOrigin::CppRecord && imported->clangUsr)
+                {
+                    if (request.qualifiedNames.empty())
+                        request.projectOrdinal = nameLookup_->namedTypes()[*ordinal].projectOrdinal;
+                    request.qualifiedNames.push_back("@operator:" + *imported->clangUsr + "::operator" + spelling);
+                }
+            }
+            request.argumentTypeKeys.push_back(operand->typeKey == "string-literal" ? operand->typeKey
+                : (operand->addressable ? "lvalue:" : "") + operand->typeKey);
+        }
+        if (!request.qualifiedNames.empty()) namespaceFunctionModel_->recordCppTemplateDeduction(std::move(request));
+    };
+    if (candidates.empty())
+    {
+        recordOperatorTemplateDeduction();
+        return false;
+    }
     const std::vector<ExpressionResult> arguments = {left, right};
     // EN: Item 9.9. When both operands also admit the built-in integer operation (integers, C enums, unscoped
     //     C++ enums), a user operator that does not fit is not an error: as in C++, the built-in one applies.
@@ -346,6 +401,13 @@ bool ProjectMethodBodyModel::analyzeOverloadedBinary(
             expression, methodMemberOrdinal, scopeOrdinal, operatorName, candidates,
             arguments, nullptr, {}, std::nullopt, false, false, probe, true);
         if (!tried.valid) return false;
+    }
+    {
+        diagnostics::DiagnosticEngine probe;
+        std::vector<std::size_t> probeCandidates = candidates;
+        if (!resolveSyntheticCall(expression, methodMemberOrdinal, scopeOrdinal, operatorName,
+                std::move(probeCandidates), arguments, nullptr, {}, std::nullopt, false, false, probe, true).valid)
+            recordOperatorTemplateDeduction();
     }
     ExpressionResult overloaded = resolveSyntheticCall(
         expression, methodMemberOrdinal, scopeOrdinal, operatorName, std::move(candidates),
