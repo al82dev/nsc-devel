@@ -14,7 +14,7 @@ destruye la funcion original (ABI Microsoft x64), sin copia; un objeto prestado 
 X2-08: `+=` con resultado `T&`, `++`/`--` prefijos, `*o` (resultado `T&` asignable), `o(args)` y `==`, cada uno sobre el
 objeto en su lugar, sin copiarlo.
 """
-from comun import Caso, positivo, rechazo, fin
+from comun import Caso, positivo, rechazo, rechazo_lib, fin
 
 H = r'''
 namespace lib {
@@ -572,6 +572,11 @@ positivo(Caso('x2-operador-heredado', HIH, SIH, **CRG),
 # (or failed internally). It is rejected. / C++ no define igualdad implicita para una clase: se rechaza.
 rechazo(Caso('x2-igualdad-implicita', 'namespace lib { struct P { int x; int y; }; }'+chr(10), '', **CRG),
         'lib.P a; a.x = 1; a.y = 2; lib.P b; b.x = 1; b.y = 2; return a == b ? 1 : 0;', "C++ type 'lib.P' has no operator==")
+# NSMeta X4-06: a consumer without the header that instantiates the same comparison in a published template is
+#     rejected the same way. / Un consumidor sin encabezado que instancia la comparacion se rechaza igual.
+rechazo_lib(Caso('x2-igualdad-implicita', 'namespace lib { struct P { int x; int y; }; }'+chr(10), '', **CRG),
+            'lib.P a; a.x = 1; a.y = 2; lib.P b; b.x = 1; b.y = 2; return a == b ? 1 : 0;',
+            "C++ type 'lib.P' has no operator==")
 # X2: a member function template of a C++ record called with deduced arguments (`m.add(40)`) had no member; as for a
 # free function template (T13-005) Clang deduces and instantiates it, and the specialization is called as an
 # extension method of the record through its member adapter. A member the record lacks keeps its diagnostic.

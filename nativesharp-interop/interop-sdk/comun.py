@@ -208,6 +208,38 @@ def rechazo(caso, body, texto, preludio=''):
         print(f'ok {label}', flush=True)
 
 
+def rechazo_lib(caso, body, texto, preludio=''):
+    """The body is a published template of a precompiled library (lib, O0); the consumer without the header that
+    instantiates it must be rejected with `texto`. / El cuerpo es una plantilla publicada; el consumidor sin
+    encabezado que la instancia se rechaza con `texto`."""
+    if not _selected(caso.nombre):
+        return
+    _COUNTERS[caso.nombre] = _COUNTERS.get(caso.nombre, 0) + 1
+    label = f'{caso.nombre}-rechazo-lib{_COUNTERS[caso.nombre]}'
+    base = ROOT / caso.nombre / f'rechazo-lib{_COUNTERS[caso.nombre]}'
+    producer = base / 'productor'
+    consumer = base / 'consumidor'
+    producer.mkdir(parents=True)
+    refs = caso.reference(producer) + core(0)
+    (producer / 'Lib.ns').write_text(f'using NativeSharp.Core;\n{preludio}\nnamespace SdkProbe\n{{\n'
+                                     '    public class Probe\n    {\n        public static int Run<T>(T unused)\n'
+                                     f'        {{\n{body}\n        }}\n    }}\n}}\n', encoding='utf-8')
+    project(producer, 'SdkProbeLib', ['Lib.ns'], refs, 'Library')
+    result = nsc(producer, 'SdkProbeLib', 0, 'lib', 'SdkProbeLib.lib', 'nsc')
+    if result.returncode:
+        _fail(label, 'el productor fallo:\n' + result.stdout[-1500:])
+        return
+    consumer.mkdir()
+    (consumer / 'Main.ns').write_text('using NativeSharp.Core;\nint Main()\n{\n    return SdkProbe.Probe.Run<int>(0);\n}\n',
+                                      encoding='utf-8')
+    project(consumer, 'App', ['Main.ns'], '<LibraryReference Include="../productor/SdkProbeLib.lib" />' + core(0))
+    result = nsc(consumer, 'App', 0, 'exe', 'app.exe', 'nsc')
+    if result.returncode == 0 or texto not in result.stdout:
+        _fail(label, f'se esperaba un rechazo con "{texto}":\n{result.stdout[-1500:]}')
+    else:
+        print(f'ok {label}', flush=True)
+
+
 def diagnostico(caso, body, textos, compila, preludio='', extra=None, opts=None):
     """Compiles the direct project in each optimization level and checks that the output contains every text.
     compila: whether the build must succeed. extra: additional files {name: text} next to api.h."""
