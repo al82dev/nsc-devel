@@ -132,6 +132,14 @@ positivo(Caso('x4-exceptions-false', HEXC, SEXC, extra_ref=' Exceptions="false"'
          ' return lib.dt() * 10 + lib.ct() == 22 ? 42 : 2;',
          preludio='class H { public lib.Box<int> a; public lib.Box<int> b = new lib.Box<int>(5); }'+chr(10),
          modes=['directo', 'dll'])
+# NSMeta X4-06: in lib the class is the producer's (public) and its class-template C++ fields travel through the
+#     source session; dll keeps the private class (a public one makes the consumer call the unexported lib.ct).
+#     / En lib la clase es del productor y sus campos de plantilla C++ viajan por la sesion de fuente.
+positivo(Caso('x4-exceptions-false-bib', HEXC, SEXC, extra_ref=' Exceptions="false"', **CPPEXC),
+         '{ var h = new H(); if (h.a.v != 7 || h.b.v != 5 || lib.touch(&h.b) != 5) return 1; }'
+         ' return lib.dt() * 10 + lib.ct() == 22 ? 42 : 2;',
+         preludio='public class H { public lib.Box<int> a; public lib.Box<int> b = new lib.Box<int>(5); }'+chr(10),
+         modes=['lib'])
 rechazo(Caso('x4-exceptions-invalido', HEXC, SEXC, extra_ref=' Exceptions="no"', **CPPEXC), 'return 0;',
         'Exceptions must be true or false')
 # X4/X2-05: a function template returning a non-trivial record by value (`Box<T> wrap(T)`): the in-place return
