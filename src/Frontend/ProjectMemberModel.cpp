@@ -123,7 +123,9 @@ bool ProjectMemberModel::setExperimentalCppInstanceMethods(
 {
     if (built_) { error = "C++ instance methods must be configured before building members"; return false; }
     std::set<std::string> signatures;
-    std::map<std::string, const CppImportedInstanceMethod*> symbols;
+    // NSMeta X4-06: a symbol is unique within a project (a consumer with the header and a precompiled source
+    // session name the same C++ member). / Un simbolo es unico dentro de un proyecto.
+    std::map<std::pair<std::size_t, std::string>, const CppImportedInstanceMethod*> symbols;
     for (const auto& method : methods)
     {
         if (method.ownerIdentityKey.empty() || method.name.empty() || method.externalSymbol.empty() ||
@@ -158,7 +160,7 @@ bool ProjectMemberModel::setExperimentalCppInstanceMethods(
         signature += method.cppSignatureSuffix;
         if (method.receiverConst) signature += " const";
         if (method.receiverRvalue) signature += " &&"; // X2: `value() &` and `value() &&`
-        const auto [symbol, inserted] = symbols.emplace(method.externalSymbol, &method);
+        const auto [symbol, inserted] = symbols.emplace(std::pair{method.projectOrdinal, method.externalSymbol}, &method);
         if (!signatures.insert(std::move(signature)).second || (!inserted &&
             (!symbol->second->sharedExternalSymbolVerified || !method.sharedExternalSymbolVerified ||
              symbol->second->name != method.name || symbol->second->returnTypeKey != method.returnTypeKey ||
@@ -247,7 +249,9 @@ bool ProjectMemberModel::setExperimentalCppStaticMethods(
 {
     if (built_) { error = "C++ static methods must be configured before building members"; return false; }
     std::set<std::string> signatures;
-    std::map<std::string, const CppImportedStaticMethod*> symbols;
+    // NSMeta X4-06: a symbol is unique within a project (a consumer with the header and a precompiled source
+    // session name the same C++ member). / Un simbolo es unico dentro de un proyecto.
+    std::map<std::pair<std::size_t, std::string>, const CppImportedStaticMethod*> symbols;
     for (const auto& method : methods)
     {
         if (method.ownerIdentityKey.empty() || method.name.empty() || method.externalSymbol.empty() ||
@@ -283,7 +287,7 @@ bool ProjectMemberModel::setExperimentalCppStaticMethods(
         signature += ")";
         // T19-006: the C++ spellings keep overloads with equal NativeSharp types apart. / Las separan.
         signature += method.cppSignatureSuffix;
-        const auto [symbol, inserted] = symbols.emplace(method.externalSymbol, &method);
+        const auto [symbol, inserted] = symbols.emplace(std::pair{method.projectOrdinal, method.externalSymbol}, &method);
         if (!signatures.insert(std::move(signature)).second || (!inserted &&
             (!symbol->second->sharedExternalSymbolVerified || !method.sharedExternalSymbolVerified ||
              symbol->second->name != method.name ||
