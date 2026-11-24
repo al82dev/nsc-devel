@@ -3724,6 +3724,33 @@ public:
                 argument.constQualified = tokens_[cursor].kind() == lexer::TokenKind::KwIn; // `in`: readonly
                 ++cursor;
             }
+            // EN: An arithmetic expression over literals and typed locals (`a + 1`, `2.0 * b`) is a prvalue of the
+            //     type C++'s usual arithmetic conversions give it.
+            // ES: Una expresion aritmetica sobre literales y locales tipados es un prvalue del tipo que le dan las
+            //     conversiones aritmeticas usuales de C++.
+            if (!place)
+            {
+                std::size_t end = cursor;
+                for (std::size_t depth = 0; end < tokens_.size(); ++end)
+                {
+                    const auto kind = tokens_[end].kind();
+                    if (kind == lexer::TokenKind::LeftParen) ++depth;
+                    else if (kind == lexer::TokenKind::RightParen) { if (depth == 0) break; --depth; }
+                    else if (kind == lexer::TokenKind::Comma && depth == 0) break;
+                }
+                if (end > cursor + 1)
+                {
+                    const std::string builtin = arithmeticType(index, cursor, end);
+                    if (builtin.empty()) { literals = false; break; }
+                    argument.builtin = builtin;
+                    arguments.push_back(std::move(argument));
+                    cursor = end;
+                    if (cursor < tokens_.size() && tokens_[cursor].kind() == lexer::TokenKind::Comma) ++cursor;
+                    else if (cursor >= tokens_.size() || tokens_[cursor].kind() != lexer::TokenKind::RightParen)
+                        literals = false;
+                    continue;
+                }
+            }
             const auto& token = tokens_[cursor];
             const auto text = token.lexeme();
             switch (token.kind())
@@ -3739,37 +3766,10 @@ public:
                 // STL (CTAD): a local declared before with an explicit builtin type (`int a = 40;`), the
                 //     nearest such declaration of that name in the unit; an lvalue, as C++ passes it.
                 //     Un local declarado antes con un tipo builtin explicito, la declaracion mas cercana.
-                const auto builtinOf = [](lexer::TokenKind kind) -> std::string_view {
-                    switch (kind)
-                    {
-                    case lexer::TokenKind::KwBool: return "bool";
-                    case lexer::TokenKind::KwSByte: return "signed char";
-                    case lexer::TokenKind::KwByte: return "unsigned char";
-                    case lexer::TokenKind::KwShort: return "short";
-                    case lexer::TokenKind::KwUShort: return "unsigned short";
-                    case lexer::TokenKind::KwInt: return "int";
-                    case lexer::TokenKind::KwUInt: return "unsigned int";
-                    case lexer::TokenKind::KwLong: return "long long";
-                    case lexer::TokenKind::KwULong: return "unsigned long long";
-                    case lexer::TokenKind::KwFloat: return "float";
-                    case lexer::TokenKind::KwDouble: return "double";
-                    default: return {};
-                    }
-                };
-                literals = false;
-                for (std::size_t back = index; back-- > 1;)
-                {
-                    if (tokens_[back].kind() != lexer::TokenKind::Identifier || tokens_[back].lexeme() != text ||
-                        back + 1 >= tokens_.size()) continue;
-                    const auto after = tokens_[back + 1].kind();
-                    if (after != lexer::TokenKind::Equal && after != lexer::TokenKind::Semicolon) continue;
-                    const auto builtin = builtinOf(tokens_[back - 1].kind());
-                    if (builtin.empty()) break;
-                    argument.builtin = std::string(builtin);
-                    argument.lvalue = true;
-                    literals = true;
-                    break;
-                }
+                const std::string builtin = typedLocal(index, text);
+                literals = !builtin.empty();
+                argument.builtin = builtin;
+                argument.lvalue = true;
                 break;
             }
             default: literals = false; break;
@@ -3787,6 +3787,107 @@ public:
     }
 
 private:
+    static std::string_view builtinOf(lexer::TokenKind kind)
+    {
+        switch (kind)
+        {
+        case lexer::TokenKind::KwBool: return "bool";
+        case lexer::TokenKind::KwSByte: return "signed char";
+        case lexer::TokenKind::KwByte: return "unsigned char";
+        case lexer::TokenKind::KwShort: return "short";
+        case lexer::TokenKind::KwUShort: return "unsigned short";
+        case lexer::TokenKind::KwInt: return "int";
+        case lexer::TokenKind::KwUInt: return "unsigned int";
+        case lexer::TokenKind::KwLong: return "long long";
+        case lexer::TokenKind::KwULong: return "unsigned long long";
+        case lexer::TokenKind::KwFloat: return "float";
+        case lexer::TokenKind::KwDouble: return "double";
+        default: return {};
+        }
+    }
+
+    // The C++ builtin type of the nearest earlier local `<builtin> name = ...;` or `<builtin> name;` of the unit,
+    //     or empty. / El tipo builtin C++ del local anterior mas cercano con ese nombre, o vacio.
+    std::string typedLocal(std::size_t index, std::string_view text) const
+    {
+        for (std::size_t back = index; back-- > 1;)
+        {
+            if (tokens_[back].kind() != lexer::TokenKind::Identifier || tokens_[back].lexeme() != text ||
+                back + 1 >= tokens_.size()) continue;
+            const auto after = tokens_[back + 1].kind();
+            if (after != lexer::TokenKind::Equal && after != lexer::TokenKind::Semicolon) continue;
+            return std::string(builtinOf(tokens_[back - 1].kind()));
+        }
+        return {};
+    }
+
+    // EN: The type of an arithmetic expression [begin, end) over literals and typed locals, by C++'s usual
+    //     arithmetic conversions (a comparison or logical operator outside parentheses gives bool); empty when the
+    //     expression has anything else (a call, a member, a string).
+    // ES: El tipo de una expresion aritmetica sobre literales y locales tipados, por las conversiones aritmeticas
+    //     usuales de C++; vacio si la expresion tiene otra cosa.
+    std::string arithmeticType(std::size_t index, std::size_t begin, std::size_t end) const
+    {
+        static constexpr std::string_view ranks[] = {"int", "unsigned int", "long long", "unsigned long long"};
+        std::size_t rank = 0;
+        bool isFloat = false;
+        bool isDouble = false;
+        bool isBool = false;
+        bool operand = false;
+        std::size_t depth = 0;
+        const auto take = [&](std::string_view type) {
+            operand = true;
+            if (type == "double") isDouble = true;
+            else if (type == "float") isFloat = true;
+            else
+                for (std::size_t at = 0; at < std::size(ranks); ++at)
+                    if (ranks[at] == type && at > rank) rank = at;
+        };
+        for (std::size_t at = begin; at < end; ++at)
+        {
+            const auto& token = tokens_[at];
+            switch (token.kind())
+            {
+            case lexer::TokenKind::IntegerLiteral: take("int"); break;
+            case lexer::TokenKind::FloatingLiteral:
+            {
+                const auto text = token.lexeme();
+                take(!text.empty() && (text.back() == 'f' || text.back() == 'F') ? "float" : "double");
+                break;
+            }
+            case lexer::TokenKind::KwTrue: case lexer::TokenKind::KwFalse: take("int"); break;
+            case lexer::TokenKind::Identifier:
+            {
+                if (at + 1 < end && (tokens_[at + 1].kind() == lexer::TokenKind::LeftParen ||
+                                     tokens_[at + 1].kind() == lexer::TokenKind::Dot)) return {};
+                const std::string type = typedLocal(index, token.lexeme());
+                if (type.empty()) return {};
+                take(type);
+                break;
+            }
+            case lexer::TokenKind::LeftParen: ++depth; break;
+            case lexer::TokenKind::RightParen: if (depth == 0) return {}; --depth; break;
+            case lexer::TokenKind::Plus: case lexer::TokenKind::Minus: case lexer::TokenKind::Star:
+            case lexer::TokenKind::Slash: case lexer::TokenKind::Percent: case lexer::TokenKind::Amp:
+            case lexer::TokenKind::Pipe: case lexer::TokenKind::Caret: case lexer::TokenKind::Tilde:
+            case lexer::TokenKind::LessLess: case lexer::TokenKind::GreaterGreater:
+                break;
+            case lexer::TokenKind::EqualEqual: case lexer::TokenKind::BangEqual: case lexer::TokenKind::Less:
+            case lexer::TokenKind::LessEqual: case lexer::TokenKind::Greater: case lexer::TokenKind::GreaterEqual:
+            case lexer::TokenKind::AmpAmp: case lexer::TokenKind::PipePipe: case lexer::TokenKind::Bang:
+                if (depth != 0) return {};
+                isBool = true;
+                break;
+            default: return {};
+            }
+        }
+        if (!operand || depth != 0) return {};
+        if (isBool) return "bool";
+        if (isDouble) return "double";
+        if (isFloat) return "float";
+        return std::string(ranks[rank]);
+    }
+
     struct Argument
     {
         interop::CppTemplateArgument value;

@@ -201,4 +201,11 @@ positivo(Caso('x4-fabrica-variadica', HMK, SMK, language='C++', standard='c++20'
          # lib: before parsing, the consumer without the header names the explicit record argument (`lib.Box`) through
          # the producer's source session (NSMeta X4-06). / lib: lo nombra la sesion de fuente del productor.
          modes=['directo', 'dll', 'lib'])
+# STL: the factory's arguments may be arithmetic expressions over literals and typed locals (`j - 8`, `k * 5`): each is
+#     a prvalue of the type C++'s usual arithmetic conversions give it. / Los argumentos pueden ser expresiones
+#     aritmeticas sobre literales y locales tipados: cada una es un prvalue de su tipo C++.
+positivo(Caso('x4-fabrica-expresiones', HMK, SMK, language='C++', standard='c++20', extra_ref=' Exceptions="false"'),
+         'int k = 2; int j = 40; int r = 0; { var b = lib.make<lib.Box>(j - 8, (k + 1) * 3 + 1); r = b.v; } '
+         'return r + lib.live();',
+         modes=['directo', 'dll', 'lib'])
 fin()
