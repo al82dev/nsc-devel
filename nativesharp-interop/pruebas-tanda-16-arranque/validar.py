@@ -8,6 +8,8 @@ destructores al salir; con --dll la biblioteca es una DLL con su propio runtime,
 al descargarse, y el ejecutable usa la entrada de NativeSharp. Sin `--crt-startup`, un ejecutable o una DLL
 NativeSharp que toma un miembro de una biblioteca estatica con inicializadores dinamicos se rechaza nombrando el
 miembro; si el enlace no toma ese miembro, enlaza y se ejecuta. Compara con un control C++ de Clang 23.1.0, O0-O3.
+Con --lib (NSMeta X4-06) el cuerpo de Main es una plantilla generica publicada por una biblioteca NativeSharp
+precompilada y el consumidor, sin el encabezado, la instancia; los negativos se comprueban en directo.
 """
 import argparse
 import os
@@ -20,6 +22,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
 parser.add_argument('--dll', action='store_true')
+parser.add_argument('--lib', action='store_true')
 args = parser.parse_args()
 root = Path(tempfile.mkdtemp(prefix='nsc-t16-arranque-', dir='A:/temp'))
 env = os.environ.copy()
@@ -91,13 +94,26 @@ def observe(label, executable, cwd):
     return code, marker.read_text(encoding='ascii') if marker.exists() else ''
 
 
-def project(folder):
+def project(folder, opt=0, lib=False):
     runtime = ' Runtime="api.dll"' if args.dll else ''
-    (folder / 'Main.ns').write_text('int Main() { ' + NS_BODY + ' }\n', encoding='utf-8')
+    reference = '<CppLibraryReference Header="api.h" Language="C++" Standard="c++20" Library="api.lib"' + runtime + ' />'
+    if lib:
+        # NSMeta X4-06: Main's body is the producer's published generic. / El cuerpo de Main es la plantilla publicada.
+        (folder / 'Lib.ns').write_text('namespace T16Lib { public static class P {\n'
+                                       'public static int Run<T>(T unused) { ' + NS_BODY + ' } } }\n', encoding='utf-8')
+        (folder / 'Lib.nsproj').write_text(
+            '<Project><PropertyGroup><Name>T16Lib</Name><OutputType>Library</OutputType></PropertyGroup>'
+            '<ItemGroup><Compile Include="Lib.ns" />' + reference + '</ItemGroup></Project>', encoding='utf-8')
+        run(f'O{opt}-nsc-lib', [args.nsc, '--emit-project-oop-lib', 'Lib.nsproj', '--cpp-clang-root=' + args.clang_root,
+                                '--no-artifact-cache', '-O' + str(opt), '-o', 'T16Lib.lib'], folder,
+            extra_env={'NSC_LINKER': 'nslink.exe'})
+        (folder / 'Main.ns').write_text('int Main() { return T16Lib.P.Run<int>(0); }\n', encoding='utf-8')
+        reference = '<LibraryReference Include="T16Lib.lib" />'
+    else:
+        (folder / 'Main.ns').write_text('int Main() { ' + NS_BODY + ' }\n', encoding='utf-8')
     (folder / 'App.nsproj').write_text(
         '<Project><PropertyGroup><Name>T16App</Name></PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
-        '<CppLibraryReference Header="api.h" Language="C++" Standard="c++20" Library="api.lib"' + runtime + ' />'
-        '</ItemGroup></Project>', encoding='utf-8')
+        + reference + '</ItemGroup></Project>', encoding='utf-8')
 
 
 if 'clang version 23.1.0' not in run('clang-version', ['clang.exe', '--version'], root).stdout:
@@ -121,7 +137,7 @@ for opt in range(4):
     control, control_mark = observe(f'O{opt}-control-run', case / 'control.exe', case)
     if control != EXPECTED or control_mark != 'cmd':
         raise SystemExit(f'O{opt}: el control C++ devolvio {control} con marca {control_mark!r}; evidencia: {root}')
-    project(case)
+    project(case, opt, args.lib)
     command = [args.nsc, '--emit-project-oop-exe', 'App.nsproj', '--cpp-clang-root=' + args.clang_root,
                '--no-artifact-cache', '-O' + str(opt)]
     extra = {}
@@ -138,6 +154,7 @@ for opt in range(4):
     print(f'O{opt}: NativeSharp y Clang devuelven {result}; constructor, Main y destructor en orden (cmd)', flush=True)
 if not args.dll:
     case = root / 'O0'
+    project(case)
     output = run('negativo-sin-crt', [args.nsc, '--emit-project-oop-exe', 'App.nsproj', '--cpp-clang-root=' + args.clang_root,
                                       '--no-artifact-cache', '-o', 'sin-crt.exe'], case, expected=1).stdout
     if "has dynamic initializers in its linked member 'api.obj'" not in output or '--crt-startup' not in output:
