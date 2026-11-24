@@ -522,4 +522,8 @@ positivo(Caso('x2-operador-heredado', HIH, SIH, **CRG),
          'lib.Bag b; b.data[0] = 40; b.data[1] = 1; b.data[2] = 1; lib.B x; x.p = null; lib.B y; y.p = null;'
          ' var e = b.end(); var i = b.end(); if (x != y || !(i == e)) return 1; int s = 0; foreach (var v in b) { s += v; }'
          ' return s;', modes=['directo', 'dll'])
+# X2: C++ defines no implicit equality for a class; `a == b` on a C++ record without an operator compared its bytes
+# (or failed internally). It is rejected. / C++ no define igualdad implicita para una clase: se rechaza.
+rechazo(Caso('x2-igualdad-implicita', 'namespace lib { struct P { int x; int y; }; }'+chr(10), '', **CRG),
+        'lib.P a; a.x = 1; a.y = 2; lib.P b; b.x = 1; b.y = 2; return a == b ? 1 : 0;', "C++ type 'lib.P' has no operator==")
 fin()

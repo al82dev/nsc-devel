@@ -522,6 +522,27 @@ bool ProjectMethodBodyModel::analyzeStructComparison(
                 "over its fields; declare your own comparison if you need one");
         return true;
     }
+    // EN: X2. C++ defines no implicit equality for a class: `a == b` and `a != b` on a C++ record need its own
+    //     operator (declared, inherited, or `!=` rewritten from `==`), which the overload lookup already tried.
+    //     Comparing its bytes would ignore padding, pointers it owns and its own semantics.
+    // ES: X2. C++ no define igualdad implicita para una clase: `==`/`!=` sobre un record C++ requieren su propio
+    //     operador, que la busqueda de sobrecargas ya intento. Comparar sus bytes ignoraria su semantica.
+    for (const ExpressionResult* operand : {&left, &right})
+    {
+        const auto ordinal = nameLookup_ != nullptr && operand->typeKey.starts_with("type:")
+            ? nameLookup_->typeOrdinalForIdentity(std::string_view(operand->typeKey).substr(5)) : std::nullopt;
+        const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+        if (imported == nullptr || imported->origin != CppImportedTypeOrigin::CppRecord) continue;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "C++ type '" + imported->identity.fullyQualifiedName() + "' has no operator" +
+                (operation == TokenKind::EqualEqual ? "==" : "!=") +
+                " for these operands; C++ defines no implicit equality for a class: declare one in C++, "
+                "or compare its fields");
+        return true;
+    }
     if (!aggregateAllowsSynthesizedMember(left.typeKey, "Equals"))
     {
         diagnostics.report(
