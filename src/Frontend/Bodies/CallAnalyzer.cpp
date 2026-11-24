@@ -8920,6 +8920,18 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
             : "<expression>";
     }
 
+    // EN: X2. The extension reference is found by the source position of the member, which a generic
+    //     specialization's clone of the body shares with the template: its member and receiver are this call's own
+    //     nodes, the ones this analysis binds and HIR lowers (they were the template's).
+    // ES: X2. La referencia de extension se encuentra por la posicion del miembro en el fuente, que el clon del
+    //     cuerpo de una especializacion generica comparte con la plantilla: su miembro y su receptor son los nodos
+    //     de esta llamada, los que este analisis enlaza y HIR baja (eran los de la plantilla).
+    const auto ownExtension = [&](const NamespaceFunctionReferenceBinding& found) {
+        NamespaceFunctionReferenceBinding own = found;
+        own.calleeSyntax = expression->first();
+        if (own.receiverSyntax != nullptr) own.receiverSyntax = expression->first()->first();
+        return own;
+    };
     if (callee.extensionMethodGroup && namespaceFunctionModel_ != nullptr)
     {
         if (const NamespaceFunctionReferenceBinding* extension =
@@ -8927,7 +8939,7 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
             extension != nullptr)
         {
             return analyzeNamespaceFunctionCall(
-                expression, *extension, methodMemberOrdinal, scopeOrdinal, diagnostics, &callee);
+                expression, ownExtension(*extension), methodMemberOrdinal, scopeOrdinal, diagnostics, &callee);
         }
     }
     // NS304-T08-F03: a static extension member (StaticMethodGroup with no receiver) resolves as a
@@ -8940,7 +8952,7 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
             extension != nullptr)
         {
             return analyzeNamespaceFunctionCall(
-                expression, *extension, methodMemberOrdinal, scopeOrdinal, diagnostics, nullptr);
+                expression, ownExtension(*extension), methodMemberOrdinal, scopeOrdinal, diagnostics, nullptr);
         }
     }
 

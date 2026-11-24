@@ -583,7 +583,16 @@ struct M { int base; template <typename T> T add(T v) const { return (T)base + v
 '''
 positivo(Caso('x2-plantilla-miembro', HMT, '', **CRG),
          'lib.M m; m.base = 2; m.put(30); double d = m.add(1.5); int i = m.add(10); return i + (int)(d * 2.0) - 61;',
-         modes=['directo', 'dll'])
+         modes=['directo', 'dll', 'lib'])
+# X2: the same calls in a generic body. The extension reference is found by the member's source position, which a
+#     generic specialization's clone of the body shares with the template; the call now takes its own member and
+#     receiver (it took the template's, which HIR could not lower: 'cannot map identifier/member expression').
+#     In lib the generic is the producer's published template. / Las mismas llamadas en un cuerpo generico: la
+#     llamada toma su propio miembro y receptor, no los de la plantilla.
+positivo(Caso('x2-plantilla-miembro-generica', HMT, '', **CRG), 'return G.Run<int>(0);',
+         preludio='public static class G { public static int Run<T>(T unused) { lib.M m; m.base = 2; m.put(30); '
+                  'double d = m.add(1.5); int i = m.add(10); return i + (int)(d * 2.0) - 61; } }\n',
+         modes=['directo', 'dll', 'lib'])
 rechazo(Caso('x2-plantilla-miembro-ausente', HMT, '', **CRG), 'lib.M m; return m.nada(1);',
         "has no compatible member named 'nada'")
 # X2: a static member function template (`M.twice(21)`) is deduced the same way and called directly by its
