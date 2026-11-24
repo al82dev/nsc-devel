@@ -759,4 +759,17 @@ PRE_RET_PUB = ('namespace SdkProbe { public lib.Obj Make(int k) { if (k < 0) ret
 positivo(Caso('x2-retorno-ns-publico', H, S, **CPP), BODY_RET, preludio=PRE_RET_PUB, modes=['lib', 'dll'])
 PRE_CR_PUB = 'namespace SdkProbe { public lib.Obj Make(int k) { return lib.make(k); } }\n'
 positivo(Caso('x2-constref-prvalue-publico', HF2, SF2, **CPP), BODY_CR, preludio=PRE_CR_PUB, modes=['lib', 'dll'])
+# X2-05: `return o;` (implicit move), `return move(o);` and the constructed results of instance methods, getters and
+#     overrides also hold when a precompiled library (lib) or a DLL publishes the functions and classes.
+#     / Tambien valen cuando una biblioteca precompilada (lib) o una DLL publica las funciones y clases.
+PRE_LOC_PUB = 'namespace SdkProbe { public lib.Obj Keep() { var o = lib.make(42); return o; } }'+chr(10)
+positivo(Caso('x2-retorno-local-publico', H, S, **CPP), BODY_NRVO, preludio=PRE_LOC_PUB, modes=['lib', 'dll'])
+PRE_MOV_PUB = 'namespace SdkProbe { public lib.Obj Keep() { var o = lib.make(42); return move(o); } }'+chr(10)
+positivo(Caso('x2-retorno-move-publico', H, S, **CPP), BODY_NRVO, preludio=PRE_MOV_PUB, modes=['lib', 'dll'])
+PRE_INST_PUB = ('namespace SdkProbe { public lib.Obj Make(int k) { return lib.make(k); }'+chr(10)+
+  'public class H2 { lib.Obj f = new lib.Obj(7); public lib.Obj G() { return new lib.Obj(in f); }'+chr(10)+
+  '  public lib.Obj P { get { return new lib.Obj(in f); } } public virtual lib.Obj V() { return lib.make(3); } }'+chr(10)+
+  'public class H3 : H2 { public override lib.Obj V() { return lib.make(8); } }'+chr(10)+
+  'public lib.Obj Fwd(H2 h) { return h.V(); } }'+chr(10))
+positivo(Caso('x2-resultado-metodo-publico', HF, SF, **CPP), BODY_INST, preludio=PRE_INST_PUB, modes=['lib', 'dll'])
 fin()
