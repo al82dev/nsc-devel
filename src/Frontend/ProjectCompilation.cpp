@@ -3620,6 +3620,44 @@ public:
                         break;
                     case lexer::TokenKind::KwTrue: case lexer::TokenKind::KwFalse: argument.builtin = "bool"; break;
                     case lexer::TokenKind::StringLiteral: argument.builtin = "const char"; argument.pointerDepth = 1; break;
+                    case lexer::TokenKind::Identifier:
+                    {
+                        // STL (CTAD): a local declared before with an explicit builtin type (`int a = 40;`), the
+                        //     nearest such declaration of that name in the unit; an lvalue, as C++ passes it.
+                        //     Un local declarado antes con un tipo builtin explicito, la declaracion mas cercana.
+                        const auto builtinOf = [](lexer::TokenKind kind) -> std::string_view {
+                            switch (kind)
+                            {
+                            case lexer::TokenKind::KwBool: return "bool";
+                            case lexer::TokenKind::KwSByte: return "signed char";
+                            case lexer::TokenKind::KwByte: return "unsigned char";
+                            case lexer::TokenKind::KwShort: return "short";
+                            case lexer::TokenKind::KwUShort: return "unsigned short";
+                            case lexer::TokenKind::KwInt: return "int";
+                            case lexer::TokenKind::KwUInt: return "unsigned int";
+                            case lexer::TokenKind::KwLong: return "long long";
+                            case lexer::TokenKind::KwULong: return "unsigned long long";
+                            case lexer::TokenKind::KwFloat: return "float";
+                            case lexer::TokenKind::KwDouble: return "double";
+                            default: return {};
+                            }
+                        };
+                        literals = false;
+                        for (std::size_t back = index; back-- > 1;)
+                        {
+                            if (tokens_[back].kind() != lexer::TokenKind::Identifier || tokens_[back].lexeme() != text ||
+                                back + 1 >= tokens_.size()) continue;
+                            const auto after = tokens_[back + 1].kind();
+                            if (after != lexer::TokenKind::Equal && after != lexer::TokenKind::Semicolon) continue;
+                            const auto builtin = builtinOf(tokens_[back - 1].kind());
+                            if (builtin.empty()) break;
+                            argument.builtin = std::string(builtin);
+                            argument.lvalue = true;
+                            literals = true;
+                            break;
+                        }
+                        break;
+                    }
                     default: literals = false; break;
                     }
                     if (!literals) break;

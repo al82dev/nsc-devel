@@ -179,4 +179,8 @@ Wrap(const char*) -> Wrap<const char*>;
 positivo(Caso('x4-deduccion-clase', HCT, None, language='C++', standard='c++20'),
          'var t = new lib.Two(40, 2.5); var u = new lib.Two(true, 1); var w = new lib.Wrap("ab");'
          ' return t.sum() == 42 && u.sum() == 2 && w.v[1] == 98 ? 42 : 1;', modes=['directo', 'dll', 'lib'])
+# A local declared before with an explicit builtin type deduces too (an lvalue of that type). / Tambien un local
+# declarado antes con un tipo builtin explicito.
+positivo(Caso('x4-deduccion-clase-local', HCT, None, language='C++', standard='c++20'),
+         'long k = 40; double d = 2.5; var t = new lib.Two(k, d); return t.sum();', modes=['directo', 'dll', 'lib'])
 fin()
