@@ -501,4 +501,25 @@ positivo(Caso('x2-foreach-rango', HRG, SRG, **CRG),
          modes=['directo', 'dll'])
 rechazo(Caso('x2-foreach-rango-ref-mut', HRG, SRG, **CRG), 'lib.Vec3 v; foreach (ref mut var x in v) { x = 1; } return 0;',
         'foreach ref mut cannot iterate a C++ range')
+# X2: an operator a base declares is the derived record's too (`D == D` through the base's `operator==`), and in
+# C++20 `a != b` is `!(a == b)` when no `!=` is declared, as std iterators rely on; both were not found.
+# X2: el operador de una base tambien es del derivado, y en C++20 `!=` se reescribe desde `==`.
+HIH = r'''
+namespace lib {
+struct B { int* p; bool operator==(const B& o) const; };
+struct D : B { D& operator++(); int& operator*() const; };
+struct Bag { int data[3]; D begin(); D end(); };
+}
+'''
+SIH = r'''
+namespace lib {
+bool B::operator==(const B& o) const { return p == o.p; }
+D& D::operator++() { ++p; return *this; } int& D::operator*() const { return *p; }
+D Bag::begin() { D d; d.p = data; return d; } D Bag::end() { D d; d.p = data + 3; return d; }
+}
+'''
+positivo(Caso('x2-operador-heredado', HIH, SIH, **CRG),
+         'lib.Bag b; b.data[0] = 40; b.data[1] = 1; b.data[2] = 1; lib.B x; x.p = null; lib.B y; y.p = null;'
+         ' var e = b.end(); var i = b.end(); if (x != y || !(i == e)) return 1; int s = 0; foreach (var v in b) { s += v; }'
+         ' return s;', modes=['directo', 'dll'])
 fin()

@@ -6799,6 +6799,19 @@ void ProjectMethodBodyModel::configureForeachSourceOwnership(
     const ExpressionResult probe = analyzeExpression(
         collectionProbe, methodMemberOrdinal, foreachScope, scratchDiagnostics);
 
+    // EN: X2. A C++ range that is a place (a local, a field) is iterated in place, as C++'s
+    //     `auto&& __range = expr;` binds it: the hidden source is a reference local, so a
+    //     container that is not copied implicitly (std::vector) is not copied.
+    // ES: X2. Un rango C++ que es un lugar se recorre en su sitio, como lo enlaza el
+    //     `auto&& __range = expr;` de C++: la fuente oculta es un local de referencia.
+    if (probe.valid && probe.addressable && memberModel_ != nullptr &&
+        memberModel_->isCppRangeType(probe.typeKey) && statement->first() != nullptr &&
+        statement->first()->auxiliaryText().empty())
+    {
+        statement->first()->setAuxiliaryText("local:ref");
+        return;
+    }
+
     if (probe.valid && probe.readonlyBorrowedObject &&
         ProjectTypeConversion::isNativeArray(probe.typeKey) &&
         (probe.borrowedLocalOrdinal.has_value() || probe.ownershipSourceLocalOrdinal.has_value()) &&

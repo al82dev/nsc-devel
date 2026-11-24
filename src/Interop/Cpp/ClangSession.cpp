@@ -1764,9 +1764,30 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
 //     al miembro sobre ese operando, asi que la seleccion de sobrecarga, this y el resultado siguen a Clang.
 //     El operador pertenece al namespace mas interno de su record, donde lo encuentra la busqueda dependiente
 //     de argumentos.
+// EN: X2. An operator a derived record inherits takes its base by reference (`bool operator==(const B&)`); for the
+//     derived record it is published taking the derived record there (`D == D`), and its adapter passes that
+//     operand to the base as Clang converts it (base offset included).
+// ES: X2. Un operador heredado toma su base por referencia; para el record derivado se publica tomando el derivado
+//     ahi, y su adaptador pasa ese operando a la base como lo convierte Clang.
+clang::QualType inheritedOperand(clang::QualType type, const clang::CXXRecordDecl& owner,
+                                 const clang::CXXRecordDecl& derived, clang::ASTContext& astContext)
+{
+    if (&owner == &derived || !type->isReferenceType()) return type;
+    const auto pointee = type->getPointeeType();
+    if (pointee->getAsCXXRecordDecl() == nullptr ||
+        pointee->getAsCXXRecordDecl()->getCanonicalDecl() != owner.getCanonicalDecl()) return type;
+    auto replaced = astContext.getQualifiedType(astContext.getCanonicalTagType(&derived), pointee.getQualifiers());
+    return type->isLValueReferenceType() ? astContext.getLValueReferenceType(replaced)
+                                         : astContext.getRValueReferenceType(replaced);
+}
+
 void collectMemberOperators(const clang::DeclContext& context, clang::ASTContext& astContext,
                             std::vector<CppFunctionDeclaration>& result, clang::Sema* sema = nullptr)
 {
+    // X2: the implicit specializations of a class template (an iterator such as std::array's
+    //     `_Array_iterator<int, 4>`) have member operators too; they hang from their template, not from the
+    //     namespace. / Las especializaciones implicitas de una plantilla de clase tambien tienen operadores.
+    std::vector<const clang::CXXRecordDecl*> records;
     for (const clang::Decl* declaration : context.decls())
     {
         if (llvm::isa<clang::NamespaceDecl>(declaration) || llvm::isa<clang::LinkageSpecDecl>(declaration) ||
@@ -1775,7 +1796,15 @@ void collectMemberOperators(const clang::DeclContext& context, clang::ASTContext
             collectMemberOperators(*llvm::cast<clang::DeclContext>(declaration), astContext, result, sema);
             continue;
         }
-        const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(declaration);
+        if (const auto* classTemplate = llvm::dyn_cast<clang::ClassTemplateDecl>(declaration))
+        {
+            for (const auto* specialization : classTemplate->specializations()) records.push_back(specialization);
+            continue;
+        }
+        if (const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(declaration)) records.push_back(record);
+    }
+    for (const clang::CXXRecordDecl* record : records)
+    {
         if (!record || !record->isThisDeclarationADefinition() || !record->isCompleteDefinition() ||
             record->isDependentContext() || record->isLambda() || !record->getIdentifier() ||
             !record->isExternallyVisible())
@@ -1800,7 +1829,47 @@ void collectMemberOperators(const clang::DeclContext& context, clang::ASTContext
             moveAssignment = sema->LookupMovingAssignment(mutableRecord, 0, false, 0);
             copyAssignment = sema->LookupCopyingAssignment(mutableRecord, clang::Qualifiers::Const, false, 0);
         }
-        for (const clang::CXXMethodDecl* method : record->methods())
+        // EN: X2. The operators a base declares are the derived record's too (C++ finds them by member lookup),
+        //     unless the derived record or a nearer base declares the same operator, which hides them. Their
+        //     adapter calls them on the derived object, converted to the base as Clang does.
+        // ES: X2. Los operadores de una base tambien son del record derivado, salvo que uno mas derivado declare el
+        //     mismo operador y los oculte. Su adaptador los llama sobre el objeto derivado.
+        std::vector<const clang::CXXMethodDecl*> operatorMethods(record->method_begin(), record->method_end());
+        {
+            std::set<clang::OverloadedOperatorKind> hidden;
+            for (const auto* method : record->methods())
+                if (method->isOverloadedOperator()) hidden.insert(method->getOverloadedOperator());
+            std::vector<const clang::CXXRecordDecl*> bases;
+            const auto pushBases = [&](const clang::CXXRecordDecl& derived) {
+                for (const auto& base : derived.bases())
+                    if (const auto* baseRecord = base.getType()->getAsCXXRecordDecl();
+                        baseRecord && baseRecord->isCompleteDefinition() && base.getAccessSpecifier() == clang::AS_public)
+                        bases.push_back(baseRecord);
+            };
+            pushBases(*record);
+            for (std::size_t index = 0; index < bases.size(); ++index)
+            {
+                std::set<clang::OverloadedOperatorKind> declared;
+                for (const auto* method : bases[index]->methods())
+                    if (method->isOverloadedOperator() && method->getOverloadedOperator() != clang::OO_Equal &&
+                        !hidden.contains(method->getOverloadedOperator()))
+                    {
+                        operatorMethods.push_back(method);
+                        declared.insert(method->getOverloadedOperator());
+                    }
+                hidden.insert(declared.begin(), declared.end());
+                pushBases(*bases[index]);
+            }
+        }
+        // EN: X2. In C++20 `a != b` is rewritten as `!(a == b)` when no `!=` is declared (std iterators declare
+        //     only `==`); such an `==` also publishes a `!=` whose adapter negates it.
+        // ES: X2. En C++20 `a != b` se reescribe como `!(a == b)` si no se declara `!=`; ese `==` tambien publica un
+        //     `!=` cuyo adaptador lo niega.
+        const bool rewriteInequality = astContext.getLangOpts().CPlusPlus20 &&
+            std::none_of(operatorMethods.begin(), operatorMethods.end(), [](const clang::CXXMethodDecl* method) {
+                return method->getOverloadedOperator() == clang::OO_ExclaimEqual;
+            });
+        for (const clang::CXXMethodDecl* method : operatorMethods)
         {
             const bool assignment = method == moveAssignment || method == copyAssignment;
             if (!method->isOverloadedOperator() || method->isStatic() || method->isDeleted() ||
@@ -1825,13 +1894,16 @@ void collectMemberOperators(const clang::DeclContext& context, clang::ASTContext
             if (method->isConst()) self.addConst();
             self = astContext.getLValueReferenceType(self);
             std::vector<clang::QualType> parameterTypes{self};
-            for (const auto* parameter : method->parameters()) parameterTypes.push_back(parameter->getType());
+            for (const auto* parameter : method->parameters())
+                parameterTypes.push_back(inheritedOperand(parameter->getType(), *method->getParent(), *record, astContext));
             const auto* prototype = method->getType()->getAs<clang::FunctionProtoType>();
             clang::FunctionProtoType::ExtProtoInfo info;
             if (prototype) info.ExceptionSpec = prototype->getExtProtoInfo().ExceptionSpec;
             const auto functionType = astContext.getFunctionType(method->getReturnType(), parameterTypes, info);
             CppFunctionDeclaration value;
-            value.clangUsr = methodUsr;
+            // X2: an inherited operator is a declaration of the derived record, not the base's one (lookup groups
+            //     declarations by USR). / Un operador heredado es una declaracion del record derivado.
+            value.clangUsr = method->getParent() == record ? *methodUsr : *methodUsr + "#inherited@" + *recordUsr;
             value.name = method->getNameAsString();
             value.qualifiedName = path->empty() ? value.name : *path + "::" + value.name;
             value.canonicalFunctionType = functionType.getCanonicalType().getAsString();
@@ -1850,10 +1922,11 @@ void collectMemberOperators(const clang::DeclContext& context, clang::ASTContext
                 self.getCanonicalType().getAsString(), describeType(self, astContext), false});
             for (const clang::ParmVarDecl* parameter : method->parameters())
             {
+                const auto operand = inheritedOperand(parameter->getType(), *method->getParent(), *record, astContext);
                 CppFunctionParameter captured{
-                    parameter->getNameAsString(), parameter->getType().getAsString(),
-                    parameter->getType().getCanonicalType().getAsString(),
-                    describeType(parameter->getType(), astContext), parameter->hasDefaultArg()};
+                    parameter->getNameAsString(), operand.getAsString(),
+                    operand.getCanonicalType().getAsString(),
+                    describeType(operand, astContext), parameter->hasDefaultArg()};
                 captureDefaultArgument(*parameter, astContext, captured);
                 value.parameters.push_back(std::move(captured));
             }
@@ -1866,6 +1939,16 @@ void collectMemberOperators(const clang::DeclContext& context, clang::ASTContext
             if (location.isValid())
                 value.location = CppSourcePoint{
                     pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
+            if (rewriteInequality && method->getOverloadedOperator() == clang::OO_EqualEqual &&
+                method->getNumParams() == 1 && method->getReturnType()->isBooleanType())
+            {
+                CppFunctionDeclaration inequality = value;
+                inequality.clangUsr = *value.clangUsr + "#rewritten-ne";
+                inequality.name = "operator!=";
+                inequality.qualifiedName = path->empty() ? inequality.name : *path + "::" + inequality.name;
+                inequality.externalSymbol = cppMemberOperatorSymbol(*recordUsr, *methodUsr + "#rewritten-ne");
+                result.push_back(std::move(inequality));
+            }
             result.push_back(std::move(value));
         }
     }
@@ -3739,7 +3822,9 @@ public:
         struct Request { std::string symbol; const clang::CXXRecordDecl* record; const clang::CXXMethodDecl* method;
                          bool freeOperator = false; const clang::FunctionDecl* function = nullptr;
                          std::optional<std::size_t> defaultArity{}; bool byValueReferences = false;
-                         bool factoryResult = false; bool callerStorage = false; };
+                         bool factoryResult = false; bool callerStorage = false;
+                         // X2: the C++20 `!=` rewritten from `==`. / El `!=` reescrito desde `==`.
+                         bool negated = false; };
         const auto defaultArities = [](const clang::FunctionDecl& function) {
             std::vector<std::size_t> arities;
             for (unsigned index = 0; index < function.getNumParams(); ++index)
@@ -3749,7 +3834,17 @@ public:
         std::vector<Request> requests;
         std::set<std::string> found;
         std::function<void(const clang::DeclContext&)> visit = [&](const clang::DeclContext& scope) {
+            // X2: the implicit specializations of a class template (an iterator) have adapters too. / Las
+            //     especializaciones implicitas de una plantilla de clase tambien tienen adaptadores.
+            std::vector<const clang::Decl*> declarations;
             for (const auto* declaration : scope.decls())
+            {
+                declarations.push_back(declaration);
+                if (const auto* classTemplate = llvm::dyn_cast<clang::ClassTemplateDecl>(declaration))
+                    for (const auto* specialization : classTemplate->specializations())
+                        declarations.push_back(specialization);
+            }
+            for (const auto* declaration : declarations)
             {
                 if (const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(declaration))
                 {
@@ -3803,11 +3898,21 @@ public:
                                     }
                                 // T12-004: an own member operator, called as a free function.
                                 // X2: a conversion operator too. / Tambien un operador de conversion.
-                                if (current != record || (!method->isOverloadedOperator() &&
-                                                          !llvm::isa<clang::CXXConversionDecl>(method))) continue;
+                                // X2: an inherited operator too, called on the derived object. / Tambien un operador
+                                //     heredado, llamado sobre el objeto derivado.
+                                if (!method->isOverloadedOperator() &&
+                                    (current != record || !llvm::isa<clang::CXXConversionDecl>(method))) continue;
                                 auto operatorSymbol = cppMemberOperatorSymbol(*recordUsr, *usr);
                                 if (wanted.contains(operatorSymbol) && found.insert(operatorSymbol).second)
                                     requests.push_back({std::move(operatorSymbol), record, method, true});
+                                auto inequalitySymbol = cppMemberOperatorSymbol(*recordUsr, *usr + "#rewritten-ne");
+                                if (method->getOverloadedOperator() == clang::OO_EqualEqual &&
+                                    wanted.contains(inequalitySymbol) && found.insert(inequalitySymbol).second)
+                                {
+                                    Request request{std::move(inequalitySymbol), record, method, true};
+                                    request.negated = true;
+                                    requests.push_back(std::move(request));
+                                }
                             }
                             for (const auto& base : current->bases())
                                 if (const auto* baseRecord = base.getType()->getAsCXXRecordDecl();
@@ -4059,7 +4164,10 @@ public:
                 const auto parameterAlias = alias("p" + index, type);
                 if (i) { parameterTypes += ", "; arguments += ", "; }
                 parameterTypes += parameterAlias;
-                parameters += ", " + parameterAlias + " a" + index;
+                // X2: an inherited operator takes the derived operand. / Un operador heredado toma el derivado.
+                const auto operand = request.freeOperator
+                    ? inheritedOperand(type, *owner, *request.record, context) : type;
+                parameters += ", " + (operand == type ? parameterAlias : alias("d" + index, operand)) + " a" + index;
                 arguments += type->isRValueReferenceType() ? "static_cast<" + parameterAlias + ">(a" + index + ")"
                                                            : "a" + index;
             }
@@ -4095,6 +4203,7 @@ public:
             }
             else if (classResult) body = "auto&& r = " + call + "; __builtin_memcpy(out, &r, sizeof(r));";
             else if (referenceResult) { resultType = alias("q", result.getNonReferenceType()) + "*"; body = "return &" + call + ";"; }
+            else if (request.negated) { resultType = "bool"; body = "return !(" + call + ");"; }
             else if (!result->isVoidType()) { resultType = resultAlias; body = "return " + call + ";"; }
             snippets.emplace_back(requestIndex, aliases + "extern \"C\" inline " + resultType + " " + name + "(" +
                 parameters + ") { " + body + " }\n");

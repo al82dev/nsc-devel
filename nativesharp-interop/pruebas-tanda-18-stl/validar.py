@@ -35,7 +35,7 @@ CRT = [TOOLSET / 'lib/x64/libcmt.lib', TOOLSET / 'lib/x64/libvcruntime.lib', TOO
        SDK / 'lib/ucrt/x64/libucrt.lib', SDK / 'lib/um/x64/kernel32.lib']
 SYSTEM = [TOOLSET / 'include', SDK / 'include/ucrt']
 HEADER = ('#pragma once\n#include <algorithm>\n#include <array>\n#include <bit>\n#include <limits>\n#include <numeric>\n'
-          '#include <type_traits>\n')
+          '#include <type_traits>\n#include <vector>\n')
 # (name, NativeSharp body, C++ body)
 CASES = [
     ('array', 'std.array<int, 4> a = new std.array<int, 4>(); a._Elems[2] = 7; return (int)a.size() * 10 + a._Elems[2];',
@@ -61,6 +61,16 @@ CASES = [
     ('array-at', 'std.array<int, 4> a = new std.array<int, 4>(); a.at(2) = 7; a.at(1) = a.at(2) + 1; '
                  'return a._Elems[1] * 10 + a.at(2);',
      'std::array<int, 4> a{}; a.at(2) = 7; a.at(1) = a.at(2) + 1; return a._Elems[1] * 10 + a.at(2);'),
+    # X2: foreach over a C++ range (begin()/end(), the iterator's ==, != rewritten from it, * and ++), as C++'s
+    #     range-for. / foreach sobre un rango C++, como el range-for de C++.
+    ('array-foreach', 'std.array<int, 4> a = new std.array<int, 4>(); a._Elems[0] = 3; a._Elems[1] = 4; a._Elems[2] = 5; '
+                      'a._Elems[3] = 6; int s = 0; foreach (var x in a) { s += x; } return s;',
+     'std::array<int, 4> a{}; a._Elems[0] = 3; a._Elems[1] = 4; a._Elems[2] = 5; a._Elems[3] = 6; int s = 0; '
+     'for (int x : a) { s += x; } return s;'),
+    ('vector-foreach', 'std.vector<int> v = new std.vector<int>(); int a = 7; int b = 9; v.push_back(in a); '
+                       'v.push_back(in b); int s = 0; foreach (var x in v) { s += x; } return s + (int)v.size();',
+     'std::vector<int> v; int a = 7; int b = 9; v.push_back(a); v.push_back(b); int s = 0; for (int x : v) { s += x; } '
+     'return s + (int)v.size();'),
 ]
 
 
