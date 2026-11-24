@@ -4524,6 +4524,17 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
                 for (std::size_t at = 0; (at = dotted.find("::", at)) != std::string::npos;) dotted.replace(at, 2, ".");
                 if (dotted == dottedName) return target.recordIdentity->clangUsr;
             }
+            // NSMeta X4-06: before parsing, a precompiled project's source session names its records too (the
+            //     imported types do not exist yet). / Antes del analisis, la sesion de fuente nombra sus records.
+            for (auto* session : project->second.sessions)
+                if (const auto records = session->recordsSnapshot())
+                    for (const auto& record : *records)
+                    {
+                        if (!record.clangUsr) continue;
+                        std::string dotted = record.qualifiedName;
+                        for (std::size_t at = 0; (at = dotted.find("::", at)) != std::string::npos;) dotted.replace(at, 2, ".");
+                        if (dotted == dottedName) return record.clangUsr;
+                    }
             return std::nullopt;
         };
         auto& tokens = unit->tokens_;

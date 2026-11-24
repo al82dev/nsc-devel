@@ -198,7 +198,7 @@ inline int live() { return alive; }
 SMK = 'namespace lib { int alive; }\n'
 positivo(Caso('x4-fabrica-variadica', HMK, SMK, language='C++', standard='c++20', extra_ref=' Exceptions="false"'),
          'int k = 2; int r = 0; { var b = lib.make<lib.Box>(40, ref k); r = b.v; } return r + lib.live();',
-         # lib: pending - before parsing, the consumer without the header cannot name the explicit record argument
-         # (`lib.Box`) to deduce early. / lib: pendiente.
-         modes=['directo', 'dll'])
+         # lib: before parsing, the consumer without the header names the explicit record argument (`lib.Box`) through
+         # the producer's source session (NSMeta X4-06). / lib: lo nombra la sesion de fuente del productor.
+         modes=['directo', 'dll', 'lib'])
 fin()
