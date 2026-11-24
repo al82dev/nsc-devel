@@ -971,6 +971,10 @@ std::optional<std::pair<std::string_view, std::uint64_t>> OopLlvmImplementation:
         if (name == "NativeSharp.Core.Numerics.Int32x8") return {{"builtin:int", 8}};
         if (name == "NativeSharp.Core.Numerics.Int64x2") return {{"builtin:long", 2}};
         if (name == "NativeSharp.Core.Numerics.Int64x4") return {{"builtin:long", 4}};
+        if (name == "NativeSharp.Core.Numerics.Float32x16") return {{"builtin:float", 16}};
+        if (name == "NativeSharp.Core.Numerics.Float64x8") return {{"builtin:double", 8}};
+        if (name == "NativeSharp.Core.Numerics.Int32x16") return {{"builtin:int", 16}};
+        if (name == "NativeSharp.Core.Numerics.Int64x8") return {{"builtin:long", 8}};
         return std::nullopt;
     }
 

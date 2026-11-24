@@ -307,6 +307,14 @@ void OopLlvmImplementation::initializeKnownSimdTypeOrdinals()
             "NativeSharp.Core.Numerics.Int32x8");
         int64x4TypeOrdinal_ = resolveKnownSimdTypeOrdinal(
             "NativeSharp.Core.Numerics.Int64x4");
+        float32x16TypeOrdinal_ = resolveKnownSimdTypeOrdinal(
+            "NativeSharp.Core.Numerics.Float32x16");
+        float64x8TypeOrdinal_ = resolveKnownSimdTypeOrdinal(
+            "NativeSharp.Core.Numerics.Float64x8");
+        int32x16TypeOrdinal_ = resolveKnownSimdTypeOrdinal(
+            "NativeSharp.Core.Numerics.Int32x16");
+        int64x8TypeOrdinal_ = resolveKnownSimdTypeOrdinal(
+            "NativeSharp.Core.Numerics.Int64x8");
     }
 
 std::optional<std::size_t> OopLlvmImplementation::simdTypeOrdinal(
@@ -339,6 +347,8 @@ bool OopLlvmImplementation::simdCarrierShape(
             {&int32x4TypeOrdinal_, 4U, 32U, false}, {&int64x2TypeOrdinal_, 2U, 64U, false},
             {&float32x8TypeOrdinal_, 8U, 32U, true}, {&float64x4TypeOrdinal_, 4U, 64U, true},
             {&int32x8TypeOrdinal_, 8U, 32U, false}, {&int64x4TypeOrdinal_, 4U, 64U, false},
+            {&float32x16TypeOrdinal_, 16U, 32U, true}, {&float64x8TypeOrdinal_, 8U, 64U, true},
+            {&int32x16TypeOrdinal_, 16U, 32U, false}, {&int64x8TypeOrdinal_, 8U, 64U, false},
         };
         for (const Shape& shape : shapes)
         {

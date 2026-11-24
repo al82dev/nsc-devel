@@ -780,8 +780,8 @@ std::optional<CppScalarTypeMapping> cppVectorValueType(
     const frontend::ProjectNameLookup* lookup, std::string& reason)
 {
     if (type.kind != CppTypeKind::FixedVector || !type.element || !type.arrayCount || !type.sizeBits ||
-        (*type.sizeBits != 128 && *type.sizeBits != 256) || type.isConst || type.isVolatile)
-    { reason = "only 128-bit and 256-bit vectors are mapped"; return std::nullopt; }
+        (*type.sizeBits != 128 && *type.sizeBits != 256 && *type.sizeBits != 512) || type.isConst || type.isVolatile)
+    { reason = "only 128-bit, 256-bit and 512-bit vectors are mapped"; return std::nullopt; }
     const auto& lane = *type.element;
     const auto count = *type.arrayCount;
     // EN: T19-036. The NativeSharp.Core.Numerics carrier of each lane type and count: 128 bits (XMM) and 256 bits
@@ -804,6 +804,16 @@ std::optional<CppScalarTypeMapping> cppVectorValueType(
         {true, 64, 4, "NativeSharp.Core.Numerics.Float64x4"},
         {false, 32, 8, "NativeSharp.Core.Numerics.Int32x8"},
         {false, 64, 4, "NativeSharp.Core.Numerics.Int64x4"},
+        // EN: 512 bits (`__m512`, `vector_size(64)`). Under cdecl/ms_abi the Win64 convention passes the vector by the
+        //     address of an aligned copy and returns it through memory, which LLVM lowers from the same `<N x T>`
+        //     declaration as Clang, without AVX-512. Under `__vectorcall` it would travel in ZMM registers: not mapped.
+        // ES: 512 bits. Con cdecl/ms_abi la convencion Win64 pasa el vector por la direccion de una copia alineada y lo
+        //     devuelve por memoria, lo que LLVM baja desde la misma declaracion `<N x T>` que Clang, sin AVX-512. Con
+        //     `__vectorcall` viajaria en registros ZMM: no se mapea.
+        {true, 32, 16, "NativeSharp.Core.Numerics.Float32x16"},
+        {true, 64, 8, "NativeSharp.Core.Numerics.Float64x8"},
+        {false, 32, 16, "NativeSharp.Core.Numerics.Int32x16"},
+        {false, 64, 8, "NativeSharp.Core.Numerics.Int64x8"},
     };
     const bool floatingLane = lane.kind == CppTypeKind::Floating;
     const bool integerLane = lane.kind == CppTypeKind::SignedInteger;
@@ -837,6 +847,10 @@ std::optional<CppScalarTypeMapping> cppVectorValueType(
     const auto* plan = function.abiPlan.get();
     if ((!plan || plan->variadic) && *type.sizeBits == 256)
     { reason = "a 256-bit vector needs AVX registers: set the project CpuLevel to x86-64-v3"; return std::nullopt; }
+    if (vectorCall && *type.sizeBits == 512)
+    { reason = "a 512-bit vector under __vectorcall needs AVX-512 (ZMM) registers, which are not mapped"; return std::nullopt; }
+    if ((!plan || plan->variadic) && *type.sizeBits == 512)
+    { reason = "a 512-bit vector has no Clang ABI plan here (a variadic call)"; return std::nullopt; }
     if (!plan || plan->variadic || plan->logicalParameters.size() != function.parameters.size())
     { reason = "it has no Clang ABI plan"; return std::nullopt; }
     const abi_plan::Type* physical = nullptr;

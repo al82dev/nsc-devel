@@ -489,7 +489,7 @@ comun.core = _core
 # C3-10: vector fields of C records (a vector aggregate) are imported as lane views, as in C++ records: an HVA
 # (`{ v4f a, b, c, d; }`) passes and returns in XMM0-3 under `__vectorcall` and by address under cdecl, with Clang's
 # declaration shape; arrays of vectors in a record keep their stride. Records through `__vectorcall` and cdecl
-# function pointers are called as Clang does. 512-bit vectors stay unmapped (no carrier, no demonstrated ABI); the
+# function pointers are called as Clang does. 512-bit vectors map to the Core carriers (limitaciones_core512.py); the
 # 256-bit ones are covered with AVX by pruebas-tanda-19-traslados/validar-vectores-c.py --avx.
 H10 = r'''
 typedef float v4f __attribute__((vector_size(16)));
@@ -529,7 +529,10 @@ BODY10 = r'''
 '''
 c10 = Caso('c3-vectores-agregados', H10, S10)
 positivo(c10, BODY10)
-rechazo(c10, 'return (int)cd16();', 'only 128-bit and 256-bit vectors are mapped')
+# Core 512-bit vectors: the rejection was 'only 128-bit and 256-bit vectors are mapped'. A 512-bit vector now maps to its
+# Core carrier (Float32x16, limitaciones_core512.py); with a Core that does not declare it, the import says which one.
+# Vectores de 512 bits: ahora se mapean a su portador de Core; con un Core que no lo declara, la importacion dice cual.
+rechazo(c10, 'return (int)cd16();', 'it needs NativeSharp.Core.Numerics.Float32x16')
 if not ONLY or any('c3-vectores-ir' in o for o in ONLY):
     result = ir(Caso('c3-vectores-ir', H10, S10), 'var h = mkh4(9.0f); return (int)vh4(h) + (int)cdh4(h);', opt=0)
     decls = {l.split('@', 1)[1].split('(')[0].strip('"\01'): l for l in result.stdout.splitlines() if l.startswith('declare')}

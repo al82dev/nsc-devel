@@ -63,6 +63,9 @@ bool supportedAttributes(llvm::AttributeSet attributes, bool isReturn)
 //     vectoriales: el vector suelto mas ancho que se representa (128 bits en XMM; 256 en YMM con AVX; 512 en ZMM
 //     con AVX-512), o 0.
 thread_local unsigned bareVectorBitsAllowed = 0;
+// 512-bit vectors under the Win64 C convention travel through memory, so their declaration needs no AVX-512.
+// Los vectores de 512 bits con la convencion C de Win64 viajan por memoria: su declaracion no necesita AVX-512.
+thread_local bool bareVector512InMemory = false;
 
 struct BareVectorScope
 {
@@ -117,8 +120,8 @@ std::optional<Type> copyType(const llvm::Type* input, unsigned depth)
         //     o 512 bits cuando el destino tiene AVX o AVX-512, tambien se representa, para que su importacion
         //     compare las posiciones con este plan; las demas convenciones quedan fuera.
         const std::uint64_t vectorBits = vector->getPrimitiveSizeInBits().getFixedValue();
-        const bool bare = (vectorBits == 128U || vectorBits == 256U || vectorBits == 512U) &&
-            vectorBits <= bareVectorBitsAllowed;
+        const bool bare = ((vectorBits == 128U || vectorBits == 256U || vectorBits == 512U) &&
+            vectorBits <= bareVectorBitsAllowed) || (vectorBits == 512U && bareVector512InMemory);
         if (depth == 0 && !bare && (vector->getNumElements() != 2 || !lane->isFloatTy())) return std::nullopt;
         auto element = copyType(lane, depth + 1);
         if (!element) return std::nullopt;
@@ -271,6 +274,13 @@ std::optional<Plan> copyPlan(clang::CodeGenerator& generator,
         128U;
     const BareVectorScope bareVectors(convention == clang::CC_C || convention == clang::CC_Win64 ||
                                       convention == clang::CC_X86VectorCall ? vectorRegisterBits : 0U);
+    // EN: Core 512-bit vectors. Win64 cdecl/ms_abi passes a 512-bit vector by the address of an aligned copy and
+    //     returns it through memory; Clang declares `<N x T>` with or without AVX-512, and LLVM lowers it the same way.
+    // ES: Vectores de 512 bits de Core. Win64 cdecl/ms_abi pasa un vector de 512 bits por la direccion de una copia
+    //     alineada y lo devuelve por memoria; Clang declara `<N x T>` con o sin AVX-512 y LLVM lo baja igual.
+    const bool previous512 = bareVector512InMemory;
+    bareVector512InMemory = convention == clang::CC_C || convention == clang::CC_Win64;
+    struct Restore512 { bool value; ~Restore512() { bareVector512InMemory = value; } } restore512{previous512};
     auto* physical = clang::CodeGen::convertFreeFunctionType(generator.CGM(), &function);
     if (!physical || !generator.GetAddrOfGlobal(clang::GlobalDecl(&function), false))
     { error = "physical function unavailable"; return std::nullopt; }

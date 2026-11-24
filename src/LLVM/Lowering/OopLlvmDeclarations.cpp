@@ -554,6 +554,12 @@ bool OopLlvmImplementation::declareFunction(
                     const std::uint64_t laneBits = lane.kind == interop::abi_plan::TypeKind::Float ? 32U :
                         lane.kind == interop::abi_plan::TypeKind::Double ? 64U :
                         lane.kind == interop::abi_plan::TypeKind::Integer ? lane.widthOrCount : 0U;
+                    // Core 512-bit vectors: under the Win64 C convention (LLVM C or Win64 calling convention) a
+                    //     512-bit vector travels through memory, not in ZMM registers. / Con la convencion C de Win64
+                    //     un vector de 512 bits viaja por memoria, no en registros ZMM.
+                    const auto convention = function.cppAbiPlan->callingConvention;
+                    if (laneBits * current->widthOrCount == 512U &&
+                        (convention == 0U || convention == 79U)) continue; // llvm::CallingConv::C, Win64
                     widest = std::max(widest, laneBits * current->widthOrCount);
                 }
                 const target::CpuFeatureLevel level = target::selectedWindowsX64CpuFeatureLevel();

@@ -3429,6 +3429,11 @@ private:
     std::optional<std::size_t> float64x4TypeOrdinal_;
     std::optional<std::size_t> int32x8TypeOrdinal_;
     std::optional<std::size_t> int64x4TypeOrdinal_;
+    // Core 512-bit carriers. / Portadores de 512 bits de Core.
+    std::optional<std::size_t> float32x16TypeOrdinal_;
+    std::optional<std::size_t> float64x8TypeOrdinal_;
+    std::optional<std::size_t> int32x16TypeOrdinal_;
+    std::optional<std::size_t> int64x8TypeOrdinal_;
     LLVMContextRef context_ = nullptr;
     LLVMModuleRef module_ = nullptr;
     LLVMBuilderRef builder_ = nullptr;
