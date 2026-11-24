@@ -83,6 +83,11 @@ CASES = [
                        'return (s == "hola" ? 1 : 0) + (s != t ? 2 : 0) + (s == t ? 4 : 0) + (s != "hola" ? 8 : 0);',
      'std::string s("hola"); std::string t("hol"); '
      'return (s == "hola" ? 1 : 0) + (s != t ? 2 : 0) + (s == t ? 4 : 0) + (s != "hola" ? 8 : 0);'),
+    # X2: C++20's `<`, `<=`, `>`, `>=` rewritten from std's `operator<=>`. / Relacionales reescritos desde `<=>`.
+    ('string-order', 'std.string s = new std.string("abc"); std.string t = new std.string("abd"); '
+                     'return (s < t ? 1 : 0) + (s <= t ? 2 : 0) + (s > t ? 4 : 0) + (s >= t ? 8 : 0) + (t > s ? 16 : 0);',
+     'std::string s("abc"); std::string t("abd"); '
+     'return (s < t ? 1 : 0) + (s <= t ? 2 : 0) + (s > t ? 4 : 0) + (s >= t ? 8 : 0) + (t > s ? 16 : 0);'),
 ]
 
 

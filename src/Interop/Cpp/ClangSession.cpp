@@ -3158,6 +3158,40 @@ public:
                 rewritten.push_back(std::move(inequality));
             }
             for (auto& value : rewritten) result.push_back(std::move(value));
+            // EN: X2. `a < b` (and `<=`, `>`, `>=`) is `(a <=> b) < 0` when no such operator takes those operands;
+            //     a free `operator<=>` publishes them, each adapter comparing its result with 0.
+            // ES: X2. `a < b` es `(a <=> b) < 0` si ningun operador asi toma esos operandos; un `operator<=>` libre
+            //     los publica, cada adaptador compara su resultado con 0.
+            std::set<std::pair<std::string, std::string>> relationals;
+            for (const auto& value : result)
+                relationals.emplace(value.name, value.canonicalFunctionType);
+            std::vector<CppFunctionDeclaration> comparisons;
+            for (const auto& value : result)
+            {
+                if (value.name != "operator<=>" || value.parameters.size() != 2 || !value.clangUsr ||
+                    value.clangUsr->find("#rewritten") != std::string::npos ||
+                    !value.externalSymbol || std::string_view(*value.externalSymbol).starts_with(cppMemberThunkPrefix))
+                    continue;
+                for (const std::string_view spelling : {"<", "<=", ">", ">="})
+                {
+                    const std::string name = "operator" + std::string(spelling);
+                    if (relationals.contains({name, value.canonicalFunctionType})) continue;
+                    CppFunctionDeclaration comparison = value;
+                    comparison.name = name;
+                    const auto separator = value.qualifiedName.rfind("::");
+                    comparison.qualifiedName = separator == std::string::npos ? name
+                        : value.qualifiedName.substr(0, separator + 2) + name;
+                    comparison.clangUsr = *value.clangUsr + "#rewritten" + std::string(spelling);
+                    comparison.externalSymbol = cppMemberOperatorSymbol("#free-rel" + std::string(spelling), *value.clangUsr);
+                    comparison.alternateQualifiedNames.clear();
+                    comparison.templateSpecialization = {};
+                    comparison.returnTypeSpelling = "bool";
+                    comparison.canonicalReturnTypeSpelling = "bool";
+                    comparison.returnType = describeType(context.BoolTy, context);
+                    comparisons.push_back(std::move(comparison));
+                }
+            }
+            for (auto& value : comparisons) result.push_back(std::move(value));
         }
         addAlternateFunctionNames(context, result);
         // EN: T19-039. A C operator of a `_Complex` carrier is reported as the C++ operator it stands for
@@ -3983,7 +4017,10 @@ public:
                          std::optional<std::size_t> defaultArity{}; bool byValueReferences = false;
                          bool factoryResult = false; bool callerStorage = false;
                          // X2: the C++20 `!=` rewritten from `==`. / El `!=` reescrito desde `==`.
-                         bool negated = false; };
+                         bool negated = false;
+                         // X2: a C++20 relational operator rewritten from `<=>` (`<`, `<=`, `>`, `>=`). / Un
+                         //     operador relacional reescrito desde `<=>`.
+                         std::string rewrittenComparison{}; };
         const auto defaultArities = [](const clang::FunctionDecl& function) {
             std::vector<std::size_t> arities;
             for (unsigned index = 0; index < function.getNumParams(); ++index)
@@ -4126,6 +4163,17 @@ public:
                             request.negated = true;
                             requests.push_back(std::move(request));
                         }
+                    // X2: the adapters of the relational operators rewritten from this `<=>`. / Los adaptadores de
+                    //     los operadores relacionales reescritos desde este `<=>`.
+                    if (usr)
+                        for (const std::string_view spelling : {"<", "<=", ">", ">="})
+                            if (auto adapter = cppMemberOperatorSymbol("#free-rel" + std::string(spelling), *usr);
+                                wanted.contains(adapter) && found.insert(adapter).second)
+                            {
+                                Request request{std::move(adapter), nullptr, nullptr, false, function, function->getNumParams()};
+                                request.rewrittenComparison = std::string(spelling);
+                                requests.push_back(std::move(request));
+                            }
                 }
                 // X2-05: the instantiated specializations of a function template too (`wrap<int>`), whose
                 //     adapters the projection names as for any free function. / Tambien las especializaciones
@@ -4165,6 +4213,17 @@ public:
                                 request.negated = true;
                                 requests.push_back(std::move(request));
                             }
+                        // X2: the adapters of the relational operators rewritten from this `<=>`. / Los adaptadores de
+                        //     los operadores relacionales reescritos desde este `<=>`.
+                        if (usr)
+                            for (const std::string_view spelling : {"<", "<=", ">", ">="})
+                                if (auto adapter = cppMemberOperatorSymbol("#free-rel" + std::string(spelling), *usr);
+                                    wanted.contains(adapter) && found.insert(adapter).second)
+                                {
+                                    Request request{std::move(adapter), nullptr, nullptr, false, function, function->getNumParams()};
+                                    request.rewrittenComparison = std::string(spelling);
+                                    requests.push_back(std::move(request));
+                                }
                     }
                 }
             }
@@ -4313,6 +4372,11 @@ public:
                 }
                 // X2: a rewritten `!=` negates the `==` it calls. / Un `!=` reescrito niega el `==` que llama.
                 if (request.negated) { resultType = "bool"; body = "return !(" + call + ");"; }
+                if (!request.rewrittenComparison.empty())
+                {
+                    resultType = "bool";
+                    body = "return (" + call + ") " + request.rewrittenComparison + " 0;";
+                }
                 if (!spellable || !written.insert(name).second) continue;
                 snippets.emplace_back(requestIndex, aliases + "extern \"C\" inline " + resultType + " " + name + "(" +
                     parameters + ") { " + body + " }\n");
@@ -5101,6 +5165,10 @@ public:
             //     publishes the negating `!=`. / En C++20 un `!=` sin plantilla propia se reescribe desde `==`.
             if (operatorName == "operator!=" && context.getLangOpts().CPlusPlus20)
                 collect("operator==");
+            // X2: `<`, `<=`, `>`, `>=` are rewritten from `<=>`. / Se reescriben desde `<=>`.
+            if ((operatorName == "operator<" || operatorName == "operator<=" || operatorName == "operator>" ||
+                 operatorName == "operator>=") && context.getLangOpts().CPlusPlus20)
+                collect("operator<=>");
         }
         else if (qualifiedName.starts_with("@member:"))
         {
