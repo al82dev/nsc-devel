@@ -59,10 +59,13 @@ template<int N> constexpr long long sq = (long long)N * N;
 template<class T> inline T zero = T(0);
 }
 '''
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x4-plantilla-variable', HV, None, **CPP),
          'int a = lib.sz<int>; bool s = lib.same<int, int>; if (!s || lib.same<int, long>) return 1;\n'
          'long v = lib.sq<6>; return lib.sz<long> * 5 + 2 == 42 && a == 4 && v == 36 ? 42 : 2;',
-         modes=['directo', 'dll'])
+         modes=['directo', 'dll', 'lib'])
 # X4-04: a `float`/`double` constexpr variable template was rejected (only integers and bool were read); its bits are
 # read through `__builtin_bit_cast` and it becomes the decimal literal that converts back to the same value.
 # X4-04: una plantilla de variable constexpr float/double se rechazaba; ahora se lee por sus bits.
@@ -73,10 +76,13 @@ template<class T> constexpr T tenth = T(0.1);
 template<int N> constexpr double half = N / 2.0;
 }
 '''
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x4-plantilla-variable-flotante', HVF, None, **CPP),
          'double d = lib.pi<double>; float f = lib.pi<float>; double t = lib.tenth<double>;\n'
          '    if (d != 3.25 || f != 3.25f || t != 0.1 || lib.tenth<float> != 0.1f || lib.half<5> != 2.5) return 1;\n'
-         '    return 42;', modes=['directo', 'dll'])
+         '    return 42;', modes=['directo', 'dll', 'lib'])
 # NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
@@ -93,9 +99,12 @@ template<class T> inline T counter = T(5);
 inline int read_counter() { return counter<int>; }
 }
 '''
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x4-plantilla-variable-double', HVN, None, **CPP),
          'if ((int)lib.zero<double> != 0) return 1; lib.counter<int> = 40; lib.counter<int> += 2;\n'
-         '    return lib.read_counter() == 42 && lib.counter<int> == 42 ? 42 : 2;', modes=['directo', 'dll'])
+         '    return lib.read_counter() == 42 && lib.counter<int> == 42 ? 42 : 2;', modes=['directo', 'dll', 'lib'])
 # X4/X2-06: Exceptions="false" on the reference (a library built with -fno-exceptions) compiles NSC's Clang session
 # with -fno-exceptions too: the inline template constructor and destructor NSC emits for a class field of
 # `lib.Box<int>` then need no __CxxFrameHandler3 from the C runtime (they did before). A bad value is rejected.

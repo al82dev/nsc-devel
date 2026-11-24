@@ -5039,6 +5039,20 @@ public:
         });
         return found;
     }
+    bool hasVariableTemplates() const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || !ast_->getASTContext().getLangOpts().CPlusPlus || options_.macroExpansionOnly) return false;
+        std::vector<const clang::DeclContext*> pending{ast_->getASTContext().getTranslationUnitDecl()};
+        for (std::size_t index = 0; index < pending.size() && index < 4096; ++index)
+            for (const auto* declaration : pending[index]->decls())
+            {
+                if (llvm::isa<clang::VarTemplateDecl>(declaration)) return true;
+                if (const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(declaration)) pending.push_back(ns);
+                else if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration)) pending.push_back(linkage);
+            }
+        return false;
+    }
     bool recordHasMemberTemplates(std::string_view usr) const override
     {
         std::lock_guard lock(mutex_);

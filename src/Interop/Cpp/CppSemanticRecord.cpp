@@ -2843,13 +2843,15 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     //     declaran plantillas de funcion operador (llamadas implicitamente, tambien reescritas), viaja como sesion de
     //     fuente: el productor nunca las deduce en un cuerpo generico; el consumidor las deduce como con encabezado.
     if (!metadata.genericTemplates.empty())
-        for (const auto& [project, identities] : seeds)
+        for (std::size_t project = 0; project < graph->projects().size(); ++project)
             for (const auto& group : compilation.cppProjectSessions())
             {
                 std::error_code ec;
-                if (project >= graph->projects().size() ||
-                    !std::filesystem::equivalent(group.projectFile, graph->projects()[project].projectFile(), ec) || ec)
+                if (!std::filesystem::equivalent(group.projectFile, graph->projects()[project].projectFile(), ec) || ec)
                     continue;
+                const auto seeded = seeds.find(project);
+                const std::set<std::string> none;
+                const auto& identities = seeded == seeds.end() ? none : seeded->second;
                 for (std::size_t reference = 0; reference < group.sessions.size(); ++reference)
                 {
                     const auto* session = group.sessions[reference].get();
@@ -2863,6 +2865,9 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                             imported->clangUsr && session->recordHasMemberTemplates(*imported->clangUsr))
                         { needed = true; break; }
                     }
+                    // X4-04 values: a variable template is evaluated by the consumer's session. / La evalua la
+                    //     sesion del consumidor.
+                    if (!needed) needed = session->hasVariableTemplates();
                     if (!needed)
                         for (const auto& name : session->templatesSnapshot())
                             if (name.function && name.qualifiedName.find("operator") != std::string::npos)

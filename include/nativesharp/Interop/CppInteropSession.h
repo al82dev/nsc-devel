@@ -409,6 +409,9 @@ public:
     // NSMeta X4-06: whether the record with this Clang USR (or a public base) declares a member function template.
     //     Si el record con este USR de Clang (o una base publica) declara una plantilla de funcion miembro.
     virtual bool recordHasMemberTemplates(std::string_view) const { return false; }
+    // NSMeta X4-06: whether a namespace of the session declares a variable template. / Si un namespace de la sesion
+    //     declara una plantilla de variable.
+    virtual bool hasVariableTemplates() const { return false; }
     // STL: whether a function template of this qualified name has a template parameter pack that the first
     //     `explicitCount` explicit arguments do not bind (`make_unique<T>(args...)`), so a call deduces the rest.
     //     Si una plantilla de funcion tiene un paquete que los argumentos explicitos no fijan.
