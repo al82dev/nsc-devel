@@ -1331,8 +1331,11 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
         parameter, arguments, argumentOrdinal, packElement, evaluated);
     // X2-05: as in C++, a record prvalue binds a `T&&` better than a `const T&`. / Como en C++, un prvalue
     //     record enlaza mejor un `T&&` que un `const T&`.
-    if (rvalueArgument && parameter.cppConstReference && cppRecordTypeKey(parameter.pointeeTypeKey) &&
-        conversion.exists()) ++conversion.rank;
+    // X2: any prvalue (an `int` too) binds a `T&&` better than a `const T&`, as in C++. / Cualquier prvalue.
+    if (rvalueArgument && parameter.cppConstReference && conversion.exists() &&
+        (cppRecordTypeKey(parameter.pointeeTypeKey) ||
+         (conversion.kind == ProjectConversionKind::Identity && !arguments[argumentOrdinal].addressable)))
+        ++conversion.rank;
     return conversion;
 }
 
@@ -6818,8 +6821,11 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
         candidateBinding.invalidMoveOnlyArgumentOrdinal = argumentOrdinal;
     }
     // X2-05: a record prvalue binds a `T&&` better than a `const T&`. / Mejor un `T&&` que un `const T&`.
-    if (rvalueArgument && parameter.cppConstReference && cppRecordTypeKey(parameter.pointeeTypeKey) &&
-        conversion.exists()) ++conversion.rank;
+    // X2: any prvalue (an `int` too) binds a `T&&` better than a `const T&`, as in C++. / Cualquier prvalue.
+    if (rvalueArgument && parameter.cppConstReference && conversion.exists() &&
+        (cppRecordTypeKey(parameter.pointeeTypeKey) ||
+         (conversion.kind == ProjectConversionKind::Identity && !argument.addressable)))
+        ++conversion.rank;
     candidateBinding.conversions.push_back(std::move(conversion));
 }
 
@@ -9226,21 +9232,26 @@ bool ProjectMethodBodyModel::evaluateSyntheticCandidates(
         for (std::size_t argumentOrdinal = 0; argumentOrdinal < arguments.size(); ++argumentOrdinal)
         {
             const MethodParameterSymbol& parameter = candidate.parameters[argumentOrdinal];
-            const bool implicitOperatorReference = candidate.isUserOperator &&
+            // X2: a C++ indexer's (`operator[](const K&)`, `operator[](K&&)`) reference too. / Tambien la referencia
+            //     de un indexador C++.
+            const bool cppIndexerReference = candidate.isCppExternal && !candidate.isUserOperator &&
+                (parameter.cppConstReference || parameter.cppRvalueReference);
+            const bool implicitOperatorReference = (candidate.isUserOperator || cppIndexerReference) &&
                 (parameter.passKind == ParameterPassKind::Ref ||
                  parameter.passKind == ParameterPassKind::In);
             // EN: T19-007. A C++ operator's `const T&` operand binds a temporary, as in C++: the value is
             //     materialized for the call (TemporaryAddress). A `T&` operand still needs an assignable place.
             // ES: T19-007. Un operando `const T&` de un operador C++ enlaza un temporal, como en C++: el valor se
             //     materializa para la llamada (TemporaryAddress). Un operando `T&` sigue exigiendo un lugar asignable.
-            const bool cppTemporaryOperand = implicitOperatorReference &&
+            const bool cppTemporaryOperand = (cppIndexerReference &&
+                (parameter.passKind == ParameterPassKind::In || parameter.cppRvalueReference)) || (implicitOperatorReference &&
                 (parameter.passKind == ParameterPassKind::In || parameter.cppRvalueReference ||
                  parameter.cppImplicitObject) &&
                 namespaceFunctionModel_ != nullptr &&
                 candidateOrdinal >= namespaceCallableBase_ &&
                 candidateOrdinal - namespaceCallableBase_ < namespaceFunctionModel_->functions().size() &&
                 !namespaceFunctionModel_->functions()[candidateOrdinal - namespaceCallableBase_]
-                     .cppCanonicalIdentity.empty();
+                     .cppCanonicalIdentity.empty());
             const std::string_view conversionTarget = implicitOperatorReference
                 ? std::string_view(parameter.pointeeTypeKey)
                 : std::string_view(parameter.typeKey);
@@ -9291,6 +9302,10 @@ bool ProjectMethodBodyModel::evaluateSyntheticCandidates(
             {
                 candidateBinding.viable = false;
             }
+            // X2: a prvalue binds a C++ `T&&` better than a `const T&`, as in C++. / Un prvalue enlaza mejor `T&&`.
+            if (implicitOperatorReference && parameter.cppConstReference && conversion.exists() &&
+                conversion.kind == ProjectConversionKind::Identity && !arguments[argumentOrdinal].addressable)
+                ++conversion.rank;
             candidateBinding.conversions.push_back(std::move(conversion));
         }
         if (candidateBinding.viable)

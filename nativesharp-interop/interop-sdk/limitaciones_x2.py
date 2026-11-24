@@ -607,4 +607,17 @@ positivo(Caso('x2-relacional-reescrito', HSS, '', **CRG),
          'lib.Use u; u.a.v = 3; lib.Use w; w.a.v = 4;'
          ' return (u.a < w.a ? 1 : 0) + (u.a <= w.a ? 2 : 0) + (u.a > w.a ? 4 : 0) + (w.a >= u.a ? 8 : 0) + 31;',
          modes=['directo', 'dll'])
+# X2: overloads by `const T&` and `T&&` of a C++ method or indexer (std::map's `operator[]`): an lvalue binds the
+# `const T&`, a prvalue prefers the `T&&` (any T, not only records), and a C++ indexer's reference parameters bind
+# like an operator's (they were ambiguous or not viable). / Sobrecargas `const T&`/`T&&` de metodos e indexadores.
+HRR = r'''
+namespace lib {
+struct M { int v[4]; int& at(const int& k) { return v[k]; } int& at(int&& k) { return v[k + 0]; }
+  int& operator[](const int& k) { return v[k]; } int& operator[](int&& k) { return v[k]; } };
+struct N { int v[4]; int& operator[](const int& k) { return v[k]; } };
+}
+'''
+positivo(Caso('x2-referencias-sobrecarga', HRR, '', **CRG),
+         'lib.M m; int k = 1; m.at(k) = 30; m.at(2) = 2; m[3] = 4; lib.N n; n[k] = 6;'
+         ' return m.at(k) + m.at(2) + m[3] + n[k];', modes=['directo', 'dll'])
 fin()
