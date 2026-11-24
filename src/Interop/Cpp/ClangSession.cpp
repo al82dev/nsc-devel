@@ -5622,6 +5622,8 @@ public:
                 return result;
             }
             for (unsigned depth = 0; depth < argument.pointerDepth; ++depth) type = context.getPointerType(type);
+            // STL: an `in` place is a const lvalue. / Un lugar `in` es un lvalue const.
+            if (argument.constQualified) type = context.getConstType(type);
             const auto valueKind = type->isRecordType() || argument.lvalue ? clang::VK_LValue : clang::VK_PRValue;
             arguments.push_back(new (context) clang::OpaqueValueExpr(location, type, valueKind));
         }

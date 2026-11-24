@@ -195,6 +195,8 @@ struct CppTemplateArgument
     std::string templateName;
     // T13-005: a call argument passed as an lvalue (`ref`, `in`). / Un argumento de llamada pasado como lvalue.
     bool lvalue = false;
+    // STL: an `in` argument, a readonly place (`const T&` in a forwarding reference). / Un argumento `in`.
+    bool constQualified = false;
     // T13-007: the NativeSharp struct of a NativeStruct argument. / El struct NativeSharp del argumento.
     std::shared_ptr<const CppNativeStruct> nativeStruct;
     // EN: T19-040. For a call to a C function-like macro: the argument as the call wrote it (its NativeSharp tokens,

@@ -1817,6 +1817,7 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
                 continue;
             }
             if (base.starts_with("lvalue:")) { argument.lvalue = true; base.remove_prefix(7); }
+            if (base.starts_with("clvalue:")) { argument.lvalue = argument.constQualified = true; base.remove_prefix(8); }
             // C5-02: a C `signed char` value. / Un valor C `signed char`.
             if (base.starts_with("csigned:")) { argument.cSignedChar = true; base.remove_prefix(8); }
             while (base.ends_with('*')) { ++argument.pointerDepth; base.remove_suffix(1); }
@@ -3718,7 +3719,11 @@ public:
             if ((tokens_[cursor].kind() == lexer::TokenKind::KwIn || (tokens_[cursor].kind() == lexer::TokenKind::Identifier &&
                     tokens_[cursor].lexeme() == "ref")) &&
                 cursor + 1 < tokens_.size() && tokens_[cursor + 1].kind() == lexer::TokenKind::Identifier)
-            { place = true; ++cursor; }
+            {
+                place = true;
+                argument.constQualified = tokens_[cursor].kind() == lexer::TokenKind::KwIn; // `in`: readonly
+                ++cursor;
+            }
             const auto& token = tokens_[cursor];
             const auto text = token.lexeme();
             switch (token.kind())

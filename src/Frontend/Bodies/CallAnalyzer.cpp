@@ -4876,8 +4876,10 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                             signedCharOrigin = callee.cppReturnType &&
                                 callee.cppReturnType->unqualifiedCanonicalSpelling == "signed char";
                         }
-                    request.argumentTypeKeys.push_back((place ? "lvalue:" : signedCharOrigin ? "csigned:" : "") +
-                                                       value.typeKey);
+                    // STL: `in x` is a readonly place. / `in x` es un lugar de solo lectura.
+                    const bool readonlyPlace = place && std::string_view(argument->auxiliaryText()) == "pass:in";
+                    request.argumentTypeKeys.push_back((readonlyPlace ? "clvalue:" : place ? "lvalue:" :
+                                                        signedCharOrigin ? "csigned:" : "") + value.typeKey);
                 }
                 if (valid) namespaceFunctionModel_->recordCppTemplateDeduction(std::move(request));
                 // T19-003: a C/C++ function-like macro needs its expansion. / Una macro de funcion C/C++ necesita
@@ -9134,7 +9136,8 @@ void ProjectMethodBodyModel::recordCppMemberTemplateDeduction(
         const ExpressionResult value = analyzeExpression(
             place ? argument->first() : argument, methodMemberOrdinal, scopeOrdinal, scratch);
         if (!value.valid || value.typeKey.empty()) return;
-        request.argumentTypeKeys.push_back((place ? "lvalue:" : "") + value.typeKey);
+        const bool readonlyPlace = place && std::string_view(argument->auxiliaryText()) == "pass:in";
+        request.argumentTypeKeys.push_back((readonlyPlace ? "clvalue:" : place ? "lvalue:" : "") + value.typeKey);
     }
     namespaceFunctionModel_->recordCppTemplateDeduction(std::move(request));
 }
