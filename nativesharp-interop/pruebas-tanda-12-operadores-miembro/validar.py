@@ -6,8 +6,9 @@ declara un operador que devuelve D por valor. El consumidor NativeSharp los usa 
 a un adaptador que genera Clang, una funcion libre cuyo cuerpo llama al miembro. Compara un control C++
 compilado por Clang 23.1.0 con el consumidor NativeSharp, O0-O3, y exige los tipos fisicos de Clang en
 cada declaracion C++ que NSC llama directamente. T19-007: N declara un operador miembro no const, que se
-aplica a un lugar asignable y a un temporal, como en C++. Controles negativos: ese operador sobre un objeto
-`in` (const), que Clang tambien rechaza, y un operador heredado de una base, que no se importa.
+aplica a un lugar asignable y a un temporal, como en C++. Control negativo: ese operador sobre un objeto
+`in` (const), que Clang tambien rechaza. X2: un operador heredado de una base (antes control negativo, no se
+importaba) ahora se aplica al derivado, como en C++.
 """
 import argparse
 import os
@@ -250,20 +251,15 @@ run('negativos-api', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=
     negative)
 run('negativos-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], negative)
 plain = '<CppLibraryReference Header="../api.h" Language="C++" Standard="c++20" Library="../api.lib" />'
-for name, body, message in (
-        ('operador-heredado', 'T12.D x; x.b = 5; x.d = 1; return x % 3;',
-         "overload of 'op_Modulus' accepts the operand/argument types"),):
-    folder = negative / name
-    folder.mkdir()
-    (folder / 'Main.ns').write_text('int Main() { ' + body + ' }\n', encoding='utf-8')
-    (folder / 'App.nsproj').write_text(project('T12Neg', plain, 'Main.ns'), encoding='utf-8')
-    output = run('negativo-' + name, [args.nsc, '--emit-project-oop-exe', 'App.nsproj',
-                                      '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O0',
-                                      '-o', 'app.exe'], folder, expected=1).stdout
-    if message not in output:
-        print(output[-2000:], flush=True)
-        raise SystemExit(f'negativo {name}: falta el diagnostico esperado; evidencia: {root}')
-    print(f'negativo {name}: rechazado', flush=True)
+# EN: X2. An operator a base declares is the derived record's too (C++ member lookup); this was a negative
+#     control while inherited operators were not imported. / Era un control negativo mientras los operadores
+#     heredados no se importaban; ahora D usa el operator% de B, como en C++ (5 % 3 - 2 == 0).
+folder = negative / 'operador-heredado'
+folder.mkdir()
+(folder / 'Main.ns').write_text('int Main() { T12.D x; x.b = 5; x.d = 1; return x % 3 - 2; }\n', encoding='utf-8')
+(folder / 'App.nsproj').write_text(project('T12Pos', plain, 'Main.ns'), encoding='utf-8')
+build_and_run('operador-heredado', folder, 0, expected=0)
+print('operador-heredado: pasa (operador de la base aplicado al derivado)', flush=True)
 # EN: T19-007. A non-const member operator does not apply to a const object, by Clang either.
 # ES: T19-007. Un operador miembro no const no se aplica a un objeto const, tampoco en Clang.
 folder = negative / 'operador-no-const-sobre-in'
