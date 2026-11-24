@@ -3434,12 +3434,18 @@ void scanNativeTypes(std::span<const lexer::Token> tokens, std::map<std::string,
         for (std::size_t member = position + 1; !shape.isClass && member + 1 < end;)
         {
             bool isStatic = false;
+            // NSMeta X4-06: a precompiled surface writes each struct field with its layout (`at(0) align(4)`). / Una
+            //     superficie precompilada escribe cada campo de un struct con su disposicion.
+            const auto layoutPrefix = [&](std::size_t at) {
+                return kindAt(at) == K::Identifier && kindAt(at + 1) == K::LeftParen &&
+                    (tokens[at].lexeme() == "at" || tokens[at].lexeme() == "align");
+            };
             while (kindAt(member) == K::KwPublic || kindAt(member) == K::KwPrivate || kindAt(member) == K::KwInternal ||
                    kindAt(member) == K::KwProtected || kindAt(member) == K::KwReadonly || kindAt(member) == K::KwStatic ||
-                   kindAt(member) == K::KwConst || kindAt(member) == K::KwInline)
+                   kindAt(member) == K::KwConst || kindAt(member) == K::KwInline || layoutPrefix(member))
             {
                 isStatic = isStatic || kindAt(member) == K::KwStatic || kindAt(member) == K::KwConst;
-                ++member;
+                member = layoutPrefix(member) ? skipBalanced(member + 1, K::LeftParen, K::RightParen) : member + 1;
             }
             if (member + 1 >= end) break;
             if (kindAt(member) == K::Tilde)
@@ -4490,9 +4496,12 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
     if (byProject.empty()) return true;
 
     // T13-007: the NativeSharp types of each project. / Los tipos NativeSharp de cada proyecto.
+    // NSMeta X4-06: a precompiled project's types too, from its published surface, for a specialization written in one
+    //     of its published templates (`lib.Box<P>`). / Tambien los tipos de un proyecto precompilado, desde su
+    //     superficie publicada, para una especializacion escrita en una de sus plantillas publicadas.
     std::map<std::size_t, std::map<std::string, NativeTypeShape>> nativeTypes;
     for (const auto& unit : units_)
-        if (unit && !unit->isPrecompiled() && unit->isLexicallyValid() && byProject.contains(unit->projectOrdinal()))
+        if (unit && unit->isLexicallyValid() && byProject.contains(unit->projectOrdinal()))
             scanNativeTypes(unit->tokens_, nativeTypes[unit->projectOrdinal()]);
     std::map<std::pair<std::size_t, std::string>, std::shared_ptr<const interop::CppNativeStruct>> nativeStructs;
     using NativeResult = std::optional<std::variant<std::shared_ptr<const interop::CppNativeStruct>, std::string>>;

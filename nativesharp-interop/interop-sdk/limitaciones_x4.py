@@ -46,6 +46,12 @@ rechazo(c, 'short s = 1; return lib.wide(s);', 'Clang cannot deduce the template
 positivo(Caso('x4-struct-ns-argumento', H, None, **CPP), 'return Use() + 41;',
          preludio='struct P { public int x; }\nint Use() { P p; p.x = 1; var b = new lib.Box<P>(p); return b.get().x; }\n',
          modes=['directo'])
+# NSMeta X4-06: in a published template (lib) the struct is the producer's; the consumer without the header mirrors it
+#     from the producer's published surface (`at(0) align(4)` fields). / En una plantilla publicada el struct es del
+#     productor; el consumidor sin encabezado lo refleja desde la superficie publicada del productor.
+positivo(Caso('x4-struct-ns-argumento-publicado', H, None, **CPP),
+         'P p; p.x = 1; var b = new lib.Box<P>(p); return b.get().x + 41;',
+         preludio='public struct P { public int x; }\n', modes=['directo', 'dll', 'lib'])
 # X4-04: a C++ variable template written as a value (`lib.sz<long>`) is a value when the token after `>` cannot
 # continue a comparison (C# disambiguation) or an argument is a predefined type; Clang evaluates the specialization and
 # an integral or bool constant replaces it. Other variable templates are rejected with the reason.
