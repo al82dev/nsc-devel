@@ -4819,9 +4819,19 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                     //     is a type argument too; the header spells it the same way.
                     // ES: Item 5.9. Un nombre que no es un valor en el ambito pero nombra un tipo C/C++ importado
                     //     (`SIZE(Pt)`) tambien es un argumento de tipo; el encabezado lo escribe igual.
+                    // NSMeta X4-06: in a published template of a precompiled project, the producer already checked the
+                    //     name against its header; the consumer without the header may not import that type. / En una
+                    //     plantilla publicada, el productor ya comprobo el nombre contra su encabezado.
+                    const bool precompiledBody = memberModel_ != nullptr && nameLookup_ != nullptr &&
+                        methodMemberOrdinal < memberModel_->members().size() &&
+                        memberModel_->members()[methodMemberOrdinal].declaringTypeOrdinal <
+                            nameLookup_->namedTypes().size() &&
+                        nameLookup_->namedTypes()[memberModel_->members()[methodMemberOrdinal].declaringTypeOrdinal]
+                            .isPrecompiled;
                     const bool importedTypeName = argument != nullptr &&
                         argument->kind() == ast::AstNodeKind::IdentifierExpression &&
                         !lookupScopeName(scopeOrdinal, argument->text()).has_value() && [&] {
+                            if (precompiledBody) return true;
                             const auto& types = nameLookup_->namedTypes();
                             for (std::size_t ordinal = 0; ordinal < types.size(); ++ordinal)
                                 if (types[ordinal].identity.name() == argument->text()) return true;

@@ -77,7 +77,10 @@ positivo(c, BODY, modes=['directo', 'dll'])
 #     consumidor: el catalogo C no guarda constantes de macro (bloqueado con el item NSMeta del plan).
 BODY_LIB = '\n'.join(line for line in BODY.splitlines()
                      if not any(token in line for token in ('SIZE(', 'LD;', 'ANSWER', 'return 6;', 'return 8;', 'return 9;')))
-positivo(c, BODY_LIB, modes=['lib'])
+# NSMeta X4-06: macro constants travel with the producer's macro source (C2-02/C2-08) and a type-name argument in a
+#     published template is passed as tokens (the producer checked it), so the whole body runs in lib. / Las
+#     constantes de macro viajan con la fuente de macros y un nombre de tipo como argumento se pasa como tokens.
+positivo(c, BODY, modes=['lib'])
 rechazo(c, 'int v = AI_MATKEY_COLOR; return v;', "unknown identifier 'AI_MATKEY_COLOR'")
 rechazo(c, 'return TWICE(next());', 'may have side effects that NativeSharp would evaluate only once')
 rechazo(c, 'int w = 5; RESET(w); return w;', 'pass it with ref')
