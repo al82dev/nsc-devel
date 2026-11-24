@@ -169,4 +169,13 @@ rechazo_lib(c, 'return need_ptr(null);', 'null', preludio=PRE)
 rechazo_lib(c, 'int k = 3; var a = make_buffer(4); if (k > 2) free_buffer(a); return 0;',
             'is not released before this return', preludio=PRE)
 
+# R1-04/R1-05: an owned result released on every path and every contract kind also hold when the functions are
+#     published by a precompiled library (lib) or a DLL. / Un resultado con dueno liberado en todo camino y cada tipo
+#     de contrato tambien valen cuando las funciones las publica una biblioteca precompilada (lib) o una DLL.
+PRE4_PUB = PRE + ('namespace SdkProbe { public sbyte* Keep(int n) { var b = make_buffer(n); return b; }'+chr(10)+
+    'public class G { public static sbyte* stored; }'+chr(10)+
+    'public void Store() { var b = make_buffer(2); G.stored = b; } }'+chr(10))
+positivo(CasoContratos('r1-liberacion-publico', H, S, CONTRACTS), BODY4, preludio=PRE4_PUB, modes=['lib', 'dll'])
+positivo(CasoContratos('r1-contratos-bib', H, S, CONTRACTS), BODY, preludio=PRE, modes=['lib', 'dll'])
+
 fin()
