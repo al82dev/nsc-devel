@@ -26,6 +26,12 @@ positivo(c, 'IUnk* o = create_obj(); if (o->AddRef() != 2u) return 1; int v = o-
             'if (o->Release() != 1u) return 2; return v;', modes=['directo', 'dll'])
 # EN: An abstract C++ record named by a precompiled generic body cannot be published in its metadata (item 13.11).
 # ES: Un record C++ abstracto nombrado por una plantilla precompilada no se puede publicar en su metadata (13.11).
-rechazo(c, 'return 0;', 'cannot derive from the C/C++ record',
-        preludio='public class MyVisitor : Visitor { public int Visit(int v) { return v; } }')
+# EN: X3-04. Implementing the abstract C++ interface `Visitor` was a rejection ("cannot derive from the C/C++ record");
+#     an abstract C++ interface is now implemented, not inherited (the class keeps no NativeSharp base), so this is a
+#     positive case. Deriving from a C++ class with data or non-pure virtuals is still rejected (limitaciones_x3.py).
+# ES: X3-04. Implementar la interfaz C++ abstracta `Visitor` era un rechazo; una interfaz C++ abstracta ahora se
+#     implementa, no se hereda, asi que es un caso positivo. Derivar de una clase C++ con datos o virtuales no puros
+#     sigue rechazado (limitaciones_x3.py).
+positivo(Caso('t14-visitante', H, S, language='C++'), 'MyVisitor m = new MyVisitor(); return m.Visit(42);',
+         preludio='public class MyVisitor : Visitor { public int Visit(int v) { return v; } }', modes=['directo'])
 fin()

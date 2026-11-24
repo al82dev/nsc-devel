@@ -62,7 +62,11 @@ for mode in ('estatica', 'dll'):
         run(label+'-producer-ns', [args.nsc, '--emit-project-oop-lib', str(producer/'Producer.nsproj'),
             '--cpp-clang-root='+args.clang_root, '--no-artifact-cache', '-O'+str(opt), '-o', str(producer/'Producer.lib')])
         metadata = (producer/'Producer.nsmeta').read_bytes()
-        if b'T09Compact' not in metadata or b'T09Unrelated' in metadata:
+        # C2-08: the DLL header defines an object-like macro, so the preprocessed header travels as the macro source
+        # of the reference (its text names T09Unrelated). The check is on catalogue identities (`ns.Record`).
+        # C2-08: el encabezado DLL define una macro de objeto, asi que el encabezado preprocesado viaja como fuente de
+        # macros (su texto nombra T09Unrelated); la comprobacion es sobre identidades del catalogo.
+        if b'T09Compact.' not in metadata or b'T09Unrelated.' in metadata:
             raise SystemExit(label+': dependencia C++ inesperada en el catálogo; evidencia: '+str(producer/'Producer.nsmeta'))
         for visibility in ('con-encabezado', 'sin-encabezado'):
             consumer = case/visibility

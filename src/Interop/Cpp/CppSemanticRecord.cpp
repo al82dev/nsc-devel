@@ -2915,8 +2915,11 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         }
         for (const auto& method : entry.declaration.methods)
         {
+            // EN: A deleted overload (`parse(int) && = delete`) is never called: the consumer's diagnostic for it
+            //     comes from the producer's own member model, so the catalogue does not carry it (V-05, t12).
+            // ES: Una sobrecarga eliminada nunca se llama: el catalogo no la lleva (V-05, t12).
             if (method.name != methodName || method.isStatic != isStatic || !method.externalSymbol || !method.clangUsr ||
-                method.clangUsr->empty() || !ordinal || !members) continue;
+                method.clangUsr->empty() || !ordinal || !members || method.isDeleted) continue;
             // EN: T19-006. An instance method called through a Clang adapter (a default-argument adapter, T12-004/005)
             //     is selected, saved and linked by the adapter's symbol, which the consumer calls instead.
             // ES: T19-006. Un metodo de instancia llamado por un adaptador de Clang (de argumentos predeterminados,

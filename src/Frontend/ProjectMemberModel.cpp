@@ -167,7 +167,7 @@ bool ProjectMemberModel::setExperimentalCppInstanceMethods(
              symbol->second->returnPointeeReadonly != method.returnPointeeReadonly ||
              symbol->second->parameterPointeeReadonly != method.parameterPointeeReadonly ||
              symbol->second->objectSizeModes != method.objectSizeModes || symbol->second->dllImport != method.dllImport)))
-        { error = "duplicate C++ instance method signature or symbol"; return false; }
+        { error = "duplicate C++ instance method signature or symbol: " + method.name + " (" + method.externalSymbol + ")"; return false; }
     }
     experimentalCppInstanceMethods_ = std::move(methods);
     error.clear();
