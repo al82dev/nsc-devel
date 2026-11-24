@@ -26,5 +26,8 @@ BODY = r'''
 '''
 # EN: C++ templates inside a precompiled NativeSharp generic body do not reach the consumer (item 13.11, T19-016).
 # ES: Las plantillas C++ dentro del cuerpo de una plantilla precompilada no llegan al consumidor (item 13.11).
-positivo(Caso('t13-cpp', H, None, language='C++'), BODY, modes=['directo', 'dll'])
+# NSMeta X4-06: item 13.11 no longer holds in lib; the consumer without the header imports these records through the
+#     producer's source session and runs the whole body. / El item 13.11 ya no aplica en lib: el consumidor importa
+#     estos records por la sesion de fuente del productor y ejecuta el cuerpo completo.
+positivo(Caso('t13-cpp', H, None, language='C++'), BODY, modes=['directo', 'dll', 'lib'])
 fin()

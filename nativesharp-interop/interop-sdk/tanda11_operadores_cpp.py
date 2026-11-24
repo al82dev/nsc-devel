@@ -50,5 +50,8 @@ positivo(c, BODY, modes=['directo', 'dll'])
 #     indexador (item 13.11); el consumidor .lib ejecuta el resto.
 BODY_LIB = BODY.replace('    v[1] = 2;', '    v.y = 2;').replace(
     "if ((int)(v[0] + v[1]) != 42 || (int)read1(&v) != 2) return 1;", "if ((int)read1(&v) != 2) return 1;")
-positivo(c, BODY_LIB, modes=['lib'])
+# NSMeta X4-06: item 13.11 no longer holds in lib; the consumer without the header imports these records through the
+#     producer's source session and runs the whole body. / El item 13.11 ya no aplica en lib: el consumidor importa
+#     estos records por la sesion de fuente del productor y ejecuta el cuerpo completo.
+positivo(c, BODY, modes=['lib'])
 fin()

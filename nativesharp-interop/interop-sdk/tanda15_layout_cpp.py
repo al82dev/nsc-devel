@@ -45,5 +45,8 @@ positivo(c, BODY, modes=['directo', 'dll'])
 #     constructor propio nombrado por una plantilla precompilada es el item 13.11.
 lines = BODY.splitlines()
 BODY_LIB = '\n'.join(line for line in lines if 'o->' not in line and 'get_owner' not in line and 'helper_add' not in line)
-positivo(c, BODY_LIB, modes=['lib'])
+# NSMeta X4-06: item 13.11 no longer holds in lib; the consumer without the header imports these records through the
+#     producer's source session and runs the whole body. / El item 13.11 ya no aplica en lib: el consumidor importa
+#     estos records por la sesion de fuente del productor y ejecuta el cuerpo completo.
+positivo(c, BODY, modes=['lib'])
 fin()

@@ -22,8 +22,11 @@ static Impl inst;
 IUnk* create_obj() { return &inst; }
 '''
 c = Caso('t14-cpp', H, S, language='C++')
+# NSMeta X4-06: item 13.11 no longer holds in lib; the consumer without the header imports these records through the
+#     producer's source session and runs the whole body. / El item 13.11 ya no aplica en lib: el consumidor importa
+#     estos records por la sesion de fuente del productor y ejecuta el cuerpo completo.
 positivo(c, 'IUnk* o = create_obj(); if (o->AddRef() != 2u) return 1; int v = o->Value(); '
-            'if (o->Release() != 1u) return 2; return v;', modes=['directo', 'dll'])
+            'if (o->Release() != 1u) return 2; return v;', modes=['directo', 'dll', 'lib'])
 # EN: An abstract C++ record named by a precompiled generic body cannot be published in its metadata (item 13.11).
 # ES: Un record C++ abstracto nombrado por una plantilla precompilada no se puede publicar en su metadata (13.11).
 # EN: X3-04. Implementing the abstract C++ interface `Visitor` was a rejection ("cannot derive from the C/C++ record");
@@ -33,5 +36,5 @@ positivo(c, 'IUnk* o = create_obj(); if (o->AddRef() != 2u) return 1; int v = o-
 #     implementa, no se hereda, asi que es un caso positivo. Derivar de una clase C++ con datos o virtuales no puros
 #     sigue rechazado (limitaciones_x3.py).
 positivo(Caso('t14-visitante', H, S, language='C++'), 'MyVisitor m = new MyVisitor(); return m.Visit(42);',
-         preludio='public class MyVisitor : Visitor { public int Visit(int v) { return v; } }', modes=['directo'])
+         preludio='public class MyVisitor : Visitor { public int Visit(int v) { return v; } }', modes=['directo', 'lib'])
 fin()

@@ -42,5 +42,8 @@ positivo(c, BODY, modes=['directo', 'dll'])
 # EN: A derived-to-base reference inside a precompiled generic body has no live upcast observation (item 13.11).
 # ES: Una referencia de derivado a base dentro de una plantilla precompilada no tiene la observacion en vivo del
 #     ajuste a la base (item 13.11).
-positivo(c, BODY.replace('    if (read_base(in d) != 42) return 6;', '    if (d.x != 42) return 6;'), modes=['lib'])
+# NSMeta X4-06: item 13.11 no longer holds in lib; the consumer without the header imports these records through the
+#     producer's source session and runs the whole body. / El item 13.11 ya no aplica en lib: el consumidor importa
+#     estos records por la sesion de fuente del productor y ejecuta el cuerpo completo.
+positivo(c, BODY, modes=['lib'])
 fin()

@@ -52,6 +52,9 @@ positivo(c, BODY, PRELUDIO, modes=['directo', 'dll'])
 #     the rest. / ES: Construir un objeto C++ en el cuerpo de una plantilla precompilada es el item 13.11.
 BODY_LIB = '\n'.join(line for line in BODY.splitlines()
                      if not any(token in line for token in ('new NS', 'ns_sum', 'Scope.Inner')))
-positivo(c, BODY_LIB, PRELUDIO, modes=['lib'])
+# NSMeta X4-06: item 13.11 no longer holds in lib; the consumer without the header imports these records through the
+#     producer's source session and runs the whole body. / El item 13.11 ya no aplica en lib: el consumidor importa
+#     estos records por la sesion de fuente del productor y ejecuta el cuerpo completo.
+positivo(c, BODY, PRELUDIO, modes=['lib'])
 rechazo(c, 'V v; return (int)v.x;', "has a non-trivial default constructor")
 fin()

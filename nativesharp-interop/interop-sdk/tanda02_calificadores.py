@@ -72,8 +72,10 @@ rechazo(c, 'sbyte const** t = names(); t[0][0] = 1; return 0;', 'not assignable'
 rechazo(c, 'sbyte* m = null; sbyte** q = &m; return count_cpp(q);', 'count_cpp')
 # 2.7: `volatile int**` is mapped since limitaciones C1-01 (the base is the volatile pointee mark); see
 #     limitaciones_c1.py. The former rejection becomes a call through `int volatile**`.
+# NSMeta X4-06: this case also runs in lib (a consumer without the header of the precompiled producer). / Este caso
+#     tambien corre en lib (un consumidor sin encabezado del productor precompilado).
 positivo(Caso('t2-c-volatile', H, S), 'int v = 42; int volatile* pv = &v; return rv(&pv);', opts=['0'],
-         modes=['directo'])
+         modes=['directo', 'lib'])
 
 HPP = r'''
 struct SessionDesc { char const* const* searchPaths; long long count; };
