@@ -124,6 +124,18 @@ bool ProjectMemberModel::typeTransitivelyHasCustomDestructor(std::string_view ty
         if (!ordinal.has_value() ||
             nameLookup_->namedTypes()[*ordinal].kind != NamedTypeDeclarationKind::Struct)
             continue;
+        // EN: X2-06. A C++ record whose copy, assignment and destruction are trivial (a transport value) has no
+        //     destructor to run, although its lifetime family declares one: a struct holding it needs no drop glue,
+        //     which a precompiled surface would otherwise publish as a destructor (making it move-only in lib).
+        // ES: X2-06. Un record C++ con copia, asignacion y destruccion triviales no tiene destructor que ejecutar,
+        //     aunque su familia de vida lo declare: un struct que lo contiene no necesita drop glue, que una
+        //     superficie precompilada publicaria como destructor (y lo volveria move-only en lib).
+        //     Only as a field: the record's own lifetime family keeps its contract.
+        //     Solo como campo: la familia de vida del propio record conserva su contrato.
+        if (const auto* imported = nameLookup_->cppImportedType(*ordinal);
+            candidate != typeKey && imported && imported->origin == CppImportedTypeOrigin::CppRecord &&
+            nameLookup_->cppTrivialValueEligible(*ordinal))
+            continue;
         if (!visited.insert(*ordinal).second) continue;
         for (const std::size_t memberOrdinal : membersByType_[*ordinal])
         {

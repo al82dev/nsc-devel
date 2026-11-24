@@ -276,10 +276,12 @@ positivo(Caso('x2-asignacion', HA, SA, **CPP), BODY_ASSIGN, modes=['directo', 'd
 # X2-06: un struct NativeSharp con un campo C++ transportable se rechazaba; ahora lo contiene y lo copia por bytes.
 HT = 'namespace lib { struct P { int x; int y; int sum() const { return x + y; } }; int psum(P p); }\n'
 ST = 'namespace lib { int psum(P p) { return p.x + p.y; } }\n'
+# NSMeta X4-06 (X2-06 in lib): the producer's struct is public so the consumer without the header uses it; a trivial
+#     C++ field gives it no drop glue, so it stays copyable. / Un campo C++ trivial no le da drop glue: sigue copiable.
 positivo(Caso('x2-campo-transportable', HT, ST, **CPP),
          'Holder h; h.p.x = 20; h.p.y = 18; h.k = 2; Holder g = h; g.p.y += 2;\n'
          '    return h.p.y == 18 ? lib.psum(g.p) + g.k : 1;',
-         preludio='struct Holder { public lib.P p; public int k; }\n', modes=['directo', 'dll'])
+         preludio='public struct Holder { public lib.P p; public int k; }\n', modes=['directo', 'dll', 'lib'])
 # X2-06: a NativeSharp class (a reference, never copied) with fields of a non-trivial C++ record: each is constructed
 # with the object as a C++ member is, in place by its initializer (`new T(...)` or a factory) or by default, in
 # declaration order; a later `h.b = value` is its operator=; the object's destruction runs each field's destructor.
@@ -316,9 +318,11 @@ BODYF = r'''
     }
     return lib.c().dtor == 4 && lib.c().ctor == 4 ? 42 : 3;
 '''
+# NSMeta X4-06 (X2-06 in lib): the producer's class is public so the consumer without the header uses it; its C++ fields
+#     travel through the source session. / Sus campos C++ viajan por la sesion de fuente.
 positivo(Caso('x2-clase-campo-cpp', HF, SF, **CPP), BODYF,
-         preludio='class Holder { public lib.Obj a = new lib.Obj(30); public lib.Obj b; public lib.Obj m = lib.make(1); }\n',
-         modes=['directo', 'dll'])
+         preludio='public class Holder { public lib.Obj a = new lib.Obj(30); public lib.Obj b; public lib.Obj m = lib.make(1); }\n',
+         modes=['directo', 'dll', 'lib'])
 rechazo(Caso('x2-clase-campo-cpp', HF, SF, **CPP), 'var h = new Holder(); return 0;', 'has no accessible default constructor',
         preludio='class Holder { public lib.NoDefault n; }\n')
 # X2-06: a struct (a value: copied, moved, zero-initialized, held in arrays and generics) cannot hold a non-trivial C++
