@@ -604,8 +604,11 @@ struct M { int base; template <typename T> static T twice(T v) { return v * 2; }
 struct N { int z; };
 }
 '''
+# NSMeta X4-06: in lib the record's source session travels because it declares member function templates (the
+#     producer seeds it although no value names it). / En lib la sesion de fuente viaja porque el record declara
+#     plantillas de funcion miembro.
 positivo(Caso('x2-plantilla-miembro-estatica', HMS, '', **CRG), 'return lib.M.twice(20) + (int)lib.M.twice(1.0);',
-         modes=['directo', 'dll'])
+         modes=['directo', 'dll', 'lib'])
 rechazo(Caso('x2-plantilla-miembro-estatica-otro', HMS, '', **CRG),
         'int a = lib.M.twice(20); return lib.N.twice(21);', "has no compatible member named 'twice'")
 # X2: explicit template arguments for a C++ member function template (`m.add<double>(1)`, `m.size<double>()`,
@@ -618,10 +621,12 @@ namespace lib {
 struct M { int base; template <typename T> T add(T v) const { return (T)base + v; } template <typename T> int size() const { return (int)sizeof(T) + base; } template <typename T> static T half(T v) { return v / 2; } };
 }
 '''
+# NSMeta X4-06: in lib `add<double>` is a member template the producer's metadata skips, not a missing generic
+#     method. / En lib `add<double>` es una plantilla miembro, no un metodo generico faltante.
 positivo(Caso('x2-plantilla-miembro-explicita', HEX, '', **CRG),
          'lib.M m; m.base = 2; int a = m.add(1); double d = m.add<double>(1); m.base = 1; int s = m.size<double>();'
          ' return (int)(d * 10.0) + a + s - 9 + (int)(lib.M.half<double>(5) * 2.0) + lib.M.half(10) - 1;',
-         modes=['directo', 'dll'])
+         modes=['directo', 'dll', 'lib'])
 rechazo(Caso('x2-plantilla-miembro-explicita-ausente', HEX, '', **CRG), 'lib.M m; return m.nada<int>(1);',
         "has no compatible member named 'nada'")
 # X2: a constructor taking `const char* const` (a top-level const by-value pointer, as std::string's) was not

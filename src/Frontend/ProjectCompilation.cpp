@@ -1355,6 +1355,13 @@ bool ProjectCompilation::compileProjectGenerics(
         for (const auto& [project, qualified] : cppFunctionTemplates_)
             for (const auto& name : qualified)
                 names.insert(name.substr(name.rfind("::") == std::string::npos ? 0 : name.rfind("::") + 2));
+        // X2: a member function template called with explicit arguments (`m.add<double>(1)`) is no missing
+        //     generic method of a published template. / Una plantilla miembro con argumentos explicitos no es un
+        //     metodo generico faltante de una plantilla publicada.
+        for (const auto& group : cppProjectSessions_)
+            for (const auto& session : group.sessions)
+                if (session)
+                    for (auto& name : session->memberTemplateNames()) names.insert(std::move(name));
         genericModel_->setCppFunctionTemplateNames(std::move(names));
     }
     // EN: The generic model's C1 record cache and C3 clone cache stay disconnected. C3 persists a

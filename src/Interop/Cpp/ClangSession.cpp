@@ -5096,6 +5096,30 @@ public:
         }
         return false;
     }
+    std::vector<std::string> memberTemplateNames() const override
+    {
+        std::lock_guard lock(mutex_);
+        std::set<std::string> names;
+        if (!ast_ || !ast_->getASTContext().getLangOpts().CPlusPlus || options_.macroExpansionOnly) return {};
+        std::function<void(const clang::DeclContext&, unsigned)> visit = [&](const clang::DeclContext& scope,
+                                                                            unsigned depth) {
+            if (depth > 32) return;
+            for (const auto* declaration : scope.decls())
+            {
+                if (const auto* functionTemplate = llvm::dyn_cast<clang::FunctionTemplateDecl>(declaration);
+                    functionTemplate && llvm::isa<clang::CXXMethodDecl>(functionTemplate->getTemplatedDecl()) &&
+                    functionTemplate->getDeclName().isIdentifier())
+                    names.insert(functionTemplate->getNameAsString());
+                else if (const auto* context = llvm::dyn_cast<clang::DeclContext>(declaration);
+                         context && (llvm::isa<clang::NamespaceDecl>(declaration) ||
+                                     llvm::isa<clang::CXXRecordDecl>(declaration) ||
+                                     llvm::isa<clang::LinkageSpecDecl>(declaration)))
+                    visit(*context, depth + 1);
+            }
+        };
+        visit(*ast_->getASTContext().getTranslationUnitDecl(), 0);
+        return {names.begin(), names.end()};
+    }
     std::vector<CppTemplateName> templatesSnapshot() const override
     {
         std::lock_guard lock(mutex_);

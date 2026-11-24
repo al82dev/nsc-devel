@@ -2640,6 +2640,18 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                     seeds[imported->projectOrdinal].insert(imported->identity.key());
                     staticMethodSeeds.emplace(imported->identity.key(), demand.lookupName);
                 }
+                // EN: X2 in lib. A static member function template (`lib.M.twice(20)`) is no imported member: the record
+                //     is seeded so its source session travels, and the consumer deduces the call.
+                // ES: X2 en lib. Una plantilla de funcion miembro estatica no es un miembro importado: se siembra el
+                //     record para que viaje su sesion de fuente y el consumidor deduzca la llamada.
+                else if (demand.directCall && imported->clangUsr &&
+                         std::any_of(compilation.cppProjectSessions().begin(), compilation.cppProjectSessions().end(),
+                             [&](const auto& group) {
+                                 return std::any_of(group.sessions.begin(), group.sessions.end(), [&](const auto& session) {
+                                     return session && session->recordHasMemberTemplates(*imported->clangUsr);
+                                 });
+                             }))
+                    seeds[imported->projectOrdinal].insert(imported->identity.key());
                 const bool hasStaticField = !demand.directCall &&
                     std::any_of(members->members().begin(), members->members().end(),
                     [&](const auto& member) { return member.declaringTypeOrdinal == ordinal && member.isCppExternal &&
