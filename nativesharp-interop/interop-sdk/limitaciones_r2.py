@@ -48,38 +48,43 @@ def cache_invalidation():
         print('ok r2-cache', flush=True)
 
 
-def cache_invalidation_lib():
+def cache_invalidation_lib(kind='lib'):
     """R2-03 for a precompiled library: the producer's artifact is cached like an executable's (cold, warm reused,
     changed transitive header and changed Define not reused) and its consumer sees each new value.
     / R2-03 para una biblioteca precompilada: el artefacto del productor se guarda en cache como el de un ejecutable
-    y su consumidor ve cada valor nuevo."""
-    base = comun.ROOT / 'r2-cache-lib'
+    y su consumidor ve cada valor nuevo. kind: 'lib' or 'dll'."""
+    name = 'r2-cache-' + kind
+    dll = kind == 'dll'
+    base = comun.ROOT / name
     producer = base / 'productor'
     consumer = base / 'consumidor'
     producer.mkdir(parents=True)
     consumer.mkdir()
-    caso = Caso('r2-cache-lib', '#include "sub.h"\nint base_value(void);\n', 'int base_value(void) { return 30; }\n')
+    caso = Caso(name, '#include "sub.h"\nint base_value(void);\n', 'int base_value(void) { return 30; }\n')
     (producer / 'sub.h').write_text('#define K 12\n', encoding='utf-8')
     refs = caso.reference(producer) + comun.core(0)
     (producer / 'Lib.ns').write_text('namespace SdkProbe { public static class P { public static int Value() '
                                      '{ return base_value() + K; } } }\n', encoding='utf-8')
     (consumer / 'Main.ns').write_text('int Main() { return SdkProbe.P.Value(); }\n', encoding='utf-8')
+    runtime = ' Runtime="../productor/SdkProbeLib.dll"' if dll else ''
     comun.project(consumer, 'App', ['Main.ns'],
-                  '<LibraryReference Include="../productor/SdkProbeLib.lib" />' + comun.core(0))
+                  f'<LibraryReference Include="../productor/SdkProbeLib.lib"{runtime} />' + comun.core(0))
 
     def build(define=None):
         reference = refs.replace(' />', f'><Define Value="{define}" /></CppLibraryReference>', 1) if define else refs
-        comun.project(producer, 'SdkProbeLib', ['Lib.ns'], reference, 'Library')
-        result = comun.run([comun.NSC, f'--cpp-clang-root={comun.CLANG_ROOT}', '--emit-project-oop-lib',
+        comun.project(producer, 'SdkProbeLib', ['Lib.ns'], reference, 'SharedLibrary' if dll else 'Library')
+        result = comun.run([comun.NSC, f'--cpp-clang-root={comun.CLANG_ROOT}', f'--emit-project-oop-{kind}',
                             'SdkProbeLib.nsproj', '-O0', '--verbose', f'--artifact-cache={base / "cache"}',
-                            '-o', 'SdkProbeLib.lib'], producer, 'r2-cache-lib')
+                            '-o', f'SdkProbeLib.{kind}'], producer, name)
         if result.returncode:
             return None, None
         state = next((line.split(':', 1)[1].strip() for line in result.stdout.splitlines()
                       if line.startswith('compilation-bundle-cache:')), '?')
-        if comun.nsc(consumer, 'App', 0, 'exe', 'app.exe', 'r2-cache-lib-consumidor').returncode:
+        if comun.nsc(consumer, 'App', 0, 'exe', 'app.exe', name + '-consumidor').returncode:
             return None, state
-        return comun.run([str(consumer / 'app.exe')], consumer, 'r2-cache-lib-run').returncode, state
+        if dll:
+            (consumer / 'SdkProbeLib.dll').write_bytes((producer / 'SdkProbeLib.dll').read_bytes())
+        return comun.run([str(consumer / 'app.exe')], consumer, name + '-run').returncode, state
 
     steps = [build(), build()]
     (producer / 'sub.h').write_text('#define K 11\n', encoding='utf-8')
@@ -89,10 +94,10 @@ def cache_invalidation_lib():
     values = [value for value, _ in steps]
     hits = [state == 'hit' for _, state in steps]
     if values != [42, 42, 41, 43] or hits != [False, True, False, False]:
-        _fail('r2-cache-lib', f'valores {values} y cache {[state for _, state in steps]}; se esperaba [42, 42, 41, 43] '
+        _fail(name, f'valores {values} y cache {[state for _, state in steps]}; se esperaba [42, 42, 41, 43] '
                               'con reutilizacion solo en el segundo paso')
     else:
-        print('ok r2-cache-lib', flush=True)
+        print('ok ' + name, flush=True)
 
 
 def prefix_map():
@@ -121,6 +126,8 @@ if not ONLY or any('r2-cache' in o for o in ONLY):
     cache_invalidation()
 if not ONLY or any('r2-cache-lib' in o for o in ONLY):
     cache_invalidation_lib()
+if not ONLY or any('r2-cache-dll' in o for o in ONLY):
+    cache_invalidation_lib('dll')
 if not ONLY or any('r2-prefijo' in o for o in ONLY):
     prefix_map()
 rechazo(Caso('r2-global', 'extern int missing_global;\nint present(void);\n', 'int present(void) { return 1; }\n'),
