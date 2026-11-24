@@ -2868,6 +2868,18 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                     // X4-04 values: a variable template is evaluated by the consumer's session. / La evalua la
                     //     sesion del consumidor.
                     if (!needed) needed = session->hasVariableTemplates();
+                    // X4: a published template calls one of its function templates (deduced in the consumer).
+                    //     Una plantilla publicada llama una de sus plantillas de funcion.
+                    if (!needed)
+                        for (const auto& name : session->templatesSnapshot())
+                        {
+                            if (!name.function) continue;
+                            const auto simple = name.qualifiedName.substr(
+                                name.qualifiedName.rfind("::") == std::string::npos ? 0 : name.qualifiedName.rfind("::") + 2);
+                            if (std::any_of(compilation.cppTemplateDemands().begin(), compilation.cppTemplateDemands().end(),
+                                    [&](const auto& request) { return request.demand.lookupName == simple; }))
+                            { needed = true; break; }
+                        }
                     if (!needed)
                         for (const auto& name : session->templatesSnapshot())
                             if (name.function && name.qualifiedName.find("operator") != std::string::npos)

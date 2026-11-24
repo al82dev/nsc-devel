@@ -1350,6 +1350,13 @@ bool ProjectCompilation::compileProjectGenerics(
         projectLoadOptions_.genericInstantiationCount.value_or(
             ProjectGenericModel::DefaultMaximumInstantiationCount));
     genericModel_->setCaptureForeignReferenceCandidates(!cppProjectSessions_.empty());
+    {
+        std::set<std::string> names;
+        for (const auto& [project, qualified] : cppFunctionTemplates_)
+            for (const auto& name : qualified)
+                names.insert(name.substr(name.rfind("::") == std::string::npos ? 0 : name.rfind("::") + 2));
+        genericModel_->setCppFunctionTemplateNames(std::move(names));
+    }
     // EN: The generic model's C1 record cache and C3 clone cache stay disconnected. C3 persists a
     //     clone after its nested references were rewritten, keys it only
     //     by the specialization key (self-references inside a restored clone keep the producer's
@@ -1890,7 +1897,7 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
                             // NSMeta X4-06: a deduced function template (member or operator) makes its reference
                             //     travel as a source session. / Una plantilla de funcion deducida hace viajar su
                             //     referencia como sesion de fuente.
-                            if (result->instantiated && (memberTemplate || operatorTemplate))
+                            if (result->instantiated && !request.functionMacro)
                                 cppClassTemplateSessions_.emplace(request.projectOrdinal, session.get());
                             // X2: the specialization is imported by name, from its record's namespace. / La
                             //     especializacion se importa por nombre, desde el namespace de su record.

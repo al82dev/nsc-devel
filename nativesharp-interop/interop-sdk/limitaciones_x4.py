@@ -162,7 +162,7 @@ template <class R, class... A> R count(A...) { return (R)sizeof...(A); }
 '''
 positivo(Caso('x4-paquete-explicito', HPK, None, language='C++', standard='c++20'),
          'return lib.sum<int>(40, 1, 1) + lib.count<int>() + (int)lib.count<long>(1, 2) - 2;',
-         # lib: a published template that calls the deduced specialization is still rejected by the producer
-         # ("reusable template closure is incomplete"). / lib: pendiente.
-         modes=['directo', 'dll'])
+         # lib: the published template's call is deduced by the consumer over the producer's source session
+         # (NSMeta X4-06); it was "reusable template closure is incomplete". / lib: lo deduce el consumidor.
+         modes=['directo', 'dll', 'lib'])
 fin()

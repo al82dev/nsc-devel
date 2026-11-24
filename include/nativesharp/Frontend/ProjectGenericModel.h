@@ -37,6 +37,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <set>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -79,6 +80,10 @@ public:
 
     std::span<const GenericTemplateRecord> templates() const noexcept;
     void setCaptureForeignReferenceCandidates(bool enabled) noexcept { captureForeignReferenceCandidates_ = enabled; }
+    // X4: the simple names of the visible C++ function templates; a call `ns.f<T>(a)` that names one and no
+    //     NativeSharp generic method is the C++ template's, deduced where the body is instantiated.
+    //     Los nombres simples de las plantillas de funcion C++ visibles.
+    void setCppFunctionTemplateNames(std::set<std::string> names) { cppFunctionTemplateNames_ = std::move(names); }
     std::span<const GenericSpecializationRecord> specializations() const noexcept;
     // Returns the immediate source of a cloned construction, or null when it is unknown.
     // The source remains owned by the compilation's syntax arenas.
@@ -1725,6 +1730,7 @@ private:
     // `templatesNamedBy` and the owner-less `resolveMethodTemplate` path so a lookup examines
     // homonymous methods instead of the whole catalog.
     std::unordered_map<std::string, std::vector<TemplateState*>> methodsByName_;
+    std::set<std::string> cppFunctionTemplateNames_;
     std::unordered_set<const ast::AstNode*> materializedGenericLambdas_;
     std::unordered_map<const ast::AstNode*, std::size_t> genericLambdaTemplateOrdinals_;
     std::unordered_map<const ast::AstNode*, std::string> genericLambdaCarrierKeys_;

@@ -467,7 +467,8 @@ void ProjectGenericModel::collectCallDependency(
             }
             if (returnOwners.size() == 1U)
             {
-                root.record.unresolvedDependencies.push_back("missing generic method '" + methodName + "<...>'");
+                if (!cppFunctionTemplateNames_.contains(methodName)) // X4: a C++ function template's call
+                    root.record.unresolvedDependencies.push_back("missing generic method '" + methodName + "<...>'");
                 return;
             }
         }
@@ -508,6 +509,9 @@ void ProjectGenericModel::collectCallDependency(
         return;
     }
 
+    // X4: a call that names a C++ function template and no NativeSharp generic method is deduced where the body is
+    //     instantiated. / Una llamada a una plantilla de funcion C++ se deduce donde se instancia el cuerpo.
+    if (named.empty() && cppFunctionTemplateNames_.contains(methodName)) return;
     root.record.unresolvedDependencies.push_back(
         std::string(named.size() > 1U ? "ambiguous generic method '" : "missing generic method '") +
         methodName + "<...>'");
