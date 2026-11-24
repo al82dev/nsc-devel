@@ -767,6 +767,46 @@ bool provideCppFunctionsWithPrecompiledCatalogs(
             result.push_back(std::move(value));
         }
     }
+    // EN: R1-05. The producer's boundary contracts apply to its functions as in the producer's own project: the same
+    //     mapping as the direct import (nullability, Retained bound, Transfer, owned result and its release).
+    // ES: R1-05. Los contratos de frontera del productor se aplican a sus funciones como en su propio proyecto: la
+    //     misma correspondencia que la importacion directa (nulidad, limite Retained, Transfer, resultado con dueno).
+    for (const auto& module : modules)
+    {
+        if (module.cppCTypeCatalog.empty()) continue;
+        std::vector<CppCRecordSnapshot> records;
+        std::vector<CppCEnumSnapshot> enums;
+        metadata_detail::CDependencyCatalog dependencies;
+        if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
+                records, enums, dependencies, error)) return false;
+        for (const auto& saved : dependencies.contracts)
+        {
+            const auto owner = owners.find(saved.moduleName);
+            if (owner == owners.end() || ambiguous.contains(saved.moduleName))
+            { error = "precompiled C contract owner is missing or ambiguous: " + saved.moduleName; return false; }
+            const auto& contract = saved.contract;
+            for (auto& symbol : result)
+            {
+                if (symbol.projectOrdinal != owner->second) continue;
+                std::string qualified;
+                for (const char c : symbol.namespaceName) { if (c == '.') qualified += "::"; else qualified += c; }
+                if (!qualified.empty()) qualified += "::";
+                qualified += symbol.name;
+                if (contract.function != symbol.name && contract.function != qualified) continue;
+                if (contract.parameter && *contract.parameter >= symbol.parameters.size())
+                { error = "precompiled contract of '" + contract.function + "' names a missing parameter"; return false; }
+                if (!contract.parameter) { symbol.cppOwnedRelease = contract.release; continue; }
+                auto& parameter = symbol.parameters[*contract.parameter];
+                using K = CppContractKind;
+                if (contract.kind == K::NonNull || (contract.kind == K::Out && !contract.optional))
+                    parameter.pointerNullable = false;
+                else if (contract.kind == K::Nullable || (contract.kind == K::Out && contract.optional))
+                    parameter.pointerNullable = true;
+                else if (contract.kind == K::Retained) parameter.cppRetainedUntil = contract.until;
+                else if (contract.kind == K::Transfer) parameter.cppTransfer = true;
+            }
+        }
+    }
     projected = std::move(result);
     deferred = std::move(unresolved);
     error.clear();

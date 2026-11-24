@@ -3305,6 +3305,36 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         };
         for (const auto& field : record.fields) if (!checkEnum(field.type, 0)) return false;
     }
+    // EN: R1-05. The boundary contracts of each reference for the functions the catalogue carries travel with
+    //     them (also for a reference that travels as a source session, whose functions come from that session).
+    // ES: R1-05. Los contratos de frontera de cada referencia para las funciones que lleva el catalogo viajan con
+    //     ellas (tambien para una referencia que viaja como sesion de fuente, cuyas funciones vienen de esa sesion).
+    for (const auto& function : dependencies.functions)
+    {
+        if (!function.referenceIdentity.starts_with("cpp-reference:")) continue;
+        const auto digits = function.referenceIdentity.substr(14, function.referenceIdentity.find('#') - 14);
+        if (digits.empty() || digits.find_first_not_of("0123456789") != std::string::npos) continue;
+        const auto reference = static_cast<std::size_t>(std::stoull(digits));
+        for (const auto& project : graph->projects())
+        {
+            if (project.moduleName() != function.moduleName || reference >= project.cppLibraryReferences().size())
+                continue;
+            for (const auto& contract : project.cppLibraryReferences()[reference].contracts)
+            {
+                if (contract.function != function.declaration.qualifiedName &&
+                    contract.function != function.declaration.name) continue;
+                metadata_detail::CDependencyCatalog::Contract value{function.moduleName,
+                    "cpp-reference:" + digits, contract};
+                const bool known = std::any_of(dependencies.contracts.begin(), dependencies.contracts.end(),
+                    [&](const auto& item) {
+                        return item.moduleName == value.moduleName && item.referenceIdentity == value.referenceIdentity &&
+                            item.contract.function == contract.function && item.contract.parameter == contract.parameter &&
+                            item.contract.kind == contract.kind;
+                    });
+                if (!known) dependencies.contracts.push_back(std::move(value));
+            }
+        }
+    }
     // EN: NSMeta X4-06. Members of a C++ record left out of the catalogue (not a byte value) are described by the
     //     producer's source session, not by the catalogue. / ES: Los miembros de un record C++ que no entra al
     //     catalogo (no es un valor de bytes) los describe la sesion de fuente del productor, no el catalogo.
@@ -3367,7 +3397,8 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     }
     if (!dependencies.aliases.empty() || !dependencies.functions.empty() || !dependencies.globals.empty() ||
         !dependencies.enumerators.empty() || !dependencies.staticMethods.empty() || !dependencies.instanceMethods.empty() ||
-        !dependencies.staticFields.empty() || !dependencies.macroSources.empty())
+        !dependencies.staticFields.empty() || !dependencies.macroSources.empty() ||
+        !dependencies.contracts.empty())
         return metadata_detail::encodeCTypeCatalogWithDependencies(records, enums, dependencies, output, error);
     return metadata_detail::encodeCTypeCatalogWithProvenance(records, enums, output, error);
 }

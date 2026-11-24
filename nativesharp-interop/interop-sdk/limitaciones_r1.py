@@ -10,8 +10,9 @@ Un `<Contract>` junto a la referencia del proyecto declara lo que el encabezado 
 - `Result="Owned" Release="f"`: descartar el resultado se rechaza (se libera con f o se conserva).
 - `Kind="NonNull"`, `"Nullable"`, `"Out" Optional="true"`: nulidad del parametro, como 8.3.
 - Un contrato que nombra una funcion que no se importa es un error del proyecto.
-Persistir contratos en la metadata precompilada (R1-05) necesita acordar su representacion en NSMeta: no se hace;
-los contratos aplican a la importacion directa del proyecto que los declara.
+R1-05: los contratos viajan en la metadata precompilada (grupo de contratos del catalogo C de NSMeta): una plantilla
+publicada que viola un contrato se rechaza en el consumidor sin encabezado que la instancia, con el mismo motivo que
+en la importacion directa (`rechazo_lib`).
 """
 import comun
 from comun import Caso, positivo, rechazo, fin
@@ -85,9 +86,8 @@ BODY = r'''
     return x + y + need_ptr(&y) - 2;
 '''
 c = CasoContratos('r1-contratos', H, S, CONTRACTS)
-# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
-# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
-# fuente del productor.
+# R1-05: a precompiled consumer without the header (lib) receives the producer's contracts in its metadata.
+# Un consumidor precompilado sin encabezado (lib) recibe los contratos del productor en su metadata.
 positivo(c, BODY, preludio=PRE, modes=['directo', 'lib'])
 rechazo(c, 'int s = 0; keep_forever(&s); return 0;', 'retains argument 0 until Static', preludio=PRE)
 rechazo(c, 'Counter c; c.hits = 0; add_timer((u) => { }, &c); return 0;', 'until Call:remove_timer', preludio=PRE)
@@ -123,4 +123,50 @@ rechazo(c, 'int k = 0; { var a = make_buffer(4); while (k < 2) { k++; free_buffe
         "is not released before the end of its block", preludio=PRE)
 rechazo(CasoContratos('r1-contrato-desconocido', H, S, '<Contract Function="nope" Parameter="0" Kind="NonNull" />'),
         'return 0;', "contract names 'nope'")
+
+
+def rechazo_lib(caso, body, texto, preludio=''):
+    """R1-05: the body is a published template of a precompiled library (lib, O0); the consumer without the header
+    that instantiates it must be rejected with `texto`. / El cuerpo es una plantilla publicada; el consumidor sin
+    encabezado que la instancia se rechaza con `texto`."""
+    if not comun._selected(caso.nombre):
+        return
+    comun._COUNTERS[caso.nombre] = comun._COUNTERS.get(caso.nombre, 0) + 1
+    label = f'{caso.nombre}-rechazo-lib{comun._COUNTERS[caso.nombre]}'
+    base = comun.ROOT / caso.nombre / f'rechazo-lib{comun._COUNTERS[caso.nombre]}'
+    producer = base / 'productor'
+    consumer = base / 'consumidor'
+    producer.mkdir(parents=True)
+    refs = caso.reference(producer) + comun.core(0)
+    (producer / 'Lib.ns').write_text(f'using NativeSharp.Core;\n{preludio}\nnamespace SdkProbe\n{{\n'
+                                     '    public class Probe\n    {\n        public static int Run<T>(T unused)\n'
+                                     f'        {{\n{body}\n        }}\n    }}\n}}\n', encoding='utf-8')
+    comun.project(producer, 'SdkProbeLib', ['Lib.ns'], refs, 'Library')
+    result = comun.nsc(producer, 'SdkProbeLib', 0, 'lib', 'SdkProbeLib.lib', 'nsc')
+    if result.returncode:
+        comun._fail(label, 'el productor fallo:\n' + result.stdout[-1500:])
+        return
+    consumer.mkdir()
+    (consumer / 'Main.ns').write_text('using NativeSharp.Core;\nint Main()\n{\n    return SdkProbe.Probe.Run<int>(0);\n}\n',
+                                      encoding='utf-8')
+    comun.project(consumer, 'App', ['Main.ns'], '<LibraryReference Include="../productor/SdkProbeLib.lib" />' +
+                  comun.core(0))
+    result = comun.nsc(consumer, 'App', 0, 'exe', 'app.exe', 'nsc')
+    if result.returncode == 0 or texto not in result.stdout:
+        comun._fail(label, f'se esperaba un rechazo con "{texto}":\n{result.stdout[-1500:]}')
+    else:
+        print(f'ok {label}', flush=True)
+
+
+# R1-05: each contract is checked in the precompiled consumer as in the direct import. / Cada contrato se comprueba
+# en el consumidor precompilado como en la importacion directa.
+rechazo_lib(c, 'int s = 0; keep_forever(&s); return 0;', 'retains argument 0 until Static', preludio=PRE)
+rechazo_lib(c, 'Counter c; c.hits = 0; add_timer((u) => { }, &c); return 0;', 'until Call:remove_timer', preludio=PRE)
+rechazo_lib(c, 'sbyte* sb = stackalloc sbyte[8]; take_buffer(sb); return 0;', 'takes ownership of argument 0',
+            preludio=PRE)
+rechazo_lib(c, 'make_buffer(4); return 0;', 'discarding it leaks it', preludio=PRE)
+rechazo_lib(c, 'return need_ptr(null);', 'null', preludio=PRE)
+rechazo_lib(c, 'int k = 3; var a = make_buffer(4); if (k > 2) free_buffer(a); return 0;',
+            'is not released before this return', preludio=PRE)
+
 fin()

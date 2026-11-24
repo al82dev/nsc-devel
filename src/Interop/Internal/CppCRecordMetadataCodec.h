@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nativesharp/Interop/CppContract.h"
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #include "nativesharp/Interop/CppSemanticInventory.h"
 #include "nativesharp/Interop/CppTypeAliasDeclaration.h"
@@ -148,6 +149,18 @@ struct CDependencyCatalog
         std::string source;
     };
     std::vector<MacroSource> macroSources;
+    // EN: R1-05. A boundary contract (`<Contract>`) of a producer's reference for one of its functions, so a
+    //     precompiled consumer checks the calls a published template makes as the producer's own project does.
+    // ES: R1-05. Un contrato de frontera (`<Contract>`) de una referencia del productor para una de sus funciones,
+    //     para que un consumidor precompilado compruebe las llamadas de una plantilla publicada como el proyecto
+    //     productor.
+    struct Contract
+    {
+        std::string moduleName;
+        std::string referenceIdentity;
+        CppContract contract;
+    };
+    std::vector<Contract> contracts;
 };
 // Prepared version 7 envelope; publication and version dispatch remain separate.
 bool encodeCTypeCatalogWithEnumProvenance(std::span<const CppCRecordSnapshot> records,

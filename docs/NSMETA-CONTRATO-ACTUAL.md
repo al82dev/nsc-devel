@@ -53,6 +53,19 @@ siendo solo de macros. Un lector anterior ve los nombres nuevos como nombres de
 macro sin efecto. Validación: `nativesharp-interop/interop-sdk/limitaciones_nsmeta.py`
 (producción y consumo, lib y dll, O0–O3) y los casos `lib` de X2/X3/X4/C5/R1.
 
+## Contratos de frontera (ampliación R1-05, 24 de noviembre de 2026)
+
+Los `<Contract>` que un productor declara junto a su referencia C/C++ (Retained,
+Transfer, Out, NonNull, Nullable y resultado Owned con su función de liberación)
+viajan en el catálogo C, en un grupo de contratos que sigue a las fuentes de
+macros y se escribe solo si hay alguno: módulo, referencia, función, parámetro
+opcional, tipo, límite `Until`, opción `Optional` y función `Release`. Un consumidor
+precompilado sin encabezado los aplica a las funciones del productor con la misma
+correspondencia que la importación directa, también a las que importa de una
+sesión de fuente, así que una plantilla publicada que viola un contrato se rechaza
+con el mismo motivo. Un catálogo sin contratos no cambia. Validación:
+`limitaciones_r1.py` (`rechazo_lib`, seis contratos en el consumidor precompilado).
+
 Los expedientes históricos de versionamiento se conservan fuera del repositorio,
 en `X:\nsc-nsmeta-historico`. No consultarlos como instrucciones para el trabajo
 actual. Las pruebas existentes se conservan intactas.
