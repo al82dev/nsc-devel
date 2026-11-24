@@ -3072,7 +3072,9 @@ bool ProjectOopHirModel::buildFieldInitializer(
     if (!field.isStatic && field.syntax != nullptr && field.syntax->first() == nullptr &&
         field.declaredTypeKey.starts_with("type:") && !field.declaredTypeKey.ends_with('*'))
         if (const auto type = nameLookup_->typeOrdinalForIdentity(std::string_view(field.declaredTypeKey).substr(5));
-            type && nameLookup_->cppImportedType(*type) && !nameLookup_->cppTrivialValueEligible(*type))
+            type && nameLookup_->cppImportedType(*type) &&
+            nameLookup_->cppImportedType(*type)->origin == CppImportedTypeOrigin::CppRecord && // not a C struct
+            !nameLookup_->cppTrivialValueEligible(*type))
         {
             std::optional<std::size_t> constructor;
             for (const auto ordinal : memberModel_->findMembers(*type, ".ctor"))

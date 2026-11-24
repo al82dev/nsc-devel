@@ -738,6 +738,7 @@ bool OopLlvmImplementation::lowerExpressionFrame008OwnedTemporaryBorrow(
         const auto* construction = current->children.front().get();
         if (current->referenceResult && construction->kind == frontend::ProjectOopMirNodeKind::ValueConstruct &&
             construction->targetTypeOrdinal && nameLookup_.cppImportedType(*construction->targetTypeOrdinal) &&
+            nameLookup_.cppImportedType(*construction->targetTypeOrdinal)->origin == frontend::CppImportedTypeOrigin::CppRecord &&
             !nameLookup_.cppTrivialValueEligible(*construction->targetTypeOrdinal))
         {
             if (lowerValueConstruction(construction, error, nullptr, false, storage->second) == nullptr)
@@ -2459,6 +2460,7 @@ bool OopLlvmImplementation::lowerExpressionFrame044Store(
         if (const auto* construction = current->children[1].get();
             construction->kind == frontend::ProjectOopMirNodeKind::ValueConstruct && construction->targetTypeOrdinal &&
             nameLookup_.cppImportedType(*construction->targetTypeOrdinal) != nullptr &&
+            nameLookup_.cppImportedType(*construction->targetTypeOrdinal)->origin == frontend::CppImportedTypeOrigin::CppRecord &&
             !nameLookup_.cppTrivialValueEligible(*construction->targetTypeOrdinal))
         {
             if (lowerValueConstruction(construction, error, nullptr, false, address) == nullptr)

@@ -286,10 +286,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerInstanceFieldInitial
 
     // X2-06: a non-trivial C++ record field is constructed in place by its initializer (`new T(...)` or a factory).
     //     / Un campo record C++ no trivial lo construye en su lugar su inicializador.
-    if (nameLookup_ != nullptr && field.declaredTypeKey.starts_with("type:") && !field.declaredTypeKey.ends_with('*'))
-        if (const auto type = nameLookup_->typeOrdinalForIdentity(std::string_view(field.declaredTypeKey).substr(5));
-            type && nameLookup_->cppImportedType(*type) && !nameLookup_->cppTrivialValueEligible(*type) &&
-            value->kind != ProjectOopHirNodeKind::ValueConstruction)
+    // A C++ record only, not a C struct. / Solo un record C++, no un struct C.
+    if (isCppNonTrivialRecordTypeKey(field.declaredTypeKey) && value->kind != ProjectOopHirNodeKind::ValueConstruction)
         {
             error = "C++ field '" + field.name + "' must be initialized by a construction (new T(...) or a C++ function "
                 "returning T), which builds it in place";
@@ -327,7 +325,10 @@ bool ProjectOopHirModel::isCppDefaultConstructedField(const ClassMemberSymbol& f
         field.syntax->first() != nullptr || nameLookup_ == nullptr || !field.declaredTypeKey.starts_with("type:") ||
         field.declaredTypeKey.ends_with('*')) return false;
     const auto type = nameLookup_->typeOrdinalForIdentity(std::string_view(field.declaredTypeKey).substr(5));
-    return type && nameLookup_->cppImportedType(*type) && !nameLookup_->cppTrivialValueEligible(*type);
+    // A C++ record only: a C struct field is plain storage. / Solo un record C++: un campo struct C es almacenamiento.
+    return type && nameLookup_->cppImportedType(*type) &&
+        nameLookup_->cppImportedType(*type)->origin == CppImportedTypeOrigin::CppRecord &&
+        !nameLookup_->cppTrivialValueEligible(*type);
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::cppDefaultFieldConstruction(

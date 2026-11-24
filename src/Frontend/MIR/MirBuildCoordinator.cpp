@@ -382,7 +382,9 @@ bool ProjectOopMirModel::appendOwnedFieldDestructionSteps(
             //     record C++ no trivial lo destruye su destructor C++, en su lugar.
             if (member.declaredTypeKey.starts_with("type:") && !member.declaredTypeKey.ends_with('*'))
                 if (const auto type = nameLookup.typeOrdinalForIdentity(std::string_view(member.declaredTypeKey).substr(5));
-                    type && nameLookup.cppImportedType(*type) && !nameLookup.cppTrivialValueEligible(*type))
+                    type && nameLookup.cppImportedType(*type) &&
+                    nameLookup.cppImportedType(*type)->origin == CppImportedTypeOrigin::CppRecord && // not a C struct
+                    !nameLookup.cppTrivialValueEligible(*type))
                 {
                     std::optional<std::size_t> destructor;
                     for (const auto ordinal : memberModel.findMembers(*type, ".dtor"))

@@ -426,6 +426,7 @@ void ProjectOopHirModel::ownCppTemporaries()
         const auto cppConstruction = [&](const ProjectOopHirNode* value) {
             return value != nullptr && value->kind == ProjectOopHirNodeKind::ValueConstruction &&
                 value->targetTypeOrdinal && nameLookup_->cppImportedType(*value->targetTypeOrdinal) != nullptr &&
+                nameLookup_->cppImportedType(*value->targetTypeOrdinal)->origin == CppImportedTypeOrigin::CppRecord &&
                 !nameLookup_->cppTrivialValueEligible(*value->targetTypeOrdinal);
         };
         // EN: X2-05. A call to a by-value adapter whose by-value record arguments are all materialized C++
@@ -688,6 +689,7 @@ bool ProjectOopHirModel::ownReceiverTemporary(std::unique_ptr<ProjectOopHirNode>
         address->children.front()->kind == ProjectOopHirNodeKind::ValueConstruction &&
         address->children.front()->targetTypeOrdinal && nameLookup_ != nullptr &&
         nameLookup_->cppImportedType(*address->children.front()->targetTypeOrdinal) != nullptr &&
+        nameLookup_->cppImportedType(*address->children.front()->targetTypeOrdinal)->origin == CppImportedTypeOrigin::CppRecord &&
         !nameLookup_->cppTrivialValueEligible(*address->children.front()->targetTypeOrdinal))
     {
         auto owner = ownTemporary(std::move(address->children.front()));
