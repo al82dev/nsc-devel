@@ -9,7 +9,9 @@ reserva el runtime de C++. Copiar un `Owner<int>` o un `std::unique_ptr<int>` se
 
 El ejecutable arranca por el runtime estatico de MSVC (`--crt-startup`), que reserva los frames y los
 objetos. Compara un control C++ compilado por Clang 23.1.0 con el consumidor NativeSharp, O0-O3; con --dll
-la biblioteca es una DLL con su propio runtime.
+la biblioteca es una DLL con su propio runtime. Con --lib (NSMeta X4-06) el cuerpo y su preludio son una
+plantilla generica publicada por una biblioteca NativeSharp precompilada y el consumidor, sin el encabezado, la
+instancia; los rechazos de copia se comprueban en directo.
 """
 import argparse
 import os
@@ -22,6 +24,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
 parser.add_argument('--dll', action='store_true')
+parser.add_argument('--lib', action='store_true')
 args = parser.parse_args()
 root = Path(tempfile.mkdtemp(prefix='nsc-t15-recursos-', dir='A:/temp'))
 env = os.environ.copy()
@@ -146,13 +149,30 @@ def run(label, command, cwd, expected=0):
     return result
 
 
-def build(folder, opt, prelude, body, output):
-    (folder / 'Main.ns').write_text(prelude + 'int Main() { ' + body + ' }\n', encoding='utf-8')
+def build(folder, opt, prelude, body, output, lib=False):
     runtime = ' Runtime="api.dll"' if args.dll else ''
+    reference = ('<CppLibraryReference Header="api.h" Language="C++" Standard="c++20" Library="api.lib"' +
+                 runtime + '>' + INCLUDES + '</CppLibraryReference>')
+    if lib:
+        # NSMeta X4-06: the body and its prelude are the producer's published generic class.
+        #     / El cuerpo y su preludio son la clase generica publicada del productor.
+        methods = ''.join('public static ' + line + '\n' for line in prelude.splitlines() if line.strip())
+        (folder / 'Lib.ns').write_text('namespace T15Lib { public static class P {\n' + methods +
+                                       'public static int Run<T>(T unused) { ' + body + ' } } }\n', encoding='utf-8')
+        (folder / 'Lib.nsproj').write_text(
+            '<Project><PropertyGroup><Name>T15Lib</Name><OutputType>Library</OutputType></PropertyGroup>'
+            '<ItemGroup><Compile Include="Lib.ns" />' + reference + '</ItemGroup></Project>', encoding='utf-8')
+        env['NSC_LINKER'] = 'nslink.exe'
+        run(f'O{opt}-nsc-lib', [args.nsc, '--emit-project-oop-lib', 'Lib.nsproj', '--cpp-clang-root=' + args.clang_root,
+                                '--no-artifact-cache', '-O' + str(opt), '-o', 'T15Lib.lib'], folder)
+        env['NSC_LINKER'] = 'lld-link.exe'
+        (folder / 'Main.ns').write_text('int Main() { return T15Lib.P.Run<int>(0); }\n', encoding='utf-8')
+        reference = '<LibraryReference Include="T15Lib.lib" />'
+    else:
+        (folder / 'Main.ns').write_text(prelude + 'int Main() { ' + body + ' }\n', encoding='utf-8')
     (folder / 'App.nsproj').write_text(
         '<Project><PropertyGroup><Name>T15App</Name></PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
-        '<CppLibraryReference Header="api.h" Language="C++" Standard="c++20" Library="api.lib"' + runtime + '>' +
-        INCLUDES + '</CppLibraryReference></ItemGroup></Project>', encoding='utf-8')
+        + reference + '</ItemGroup></Project>', encoding='utf-8')
     command = [args.nsc, '--emit-project-oop-exe', 'App.nsproj', '--cpp-clang-root=' + args.clang_root,
                '--no-artifact-cache', '-O' + str(opt), '--crt-startup']
     for library in CRT:
@@ -179,7 +199,7 @@ for opt in range(4):
     run(f'O{opt}-control-link', ['lld-link.exe', '/nologo', '/subsystem:console', '/out:control.exe', 'control.obj', 'api.lib',
                                  *[str(p) for p in CRT]], case)
     expected = run(f'O{opt}-control-run', [str(case / 'control.exe')], case, expected=None).returncode
-    run(f'O{opt}-nsc', build(case, opt, PRELUDE, NS_BODY, 'app.exe'), case)
+    run(f'O{opt}-nsc', build(case, opt, PRELUDE, NS_BODY, 'app.exe', args.lib), case)
     result = run(f'O{opt}-run', [str(case / 'app.exe')], case, expected=None).returncode
     if result != expected:
         raise SystemExit(f'O{opt}: NativeSharp devolvio {result}, Clang {expected}; evidencia: {root}')
