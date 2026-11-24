@@ -93,7 +93,9 @@ BODY = r'''
     return 42;
 '''
 c = Caso('x1-cpp', H, S, **CPP)
-positivo(c, BODY, modes=['directo', 'dll'])
+# NSMeta X4-06 (X1 in lib): the producer's metadata carries the only-declared `struct Fwd;` as an opaque type and
+#     the other records through its source session. / La metadata lleva `struct Fwd;` como tipo opaco.
+positivo(c, BODY, modes=['directo', 'dll', 'lib'])
 rechazo(c, 'return lib.h(4);', "call to deleted C++ function 'h(builtin:int)'")
 rechazo(c, 'var s = new lib.S(); return s.m(4);', "call to deleted C++ method 'm(builtin:int)'")
 rechazo(c, 'var x = new lib.Hidden(); return x.secret;', "member 'secret' is not accessible")
@@ -104,6 +106,11 @@ rechazo(c, 'lib.Acc acc = new lib.Acc(); return acc.take();', 'take')
 # X1-05: an `&&` method runs on a temporary, as C++ allows it only on an rvalue; on a named object it is rejected (above).
 # Un metodo `&&` se ejecuta sobre un temporal; sobre un objeto con nombre se rechaza (arriba).
 positivo(Caso('x1-receptor-rvalue', H, S, **CPP), 'return (new lib.Acc()).take() + 42;', modes=['directo', 'dll'])
+# X1 in lib: a C++ record only declared in the header (`struct Fwd;`, defined in a source) is an opaque type, as a C
+#     one: the producer's metadata carries it by identity and a consumer without the header passes its pointer (the
+#     producer failed 'C++ record requires one definition'). / Un record C++ solo declarado es un tipo opaco.
+positivo(Caso('x1-registro-opaco', H, S, **CPP),
+         'lib.Fwd* p = lib.make_fwd(); return p != null ? lib.fwd_value(p) : 1;', modes=['directo', 'dll', 'lib'])
 
 # X1-06: the same calls through a precompiled library consumed without the header (records constructed by C++
 #     helpers, as the object lifetime of `new` in a template is X2's).

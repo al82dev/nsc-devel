@@ -1842,7 +1842,11 @@ static CppCRecordSnapshotResult captureRecordSnapshot(
         (group.status == CppRecordGroupStatus::MultipleDefinitionsPointerCompatible && completeCount < 2) ||
         (knownUsr && group.clangUsr && !group.clangUsr->empty() && knownUsr != group.clangUsr))
         return fail("C record group does not match its observations");
-    if (isCpp == true && (group.status != CppRecordGroupStatus::OneDefinition ||
+    // EN: X1 in lib. A C++ record only declared (`struct Fwd;`, defined in a source) is an opaque type, as a C one:
+    //     its pointer travels by its identity.
+    // ES: X1 en lib. Un record C++ solo declarado es un tipo opaco, como uno de C: su puntero viaja por su identidad.
+    if (isCpp == true && ((group.status != CppRecordGroupStatus::OneDefinition &&
+                           group.status != CppRecordGroupStatus::ForwardOnly) ||
                           !knownUsr || knownUsr->empty()))
         return fail("C++ record requires one definition and a known identity");
     CppCRecordSnapshot snapshot;
