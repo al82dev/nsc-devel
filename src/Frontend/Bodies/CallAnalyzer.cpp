@@ -1375,9 +1375,28 @@ void ProjectMethodBodyModel::evaluateNamespaceFunctionCandidates(
     NamespaceFunctionCallBinding& call,
     bool& matchingArity) const
 {
+    // X2: a call with explicit template arguments to a C++ member function template takes only the
+    //     specialization Clang chose. / Una llamada con argumentos de plantilla explicitos toma solo la
+    //     especializacion que eligio Clang.
+    const std::string* selection = namespaceFunctionModel_ != nullptr && reference.calleeSyntax != nullptr
+        ? namespaceFunctionModel_->cppMemberTemplateSelection(reference.calleeSyntax) : nullptr;
+    // X2: a static C++ member function template call with no specialization deduced for it yet asks Clang for its
+    //     own. / Una llamada a plantilla miembro estatica C++ sin especializacion propia aun pide la suya.
+    if (selection == nullptr && namespaceFunctionModel_ != nullptr && reference.calleeSyntax != nullptr)
+        for (const std::size_t functionOrdinal : reference.candidateFunctionOrdinals)
+            if (functionOrdinal < namespaceFunctionModel_->functions().size() &&
+                namespaceFunctionModel_->functions()[functionOrdinal].cppMemberTemplateOwnerUsr)
+            {
+                const auto& function = namespaceFunctionModel_->functions()[functionOrdinal];
+                pendingCppMemberTemplate_ = PendingCppMemberTemplate{reference.calleeSyntax, reference.projectOrdinal,
+                    "@member:" + *function.cppMemberTemplateOwnerUsr + "::" + function.name};
+                break;
+            }
     for (const std::size_t functionOrdinal : reference.candidateFunctionOrdinals)
     {
         if (functionOrdinal >= namespaceCallableAdapters().size()) continue;
+        if (selection != nullptr && (functionOrdinal >= namespaceFunctionModel_->functions().size() ||
+                namespaceFunctionModel_->functions()[functionOrdinal].cppClangUsr != *selection)) continue;
         MethodCallCandidate evaluated = evaluateNamespaceFunctionCandidate(
             functionOrdinal, argumentSyntaxes, arguments, hasForwardedReceiver, matchingArity);
         if (evaluated.viable)
@@ -9024,6 +9043,13 @@ void ProjectMethodBodyModel::recordCppMemberTemplateDeduction(
     request.projectOrdinal = pendingCppMemberTemplate_->projectOrdinal;
     request.qualifiedNames = {pendingCppMemberTemplate_->qualifiedName};
     request.range = expression->range();
+    for (const ast::TypeSyntax* type : expression->typeSyntaxes())
+    {
+        auto key = type != nullptr && memberModel_ != nullptr && nameLookup_ != nullptr
+            ? memberModel_->canonicalTypeKey(type, *nameLookup_) : std::string{};
+        if (key.empty()) return;
+        request.explicitTemplateTypeKeys.push_back(std::move(key));
+    }
     diagnostics::DiagnosticEngine scratch;
     for (const ast::AstNode* argument : expression->children())
     {

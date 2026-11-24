@@ -89,6 +89,8 @@ struct CppMacroCallWrapper
 struct CppTemplateDeductionRequest
 {
     const ast::AstNode* syntax = nullptr;
+    // X2: explicit template type arguments (`m.add<int>(40)`). / Argumentos de tipo de plantilla explicitos.
+    std::vector<std::string> explicitTemplateTypeKeys{};
     std::size_t projectOrdinal = 0;
     std::vector<std::string> qualifiedNames;
     std::vector<std::string> argumentTypeKeys;
@@ -115,6 +117,17 @@ public:
     // T13-005: the call sites of C++ function templates, and the deductions the body analysis requests.
     // T13-005: las llamadas a plantillas de funcion C++ y las deducciones que pide el analisis de cuerpos.
     void setCppTemplateCallSites(std::unordered_map<const ast::AstNode*, CppTemplateCallSite> sites);
+    // X2: the member function template specialization (by Clang USR) a call with explicit template arguments
+    //     names, by its member expression. / La especializacion que nombra una llamada con argumentos explicitos.
+    void setCppMemberTemplateSelections(std::unordered_map<const ast::AstNode*, std::string> selections)
+    {
+        cppMemberTemplateSelections_ = std::move(selections);
+    }
+    const std::string* cppMemberTemplateSelection(const ast::AstNode* member) const
+    {
+        const auto found = cppMemberTemplateSelections_.find(member);
+        return found == cppMemberTemplateSelections_.end() ? nullptr : &found->second;
+    }
     const CppTemplateCallSite* cppTemplateCallSite(const ast::AstNode* syntax) const;
     // T19-040. / T19-040.
     void setCppMacroCallWrappers(std::unordered_map<const ast::AstNode*, CppMacroCallWrapper> wrappers);
@@ -435,6 +448,7 @@ private:
     // T19-040: per-call macro wrappers. / Envoltorios de macro por llamada.
     std::unordered_map<const ast::AstNode*, CppMacroCallWrapper> cppMacroCallWrappers_;
     std::unordered_map<const ast::AstNode*, CppTemplateCallSite> cppTemplateCallSites_;
+    std::unordered_map<const ast::AstNode*, std::string> cppMemberTemplateSelections_;
     struct CppTemplateDeductionSink
     {
         std::mutex mutex;

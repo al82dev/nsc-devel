@@ -432,6 +432,14 @@ public:
     // los tipos de los argumentos de una llamada; las especializaciones deducidas se importan con su nombre.
     virtual std::optional<CppTemplateInstantiation> deduceFunctionTemplateCall(
         std::string_view, std::span<const CppTemplateArgument>) const { return std::nullopt; }
+    // X2: the same with explicit template type arguments first (`m.add<int>(40)`), deducing the rest. / Lo mismo
+    //     con argumentos de tipo de plantilla explicitos primero, deduciendo el resto.
+    virtual std::optional<CppTemplateInstantiation> deduceFunctionTemplateCallWithExplicit(
+        std::string_view name, std::span<const CppTemplateArgument> arguments,
+        std::span<const CppTemplateArgument> explicitArguments) const
+    {
+        return explicitArguments.empty() ? deduceFunctionTemplateCall(name, arguments) : std::nullopt;
+    }
     // EN: C2-06. The same request for a call to a C function-like macro, with the NativeSharp call site: a macro that
     //     expands __FILE__ or __LINE__ describes the site of its invocation, as in C.
     // ES: C2-06. La misma peticion para una llamada a una macro de funcion C, con el sitio de la llamada

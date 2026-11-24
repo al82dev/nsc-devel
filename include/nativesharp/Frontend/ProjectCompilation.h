@@ -395,6 +395,7 @@ private:
     // X2: the demands of the member function template specializations deduced so far. / Las demandas de las
     //     especializaciones de plantillas de funcion miembro deducidas hasta ahora.
     std::vector<CppFunctionDemand> cppMemberTemplateDemands_;
+    std::unordered_map<const ast::AstNode*, std::string> cppMemberTemplateSelections_;
     // T19-040. / T19-040.
     std::string argumentSpelling(const ast::AstNode* argument) const;
     // C2-05: whether a macro argument has no side effects (see CppTemplateArgument::sideEffectFree). / Si un

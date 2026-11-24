@@ -553,4 +553,20 @@ positivo(Caso('x2-plantilla-miembro-estatica', HMS, '', **CRG), 'return lib.M.tw
          modes=['directo', 'dll'])
 rechazo(Caso('x2-plantilla-miembro-estatica-otro', HMS, '', **CRG),
         'int a = lib.M.twice(20); return lib.N.twice(21);', "has no compatible member named 'twice'")
+# X2: explicit template arguments for a C++ member function template (`m.add<double>(1)`, `m.size<double>()`,
+# `M.half<double>(5)`) failed in NativeSharp's generic phase ('no visible Stage 44 generic method template'). A member
+# call whose name no NativeSharp generic method has is left to the body analysis; Clang deduces with the explicit
+# arguments and the call takes exactly that specialization (by Clang USR), even where another one matches better.
+# X2: argumentos de plantilla explicitos para una plantilla miembro C++; la llamada toma exactamente esa especializacion.
+HEX = r'''
+namespace lib {
+struct M { int base; template <typename T> T add(T v) const { return (T)base + v; } template <typename T> int size() const { return (int)sizeof(T) + base; } template <typename T> static T half(T v) { return v / 2; } };
+}
+'''
+positivo(Caso('x2-plantilla-miembro-explicita', HEX, '', **CRG),
+         'lib.M m; m.base = 2; int a = m.add(1); double d = m.add<double>(1); m.base = 1; int s = m.size<double>();'
+         ' return (int)(d * 10.0) + a + s - 9 + (int)(lib.M.half<double>(5) * 2.0) + lib.M.half(10) - 1;',
+         modes=['directo', 'dll'])
+rechazo(Caso('x2-plantilla-miembro-explicita-ausente', HEX, '', **CRG), 'lib.M m; return m.nada<int>(1);',
+        "has no compatible member named 'nada'")
 fin()

@@ -1608,6 +1608,13 @@ bool ProjectGenericModel::processGenericCall(
     }
 
     TemplateState* state = resolution.unique;
+    // EN: X2. A member call with template arguments whose name no NativeSharp generic method has (`m.add<int>(40)`
+    //     on a C++ record) is left to the body analysis, which asks Clang for a member function template.
+    // ES: X2. Una llamada a miembro con argumentos de plantilla cuyo nombre no tiene ningun metodo generico
+    //     NativeSharp se deja al analisis de cuerpos, que pide a Clang una plantilla de funcion miembro.
+    if (state == nullptr && namedAtWinningRung.empty() && callee != nullptr &&
+        callee->kind() == ast::AstNodeKind::MemberExpression && !methodsByName_.contains(methodName))
+        return true;
     if (state == nullptr)
     {
         const bool ambiguous = namedAtWinningRung.size() > 1U;

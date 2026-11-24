@@ -478,9 +478,15 @@ void ProjectMethodBodyModel::collectExtensionMemberCandidates(
     bool typeReceiver,
     const NamespaceFunctionReferenceBinding& extension)
 {
+    // X2: a call with explicit template arguments takes only the specialization Clang chose. / Una llamada con
+    //     argumentos de plantilla explicitos toma solo la especializacion que eligio Clang.
+    const std::string* selection = namespaceFunctionModel_ != nullptr
+        ? namespaceFunctionModel_->cppMemberTemplateSelection(extension.calleeSyntax) : nullptr;
     for (const std::size_t functionOrdinal : extension.candidateFunctionOrdinals)
     {
         if (functionOrdinal >= namespaceCallableAdapters().size()) continue;
+        if (selection != nullptr && (functionOrdinal >= namespaceFunctionModel_->functions().size() ||
+                namespaceFunctionModel_->functions()[functionOrdinal].cppClangUsr != *selection)) continue;
         const ClassMemberSymbol& candidate = namespaceCallableAdapters()[functionOrdinal];
         // X2: a static C++ member function template specialization extends its own record only. / Una
         //     especializacion estatica de plantilla miembro C++ solo extiende su propio record.
@@ -533,6 +539,26 @@ bool ProjectMethodBodyModel::bindExtensionMember(
     if (extension == nullptr) return false;
     std::vector<std::size_t> methods;
     collectExtensionMemberCandidates(methods, receiver, typeReceiver, *extension);
+    // EN: X2. A call that reaches C++ member function template specializations but has none deduced for it yet
+    //     asks Clang for its own (another round), as an unknown member does.
+    // ES: X2. Una llamada que alcanza especializaciones de plantilla miembro C++ pero aun no tiene la suya pide a
+    //     Clang la propia (otra ronda), como un miembro desconocido.
+    if (namespaceFunctionModel_->cppMemberTemplateSelection(expression) == nullptr && nameLookup_ != nullptr &&
+        std::any_of(extension->candidateFunctionOrdinals.begin(), extension->candidateFunctionOrdinals.end(),
+            [&](std::size_t ordinal) {
+                return ordinal < namespaceFunctionModel_->functions().size() &&
+                    namespaceFunctionModel_->functions()[ordinal].cppMemberTemplate;
+            }) && receiver.typeKey.starts_with("type:"))
+    {
+        std::string_view identity = std::string_view(receiver.typeKey).substr(5);
+        while (identity.ends_with('*')) identity.remove_suffix(1);
+        const auto ordinal = nameLookup_->typeOrdinalForIdentity(identity);
+        const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+        if (imported != nullptr && imported->origin == CppImportedTypeOrigin::CppRecord && imported->clangUsr)
+            pendingCppMemberTemplate_ = PendingCppMemberTemplate{expression,
+                nameLookup_->namedTypes()[*ordinal].projectOrdinal,
+                "@member:" + *imported->clangUsr + "::" + expression->text()};
+    }
     if (methods.empty()) return false;
     // NS304-T08-F03: a static extension member is a plain static method group (no receiver).
     if (typeReceiver)

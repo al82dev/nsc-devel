@@ -464,6 +464,7 @@ bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
         }
         // T19-040: the calls that call their own macro wrapper. / Las llamadas que llaman su propio envoltorio.
         namespaceFunctionModel_->setCppMacroCallWrappers(cppMacroCallWrappers_);
+        namespaceFunctionModel_->setCppMemberTemplateSelections(cppMemberTemplateSelections_);
         if (cppFunctionProvider_)
         {
         std::vector<NamespaceFunctionSymbol> functions;

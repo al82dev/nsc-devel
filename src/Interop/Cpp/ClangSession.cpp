@@ -4283,9 +4283,20 @@ public:
             // X1-05: an `&&` method is named with its qualifier and called on self as an xvalue, as on a temporary.
             //     / Un metodo `&&` se nombra con su calificador y se llama sobre self como xvalue.
             const bool rvalueReceiver = method->getRefQualifier() == clang::RQ_RValue;
+            // X2: a member function template specialization is named with its template arguments (`size<double>`),
+            //     which its function type may not deduce. / Una especializacion de plantilla miembro se nombra con sus
+            //     argumentos de plantilla.
+            std::string memberName = method->getNameAsString();
+            if (const auto* templateArguments = method->getTemplateSpecializationArgs())
+            {
+                std::string spelled;
+                llvm::raw_string_ostream stream(spelled);
+                clang::printTemplateArgumentList(stream, templateArguments->asArray(), policy);
+                memberName += stream.str();
+            }
             const std::string member = "static_cast<" + resultAlias + " (" + ownerType + "::*)(" + parameterTypes + ")" +
                 (method->isConst() ? " const" : "") + (rvalueReceiver ? " &&" : "") + ">(&" + ownerType + "::" +
-                method->getNameAsString() + ")";
+                memberName + ")";
             const std::string call = rvalueReceiver && !request.freeOperator
                 ? "(static_cast<" + self + "&&>(*self).*" + member + ")(" + arguments + ")"
                 : (request.freeOperator ? "(self.*" : "(self->*") + member + ")(" + arguments + ")";
@@ -4957,6 +4968,13 @@ public:
     std::optional<CppTemplateInstantiation> deduceFunctionTemplateCall(
         std::string_view qualifiedName, std::span<const CppTemplateArgument> argumentTypes) const override
     {
+        return deduceFunctionTemplateCallWithExplicit(qualifiedName, argumentTypes, {});
+    }
+
+    std::optional<CppTemplateInstantiation> deduceFunctionTemplateCallWithExplicit(
+        std::string_view qualifiedName, std::span<const CppTemplateArgument> argumentTypes,
+        std::span<const CppTemplateArgument> explicitTypes) const override
+    {
         std::lock_guard lock(mutex_);
         // T19-003: a call to a function-like macro. / Una llamada a una macro de funcion.
         if (ast_)
@@ -5038,6 +5056,24 @@ public:
             const auto valueKind = type->isRecordType() || argument.lvalue ? clang::VK_LValue : clang::VK_PRValue;
             arguments.push_back(new (context) clang::OpaqueValueExpr(location, type, valueKind));
         }
+        // X2: the explicit template type arguments. / Los argumentos de tipo de plantilla explicitos.
+        clang::TemplateArgumentListInfo explicitArguments(location, location);
+        for (const auto& argument : explicitTypes)
+        {
+            if (argument.kind != CppTemplateArgument::Kind::Type) return std::nullopt;
+            clang::QualType type;
+            if (argument.recordUsr)
+            {
+                const auto* tag = findTagByUsr(*context.getTranslationUnitDecl(), *argument.recordUsr);
+                if (!tag) return std::nullopt;
+                type = context.getCanonicalTagType(tag);
+            }
+            else type = builtinTemplateArgumentType(context, argument.builtin);
+            if (type.isNull()) return std::nullopt;
+            for (unsigned depth = 0; depth < argument.pointerDepth; ++depth) type = context.getPointerType(type);
+            explicitArguments.addArgument(clang::TemplateArgumentLoc(
+                clang::TemplateArgument(type), context.getTrivialTypeSourceInfo(type, location)));
+        }
         const auto firstDiagnostic = diagnostics_.size();
         std::vector<clang::FunctionDecl*> found;
         std::vector<std::string> failures;
@@ -5045,7 +5081,9 @@ public:
         {
             clang::sema::TemplateDeductionInfo info(location);
             clang::FunctionDecl* specialization = nullptr;
-            const auto outcome = sema.DeduceTemplateArguments(functionTemplate, nullptr, arguments, specialization,
+            clang::TemplateArgumentListInfo explicitCopy = explicitArguments;
+            const auto outcome = sema.DeduceTemplateArguments(functionTemplate,
+                explicitTypes.empty() ? nullptr : &explicitCopy, arguments, specialization,
                 info, false, false, false, clang::QualType(), clang::Expr::Classification(), false,
                 [](llvm::ArrayRef<clang::QualType>, bool) { return false; });
             if (outcome == clang::TemplateDeductionResult::Success && specialization && !specialization->isInvalidDecl())

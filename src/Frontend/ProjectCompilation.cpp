@@ -1820,6 +1820,30 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
             else { mapped = false; break; }
             arguments.push_back(std::move(argument));
         }
+        // X2: the explicit template type arguments, mapped as call argument types are. / Los argumentos de tipo de
+        //     plantilla explicitos, como los tipos de los argumentos.
+        std::vector<interop::CppTemplateArgument> explicitArguments;
+        for (const auto& key : request.explicitTemplateTypeKeys)
+        {
+            interop::CppTemplateArgument argument;
+            std::string_view base(key);
+            while (base.ends_with('*')) { ++argument.pointerDepth; base.remove_suffix(1); }
+            if (base.starts_with("builtin:"))
+            {
+                const auto found = builtins.find(base.substr(8));
+                if (found == builtins.end()) { mapped = false; break; }
+                argument.builtin = found->second;
+            }
+            else if (base.starts_with("type:") && nameLookup_)
+            {
+                const auto ordinal = nameLookup_->typeOrdinalForIdentity(base.substr(5));
+                const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+                if (!imported || !imported->clangUsr) { mapped = false; break; }
+                argument.recordUsr = imported->clangUsr;
+            }
+            else { mapped = false; break; }
+            explicitArguments.push_back(std::move(argument));
+        }
         bool deduced = false;
         // X2: a member call that names no member function template keeps its member diagnostic. / Una llamada a
         //     miembro que no nombra una plantilla de funcion miembro conserva su diagnostico de miembro.
@@ -1846,7 +1870,7 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
                     for (const auto& name : request.qualifiedNames)
                         if (const auto result = !session ? std::nullopt
                                 : request.functionMacro ? session->deduceFunctionMacroCall(name, arguments, site)
-                                : session->deduceFunctionTemplateCall(name, arguments))
+                                : session->deduceFunctionTemplateCallWithExplicit(name, arguments, explicitArguments))
                         {
                             answered = true;
                             if (result->instantiated) deduced = true;
@@ -1865,6 +1889,13 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
                                 demand.lookupNamespaces = {dotted};
                                 demand.visibleProjects = {request.projectOrdinal};
                                 cppMemberTemplateDemands_.push_back(std::move(demand));
+                                // X2: the call names exactly the specialization Clang deduced for it (with or
+                                //     without explicit arguments), as in C++; an existing one that would only
+                                //     match by conversion is not it. / La llamada nombra exactamente la
+                                //     especializacion que Clang dedujo para ella, como en C++.
+                                if (result->clangUsr)
+                                    cppMemberTemplateSelections_[request.syntax->first()] =
+                                        *result->clangUsr + "#member-template";
                             }
                             // T19-040: this call calls its own wrapper. / Esta llamada llama a su propio envoltorio.
                             if (result->instantiated && !result->cMacroWrapper.empty())
