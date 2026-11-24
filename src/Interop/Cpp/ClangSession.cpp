@@ -30,6 +30,7 @@
 #include <clang/Lex/MacroInfo.h>
 #include <clang/Lex/Preprocessor.h>
 #include <clang/Sema/Sema.h>
+#include <clang/Sema/Initialization.h>
 #include <clang/Sema/TemplateDeduction.h>
 #include <clang/Tooling/Tooling.h>
 #include <clang/UnifiedSymbolResolution/USRGeneration.h>
@@ -2390,6 +2391,116 @@ void collectAnonymousCRecords(const clang::RecordDecl& owner, clang::ASTContext&
     }
 }
 
+// EN: X2. A member function template whose template parameters all have defaults (MSVC's guards: a constructor's
+//     `template <class _Alloc2 = _Alloc, enable_if_t<...> = 0>`, set's `template <bool _Multi2 = _Multi,
+//     enable_if_t<!_Multi2, int> = 0> insert`) is instantiated with them as its record is imported and is then an
+//     ordinary member; a substitution failure (the guard rejecting) leaves it out. Without Sema, the
+//     specializations already instantiated.
+// ES: X2. Una plantilla de funcion miembro cuyos parametros tienen todos valor por defecto se instancia con ellos
+//     al importar su record y es un miembro normal; un fallo de sustitucion la deja fuera.
+std::vector<const clang::CXXMethodDecl*> defaultedMemberSpecializations(const clang::CXXRecordDecl& record,
+                                                                       clang::Sema* sema)
+{
+    std::vector<const clang::CXXMethodDecl*> result;
+    if (record.isDependentContext()) return result;
+    for (const auto* member : record.decls())
+    {
+        auto* memberTemplate = const_cast<clang::FunctionTemplateDecl*>(llvm::dyn_cast<clang::FunctionTemplateDecl>(member));
+        if (!memberTemplate || memberTemplate->getAccess() != clang::AS_public ||
+            !llvm::isa<clang::CXXMethodDecl>(memberTemplate->getTemplatedDecl()) ||
+            memberTemplate->getTemplatedDecl()->isConsteval() || memberTemplate->getTemplatedDecl()->isDeleted())
+            continue;
+        const auto* parameters = memberTemplate->getTemplateParameters();
+        if (parameters->size() == 0 ||
+            !std::all_of(parameters->begin(), parameters->end(), [](const clang::NamedDecl* parameter) {
+                if (const auto* type = llvm::dyn_cast<clang::TemplateTypeParmDecl>(parameter))
+                    return type->hasDefaultArgument() && !type->isParameterPack();
+                if (const auto* value = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(parameter))
+                    return value->hasDefaultArgument() && !value->isParameterPack();
+                return false;
+            })) continue;
+        if (!sema)
+        {
+            for (const auto* specialization : memberTemplate->specializations())
+                if (const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(specialization);
+                    method && !method->isInvalidDecl() && !method->isDeleted()) result.push_back(method);
+            continue;
+        }
+        clang::TemplateArgumentListInfo none;
+        clang::sema::TemplateDeductionInfo info(memberTemplate->getLocation());
+        clang::FunctionDecl* specialization = nullptr;
+        clang::Sema::SFINAETrap trap(*sema);
+        const auto outcome = sema->DeduceTemplateArguments(memberTemplate, &none, specialization, info);
+        if (outcome == clang::TemplateDeductionResult::Success && specialization && !trap.hasErrorOccurred() &&
+            !specialization->isInvalidDecl() && !specialization->isDeleted())
+            if (const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(specialization)) result.push_back(method);
+    }
+    return result;
+}
+
+// EN: X2. A record type a public method of an imported record takes or returns by value (set's
+//     `pair<iterator, bool> insert(const int&)`) may be a class template specialization only declared, never
+//     completed by the header; it is completed here (twice, for the types its own methods name), so it is imported
+//     and the method maps. A specialization that fails to instantiate is left incomplete and its errors do not
+//     stay in the session.
+// ES: X2. Un tipo record que toma o devuelve por valor un metodo publico de un record importado puede ser una
+//     especializacion solo declarada; se completa aqui para que se importe y el metodo se mapee.
+void completeMemberSignatureRecords(clang::ASTContext& astContext, clang::Sema& sema)
+{
+    auto& engine = sema.getDiagnostics();
+    for (int round = 0; round < 2; ++round)
+    {
+        std::vector<clang::QualType> pending;
+        std::set<const clang::Type*> queued;
+        const auto note = [&](clang::QualType type) {
+            type = type.getNonReferenceType().getCanonicalType().getUnqualifiedType();
+            const auto* specialization =
+                llvm::dyn_cast_or_null<clang::ClassTemplateSpecializationDecl>(type->getAsCXXRecordDecl());
+            if (specialization && !specialization->isCompleteDefinition() && !type->isDependentType() &&
+                specialization->getSpecializationKind() == clang::TSK_Undeclared &&
+                queued.insert(type.getTypePtr()).second) pending.push_back(type);
+        };
+        std::function<void(const clang::DeclContext&, unsigned)> walk = [&](const clang::DeclContext& scope, unsigned depth) {
+            if (depth > 48) return;
+            for (const auto* declaration : scope.decls())
+            {
+                if (llvm::isa<clang::NamespaceDecl>(declaration) || llvm::isa<clang::LinkageSpecDecl>(declaration) ||
+                    llvm::isa<clang::ExportDecl>(declaration))
+                    walk(*llvm::cast<clang::DeclContext>(declaration), depth + 1);
+                std::vector<const clang::CXXRecordDecl*> records;
+                if (const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(declaration)) records.push_back(record);
+                if (const auto* classTemplate = llvm::dyn_cast<clang::ClassTemplateDecl>(declaration))
+                    for (const auto* specialization : classTemplate->specializations()) records.push_back(specialization);
+                for (const auto* record : records)
+                {
+                    if (!record->isCompleteDefinition() || record->isDependentContext()) continue;
+                    for (const auto* method : record->methods())
+                    {
+                        if (method->getAccess() != clang::AS_public || method->isDeleted()) continue;
+                        note(method->getReturnType());
+                        for (const auto* parameter : method->parameters()) note(parameter->getType());
+                    }
+                    for (const auto* specialization : defaultedMemberSpecializations(*record, nullptr))
+                    {
+                        note(specialization->getReturnType());
+                        for (const auto* parameter : specialization->parameters()) note(parameter->getType());
+                    }
+                    if (record->getDeclContext()->isNamespace() || record->getDeclContext()->isTranslationUnit())
+                        walk(*record, depth + 1);
+                }
+            }
+        };
+        walk(*astContext.getTranslationUnitDecl(), 0);
+        if (pending.empty()) return;
+        for (const auto& type : pending)
+        {
+            const auto errorsBefore = engine.getNumErrors();
+            (void)sema.isCompleteType(type->getAsCXXRecordDecl()->getLocation(), type);
+            if (engine.getNumErrors() > errorsBefore && errorsBefore == 0) engine.Reset(/*soft=*/true);
+        }
+    }
+}
+
 void collectRecords(const clang::DeclContext& context, clang::ASTContext& astContext,
                     clang::MangleContext& mangler, std::set<const clang::TagDecl*>& seen,
                     std::vector<CppRecordDeclaration>& result, std::map<unsigned, std::string>& bufferHashes,
@@ -2633,6 +2744,49 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                 const auto captureMethod = [&](const clang::CXXMethodDecl* method) {
                     CppMethodDeclaration projected;
                     projected.clangUsr = declarationUsr(method);
+                    // X2: the siblings for whose argument types C++ could select this overload (Item 9.1). / Las
+                    //     hermanas para cuyos tipos de argumento C++ podria elegir esta sobrecarga.
+                    if (sema && !llvm::isa<clang::CXXConstructorDecl>(method) &&
+                        !llvm::isa<clang::CXXDestructorDecl>(method) && method->getDeclName().isIdentifier())
+                    {
+                        std::vector<std::string> viable;
+                        const auto location = method->getLocation();
+                        for (auto* found : cppRecord->lookup(method->getDeclName()))
+                        {
+                            const clang::NamedDecl* target = found;
+                            if (const auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(target))
+                                target = shadow->getTargetDecl();
+                            std::vector<const clang::CXXMethodDecl*> siblings;
+                            if (const auto* sibling = llvm::dyn_cast<clang::CXXMethodDecl>(target))
+                                siblings.push_back(sibling);
+                            else if (const auto* siblingTemplate = llvm::dyn_cast<clang::FunctionTemplateDecl>(target))
+                                for (const auto* specialization : siblingTemplate->specializations())
+                                    if (const auto* sibling = llvm::dyn_cast<clang::CXXMethodDecl>(specialization))
+                                        siblings.push_back(sibling);
+                            for (const auto* sibling : siblings)
+                            {
+                                if (sibling == method || sibling->getNumParams() != method->getNumParams()) continue;
+                                bool accepts = true;
+                                for (unsigned index = 0; accepts && index < method->getNumParams(); ++index)
+                                {
+                                    const auto argumentType = sibling->getParamDecl(index)->getType();
+                                    const auto valueType = argumentType.getNonReferenceType();
+                                    const auto kind = argumentType->isRValueReferenceType() ? clang::VK_XValue
+                                        : argumentType->isLValueReferenceType() || valueType->isRecordType()
+                                        ? clang::VK_LValue : clang::VK_PRValue;
+                                    clang::OpaqueValueExpr argument(location, valueType, kind);
+                                    clang::Sema::SFINAETrap trap(*sema);
+                                    const auto entity = clang::InitializedEntity::InitializeParameter(
+                                        astContext, method->getParamDecl(index)->getType(), false);
+                                    accepts = sema->CanPerformCopyInitialization(entity, &argument) &&
+                                        !trap.hasErrorOccurred();
+                                }
+                                if (accepts)
+                                    if (const auto usr = declarationUsr(sibling)) viable.push_back(*usr);
+                            }
+                        }
+                        projected.viableForSiblings = std::move(viable);
+                    }
                     const auto* ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(method);
                     const auto* dtor = llvm::dyn_cast<clang::CXXDestructorDecl>(method);
                     projected.kind = ctor ? CppMethodKind::Constructor :
@@ -2714,31 +2868,8 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                 //     instancia con ellos al importar el record y es un constructor normal; un fallo de sustitucion
                 //     lo deja fuera.
                 std::vector<const clang::CXXMethodDecl*> recordMethods(cppRecord->method_begin(), cppRecord->method_end());
-                if (sema && !cppRecord->isDependentContext())
-                    for (const auto* member : cppRecord->decls())
-                    {
-                        auto* constructorTemplate = const_cast<clang::FunctionTemplateDecl*>(
-                            llvm::dyn_cast<clang::FunctionTemplateDecl>(member));
-                        if (!constructorTemplate || constructorTemplate->getAccess() != clang::AS_public ||
-                            !llvm::isa<clang::CXXConstructorDecl>(constructorTemplate->getTemplatedDecl()) ||
-                            constructorTemplate->getTemplatedDecl()->isConsteval() ||
-                            constructorTemplate->getTemplatedDecl()->isDeleted()) continue;
-                        const auto* parameters = constructorTemplate->getTemplateParameters();
-                        if (parameters->size() == 0 || !std::all_of(parameters->begin(), parameters->end(), [](const clang::NamedDecl* parameter) {
-                                if (const auto* type = llvm::dyn_cast<clang::TemplateTypeParmDecl>(parameter)) return type->hasDefaultArgument() && !type->isParameterPack();
-                                if (const auto* value = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(parameter)) return value->hasDefaultArgument() && !value->isParameterPack();
-                                return false;
-                            })) continue;
-                        clang::TemplateArgumentListInfo none;
-                        clang::sema::TemplateDeductionInfo info(constructorTemplate->getLocation());
-                        clang::FunctionDecl* specialization = nullptr;
-                        clang::Sema::SFINAETrap trap(*sema);
-                        const auto outcome = sema->DeduceTemplateArguments(constructorTemplate, &none, specialization, info);
-                        if (outcome == clang::TemplateDeductionResult::Success && specialization && !trap.hasErrorOccurred() &&
-                            !specialization->isInvalidDecl() && !specialization->isDeleted())
-                            if (const auto* constructor = llvm::dyn_cast<clang::CXXConstructorDecl>(specialization))
-                                recordMethods.push_back(constructor);
-                    }
+                for (const auto* specialization : defaultedMemberSpecializations(*cppRecord, sema))
+                    recordMethods.push_back(specialization);
                 for (const clang::CXXMethodDecl* method : recordMethods)
                 {
                     if (method->isImplicit() || method->isDependentContext() ||
@@ -2909,6 +3040,13 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                 if (recordUsr)
                 {
                     std::set<std::string> hidden = ownNames;
+                    // X2: `using Base::name;` brings the base's members of that name back next to the record's own
+                    //     (std::set's `using _Mybase::insert;`). / `using Base::name;` vuelve a traer los miembros de
+                    //     la base con ese nombre junto a los propios.
+                    for (const auto* member : cppRecord->decls())
+                        if (const auto* usingDeclaration = llvm::dyn_cast<clang::UsingDecl>(member);
+                            usingDeclaration && usingDeclaration->getAccess() == clang::AS_public)
+                            hidden.erase(usingDeclaration->getNameAsString());
                     std::vector<const clang::CXXRecordDecl*> bases{cppRecord};
                     for (std::size_t depth = 0; depth < 32 && !bases.empty(); ++depth)
                     {
@@ -2925,7 +3063,13 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                                 next.push_back(baseRecord);
                                 for (const auto* field : baseRecord->fields())
                                     owners[field->getNameAsString()].insert(baseRecord);
-                                for (const auto* method : baseRecord->methods())
+                                // X2: with its member templates whose parameters all have defaults. / Con sus
+                                //     plantillas miembro de parametros por defecto.
+                                std::vector<const clang::CXXMethodDecl*> baseMethods(baseRecord->method_begin(),
+                                                                                     baseRecord->method_end());
+                                for (const auto* specialization : defaultedMemberSpecializations(*baseRecord, sema))
+                                    baseMethods.push_back(specialization);
+                                for (const auto* method : baseMethods)
                                 {
                                     if (method->isImplicit()) continue;
                                     owners[method->getNameAsString()].insert(baseRecord);
@@ -3606,6 +3750,7 @@ public:
         std::set<const clang::TagDecl*> seen;
         std::map<unsigned, std::string> bufferHashes;
         std::vector<const clang::RecordDecl*> observed;
+        if (ast_->hasSema()) completeMemberSignatureRecords(context, ast_->getSema()); // X2
         collectRecords(*context.getTranslationUnitDecl(), context, *mangler, seen, result, bufferHashes,
                        ast_->hasSema() ? &ast_->getSema() : nullptr, &observed);
         // EN: T12-001. A trivially copyable C++ record that the C rules may not describe (a base, a declared
@@ -4061,7 +4206,13 @@ public:
                             if (current == record && record->getNumVBases() != 0 && ast_->hasSema())
                                 ast_->getSema().ForceDeclarationOfImplicitMembers(
                                     const_cast<clang::CXXRecordDecl*>(record));
-                            for (const auto* method : current->methods())
+                            // X2: also the instantiated specializations of member templates whose parameters all
+                            //     have defaults. / Tambien esas especializaciones.
+                            std::vector<const clang::CXXMethodDecl*> currentMethods(current->method_begin(),
+                                                                                    current->method_end());
+                            for (const auto* specialization : defaultedMemberSpecializations(*current, nullptr))
+                                currentMethods.push_back(specialization);
+                            for (const auto* method : currentMethods)
                             {
                                 const auto usr = declarationUsr(method);
                                 if (!usr) continue;

@@ -38,7 +38,7 @@ CRT = [TOOLSET / 'lib/x64/libcmt.lib', TOOLSET / 'lib/x64/libvcruntime.lib', TOO
 SYSTEM = [TOOLSET / 'include', SDK / 'include/ucrt']
 HEADER = ('#pragma once\n#include <algorithm>\n#include <array>\n#include <bit>\n#include <limits>\n#include <numeric>\n'
           '#include <type_traits>\n#include <vector>\n#include <string>\n#include <list>\n#include <map>\n'
-          '#include <unordered_map>\n')
+          '#include <unordered_map>\n#include <set>\n')
 # (name, NativeSharp body, C++ body)
 CASES = [
     ('array', 'std.array<int, 4> a = new std.array<int, 4>(); a._Elems[2] = 7; return (int)a.size() * 10 + a._Elems[2];',
@@ -101,6 +101,10 @@ CASES = [
     ('unordered-map', 'std.unordered_map<int, int> m = new std.unordered_map<int, int>(); int k = 7; m[k] = 30; m[9] = 5; '
                       'return m[k] + m[9] + (int)m.size();',
      'std::unordered_map<int, int> m; int k = 7; m[k] = 30; m[9] = 5; return m[k] + m[9] + (int)m.size();'),
+    # X2: std::set (`std.set`, `using _Mybase::insert;` of a defaulted member template, its pair result discarded).
+    ('set', 'std.set<int> s = new std.set<int>(); int a = 40; int b = 2; s.insert(in a); s.insert(in b); s.insert(in a); '
+            'return (int)s.size();',
+     'std::set<int> s; int a = 40; int b = 2; s.insert(a); s.insert(b); s.insert(a); return (int)s.size();'),
 ]
 
 

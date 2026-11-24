@@ -162,10 +162,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionStatement(
     [[maybe_unused]] std::size_t memberOrdinal,
     std::string& error)
 {
+    // EN: X2. A call whose discarded result is a non-trivial C++ record (`s.insert(x)` returning a pair) constructs it
+    //     in a hidden owner destroyed at the end of the full expression, as an addressed result is (X2-05); a value
+    //     with no owner would be a C++ object nobody destroys.
+    // ES: X2. Una llamada cuyo resultado descartado es un record C++ no trivial lo construye en un dueno oculto
+    //     destruido al final de la expresion completa, como un resultado direccionado.
+    const ast::AstNode* expression = statement != nullptr ? statement->first() : nullptr;
+    bool discardedCppResult = false;
+    if (expression != nullptr && expression->kind() == ast::AstNodeKind::CallExpression)
+        if (const auto* binding = yieldOperandBinding(expression, memberOrdinal);
+            binding != nullptr && isCppNonTrivialRecordTypeKey(binding->typeKey))
+            discardedCppResult = true;
     return lowerExpressionWithStatementFrame(
-        statement != nullptr ? statement->first() : nullptr,
+        expression,
         memberOrdinal,
-        false,
+        discardedCppResult,
         statement,
         error);
 }

@@ -71,6 +71,11 @@ struct CppMethodDeclaration
     // ES: T12-004. Un metodo declarado en una base y alcanzado por este record, y el simbolo del adaptador
     //     de Clang que llama a un metodo heredado o virtual sobre este record (cppMemberThunkSymbol).
     bool inherited = false;
+    // EN: X2. The Clang USRs of the same-named, same-arity overloads of the record for whose parameter types this
+    //     overload is also viable (C++ could select it with their arguments); absent when not computed.
+    // ES: X2. Los USR de las sobrecargas hermanas de igual aridad para cuyos tipos de parametro esta tambien es
+    //     viable; ausente si no se calculo.
+    std::optional<std::vector<std::string>> viableForSiblings{};
     std::optional<std::string> dispatchSymbol;
     bool variadic = false;
     // Constructor/destructor names are selected for complete-object use; on the MS ABI

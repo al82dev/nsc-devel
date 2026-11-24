@@ -620,4 +620,24 @@ struct N { int v[4]; int& operator[](const int& k) { return v[k]; } };
 positivo(Caso('x2-referencias-sobrecarga', HRR, '', **CRG),
          'lib.M m; int k = 1; m.at(k) = 30; m.at(2) = 2; m[3] = 4; lib.N n; n[k] = 6;'
          ' return m.at(k) + m.at(2) + m[3] + n[k];', modes=['directo', 'dll'])
+# X2: std::set's insert (`using _Mybase::insert;` of a `template <bool _Multi2 = _Multi, ...>` member returning a
+# non-trivial pair) was not imported. A `using Base::name;` brings the base's members back next to the record's own,
+# a member template whose parameters all have defaults is instantiated with them, a same-arity overload C++ could
+# not select for a projected one's arguments (`put(Handle&&)` vs `put(const int&)`, checked by Clang) no longer
+# blocks it, and a discarded non-trivial C++ result is destroyed at the end of its statement (exactly once).
+# X2: `using Base::name`, plantillas miembro con parametros por defecto, sobrecargas no viables y resultado descartado.
+HUS = r'''
+namespace lib {
+extern int g_dtors;
+struct R { int v; R(int x) : v(x) {} R(const R& o) : v(o.v) {} ~R() { ++g_dtors; } };
+struct Handle { int h; Handle(Handle&& o) : h(o.h) {} };
+struct Base { int n; template <bool B = true, int I = 0> R put(const int& x) { n += x; return R(n); } int count() const { return n; } };
+struct Derived : Base { using Base::put; int put(Handle&& h) { return h.h; } };
+inline int dtors() { return g_dtors; }
+}
+'''
+SUS = 'namespace lib { int g_dtors; }'+chr(10)
+positivo(Caso('x2-using-base-plantilla-defecto', HUS, SUS, **CRG),
+         'lib.Derived d; d.n = 0; int a = 40; int b = 2; d.put(in a); d.put(in b); return d.count() + lib.dtors() - 2;',
+         modes=['directo', 'dll'])
 fin()

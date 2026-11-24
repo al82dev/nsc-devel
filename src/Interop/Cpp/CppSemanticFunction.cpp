@@ -2647,6 +2647,8 @@ bool provideExperimentalCppInstanceMethods(
     std::map<Family, std::vector<frontend::CppImportedInstanceMethod>> families;
     std::set<Family> blocked;
     std::map<Family, std::set<std::size_t>> unprojectedArities;
+    std::map<Family, std::set<std::string>> blockingSiblings; // X2
+    std::map<Family, std::set<std::string>> projectedUsrs; // X2
     for (const auto& group : groups.groups)
     {
         const auto selected = selectCppRecordMemberDefinition(entries, group);
@@ -2678,7 +2680,14 @@ bool provideExperimentalCppInstanceMethods(
                     families[family].back().isDeleted = method.isDeleted;
                     families[family].back().receiverRvalue = method.refQualifier == CppMethodRefQualifier::RValue;
                 }
+                // X2: an overload known not to be viable for any projected sibling does not block it. / Una
+                //     sobrecarga que se sabe no viable para ninguna hermana proyectada no la bloquea.
+                else if (!method.isDeleted && method.viableForSiblings)
+                    for (const auto& sibling : *method.viableForSiblings)
+                        blockingSiblings[family].insert(sibling);
                 else if (!method.isDeleted) unprojectedArities[family].insert(method.parameters.size());
+                if (std::holds_alternative<CppSemanticInstanceMethod>(mapped) && method.clangUsr)
+                    projectedUsrs[family].insert(*method.clangUsr);
             }
         }
     }
@@ -2695,6 +2704,9 @@ bool provideExperimentalCppInstanceMethods(
         if (const auto found = unprojectedArities.find(family); found != unprojectedArities.end() &&
             std::any_of(methods.begin(), methods.end(), [&](const auto& method) {
                 return found->second.contains(method.parameterTypeKeys.size()); })) continue;
+        if (const auto found = blockingSiblings.find(family); found != blockingSiblings.end() &&
+            std::any_of(projectedUsrs[family].begin(), projectedUsrs[family].end(), [&](const std::string& usr) {
+                return found->second.contains(usr); })) continue;
         // T19-006: the C++ spelling suffix keeps `f(int)` and `f(long)` apart. / Separa `f(int)` de `f(long)`.
         std::set<std::tuple<std::vector<std::string>, bool, bool, std::string>> signatures;
         bool ambiguous = false;
