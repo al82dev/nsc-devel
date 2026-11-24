@@ -436,6 +436,12 @@ public:
     // T13-010: Sema instantiates the template with the arguments; nullopt when it is not a template here.
     virtual std::optional<CppTemplateInstantiation> instantiateTemplate(
         std::string_view, bool, std::span<const CppTemplateArgument>) const { return std::nullopt; }
+    // STL (CTAD): Clang deduces the arguments of the class template with that name from the types of a
+    //     construction's arguments (`pair(40, 2)`, with its deduction guides) and instantiates the specialization as
+    //     instantiateTemplate does; nullopt when the template or the deduction is not available.
+    //     Clang deduce los argumentos de la plantilla de clase de los tipos de los argumentos de una construccion.
+    virtual std::optional<CppTemplateInstantiation> deduceClassTemplate(
+        std::string_view, std::span<const CppTemplateArgument>) const { return std::nullopt; }
     // T13-005: Sema deduces the arguments of the function templates with that name from the types of a call's
     // arguments; nullopt when it declares no such template. Deduced specializations are imported under the
     // template's own name. / Sema deduce los argumentos de las plantillas de funcion con ese nombre a partir de

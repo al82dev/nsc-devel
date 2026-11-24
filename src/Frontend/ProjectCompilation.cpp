@@ -3571,6 +3571,9 @@ public:
           nativeStruct_(std::move(nativeStruct)), reject_(std::move(reject)) {}
     using DeferUnboundPack = std::function<bool(const std::string& qualifiedName, std::size_t explicitCount)>;
     CppTemplateUseRewriter& deferUnboundPack(DeferUnboundPack value) { deferUnboundPack_ = std::move(value); return *this; }
+    using DeduceClass = std::function<std::optional<Specialization>(const std::string& qualifiedName,
+        const std::vector<interop::CppTemplateArgument>& arguments)>;
+    CppTemplateUseRewriter& deduceClass(DeduceClass value) { deduceClass_ = std::move(value); return *this; }
 
     // A specialization use whose qualified name starts at index, or nullopt when the tokens are not one.
     std::optional<Use> match(std::size_t index, unsigned depth = 0) const
@@ -3593,6 +3596,60 @@ public:
             last = position + 1;
             position += 2;
         }
+        // EN: STL (CTAD). `new ns.Template(literals...)` without template arguments: Clang deduces the class
+        //     template's arguments from the literals' types with its deduction guides (`new std.pair(40, 2)` is a
+        //     `pair<int, int>`), and the name is replaced by that specialization. Other arguments keep the tokens.
+        // ES: STL (CTAD). Clang deduce los argumentos de la plantilla de clase de los tipos de los literales.
+        if (position < tokens_.size() && tokens_[position].kind() == lexer::TokenKind::LeftParen && deduceClass_ &&
+            index > 0 && tokens_[index - 1].kind() == lexer::TokenKind::KwNew)
+            if (const auto found = templates_.find(path); found != templates_.end() && !found->second)
+            {
+                std::vector<interop::CppTemplateArgument> arguments;
+                std::size_t cursor = position + 1;
+                bool literals = true;
+                while (literals && cursor < tokens_.size() && tokens_[cursor].kind() != lexer::TokenKind::RightParen)
+                {
+                    interop::CppTemplateArgument argument;
+                    const auto& token = tokens_[cursor];
+                    const auto text = token.lexeme();
+                    switch (token.kind())
+                    {
+                    case lexer::TokenKind::IntegerLiteral: argument.builtin = "int"; break;
+                    case lexer::TokenKind::FloatingLiteral:
+                        argument.builtin = !text.empty() && (text.back() == 'f' || text.back() == 'F') ? "float" : "double";
+                        break;
+                    case lexer::TokenKind::KwTrue: case lexer::TokenKind::KwFalse: argument.builtin = "bool"; break;
+                    case lexer::TokenKind::StringLiteral: argument.builtin = "const char"; argument.pointerDepth = 1; break;
+                    default: literals = false; break;
+                    }
+                    if (!literals) break;
+                    arguments.push_back(std::move(argument));
+                    ++cursor;
+                    if (cursor < tokens_.size() && tokens_[cursor].kind() == lexer::TokenKind::Comma) ++cursor;
+                    else if (cursor >= tokens_.size() || tokens_[cursor].kind() != lexer::TokenKind::RightParen)
+                        literals = false;
+                }
+                std::string qualified;
+                for (std::size_t start = 0; start <= path.size();)
+                {
+                    const auto end = path.find('.', start);
+                    if (!qualified.empty()) qualified += "::";
+                    qualified += path.substr(start, end == std::string::npos ? std::string::npos : end - start);
+                    if (end == std::string::npos) break;
+                    start = end + 1;
+                }
+                if (literals && !arguments.empty())
+                    if (const auto specialization = deduceClass_(qualified, arguments))
+                    {
+                        Use use;
+                        use.nameIndex = last;
+                        use.closeIndex = last;
+                        use.next = Position{last + 1, false};
+                        use.name = specialization->name;
+                        use.usr = specialization->usr;
+                        return use;
+                    }
+            }
         if (position >= tokens_.size() || tokens_[position].kind() != lexer::TokenKind::Less) return std::nullopt;
         const auto found = templates_.find(path);
         if (found == templates_.end()) return std::nullopt;
@@ -3796,6 +3853,7 @@ private:
     NativeStruct nativeStruct_;
     Reject reject_;
     DeferUnboundPack deferUnboundPack_;
+    DeduceClass deduceClass_;
 };
 }
 
@@ -4404,6 +4462,21 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
                         diagnostics_.report(diagnostics::DiagnosticId::UnknownTypeName,
                             diagnostics::DiagnosticSeverity::Error, range, std::move(message));
                         failed = true;
+                    }).deduceClass([&](const std::string& qualifiedName,
+                                       const std::vector<interop::CppTemplateArgument>& arguments)
+                        -> std::optional<CppTemplateUseRewriter::Specialization> {
+                        for (auto* session : project->second.sessions)
+                            if (const auto result = session->deduceClassTemplate(qualifiedName, arguments);
+                                result && result->instantiated)
+                            {
+                                classInstantiated = true;
+                                for (const auto& layout : result->nativeLayouts)
+                                    cppNativeMirrorLayouts_.emplace(compilation::TypeIdentity(layout.moduleName,
+                                        layout.namespaceSegments, {}, layout.name).key(), layout);
+                                return CppTemplateUseRewriter::Specialization{result->name, result->clangUsr,
+                                                                              result->aliasTarget};
+                            }
+                        return std::nullopt;
                     }).deferUnboundPack([&](const std::string& qualifiedName, std::size_t explicitCount) {
                         return std::any_of(project->second.sessions.begin(), project->second.sessions.end(),
                             [&](const auto* session) {

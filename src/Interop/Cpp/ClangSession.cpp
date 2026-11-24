@@ -5108,6 +5108,95 @@ public:
     }
 
     // T13-010: the instantiation; the caller holds the mutex. / La instanciacion; quien llama tiene el mutex.
+    std::optional<CppTemplateInstantiation> deduceClassTemplate(
+        std::string_view qualifiedName, std::span<const CppTemplateArgument> arguments) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || !ast_->hasSema() || !ast_->getASTContext().getLangOpts().CPlusPlus || options_.macroExpansionOnly)
+            return std::nullopt;
+        auto& context = ast_->getASTContext();
+        auto& sema = ast_->getSema();
+        clang::ClassTemplateDecl* classTemplate = nullptr;
+        visitNamespaceTemplates([&](const clang::TemplateDecl& declaration, bool isFunction) {
+            if (isFunction || classTemplate) return;
+            const auto names = allTemplateNames(declaration);
+            if (std::find(names.begin(), names.end(), qualifiedName) != names.end())
+                if (auto* found = llvm::dyn_cast<clang::ClassTemplateDecl>(const_cast<clang::TemplateDecl*>(&declaration)))
+                    classTemplate = found;
+        });
+        if (!classTemplate) return std::nullopt;
+        const auto& sources = context.getSourceManager();
+        const auto location = sources.getLocForEndOfFile(sources.getMainFileID());
+        std::vector<clang::Expr*> initializers;
+        for (const auto& argument : arguments)
+        {
+            if (argument.kind != CppTemplateArgument::Kind::Type) return std::nullopt;
+            clang::QualType type;
+            if (argument.recordUsr)
+            {
+                const auto* tag = findTagByUsr(*context.getTranslationUnitDecl(), *argument.recordUsr);
+                if (!tag) return std::nullopt;
+                type = context.getCanonicalTagType(tag);
+            }
+            else type = builtinTemplateArgumentType(context, argument.builtin);
+            if (type.isNull()) return std::nullopt;
+            for (unsigned depth = 0; depth < argument.pointerDepth; ++depth) type = context.getPointerType(type);
+            initializers.push_back(new (context) clang::OpaqueValueExpr(location, type,
+                argument.lvalue ? clang::VK_LValue : clang::VK_PRValue));
+        }
+        const auto deduced = context.getDeducedTemplateSpecializationType(clang::DeducedKind::Undeduced,
+            clang::QualType(), clang::ElaboratedTypeKeyword::None, clang::TemplateName(classTemplate));
+        auto* typeSource = context.getTrivialTypeSourceInfo(deduced, location);
+        const auto entity = clang::InitializedEntity::InitializeTemporary(context, typeSource);
+        const auto kind = clang::InitializationKind::CreateDirect(location, location, location);
+        const auto firstDiagnostic = diagnostics_.size();
+        clang::QualType specializationType;
+        {
+            clang::Sema::SFINAETrap trap(sema);
+            specializationType = sema.DeduceTemplateSpecializationFromInitializer(typeSource, entity, kind,
+                clang::MultiExprArg(initializers.data(), initializers.size()));
+            if (trap.hasErrorOccurred()) specializationType = clang::QualType();
+        }
+        (void)firstDiagnostic;
+        const auto* specialization = specializationType.isNull() ? nullptr :
+            llvm::dyn_cast_or_null<clang::ClassTemplateSpecializationDecl>(specializationType->getAsCXXRecordDecl());
+        if (!specialization) return std::nullopt;
+        // The deduced arguments, as instantiateTemplate takes them. / Los argumentos deducidos.
+        static constexpr const char* builtins[] = {"bool", "const char", "signed char", "unsigned char", "char16_t",
+            "short", "unsigned short", "int", "unsigned int", "long long", "unsigned long long", "float", "double"};
+        std::vector<CppTemplateArgument> deducedArguments;
+        for (const auto& argument : specialization->getTemplateArgs().asArray())
+        {
+            CppTemplateArgument value;
+            if (argument.getKind() == clang::TemplateArgument::Integral)
+            {
+                value.kind = argument.getIntegralType()->isBooleanType() ? CppTemplateArgument::Kind::Boolean
+                                                                         : CppTemplateArgument::Kind::Integral;
+                value.boolean = argument.getAsIntegral().getBoolValue();
+                value.integral = argument.getAsIntegral().getExtValue();
+                deducedArguments.push_back(std::move(value));
+                continue;
+            }
+            if (argument.getKind() != clang::TemplateArgument::Type) return std::nullopt;
+            clang::QualType type = argument.getAsType().getCanonicalType();
+            while (type->isPointerType()) { ++value.pointerDepth; type = type->getPointeeType().getCanonicalType(); }
+            if (const auto* tag = type->getAsTagDecl())
+            {
+                const auto usr = declarationUsr(tag);
+                if (!usr) return std::nullopt;
+                value.recordUsr = *usr;
+            }
+            else
+            {
+                for (const auto* name : builtins)
+                    if (context.hasSameType(builtinTemplateArgumentType(context, name), type)) value.builtin = name;
+                if (value.builtin.empty()) return std::nullopt;
+            }
+            deducedArguments.push_back(std::move(value));
+        }
+        return instantiateTemplateLocked(qualifiedName, false, deducedArguments);
+    }
+
     std::optional<CppTemplateInstantiation> instantiateTemplateLocked(
         std::string_view qualifiedName, bool function, std::span<const CppTemplateArgument> arguments) const
     {

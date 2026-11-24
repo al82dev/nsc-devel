@@ -165,4 +165,18 @@ positivo(Caso('x4-paquete-explicito', HPK, None, language='C++', standard='c++20
          # lib: the published template's call is deduced by the consumer over the producer's source session
          # (NSMeta X4-06); it was "reusable template closure is incomplete". / lib: lo deduce el consumidor.
          modes=['directo', 'dll', 'lib'])
+# EN: STL (CTAD). `new lib.Two(40, 2.5)` without template arguments: Clang deduces the class template's arguments
+#     from the literals' types with its deduction guides, as C++ does (`Two<int, double>`); it was "unknown type
+#     name". Arguments that are not literals keep the explicit form. / Clang deduce los argumentos de la plantilla de
+#     clase de los tipos de los literales.
+HCT = r'''
+namespace lib {
+template <class A, class B> struct Two { A a; B b; Two(A x, B y) : a(x), b(y) {} int sum() const { return (int)a + (int)b; } };
+template <class T> struct Wrap { T v; Wrap(T x) : v(x) {} };
+Wrap(const char*) -> Wrap<const char*>;
+}
+'''
+positivo(Caso('x4-deduccion-clase', HCT, None, language='C++', standard='c++20'),
+         'var t = new lib.Two(40, 2.5); var u = new lib.Two(true, 1); var w = new lib.Wrap("ab");'
+         ' return t.sum() == 42 && u.sum() == 2 && w.v[1] == 98 ? 42 : 1;', modes=['directo', 'dll', 'lib'])
 fin()
