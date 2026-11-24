@@ -159,5 +159,7 @@ struct Pr { int a; double b; Pr(const int& x, const double& y) : a(x), b(y) {} i
 '''
 positivo(Caso('x1-constructor-constref', HCR, None, language='C++', standard='c++20'),
          'int k = 40; var p = new lib.Pr(k, 2.5); var q = new lib.Pr(40, 2.0); return p.sum() == 42 && q.sum() == 42 ? 42 : 1;',
-         modes=['directo', 'dll'])
+         # lib: a record with user-declared constructors travels as a source session (NSMeta X4-06). / lib: un record
+         #     con constructores declarados viaja como sesion de fuente.
+         modes=['directo', 'dll', 'lib'])
 fin()

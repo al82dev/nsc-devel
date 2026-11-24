@@ -1884,6 +1884,13 @@ static CppCRecordSnapshotResult captureRecordSnapshot(
         if (!observed || observed->operations.clangUsr != knownUsr ||
             !cppRecordValueOperationsEligible(observed->traits, observed->operations))
             return fail(cppRecordNotCatalogueValue);
+        // EN: NSMeta X4-06. A record with user-declared constructors is constructed through them, which the value
+        //     catalogue does not carry: it travels as a source session too.
+        // ES: NSMeta X4-06. Un record con constructores declarados se construye con ellos, que el catalogo de valores
+        //     no lleva: tambien viaja como sesion de fuente.
+        if (std::any_of(record.methods.begin(), record.methods.end(),
+                [](const auto& method) { return method.kind == CppMethodKind::Constructor; }))
+            return fail(cppRecordNotCatalogueValue);
         snapshot.cppValueObservation = std::move(observed);
         // EN: T19-036. The consumer of a precompiled catalog returns this record as Clang does (T12-001).
         // ES: T19-036. El consumidor de un catalogo precompilado devuelve este record como Clang (T12-001).
