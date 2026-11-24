@@ -9,6 +9,8 @@ NativeSharp no atrapa excepciones C++. Un `panic` dentro de un callback termina 
 El ejecutable arranca por el runtime estatico de MSVC (`--crt-startup` y `--link-lib`), que inicializa el
 manejo de excepciones de C++, y se enlaza con lld-link. Cada caso se compara con un control C++ compilado por
 Clang 23.1.0 y enlazado con el mismo runtime, O0-O3; con --dll la biblioteca es una DLL con su propio runtime.
+Con --lib (NSMeta X4-06) cada cuerpo es una plantilla generica publicada por una biblioteca NativeSharp precompilada
+(su preludio, metodos de la misma clase) y el consumidor, sin el encabezado, la instancia.
 """
 import argparse
 import os
@@ -21,6 +23,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
 parser.add_argument('--dll', action='store_true')
+parser.add_argument('--lib', action='store_true')
 args = parser.parse_args()
 root = Path(tempfile.mkdtemp(prefix='nsc-t15-excepciones-', dir='A:/temp'))
 env = os.environ.copy()
@@ -138,12 +141,29 @@ for opt in range(4):
             run(f'O{opt}-{name}-control-link', ['lld-link.exe', '/nologo', '/subsystem:console', '/out:control.exe', 'control.obj',
                                                 '../api.lib', *[str(p) for p in CRT]], case)
             expected = run(f'O{opt}-{name}-control-run', [str(case / 'control.exe')], case, expected=None).returncode
-        (case / 'Main.ns').write_text(prelude + 'int Main() { ' + body + ' }\n', encoding='utf-8')
         runtime = ' Runtime="../api.dll"' if args.dll else ''
+        reference = ('<CppLibraryReference Header="../api.h" Language="C++" Standard="c++20" Library="../api.lib"' +
+                     runtime + ' />')
+        if args.lib:
+            # NSMeta X4-06: the body is the producer's published generic; its prelude, methods of the same class.
+            #     / El cuerpo es la plantilla generica publicada del productor; su preludio, metodos de la clase.
+            methods = ''.join('public static ' + line + '\n' for line in prelude.splitlines() if line.strip())
+            (case / 'Lib.ns').write_text('namespace T15Lib { public static class P {\n' + methods +
+                                         'public static int Run<T>(T unused) { ' + body + ' } } }\n', encoding='utf-8')
+            (case / 'Lib.nsproj').write_text(
+                '<Project><PropertyGroup><Name>T15Lib</Name><OutputType>Library</OutputType></PropertyGroup>'
+                '<ItemGroup><Compile Include="Lib.ns" />' + reference + '</ItemGroup></Project>', encoding='utf-8')
+            env['NSC_LINKER'] = 'nslink.exe'
+            run(f'O{opt}-{name}-nsc-lib', [args.nsc, '--emit-project-oop-lib', 'Lib.nsproj', '--cpp-clang-root=' +
+                                           args.clang_root, '--no-artifact-cache', '-O' + str(opt), '-o', 'T15Lib.lib'], case)
+            env['NSC_LINKER'] = 'lld-link.exe'
+            (case / 'Main.ns').write_text('int Main() { return T15Lib.P.Run<int>(0); }\n', encoding='utf-8')
+            reference = '<LibraryReference Include="T15Lib.lib" />'
+        else:
+            (case / 'Main.ns').write_text(prelude + 'int Main() { ' + body + ' }\n', encoding='utf-8')
         (case / 'App.nsproj').write_text(
             '<Project><PropertyGroup><Name>T15App</Name></PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
-            '<CppLibraryReference Header="../api.h" Language="C++" Standard="c++20" Library="../api.lib"' + runtime + ' />'
-            '</ItemGroup></Project>', encoding='utf-8')
+            + reference + '</ItemGroup></Project>', encoding='utf-8')
         command = [args.nsc, '--emit-project-oop-exe', 'App.nsproj', '--cpp-clang-root=' + args.clang_root,
                    '--no-artifact-cache', '-O' + str(opt), '--crt-startup']
         for library in CRT:
