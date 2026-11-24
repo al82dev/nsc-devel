@@ -498,7 +498,21 @@ bool captureCDependencyFunction(std::span<const CppSemanticInventoryEntry> inven
         const auto* projection = std::get_if<frontend::NamespaceFunctionSymbol>(&entry.projection);
         if (!projection || projection->cppCanonicalIdentity != selected.cppCanonicalIdentity ||
             projection->moduleName != selected.moduleName || projection->name != selected.name) continue;
-        if (match) { error = "selected C function has multiple matching observations"; return false; }
+        // X2: a C++ member adapter can be observed twice (the same member reached through the record and through a
+        //     `using` of its base, as std::tuple<>'s assignment in the STL): its adapter symbol, Clang identity,
+        //     canonical signature and projection are the same, so it is one function. Observations that differ stay
+        //     an error. / Un adaptador de miembro C++ puede observarse dos veces (el mismo miembro alcanzado por el
+        //     record y por un `using` de su base): es una sola funcion. Las observaciones que difieren siguen siendo
+        //     un error.
+        if (match)
+        {
+            const auto* first = std::get_if<frontend::NamespaceFunctionSymbol>(&match->projection);
+            if (first && first->signatureKey == projection->signatureKey &&
+                first->namespaceName == projection->namespaceName &&
+                match->declaration.parameters.size() == entry.declaration.parameters.size()) continue;
+            error = "selected C function has multiple matching observations: " + selected.cppCanonicalIdentity;
+            return false;
+        }
         match = &entry;
     }
     if (!match) { error = "selected C function has no matching observation"; return false; }

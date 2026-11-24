@@ -9,6 +9,8 @@ argumentos explicitos (`std::gcd<int, int>`, `std::lcm<int, int>`, `std::popcoun
 `std::min`, `std::max`, `std::clamp` (`const T&`) y `std::array::at` (`T&` y `const T&`, T19-007). Cada expresion se
 compara con un control C++ de Clang 23.1.0 que la escribe igual, O0-O3. El ejecutable arranca por el runtime de C
 (`--crt-startup`). La STL no tiene parte binaria aqui, asi que no hay variante DLL.
+Con --lib (NSMeta X4-06) cada caso es una plantilla generica publicada por una biblioteca precompilada y el
+consumidor, sin el encabezado, la instancia por la sesion de fuente del productor.
 """
 import argparse
 import os
@@ -20,6 +22,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
 parser.add_argument('--dll', action='store_true')
+parser.add_argument('--lib', action='store_true')
 args = parser.parse_args()
 root = Path(tempfile.mkdtemp(prefix='nsc-t18-stl-', dir='A:/temp'))
 env = os.environ.copy()
@@ -141,13 +144,30 @@ for opt in range(4):
     run(f'O{opt}-control-link', ['lld-link.exe', '/nologo', '/subsystem:console', '/out:control.exe', 'control.obj',
                                  *[str(p) for p in CRT]], case)
     control = run(f'O{opt}-control-run', [str(case / 'control.exe')], case, expected=None).returncode
-    methods = ''.join(f'int Case{index}() {{ {ns} }}\n' for index, (_, ns, _) in enumerate(CASES))
-    ns_calls = ' + '.join(f'Case{index}() * {10 ** (index % 3)}' for index in range(len(CASES)))
-    (case / 'Main.ns').write_text(methods + 'int Main() { return ' + ns_calls + '; }\n', encoding='utf-8')
-    (case / 'App.nsproj').write_text(
-        '<Project><PropertyGroup><Name>T18Stl</Name></PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
-        '<CppLibraryReference Header="api.h" Language="C++" Standard="c++20">' + system + '</CppLibraryReference>'
-        '</ItemGroup></Project>', encoding='utf-8')
+    reference = '<CppLibraryReference Header="api.h" Language="C++" Standard="c++20">' + system + '</CppLibraryReference>'
+    if args.lib:
+        # NSMeta X4-06: the producer publishes each case as a generic template; the consumer has no header.
+        #     / El productor publica cada caso como plantilla generica; el consumidor no tiene el encabezado.
+        methods = ''.join(f'public static int Case{index}<T>(T unused) {{ {ns} }}\n'
+                          for index, (_, ns, _) in enumerate(CASES))
+        ns_calls = ' + '.join(f'Stl.P.Case{index}<int>(0) * {10 ** (index % 3)}' for index in range(len(CASES)))
+        (case / 'Lib.ns').write_text('namespace Stl { public static class P {\n' + methods + '} }\n', encoding='utf-8')
+        (case / 'Lib.nsproj').write_text(
+            '<Project><PropertyGroup><Name>T18StlLib</Name><OutputType>Library</OutputType></PropertyGroup>'
+            '<ItemGroup><Compile Include="Lib.ns" />' + reference + '</ItemGroup></Project>', encoding='utf-8')
+        run(f'O{opt}-nsc-lib', [args.nsc, '--emit-project-oop-lib', 'Lib.nsproj', '--cpp-clang-root=' + args.clang_root,
+                                '--no-artifact-cache', '-O' + str(opt), '-o', 'T18StlLib.lib'], case)
+        (case / 'Main.ns').write_text('int Main() { return ' + ns_calls + '; }\n', encoding='utf-8')
+        (case / 'App.nsproj').write_text(
+            '<Project><PropertyGroup><Name>T18Stl</Name></PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
+            '<LibraryReference Include="T18StlLib.lib" /></ItemGroup></Project>', encoding='utf-8')
+    else:
+        methods = ''.join(f'int Case{index}() {{ {ns} }}\n' for index, (_, ns, _) in enumerate(CASES))
+        ns_calls = ' + '.join(f'Case{index}() * {10 ** (index % 3)}' for index in range(len(CASES)))
+        (case / 'Main.ns').write_text(methods + 'int Main() { return ' + ns_calls + '; }\n', encoding='utf-8')
+        (case / 'App.nsproj').write_text(
+            '<Project><PropertyGroup><Name>T18Stl</Name></PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
+            + reference + '</ItemGroup></Project>', encoding='utf-8')
     run(f'O{opt}-nsc', [args.nsc, '--emit-project-oop-exe', 'App.nsproj', '--cpp-clang-root=' + args.clang_root,
                         '--no-artifact-cache', '-O' + str(opt), *crt, '-o', 'app.exe'], case)
     result = run(f'O{opt}-run', [str(case / 'app.exe')], case, expected=None).returncode
