@@ -736,9 +736,9 @@ positivo(Caso('x2-constructor-no-mapeable', HCB, SCB, **CRG),
 #     que devuelven un record C++ no trivial por valor, para un consumidor sin encabezado.
 PRE_RET_PUB = ('namespace SdkProbe { public lib.Obj Make(int k) { if (k < 0) return lib.make(-k); return lib.make(k); }\n'
                'public lib.Obj Twice(int k) { return Make(k * 2); } }\n')
-# dll: pending - the consumer's inline code names a C++ operator defined in the producer's C++ library, which it does
-#     not link. / dll: pendiente.
-positivo(Caso('x2-retorno-ns-publico', H, S, **CPP), BODY_RET, preludio=PRE_RET_PUB, modes=['lib'])
+# dll: the consumer generates only the member adapters its calls reach (it does not link the producer's C++ library).
+#     dll: el consumidor genera solo los adaptadores que alcanzan sus llamadas.
+positivo(Caso('x2-retorno-ns-publico', H, S, **CPP), BODY_RET, preludio=PRE_RET_PUB, modes=['lib', 'dll'])
 PRE_CR_PUB = 'namespace SdkProbe { public lib.Obj Make(int k) { return lib.make(k); } }\n'
-positivo(Caso('x2-constref-prvalue-publico', HF2, SF2, **CPP), BODY_CR, preludio=PRE_CR_PUB, modes=['lib'])
+positivo(Caso('x2-constref-prvalue-publico', HF2, SF2, **CPP), BODY_CR, preludio=PRE_CR_PUB, modes=['lib', 'dll'])
 fin()

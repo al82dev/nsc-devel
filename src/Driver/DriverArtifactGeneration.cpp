@@ -279,6 +279,11 @@ static bool appendCppInlineObjects(frontend::ProjectCompilation &compilation,
             pending.pop_back();
             if (node == nullptr) continue;
             if (!node->calleeName.empty()) called.insert(node->calleeName);
+            for (const auto* name : {&node->secondaryCalleeName, &node->allocatorDeallocateCalleeName,
+                                     &node->resultSuccessTestCalleeName, &node->resultSuccessExtractorCalleeName,
+                                     &node->resultErrorExtractorCalleeName, &node->resultErrorFactoryCalleeName,
+                                     &node->resultErrorConversionCalleeName})
+                if (!name->empty()) called.insert(*name);
             for (const auto& child : node->children) pending.push_back(child.get());
         }
     }
@@ -310,12 +315,25 @@ static bool appendCppInlineObjects(frontend::ProjectCompilation &compilation,
         debugInformation == llvm_backend::DebugInformationKind::Full ? interop::CppDebugInformation::Full :
         debugInformation == llvm_backend::DebugInformationKind::LineTablesOnly ? interop::CppDebugInformation::LineTables :
         interop::CppDebugInformation::None;
+    // EN: NSMeta X4-06. A precompiled project's source session (opened from its .nsmeta) generates only the member
+    //     adapters a call of the program reaches: a consumer of a precompiled DLL does not link the producer's C++
+    //     library, so an unused adapter that calls a non-inline C++ member would stay unresolved.
+    // ES: NSMeta X4-06. La sesion de fuente de un proyecto precompilado genera solo los adaptadores de miembro que
+    //     alcanza una llamada: un consumidor de una DLL precompilada no enlaza la biblioteca C++ del productor.
+    const auto sourceSessionSymbols = [&](const interop::CppProjectSessions& project) {
+        if (project.projectFile.extension() != ".nsmeta") return remaining;
+        std::vector<std::string> reached;
+        for (const auto& symbol : remaining)
+            if (!std::string_view(symbol).starts_with(interop::cppMemberThunkPrefix) || called.contains(symbol))
+                reached.push_back(symbol);
+        return reached;
+    };
     for (const auto& project : compilation.cppProjectSessions())
         for (const auto& session : project.sessions)
         {
             if (remaining.empty() || !session) break;
             std::vector<std::string> emitted;
-            auto ir = session->emitCppInlineIR(remaining, emitted, cppDebugInformation);
+            auto ir = session->emitCppInlineIR(sourceSessionSymbols(project), emitted, cppDebugInformation);
             if (!ir || emitted.empty()) continue;
             modules.push_back(std::move(*ir));
             const std::set<std::string> done(emitted.begin(), emitted.end());
@@ -331,7 +349,7 @@ static bool appendCppInlineObjects(frontend::ProjectCompilation &compilation,
             if (!session || std::none_of(remaining.begin(), remaining.end(), [](const std::string& symbol) {
                     return std::string_view(symbol).starts_with(interop::cppMemberThunkPrefix); })) break;
             std::vector<std::string> emitted;
-            auto irs = session->emitCppMemberThunkIR(remaining, emitted);
+            auto irs = session->emitCppMemberThunkIR(sourceSessionSymbols(project), emitted);
             for (auto& ir : irs) modules.push_back(std::move(ir));
             const std::set<std::string> done(emitted.begin(), emitted.end());
             std::erase_if(remaining, [&](const std::string& symbol) { return done.contains(symbol); });
