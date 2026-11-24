@@ -3827,6 +3827,23 @@ private:
         return {};
     }
 
+    // The builtin result of the only function of the unit declared `<builtin> name(`, or empty (none, several, or a
+    //     non-builtin result). / El resultado builtin de la unica funcion de la unidad declarada asi, o vacio.
+    std::string functionResult(std::string_view text) const
+    {
+        std::string found;
+        for (std::size_t at = 1; at + 1 < tokens_.size(); ++at)
+        {
+            if (tokens_[at].kind() != lexer::TokenKind::Identifier || tokens_[at].lexeme() != text ||
+                tokens_[at + 1].kind() != lexer::TokenKind::LeftParen) continue;
+            const std::string_view builtin = builtinOf(tokens_[at - 1].kind());
+            if (builtin.empty()) continue;
+            if (!found.empty() && found != builtin) return {};
+            found = std::string(builtin);
+        }
+        return found;
+    }
+
     // EN: The type of an arithmetic expression [begin, end) over literals and typed locals, by C++'s usual
     //     arithmetic conversions (a comparison or logical operator outside parentheses gives bool); empty when the
     //     expression has anything else (a call, a member, a string).
@@ -3864,8 +3881,27 @@ private:
             case lexer::TokenKind::KwTrue: case lexer::TokenKind::KwFalse: take("int"); break;
             case lexer::TokenKind::Identifier:
             {
-                if (at + 1 < end && (tokens_[at + 1].kind() == lexer::TokenKind::LeftParen ||
-                                     tokens_[at + 1].kind() == lexer::TokenKind::Dot)) return {};
+                // EN: STL. A call of a function of the unit declared with a builtin result (`int next()`) has that
+                //     type; its arguments are not inspected. A member or qualified name is not read here.
+                // ES: STL. La llamada a una funcion de la unidad declarada con resultado builtin tiene ese tipo; sus
+                //     argumentos no se inspeccionan. Un miembro o nombre calificado no se lee aqui.
+                if (at + 1 < end && tokens_[at + 1].kind() == lexer::TokenKind::LeftParen &&
+                    (at == 0 || tokens_[at - 1].kind() != lexer::TokenKind::Dot))
+                {
+                    const std::string type = functionResult(token.lexeme());
+                    if (type.empty()) return {};
+                    take(type);
+                    std::size_t close = at + 1;
+                    for (std::size_t nested = 0; close < end; ++close)
+                    {
+                        if (tokens_[close].kind() == lexer::TokenKind::LeftParen) ++nested;
+                        else if (tokens_[close].kind() == lexer::TokenKind::RightParen && --nested == 0) break;
+                    }
+                    if (close >= end) return {};
+                    at = close;
+                    break;
+                }
+                if (at + 1 < end && tokens_[at + 1].kind() == lexer::TokenKind::Dot) return {};
                 const std::string type = typedLocal(index, token.lexeme());
                 if (type.empty()) return {};
                 take(type);

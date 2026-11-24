@@ -214,4 +214,10 @@ positivo(Caso('x4-fabrica-expresiones', HMK, SMK, language='C++', standard='c++2
          'int k = 2; int j = 40; int r = 0; { var b = lib.make<lib.Box>(j - 8, (k + 1) * 3 + 1); r = b.v; } '
          'return r + lib.live();',
          modes=['directo', 'dll', 'lib'])
+# STL: a factory argument may call a function of the unit declared with a builtin result (`dos() + 30`): it is a
+#     prvalue of that type. (directo: the prelude function is the program's.) / Un argumento puede llamar a una
+#     funcion de la unidad con resultado builtin: es un prvalue de ese tipo.
+positivo(Caso('x4-fabrica-llamadas', HMK, SMK, language='C++', standard='c++20', extra_ref=' Exceptions="false"'),
+         'int k = 2; int r = 0; { var b = lib.make<lib.Box>(dos() + 30, k * 5); r = b.v; } return r + lib.live();',
+         preludio='int dos() { return 2; }\n', modes=['directo'])
 fin()
