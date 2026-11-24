@@ -1081,6 +1081,13 @@ CppSemanticFunctionResult projectFunction(
         symbol.name = std::string(method);
         symbol.isExtension = true;
     }
+    // X2: a member function template specialization is an extension method of its record. / Una especializacion
+    //     de plantilla de funcion miembro es un metodo de extension de su record.
+    if (function.cppMemberTemplate)
+    {
+        symbol.isExtension = true;
+        symbol.cppMemberTemplate = true;
+    }
     symbol.cppClangUsr = function.clangUsr;
     symbol.cppMacroWrapper = function.cMacroWrapper;
     symbol.declaredTypeKey = resultType->nativeSharpTypeKey;

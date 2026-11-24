@@ -1869,6 +1869,61 @@ void collectMemberOperators(const clang::DeclContext& context, clang::ASTContext
             std::none_of(operatorMethods.begin(), operatorMethods.end(), [](const clang::CXXMethodDecl* method) {
                 return method->getOverloadedOperator() == clang::OO_ExclaimEqual;
             });
+        // EN: X2. The instantiated specializations of the record's public instance member function templates
+        //     (`m.add(40)` deduced `add<int>`): free declarations taking the object first, called through the
+        //     member adapter, which NativeSharp imports as extension methods of the record.
+        // ES: X2. Las especializaciones instanciadas de las plantillas de funcion miembro de instancia publicas
+        //     del record: declaraciones libres que toman el objeto primero, llamadas por el adaptador de miembro.
+        for (const auto* member : record->decls())
+        {
+            const auto* memberTemplate = llvm::dyn_cast<clang::FunctionTemplateDecl>(member);
+            if (!memberTemplate || memberTemplate->getAccess() != clang::AS_public) continue;
+            for (const auto* specialization : memberTemplate->specializations())
+            {
+                const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(specialization);
+                if (!method || method->isStatic() || !method->isDefined() || method->isInvalidDecl() ||
+                    method->isConsteval() || llvm::isa<clang::CXXConstructorDecl>(method) ||
+                    llvm::isa<clang::CXXDestructorDecl>(method) ||
+                    method->isVariadic() || method->isOverloadedOperator() || llvm::isa<clang::CXXConversionDecl>(method) ||
+                    method->getRefQualifier() != clang::RQ_None || method->isVolatile() ||
+                    cppNonTrivialRecordValue(method->getReturnType())) continue;
+                const auto methodUsr = declarationUsr(method);
+                if (!methodUsr) continue;
+                clang::QualType self = astContext.getCanonicalTagType(record);
+                if (method->isConst()) self.addConst();
+                self = astContext.getLValueReferenceType(self);
+                std::vector<clang::QualType> parameterTypes{self};
+                for (const auto* parameter : method->parameters()) parameterTypes.push_back(parameter->getType());
+                const auto functionType = astContext.getFunctionType(
+                    method->getReturnType(), parameterTypes, clang::FunctionProtoType::ExtProtoInfo{});
+                CppFunctionDeclaration value;
+                value.clangUsr = *methodUsr + "#member-template";
+                value.name = method->getNameAsString();
+                value.qualifiedName = path->empty() ? value.name : *path + "::" + value.name;
+                value.canonicalFunctionType = functionType.getCanonicalType().getAsString();
+                value.callingConvention = "cdecl";
+                value.languageLinkage = CppLanguageLinkage::Cpp;
+                value.returnTypeSpelling = method->getReturnType().getAsString();
+                value.canonicalReturnTypeSpelling = method->getReturnType().getCanonicalType().getAsString();
+                value.returnType = describeType(method->getReturnType(), astContext);
+                value.hasPrototype = true;
+                value.externalLinkage = true;
+                value.parameters.push_back(CppFunctionParameter{"self", self.getAsString(),
+                    self.getCanonicalType().getAsString(), describeType(self, astContext), false});
+                for (const clang::ParmVarDecl* parameter : method->parameters())
+                    value.parameters.push_back(CppFunctionParameter{
+                        parameter->getNameAsString(), parameter->getType().getAsString(),
+                        parameter->getType().getCanonicalType().getAsString(),
+                        describeType(parameter->getType(), astContext), false});
+                value.externalSymbol = cppMemberOperatorSymbol(*recordUsr, *methodUsr);
+                value.cppMemberTemplate = true;
+                const auto location = astContext.getSourceManager().getPresumedLoc(method->getLocation());
+                if (location.isValid())
+                    value.location = CppSourcePoint{
+                        pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
+                result.push_back(std::move(value));
+            }
+        }
         for (const clang::CXXMethodDecl* method : operatorMethods)
         {
             const bool assignment = method == moveAssignment || method == copyAssignment;
@@ -3918,6 +3973,16 @@ public:
                                 if (const auto* baseRecord = base.getType()->getAsCXXRecordDecl();
                                     baseRecord && baseRecord->isCompleteDefinition()) pending.push_back(baseRecord);
                         }
+                        // X2: the member adapters of the record's member function template specializations. /
+                        //     Los adaptadores de miembro de sus especializaciones de plantillas de funcion miembro.
+                        for (const auto* member : record->decls())
+                            if (const auto* memberTemplate = llvm::dyn_cast<clang::FunctionTemplateDecl>(member))
+                                for (const auto* specialization : memberTemplate->specializations())
+                                    if (const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(specialization))
+                                        if (const auto methodUsr = declarationUsr(method))
+                                            if (auto symbol = cppMemberOperatorSymbol(*recordUsr, *methodUsr);
+                                                wanted.contains(symbol) && found.insert(symbol).second)
+                                                requests.push_back({std::move(symbol), record, method, true});
                     }
                     visit(*record);
                 }
@@ -4865,6 +4930,34 @@ public:
         auto& sema = ast_->getSema();
         std::vector<clang::FunctionTemplateDecl*> templates;
         std::set<const clang::Decl*> seenTemplates;
+        // EN: X2. `@member:<record USR>::<name>`: the member function templates of that record (and of its public
+        //     bases) named so, for `m.add(40)` or `M.twice(21)`.
+        // ES: X2. Las plantillas de funcion miembro de ese record (y de sus bases publicas) con ese nombre.
+        if (qualifiedName.starts_with("@member:"))
+        {
+            const auto separator = qualifiedName.rfind("::");
+            if (separator == std::string_view::npos || separator < 8) return std::nullopt;
+            const auto recordUsr = std::string(qualifiedName.substr(8, separator - 8));
+            const auto memberName = qualifiedName.substr(separator + 2);
+            const auto* tag = findTagByUsr(*context.getTranslationUnitDecl(), recordUsr);
+            const auto* record = tag ? llvm::dyn_cast<clang::CXXRecordDecl>(tag) : nullptr;
+            std::vector<const clang::CXXRecordDecl*> pending;
+            if (record && record->getDefinition()) pending.push_back(record->getDefinition());
+            for (std::size_t index = 0; index < pending.size(); ++index)
+            {
+                for (auto* member : pending[index]->decls())
+                    if (auto* memberTemplate = llvm::dyn_cast<clang::FunctionTemplateDecl>(member);
+                        memberTemplate && memberTemplate->getNameAsString() == memberName &&
+                        memberTemplate->getAccess() == clang::AS_public &&
+                        seenTemplates.insert(memberTemplate->getCanonicalDecl()).second)
+                        templates.push_back(memberTemplate);
+                for (const auto& base : pending[index]->bases())
+                    if (const auto* baseRecord = base.getType()->getAsCXXRecordDecl();
+                        baseRecord && baseRecord->getDefinition() && base.getAccessSpecifier() == clang::AS_public)
+                        pending.push_back(baseRecord->getDefinition());
+            }
+        }
+        else
         visitNamespaceTemplates([&](const clang::TemplateDecl& declaration, bool isFunction) {
             if (!isFunction) return;
             const auto names = allTemplateNames(declaration);
@@ -4875,6 +4968,16 @@ public:
         });
         if (templates.empty()) return std::nullopt;
         CppTemplateInstantiation result;
+        // X2: the namespaces of the record of a member function template. / Los namespaces de su record.
+        if (qualifiedName.starts_with("@member:"))
+        {
+            std::vector<std::string> namespaces;
+            for (const clang::DeclContext* parent = templates.front()->getDeclContext()->getEnclosingNamespaceContext();
+                 parent && !parent->isTranslationUnit(); parent = parent->getParent())
+                if (const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(parent))
+                    namespaces.insert(namespaces.begin(), ns->getNameAsString());
+            result.memberNamespace = std::move(namespaces);
+        }
         const auto& sources = context.getSourceManager();
         const auto location = sources.getLocForEndOfFile(sources.getMainFileID());
         std::vector<clang::Expr*> arguments;

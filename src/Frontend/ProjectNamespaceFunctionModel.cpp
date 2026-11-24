@@ -1549,6 +1549,11 @@ void ProjectNamespaceFunctionModel::bindExtensionReference(
             nameLookup, unit.projectOrdinal(), imported, node->text());
         candidates.insert(candidates.end(), importedCandidates.begin(), importedCandidates.end());
     }
+    // X2: a C++ member function template specialization is the member it is, from any namespace; the receiver
+    //     type still selects it. / Es el miembro que es, desde cualquier namespace; el tipo del receptor la elige.
+    for (std::size_t ordinal = 0; ordinal < functions_.size(); ++ordinal)
+        if (functions_[ordinal].cppMemberTemplate && functions_[ordinal].isExtension &&
+            functions_[ordinal].name == node->text()) candidates.push_back(ordinal);
     std::sort(candidates.begin(), candidates.end());
     candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
     if (candidates.empty()) return;

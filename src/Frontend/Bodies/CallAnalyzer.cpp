@@ -1285,7 +1285,11 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
     const bool implicitExtensionReceiverPass = hasForwardedReceiver && argumentOrdinal == 0;
     const bool boundLvalue = rvalueArgument && parameter.cppRvalueReference && conversion.exists() &&
         conversion.kind == ProjectConversionKind::Identity && arguments[argumentOrdinal].addressable;
-    if (!conversion.exists() || (!rvalueArgument && (discardsPointeeConst || violatesPointerContract)) ||
+    // X2: a receiver bound by reference converts to the referent; the pointer contract of the reference does not
+    //     apply to it. / Un receptor enlazado por referencia se convierte al referente; el contrato no aplica.
+    const bool referenceReceiver = implicitExtensionReceiverPass && parameter.passKind != ParameterPassKind::Value;
+    if (!conversion.exists() ||
+        (!rvalueArgument && !referenceReceiver && (discardsPointeeConst || violatesPointerContract)) ||
         boundLvalue || decayDropsQualifier ||
         (arguments[argumentOrdinal].pointerPointeeVolatile &&
          (packElement || !parameter.pointerPointeeVolatile)) ||
@@ -9006,6 +9010,34 @@ ProjectMethodBodyModel::prepareResolvedCallArguments(
     return resolvedArguments;
 }
 
+// EN: X2. `m.add(40)` or `M.twice(21)` where the C++ record declares no such method: as for a free function
+//     template (T13-005), the types of the arguments are recorded, Clang deduces and instantiates a member
+//     function template of that name, and the bodies are analyzed again with the specialization as a method.
+// ES: X2. Como para una plantilla de funcion libre (T13-005): se registran los tipos de los argumentos, Clang
+//     deduce e instancia una plantilla de funcion miembro con ese nombre y los cuerpos se analizan otra vez.
+void ProjectMethodBodyModel::recordCppMemberTemplateDeduction(
+    const ast::AstNode* expression, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal)
+{
+    if (namespaceFunctionModel_ == nullptr || !pendingCppMemberTemplate_) return;
+    CppTemplateDeductionRequest request;
+    request.syntax = expression;
+    request.projectOrdinal = pendingCppMemberTemplate_->projectOrdinal;
+    request.qualifiedNames = {pendingCppMemberTemplate_->qualifiedName};
+    request.range = expression->range();
+    diagnostics::DiagnosticEngine scratch;
+    for (const ast::AstNode* argument : expression->children())
+    {
+        const bool place = argument != nullptr && argument->first() != nullptr &&
+            argument->kind() == ast::AstNodeKind::UnaryExpression &&
+            std::string_view(argument->auxiliaryText()).starts_with("pass:");
+        const ExpressionResult value = analyzeExpression(
+            place ? argument->first() : argument, methodMemberOrdinal, scopeOrdinal, scratch);
+        if (!value.valid || value.typeKey.empty()) return;
+        request.argumentTypeKeys.push_back((place ? "lvalue:" : "") + value.typeKey);
+    }
+    namespaceFunctionModel_->recordCppTemplateDeduction(std::move(request));
+}
+
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     const ast::AstNode* expression,
     std::size_t methodMemberOrdinal,
@@ -9019,9 +9051,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     MethodCallBinding call;
     ExpressionResult callee;
     bool nullConditionalCall = false;
-    if (const auto handled = prepareCallCallee(
-            expression, call, callee, nullConditionalCall,
-            methodMemberOrdinal, scopeOrdinal, diagnostics); handled.has_value()) return *handled;
+    pendingCppMemberTemplate_.reset();
+    const auto preparedCallee = prepareCallCallee(
+        expression, call, callee, nullConditionalCall, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    // X2: a member function template of a C++ record. / Una plantilla de funcion miembro de un record C++.
+    if (pendingCppMemberTemplate_ && pendingCppMemberTemplate_->member == expression->first())
+        recordCppMemberTemplateDeduction(expression, methodMemberOrdinal, scopeOrdinal);
+    pendingCppMemberTemplate_.reset();
+    if (preparedCallee.has_value()) return *preparedCallee;
     bool coreStringForwarding = false;
     std::vector<std::string> lambdaTargetTypes;
     configureCallLambdaTargets(

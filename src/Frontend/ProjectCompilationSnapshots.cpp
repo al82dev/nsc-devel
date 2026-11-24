@@ -346,6 +346,9 @@ bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
         }
         const auto observedDemands = observer.cppFunctionDemands();
         std::vector<CppFunctionDemand> effectiveDemands(observedDemands.begin(), observedDemands.end());
+        // X2: the deduced member function template specializations. / Las especializaciones deducidas.
+        effectiveDemands.insert(effectiveDemands.end(), cppMemberTemplateDemands_.begin(),
+                                cppMemberTemplateDemands_.end());
         if (!cppProjectSessions_.empty() && genericModel_)
         {
             std::unordered_multimap<const ast::AstNode*, const GenericTemplateRecord*> owners;

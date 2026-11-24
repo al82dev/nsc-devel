@@ -1821,6 +1821,11 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
             arguments.push_back(std::move(argument));
         }
         bool deduced = false;
+        // X2: a member call that names no member function template keeps its member diagnostic. / Una llamada a
+        //     miembro que no nombra una plantilla de funcion miembro conserva su diagnostico de miembro.
+        const bool memberTemplate = !request.qualifiedNames.empty() &&
+            request.qualifiedNames.front().starts_with("@member:");
+        bool answered = false;
         std::vector<std::string> notes;
         // C2-06: the NativeSharp site of a macro call, for __FILE__ and __LINE__. / El sitio NativeSharp de una
         //     llamada a macro, para __FILE__ y __LINE__.
@@ -1843,7 +1848,24 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
                                 : request.functionMacro ? session->deduceFunctionMacroCall(name, arguments, site)
                                 : session->deduceFunctionTemplateCall(name, arguments))
                         {
+                            answered = true;
                             if (result->instantiated) deduced = true;
+                            // X2: the specialization is imported by name, from its record's namespace. / La
+                            //     especializacion se importa por nombre, desde el namespace de su record.
+                            if (result->instantiated && memberTemplate && result->memberNamespace && request.syntax)
+                            {
+                                CppFunctionDemand demand;
+                                demand.projectOrdinal = request.projectOrdinal;
+                                demand.syntax = request.syntax->first();
+                                demand.writtenName = result->name;
+                                demand.lookupName = result->name;
+                                std::string dotted;
+                                for (const auto& segment : *result->memberNamespace)
+                                    dotted += (dotted.empty() ? "" : ".") + segment;
+                                demand.lookupNamespaces = {dotted};
+                                demand.visibleProjects = {request.projectOrdinal};
+                                cppMemberTemplateDemands_.push_back(std::move(demand));
+                            }
                             // T19-040: this call calls its own wrapper. / Esta llamada llama a su propio envoltorio.
                             if (result->instantiated && !result->cMacroWrapper.empty())
                             {
@@ -1855,7 +1877,8 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
                             else notes.insert(notes.end(), result->diagnostics.begin(), result->diagnostics.end());
                         }
             }
-        if (deduced || (namespaceFunctionModel_ && namespaceFunctionModel_->referenceBinding(request.syntax)))
+        if (deduced || (memberTemplate && !answered) ||
+            (namespaceFunctionModel_ && namespaceFunctionModel_->referenceBinding(request.syntax)))
         {
             // T19-003: not deduced again in a later round. / No se deduce otra vez en otra ronda.
             cppDeducedTemplateCalls_.insert(request.syntax);

@@ -244,6 +244,9 @@ struct CppTemplateInstantiation
     // ES: T19-040. El envoltorio C de una llamada a macro cuya expansion depende del texto de la llamada (`#` o
     //     `##`): esa llamada, y ninguna otra, lo llama. Vacio si el envoltorio depende solo de los tipos.
     std::string cMacroWrapper;
+    // X2: for a member function template, the C++ namespaces of its record. / Para una plantilla de funcion
+    //     miembro, los namespaces C++ de su record.
+    std::optional<std::vector<std::string>> memberNamespace{};
 };
 
 // EN: T14-001. A macro the header defines, as NativeSharp can use it: an object-like macro that expands to a

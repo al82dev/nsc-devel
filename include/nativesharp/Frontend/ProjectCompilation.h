@@ -392,6 +392,9 @@ private:
     static constexpr std::size_t kCppTemplateDeductionRounds = 8;
     std::size_t cppTemplateDeductionRound_ = 0;
     std::set<const ast::AstNode*> cppDeducedTemplateCalls_;
+    // X2: the demands of the member function template specializations deduced so far. / Las demandas de las
+    //     especializaciones de plantillas de funcion miembro deducidas hasta ahora.
+    std::vector<CppFunctionDemand> cppMemberTemplateDemands_;
     // T19-040. / T19-040.
     std::string argumentSpelling(const ast::AstNode* argument) const;
     // C2-05: whether a macro argument has no side effects (see CppTemplateArgument::sideEffectFree). / Si un

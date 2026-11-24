@@ -1394,6 +1394,19 @@ void ProjectMethodBodyModel::finishMemberLookup(
             return;
         }
     }
+    // X2: the call may name a member function template of a C++ record. / La llamada puede nombrar una plantilla
+    //     de funcion miembro de un record C++.
+    if (!inaccessibleFound && nameLookup_ != nullptr && receiver.typeKey.starts_with("type:"))
+    {
+        std::string_view identity = std::string_view(receiver.typeKey).substr(5);
+        while (identity.ends_with('*')) identity.remove_suffix(1);
+        const auto ordinal = nameLookup_->typeOrdinalForIdentity(identity);
+        const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+        if (imported != nullptr && imported->origin == CppImportedTypeOrigin::CppRecord && imported->clangUsr)
+            pendingCppMemberTemplate_ = PendingCppMemberTemplate{expression,
+                nameLookup_->namedTypes()[*ordinal].projectOrdinal,
+                "@member:" + *imported->clangUsr + "::" + expression->text()};
+    }
     diagnostics.report(
         inaccessibleFound ? diagnostics::DiagnosticId::InaccessibleMember
                           : diagnostics::DiagnosticId::UnknownMember,

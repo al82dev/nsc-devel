@@ -94,6 +94,10 @@ struct NamespaceFunctionSymbol final
     // from `isExtension` so NSMETA can publish the "static" marker and the consumer rebuilds it
     // without discarding the first parameter as a receiver.
     bool isStaticExtension = false;
+    // X2: a C++ member function template specialization, an extension of its record visible from any namespace
+    //     (as the member it is). / Una especializacion de plantilla miembro C++, extension visible desde cualquier
+    //     namespace.
+    bool cppMemberTemplate = false;
     // NS304-T08-F04: for an extension operator, the operation token (Plus/Minus/...). Invalid for
     // non-operator extension functions.
     lexer::TokenKind operatorToken = lexer::TokenKind::Invalid;

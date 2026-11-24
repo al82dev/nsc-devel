@@ -100,6 +100,10 @@ struct CppFunctionDeclaration
     // ES: X2-05. Una funcion C++ que devuelve un record no trivial por valor, publicada como su adaptador en sitio:
     //     el resultado se construye en el destino, como lo haria un constructor.
     bool cppFactoryResult = false;
+    // X2: a specialization of a member function template, published as an extension method (self first) called
+    //     through its member adapter. / Una especializacion de plantilla de funcion miembro, publicada como metodo
+    //     de extension.
+    bool cppMemberTemplate = false;
     // EN: X2-05. For a function published as its by-value adapter: the original symbol, called directly with the
     //     address of a prvalue argument constructed in the caller's temporary (Microsoft x64: the callee destroys it).
     // ES: X2-05. Para una funcion publicada como su adaptador por valor: el simbolo original, llamado directamente con

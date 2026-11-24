@@ -3612,6 +3612,18 @@ private:
         std::span<const std::size_t> viableEvaluationOrdinals,
         MethodCallBinding& call,
         diagnostics::DiagnosticEngine& diagnostics);
+    // X2: a member of a C++ record that a call names and the record does not declare: it may be a member function
+    //     template, deduced by Clang from the call. / Un miembro de un record C++ que nombra una llamada y el record
+    //     no declara: puede ser una plantilla de funcion miembro.
+    struct PendingCppMemberTemplate
+    {
+        const ast::AstNode* member = nullptr;
+        std::size_t projectOrdinal = 0;
+        std::string qualifiedName;
+    };
+    mutable std::optional<PendingCppMemberTemplate> pendingCppMemberTemplate_;
+    void recordCppMemberTemplateDeduction(
+        const ast::AstNode* expression, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal);
     std::optional<ExpressionResult> prepareCallCallee(
         const ast::AstNode* expression,
         MethodCallBinding& call,

@@ -526,4 +526,18 @@ positivo(Caso('x2-operador-heredado', HIH, SIH, **CRG),
 # (or failed internally). It is rejected. / C++ no define igualdad implicita para una clase: se rechaza.
 rechazo(Caso('x2-igualdad-implicita', 'namespace lib { struct P { int x; int y; }; }'+chr(10), '', **CRG),
         'lib.P a; a.x = 1; a.y = 2; lib.P b; b.x = 1; b.y = 2; return a == b ? 1 : 0;', "C++ type 'lib.P' has no operator==")
+# X2: a member function template of a C++ record called with deduced arguments (`m.add(40)`) had no member; as for a
+# free function template (T13-005) Clang deduces and instantiates it, and the specialization is called as an
+# extension method of the record through its member adapter. A member the record lacks keeps its diagnostic.
+# X2: una plantilla de funcion miembro con argumentos deducidos se instancia en Clang y se llama como extension.
+HMT = r'''
+namespace lib {
+struct M { int base; template <typename T> T add(T v) const { return (T)base + v; } template <typename T> T put(T v) { base = (int)v; return v; } };
+}
+'''
+positivo(Caso('x2-plantilla-miembro', HMT, '', **CRG),
+         'lib.M m; m.base = 2; m.put(30); double d = m.add(1.5); int i = m.add(10); return i + (int)(d * 2.0) - 61;',
+         modes=['directo', 'dll'])
+rechazo(Caso('x2-plantilla-miembro-ausente', HMT, '', **CRG), 'lib.M m; return m.nada(1);',
+        "has no compatible member named 'nada'")
 fin()
