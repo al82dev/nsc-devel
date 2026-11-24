@@ -149,4 +149,15 @@ BODY2 = r'''
 c2 = Caso('x1-cpp-catalogo', H2, S2, **CPP)
 positivo(c2, BODY2)
 rechazo(c2, 'return lib.h(4);', "call to deleted C++ function 'h(builtin:int)'")
+# EN: X1-04/STL. A value (a literal or an unqualified local) for a C++ constructor's `const T&` whose T is not a C++
+#     record is materialized for the construction, as for a call (`std::pair<int, int>(40, 2)`); it was "no viable
+#     constructor accepts the argument types". / Un valor para el `const T&` de un constructor C++ se materializa.
+HCR = r'''
+namespace lib {
+struct Pr { int a; double b; Pr(const int& x, const double& y) : a(x), b(y) {} int sum() const { return a + (int)b; } };
+}
+'''
+positivo(Caso('x1-constructor-constref', HCR, None, language='C++', standard='c++20'),
+         'int k = 40; var p = new lib.Pr(k, 2.5); var q = new lib.Pr(40, 2.0); return p.sum() == 42 && q.sum() == 42 ? 42 : 1;',
+         modes=['directo', 'dll'])
 fin()

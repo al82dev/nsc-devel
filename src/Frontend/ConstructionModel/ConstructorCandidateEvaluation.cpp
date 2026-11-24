@@ -151,7 +151,15 @@ void ProjectConstructionModel::evaluateConstructorArgument(
     //     it converts to the referent type and is materialized; an lvalue of that very type is rejected, as in C++.
     // ES: T19-007. Para un parametro C++ `T&&`, un argumento que no es la direccion del referente (`ref x`) es un
     //     valor: se convierte al tipo del referente y se materializa; un lvalue de ese mismo tipo se rechaza.
-    const bool rvalueArgument = !packElement && parameter.cppRvalueReference &&
+    // EN: X1-04/STL. As for a call, a value for a C++ `const T&` whose T is not a C++ record (`pair(const int&,
+    //     const int&)` with `40`) converts to T and is materialized for the construction.
+    // ES: X1-04/STL. Como en una llamada, un valor para un `const T&` C++ cuyo T no es un record C++ se convierte a T y
+    //     se materializa para la construccion.
+    const bool constReferenceValue = !packElement && parameter.cppConstReference &&
+        argumentTypes[argumentOrdinal].argumentPassKind == ParameterPassKind::Value &&
+        argumentTypes[argumentOrdinal].typeKey != parameter.typeKey &&
+        !parameter.pointeeTypeKey.empty() && !parameter.pointeeTypeKey.starts_with("type:");
+    const bool rvalueArgument = !packElement && (parameter.cppRvalueReference || constReferenceValue) &&
         argumentTypes[argumentOrdinal].typeKey != parameter.typeKey;
     std::string conversionTarget = rvalueArgument ? parameter.pointeeTypeKey : parameter.typeKey;
     if (packElement)
@@ -175,7 +183,8 @@ void ProjectConstructionModel::evaluateConstructorArgument(
         conversion = {ProjectConversionKind::StringLiteralToCharPointer, 4, argumentTypes[argumentOrdinal].typeKey,
                       conversionTarget, std::nullopt};
     if (!conversion.exists()) candidate.viable = false;
-    if (rvalueArgument && conversion.exists() && conversion.kind == ProjectConversionKind::Identity &&
+    if (rvalueArgument && parameter.cppRvalueReference && conversion.exists() &&
+        conversion.kind == ProjectConversionKind::Identity &&
         sema::isPlaceCategory(argumentTypes[argumentOrdinal].valueCategory))
         candidate.viable = false;
     if (argumentTypes[argumentOrdinal].pointerPointeeVolatile &&

@@ -336,7 +336,12 @@ bool ProjectOopHirModel::acceptOrdinaryConstructionArgument(
         {
             const MethodParameterSymbol& parameter =
                 memberModel_->members()[*constructorOrdinal].parameters[parameterIndex];
-            if (parameter.cppRvalueReference && !argumentSyntax->auxiliaryText().starts_with("pass:"))
+            // X1-04/STL: also a value for a `const T&` whose T is not a C++ record. / Tambien un valor para un
+            //     `const T&` cuyo T no es un record C++.
+            const bool constReferenceValue = parameter.cppConstReference && !parameter.pointeeTypeKey.empty() &&
+                !parameter.pointeeTypeKey.starts_with("type:");
+            if ((parameter.cppRvalueReference || constReferenceValue) &&
+                !argumentSyntax->auxiliaryText().starts_with("pass:"))
             {
                 auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress, argumentSyntax,
                                           std::string(parameter.pointeeTypeKey));
