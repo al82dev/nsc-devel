@@ -5,6 +5,8 @@ principal y un hilo que la biblioteca crea con `std::thread` llaman a un callbac
 cada hilo construye la suya. En estatica el ejecutable arranca por el runtime de C (`--crt-startup`), que
 inicializa el TLS dinamico del ejecutable; con --dll la biblioteca es una DLL con su propio runtime y el
 ejecutable usa la entrada de NativeSharp. Compara con un control C++ de Clang 23.1.0, O0-O3.
+Con --lib (NSMeta X4-06) el cuerpo es una plantilla generica publicada por una biblioteca NativeSharp
+precompilada y el consumidor, sin el encabezado, la instancia.
 """
 import argparse
 import os
@@ -17,6 +19,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
 parser.add_argument('--dll', action='store_true')
+parser.add_argument('--lib', action='store_true')
 args = parser.parse_args()
 root = Path(tempfile.mkdtemp(prefix='nsc-t16-tls-', dir='A:/temp'))
 env = os.environ.copy()
@@ -77,13 +80,27 @@ def run(label, command, cwd, expected=0, extra_env=None):
     return result
 
 
-def project(folder):
+def project(folder, opt=0):
     runtime = ' Runtime="api.dll"' if args.dll else ''
-    (folder / 'Main.ns').write_text('int Main() { ' + NS_BODY + ' }\n', encoding='utf-8')
+    reference = ('<CppLibraryReference Header="api.h" Language="C++" Standard="c++20" Library="api.lib"' +
+                 runtime + '>' + INCLUDES + '</CppLibraryReference>')
+    if args.lib:
+        # NSMeta X4-06: the body is the producer's published generic. / El cuerpo es la plantilla publicada.
+        (folder / 'Lib.ns').write_text('namespace T16Lib { public static class P {\n'
+                                       'public static int Run<T>(T unused) { ' + NS_BODY + ' } } }\n', encoding='utf-8')
+        (folder / 'Lib.nsproj').write_text(
+            '<Project><PropertyGroup><Name>T16Lib</Name><OutputType>Library</OutputType></PropertyGroup>'
+            '<ItemGroup><Compile Include="Lib.ns" />' + reference + '</ItemGroup></Project>', encoding='utf-8')
+        run(f'O{opt}-nsc-lib', [args.nsc, '--emit-project-oop-lib', 'Lib.nsproj', '--cpp-clang-root=' + args.clang_root,
+                                '--no-artifact-cache', '-O' + str(opt), '-o', 'T16Lib.lib'], folder,
+            extra_env={'NSC_LINKER': 'nslink.exe'})
+        (folder / 'Main.ns').write_text('int Main() { return T16Lib.P.Run<int>(0); }\n', encoding='utf-8')
+        reference = '<LibraryReference Include="T16Lib.lib" />'
+    else:
+        (folder / 'Main.ns').write_text('int Main() { ' + NS_BODY + ' }\n', encoding='utf-8')
     (folder / 'App.nsproj').write_text(
         '<Project><PropertyGroup><Name>T16App</Name></PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
-        '<CppLibraryReference Header="api.h" Language="C++" Standard="c++20" Library="api.lib"' + runtime + '>' + INCLUDES + '</CppLibraryReference>'
-        '</ItemGroup></Project>', encoding='utf-8')
+        + reference + '</ItemGroup></Project>', encoding='utf-8')
 
 
 if 'clang version 23.1.0' not in run('clang-version', ['clang.exe', '--version'], root).stdout:
@@ -107,7 +124,7 @@ for opt in range(4):
     control = run(f'O{opt}-control-run', [str(case / 'control.exe')], case, expected=None).returncode
     if control != EXPECTED:
         raise SystemExit(f'O{opt}: el control C++ devolvio {control}, se esperaba {EXPECTED}; evidencia: {root}')
-    project(case)
+    project(case, opt)
     command = [args.nsc, '--emit-project-oop-exe', 'App.nsproj', '--cpp-clang-root=' + args.clang_root,
                '--no-artifact-cache', '-O' + str(opt)]
     extra = {}
