@@ -3114,8 +3114,10 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     //     typedef de ese puntero de la referencia, tambien si la plantilla publicada no nombra el typedef.
     {
         const auto sysvPointer = [](const CppType& type) {
+            // A variadic sysv_abi pointer keeps the catalogue: its plans are verified per shape (V-05, T09).
+            //     Un puntero sysv_abi variadico conserva el catalogo: sus planes se verifican por forma.
             return type.kind == CppTypeKind::Pointer && type.element && type.element->function &&
-                type.element->function->callingConvention == "sysv_abi";
+                type.element->function->callingConvention == "sysv_abi" && !type.element->function->variadic;
         };
         std::vector<std::pair<std::size_t, std::size_t>> sysvReferences;
         for (const auto& function : dependencies.functions)
@@ -3392,6 +3394,36 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
             const auto end = reference.find('#');
             return sourceReferences.contains({module, reference.substr(0, end)});
         };
+        // The enums a source session declares leave the catalogue too, named in its entry (V-05, T09 sysv enums).
+        // Los enums que declara una sesion de fuente tambien salen del catalogo, nombrados en su entrada.
+        for (auto& source : dependencies.macroSources)
+        {
+            if (std::find(source.macros.begin(), source.macros.end(), metadata_detail::cppSourceSessionMarker) ==
+                source.macros.end() || !source.referenceIdentity.starts_with("cpp-reference:")) continue;
+            const auto reference = static_cast<std::size_t>(std::stoull(source.referenceIdentity.substr(14)));
+            std::set<std::string> usrs;
+            for (std::size_t project = 0; project < graph->projects().size(); ++project)
+            {
+                if (graph->projects()[project].moduleName() != source.moduleName) continue;
+                for (const auto& group : compilation.cppProjectSessions())
+                {
+                    std::error_code ec;
+                    if (!std::filesystem::equivalent(group.projectFile, graph->projects()[project].projectFile(), ec) ||
+                        ec || reference >= group.sessions.size() || !group.sessions[reference]) continue;
+                    if (const auto declared = group.sessions[reference]->enumsSnapshot())
+                        for (const auto& value : *declared)
+                            if (value.clangUsr) usrs.insert(*value.clangUsr);
+                }
+            }
+            for (const auto& value : enums)
+                if (value.declaration.clangUsr && usrs.contains(*value.declaration.clangUsr))
+                    source.macros.push_back("type:" + value.identityKey);
+            std::sort(source.macros.begin(), source.macros.end());
+            source.macros.erase(std::unique(source.macros.begin(), source.macros.end()), source.macros.end());
+            std::erase_if(enums, [&](const auto& value) {
+                return value.declaration.clangUsr && usrs.contains(*value.declaration.clangUsr);
+            });
+        }
         std::erase_if(dependencies.functions,
             [&](const auto& item) { return fromSource(item.moduleName, item.referenceIdentity); });
         std::erase_if(dependencies.globals,
