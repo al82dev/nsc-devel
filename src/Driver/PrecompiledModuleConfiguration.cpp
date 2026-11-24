@@ -770,8 +770,8 @@ bool configurePrecompiledModules(
                 options.driverReferencePath = environment.driverReferencePath;
                 options.resourceDirectory = environment.resourceDirectory;
                 options.workingDirectory = environment.workingDirectory;
-                // EN: NSMeta R1-05. A marked source is a full source session (non-value C++ records).
-                // ES: NSMeta R1-05. Una fuente marcada es una sesion de fuente completa (records C++ no valor).
+                // EN: NSMeta X4-06. A marked source is a full source session (non-value C++ records).
+                // ES: NSMeta X4-06. Una fuente marcada es una sesion de fuente completa (records C++ no valor).
                 options.macroExpansionOnly = std::find(macroSource.macros.begin(), macroSource.macros.end(),
                     interop::metadata_detail::cppSourceSessionMarker) == macroSource.macros.end();
                 for (const auto& name : macroSource.macros)
@@ -801,9 +801,9 @@ bool configurePrecompiledModules(
             added.push_back(std::move(group));
             if (!compilation.appendCppProjectSessions(std::move(added), error)) return false;
         }
-        // EN: NSMeta R1-05. A source session imports non-value C++ records as a consumer with the header does: their
+        // EN: NSMeta X4-06. A source session imports non-value C++ records as a consumer with the header does: their
         //     lifetime members, methods and fields come from that session (the catalogue providers include it).
-        // ES: NSMeta R1-05. Una sesion de fuente importa records C++ no valor como lo hace un consumidor con
+        // ES: NSMeta X4-06. Una sesion de fuente importa records C++ no valor como lo hace un consumidor con
         //     encabezado: sus miembros de vida, metodos y campos vienen de esa sesion (los proveedores con catalogo la
         //     incluyen).
         if (hasPrecompiledSourceSessions && !compilation.hasExperimentalCppLifetimeMethodProvider())

@@ -85,7 +85,7 @@ BODY = r'''
     return x + y + need_ptr(&y) - 2;
 '''
 c = CasoContratos('r1-contratos', H, S, CONTRACTS)
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(c, BODY, preludio=PRE, modes=['directo', 'lib'])

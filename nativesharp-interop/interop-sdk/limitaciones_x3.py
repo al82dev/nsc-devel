@@ -54,7 +54,7 @@ Shape* make_sq(int s) { static Sq q(0); q.s = s; return &q; }
 Shape* make_multi(int s) { static Multi m(0); m.s = s; return &m; }
 }
 '''
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x3-virtual', H2, S2, **CPP),
@@ -91,7 +91,7 @@ extern "C" ULONG LiveRefs() { return calc.refs; }
 int Pt_x(int Pt::* m, Pt* p) { return p->*m; }
 '''
 c3 = Caso('x3-com', H3, S3, **CPP)
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(c3, 'ICalc* c = null; if (CreateCalc(&c) != 0) return 1; c->AddRef(); int r = 0;\n'
@@ -148,7 +148,7 @@ H4 = 'namespace lib { struct VB { int v = 40; }; struct M1 : virtual VB { int m1
 # lifetime member'); a record with virtual bases now constructs and destroys through adapters Clang compiles
 # (`new (self) T(...)` passes the Microsoft most-derived flag, `self->~T()` runs the vbase destructor), explicit or
 # implicit. / Este record con bases virtuales era un rechazo; ahora su vida pasa por adaptadores que compila Clang.
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x3-base-virtual', H4, 'namespace lib { int vb_value(DD* p) { return p->v + p->m1 + p->m2; } }\n', **CPP),
@@ -175,7 +175,7 @@ int vb_value(DD* p) { return p->v + p->m1 + p->m2; }
 int dtors() { return d; }
 }
 '''
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x3-base-virtual-explicita', H4b, S4b, **CPP),

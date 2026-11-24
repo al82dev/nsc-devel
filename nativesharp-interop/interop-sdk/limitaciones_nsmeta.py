@@ -1,4 +1,4 @@
-"""Limitaciones NSMeta: consumidores precompilados sin encabezado (R1-05, columna L de X2/X3/X4, C5-07).
+"""Limitaciones NSMeta: consumidores precompilados sin encabezado (X4-06/R2, columna L de X2/X3/X4, C5-07).
 
 Una plantilla publicada en una biblioteca NativeSharp (modo lib) se instancia en un consumidor que no tiene el
 encabezado C/C++; en modo dll la biblioteca se consume por su biblioteca de importacion. Antes, el productor rechazaba

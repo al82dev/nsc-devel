@@ -4192,7 +4192,7 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
     for (std::size_t ordinal = 0; ordinal < projectGraph_->projects().size(); ++ordinal)
     {
         const auto& project = projectGraph_->projects()[ordinal];
-        // NSMeta R1-05: a precompiled project's source session has no declared reference. / La sesion de fuente de
+        // NSMeta X4-06: a precompiled project's source session has no declared reference. / La sesion de fuente de
         //     un proyecto precompilado no tiene referencia declarada.
         for (const auto& group : cppProjectSessions_)
         {
@@ -4330,7 +4330,7 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
                 }
                 if (name && name->name != result->name) rejected = true;
                 name = Specialization{result->name, result->clangUsr, result->aliasTarget};
-                // NSMeta R1-05: the session of a class template a source uses. / La sesion de una plantilla usada.
+                // NSMeta X4-06: the session of a class template a source uses. / La sesion de una plantilla usada.
                 if (!function) cppClassTemplateSessions_.emplace(projectOrdinal, session);
                 for (const auto& layout : result->nativeLayouts)
                     cppNativeMirrorLayouts_.emplace(compilation::TypeIdentity(layout.moduleName, layout.namespaceSegments,

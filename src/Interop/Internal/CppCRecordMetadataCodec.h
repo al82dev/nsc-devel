@@ -134,9 +134,9 @@ struct CDependencyCatalog
     // ES: T19-003. La fuente C/C++ de una referencia del productor preprocesada por Clang con sus definiciones de
     //     macros (`-E -dD`), para las macros de funcion que llaman sus plantillas publicadas: el consumidor expande
     //     cada llamada con los tipos de los argumentos de la instanciacion, con o sin el encabezado.
-    // EN: NSMeta R1-05. In `MacroSource::macros`, this name marks the source as a full source session: the consumer
+    // EN: NSMeta X4-06. In `MacroSource::macros`, this name marks the source as a full source session: the consumer
     //     imports the reference's declarations from it, not only its macros. Older readers see one more macro name.
-    // ES: NSMeta R1-05. En `MacroSource::macros`, este nombre marca la fuente como sesion de fuente completa: el
+    // ES: NSMeta X4-06. En `MacroSource::macros`, este nombre marca la fuente como sesion de fuente completa: el
     //     consumidor importa de ella las declaraciones de la referencia, no solo sus macros.
     struct MacroSource
     {

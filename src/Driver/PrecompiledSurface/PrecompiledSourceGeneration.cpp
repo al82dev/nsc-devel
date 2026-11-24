@@ -290,7 +290,7 @@ bool verifyPrecompiledGenericTemplateSourceText(
         }
         for (const interop::CppCRecordSnapshot &record : records)
             appendKnownType("type:" + record.identityKey);
-        // NSMeta R1-05: the records of a source session are named by its entry. / Los records de una sesion de
+        // NSMeta X4-06: the records of a source session are named by its entry. / Los records de una sesion de
         //     fuente los nombra su entrada.
         for (const auto &source : dependencies.macroSources)
             if (std::find(source.macros.begin(), source.macros.end(),

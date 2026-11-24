@@ -19,7 +19,7 @@ Esta es la dirección del producto, no una certificación de que todos los
 artefactos anteriores se hayan probado. La compatibilidad concreta se verifica
 con sus productores, consumidores y contenido reales.
 
-## Sesión de fuente (ampliación R1-05, 24 de noviembre de 2026)
+## Sesión de fuente (ampliación X4-06, 24 de noviembre de 2026)
 
 Un consumidor precompilado sin el encabezado C/C++ recibe del productor lo que un
 catálogo de valores no puede describir: records C++ no triviales o polimórficos

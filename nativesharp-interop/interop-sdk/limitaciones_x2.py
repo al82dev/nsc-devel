@@ -102,7 +102,7 @@ BODY = r'''
 '''
 c = Caso('x2-vida-operadores', H, S, **CPP)
 # A precompiled template cannot yet carry a non-trivial C++ record (catalog, R2): direct and DLL modes.
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(c, BODY, modes=['directo', 'dll', 'lib'])
@@ -131,7 +131,7 @@ BODY_PRVALUE = r'''
     if (lib.take_mo(new lib.MoveOnly(42)) != 42 || k.ctor != 1 || k.move != 0 || k.dtor != 1) return 7;
     return 42;
 '''
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x2-prvalue-por-valor', H, S, **CPP), BODY_PRVALUE, modes=['directo', 'dll', 'lib'])
@@ -155,7 +155,7 @@ BODY_LENT = r'''
       if (k.ctor != 1 || k.move != 1 || k.dtor != 1) return 7; }
     return k.dtor == 2 ? 42 : 8;
 '''
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x2-prestado-por-valor', H, S, **CPP), BODY_LENT, modes=['directo', 'dll', 'lib'])
@@ -216,7 +216,7 @@ BODY_TEMP = r'''
     if (d != 2 || k.ctor != 5 || k.copy + k.move != 0 || k.dtor != 5) return 3;
     return a + b;
 '''
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x2-temporal-receptor', H, S, **CPP), BODY_TEMP, modes=['directo', 'dll', 'lib'])
@@ -266,7 +266,7 @@ BODY_ASSIGN = r'''
     if (lib.counters2().copy + lib.counters2().move != 0 || lib.counters2().dtor != 3) return 3;
     return 42;
 '''
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x2-asignacion', HA, SA, **CPP), BODY_ASSIGN, modes=['directo', 'dll', 'lib'])
@@ -395,7 +395,7 @@ BODY_CR = r'''
     return lib.c().ctor == 4 && lib.c().dtor == 4 && lib.c().assign == 0 ? 42 : 6;
 '''
 positivo(Caso('x2-constref-prvalue', HF2, SF2, **CPP), BODY_CR, preludio=PRE_CR, modes=['directo'])
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x2-constref-miembro', HF2, SF2, **CPP),
@@ -422,7 +422,7 @@ BODY_MR = r'''
     }
     return lib.c().ctor == 4 && lib.c().dtor == 4 ? 42 : 4;
 '''
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x2-metodo-resultado', HMR, SMR, extra_ref=' Rtti="false"', **CPP), BODY_MR, modes=['directo', 'dll', 'lib'])
@@ -431,7 +431,7 @@ positivo(Caso('x2-metodo-resultado', HMR, SMR, extra_ref=' Rtti="false"', **CPP)
 # record no trivial por valor lo construye en el destino del llamador.
 HSM = HF.replace('Obj make(int v);', 'Obj make(int v);'+chr(10)+'struct Maker2 { static Obj build(int v); };')
 SSM = SF.replace('Obj make(int v) { return Obj(v); }', 'Obj make(int v) { return Obj(v); }'+chr(10)+'Obj Maker2::build(int v) { return Obj(v); }')
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x2-estatico-resultado', HSM, SSM, **CPP),
@@ -444,7 +444,7 @@ positivo(Caso('x2-estatico-resultado', HSM, SSM, **CPP),
 HOP = HF.replace('Obj make(int v);', 'Obj make(int v);'+chr(10)+'Obj operator+(const Obj& a, const Obj& b);')
 SOP = SF.replace('Obj make(int v) { return Obj(v); }', 'Obj make(int v) { return Obj(v); }'+chr(10)+
                  'Obj operator+(const Obj& a, const Obj& b) { return Obj(a.v + b.v); }')
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x2-operador-resultado', HOP, SOP, **CPP),
@@ -457,7 +457,7 @@ positivo(Caso('x2-operador-resultado', HOP, SOP, **CPP),
 HOPM = HF.replace('Obj make(int v);', 'Obj make(int v);'+chr(10)+'struct Vec { int x; Obj operator*(int k) const; };')
 SOPM = SF.replace('Obj make(int v) { return Obj(v); }', 'Obj make(int v) { return Obj(v); }'+chr(10)+
                   'Obj Vec::operator*(int k) const { return Obj(x * k); }')
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x2-operador-miembro-resultado', HOPM, SOPM, **CPP),
@@ -485,7 +485,7 @@ Owner::Owner(int x) : p(x ? &store[x] : nullptr) {} Owner::~Owner() {} Owner::op
 Owner make_owner(int x) { return Owner(x); }
 }
 '''
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x2-conversion', HCV, SCV, **CPP), r'''
@@ -508,7 +508,7 @@ int take(Obj&& o);
 }
 '''
 SRK = 'namespace lib { int take(const Obj& o) { return 1; } int take(Obj&& o) { return 2; } }'+chr(10)
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x2-rvalue-preferido', HRK, SRK, **CPP),
@@ -531,7 +531,7 @@ It Bag::begin() { return It{data}; } It Bag::end() { return It{data + 4}; }
 }
 '''
 CRG = dict(language='C++', standard='c++20', extra_ref=' Exceptions="false"')
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x2-foreach-rango', HRG, SRG, **CRG),
@@ -557,7 +557,7 @@ D& D::operator++() { ++p; return *this; } int& D::operator*() const { return *p;
 D Bag::begin() { D d; d.p = data; return d; } D Bag::end() { D d; d.p = data + 3; return d; }
 }
 '''
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x2-operador-heredado', HIH, SIH, **CRG),
@@ -621,7 +621,7 @@ struct Txt { int n; Txt(const char* const s) : n(0) { while (s[n]) ++n; } Txt(co
   Txt& add(int k) { n += k; return *this; } };
 }
 '''
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x2-constructor-puntero-const', HCS, '', **CRG),
@@ -682,7 +682,7 @@ inline int dtors() { return g_dtors; }
 }
 '''
 SUS = 'namespace lib { int g_dtors; }'+chr(10)
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x2-using-base-plantilla-defecto', HUS, SUS, **CRG),
@@ -713,7 +713,7 @@ inline int wdtors() { return g_wdtors; }
 }
 '''
 SCB = 'namespace lib { int g_wdtors; }'+chr(10)
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x2-constructor-no-mapeable', HCB, SCB, **CRG),

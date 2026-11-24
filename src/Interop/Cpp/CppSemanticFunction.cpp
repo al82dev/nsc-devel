@@ -2455,7 +2455,7 @@ bool provideCppStaticMethodsWithPrecompiledCatalogs(
                 { error = "shared C++ static method observation is ambiguous"; return false; }
                 const auto& live = (*entries)[*selected];
                 const auto& project = graph.projects()[candidate.projectOrdinal];
-                // NSMeta R1-05: as for instance methods, a source session's record. / Como en los de instancia.
+                // NSMeta X4-06: as for instance methods, a source session's record. / Como en los de instancia.
                 const bool sourceSession = project.cppLibraryReferences().empty();
                 if (!live.declaration.clangUsr || *live.declaration.clangUsr != saved.ownerClangUsr ||
                     (!sourceSession && live.referenceIndex >= project.cppLibraryReferences().size()))
@@ -2617,9 +2617,9 @@ bool provideCppInstanceMethodsWithPrecompiledCatalogs(
                 { error = "shared C++ instance method observation is ambiguous"; return false; }
                 const auto& live = (*entries)[*selected];
                 const auto& project = graph.projects()[candidate.projectOrdinal];
-                // EN: NSMeta R1-05. A live record of the precompiled project's own source session (it declares no
+                // EN: NSMeta X4-06. A live record of the precompiled project's own source session (it declares no
                 //     C/C++ references) is the producer's declaration: its library is the one the saved method names.
-                // ES: NSMeta R1-05. Un record en vivo de la sesion de fuente del propio proyecto precompilado (no
+                // ES: NSMeta X4-06. Un record en vivo de la sesion de fuente del propio proyecto precompilado (no
                 //     declara referencias C/C++) es la declaracion del productor: su biblioteca es la del metodo guardado.
                 const bool sourceSession = project.cppLibraryReferences().empty();
                 if (!live.declaration.clangUsr || *live.declaration.clangUsr != saved.ownerClangUsr ||

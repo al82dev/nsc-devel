@@ -136,7 +136,7 @@ positivo(c7, 'if (call_scb(s_impl) != 42) return 1; scb f = s_impl; P p; p.x = 3
 # C5-07: this lambda to a sysv_abi pointer with a record was a rejection ('sysv_abi function pointer is not yet
 # supported'); the record now follows the Clang plan of the typedef (positive case). A precompiled template body names
 # the typedef so its catalog carries it. / Esta lambda era un rechazo; el record sigue ahora el plan de Clang del typedef.
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('c5-sysv-lambda-record', H7, S7), 'return call_scb((p, k) => p.x + p.y + k);', modes=['directo', 'dll', 'lib'])

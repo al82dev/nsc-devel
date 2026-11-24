@@ -1978,9 +1978,9 @@ CppCRecordClosureResult collectCppCRecordClosure(
         auto captured = captureRecordSnapshot(inventory, groups[index], cppValueSessions);
         if (const auto* why = std::get_if<CppCRecordSnapshotFailure>(&captured))
         {
-            // EN: NSMeta R1-05. A C++ record that is not a byte value (non-trivial or polymorphic) is not a catalogue
+            // EN: NSMeta X4-06. A C++ record that is not a byte value (non-trivial or polymorphic) is not a catalogue
             //     value: it is described to a consumer without the header by the producer's source session instead.
-            // ES: NSMeta R1-05. Un record C++ que no es un valor de bytes (no trivial o polimorfico) no es un valor del
+            // ES: NSMeta X4-06. Un record C++ que no es un valor de bytes (no trivial o polimorfico) no es un valor del
             //     catalogo: lo describe la sesion de fuente del productor a un consumidor sin encabezado.
             if (why->message == cppRecordNotCatalogueValue) { excluded.insert(index); continue; }
             return *why;
@@ -2032,9 +2032,9 @@ CppCRecordClosureResult collectCppCRecordClosure(
         for (const auto& field : record.fields)
             if (!visit(field.type, 0)) return CppCRecordSnapshotFailure{failure};
     }
-    // EN: NSMeta R1-05. A reference that travels as a source session is described by it alone: its other records
+    // EN: NSMeta X4-06. A reference that travels as a source session is described by it alone: its other records
     //     leave the catalogue too, so a consumer never sees the same record from the catalogue and from the session.
-    // ES: NSMeta R1-05. Una referencia que viaja como sesion de fuente la describe solo ella: sus demas records
+    // ES: NSMeta X4-06. Una referencia que viaja como sesion de fuente la describe solo ella: sus demas records
     //     tambien salen del catalogo, para que un consumidor nunca vea el mismo record por ambas vias.
     {
         const auto referenceOf = [&](std::size_t index) -> std::optional<std::size_t> {
@@ -2154,8 +2154,8 @@ bool metadata_detail::selectResolvedTemplateInstanceMethods(const frontend::Proj
     output = std::move(result); error.clear(); return true;
 }
 
-// EN: NSMeta R1-05. Marks (or adds) the macro-source entry of a reference as a full source session.
-// ES: NSMeta R1-05. Marca (o agrega) la entrada de fuente de macros de una referencia como sesion de fuente completa.
+// EN: NSMeta X4-06. Marks (or adds) the macro-source entry of a reference as a full source session.
+// ES: NSMeta X4-06. Marca (o agrega) la entrada de fuente de macros de una referencia como sesion de fuente completa.
 static bool addCppSourceSession(const frontend::ProjectCompilation& compilation, const compilation::ProjectGraph& graph,
     std::size_t project, std::size_t reference, const std::string& typeKey,
     metadata_detail::CDependencyCatalog& dependencies, std::string& error)
@@ -2426,7 +2426,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         if (imported->origin == frontend::CppImportedTypeOrigin::CEnum ||
             imported->origin == frontend::CppImportedTypeOrigin::CppEnum)
         { enumSeeds[imported->projectOrdinal].insert(imported->identity.key()); return true; }
-        // NSMeta R1-05: a non-value C++ record is seeded too; the closure sends it to the source session.
+        // NSMeta X4-06: a non-value C++ record is seeded too; the closure sends it to the source session.
         //     Un record C++ no valor tambien se siembra; el cierre lo envia a la sesion de fuente.
         if (imported->origin == frontend::CppImportedTypeOrigin::CppRecord && ordinal)
         { seeds[imported->projectOrdinal].insert(imported->identity.key()); return true; }
@@ -2777,10 +2777,10 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                 dependencies.macroSources.push_back(std::move(value));
             }
         }
-    // EN: NSMeta R1-05. A reference whose C++ class templates the project instantiates (a specialization written in
+    // EN: NSMeta X4-06. A reference whose C++ class templates the project instantiates (a specialization written in
     //     a published template) travels as a source session that names its templates, so the consumer without the
     //     header instantiates each specialization as a consumer with the header does.
-    // ES: NSMeta R1-05. Una referencia cuyas plantillas de clase C++ instancia el proyecto (una especializacion escrita
+    // ES: NSMeta X4-06. Una referencia cuyas plantillas de clase C++ instancia el proyecto (una especializacion escrita
     //     en una plantilla publicada) viaja como sesion de fuente que nombra sus plantillas, para que el consumidor sin
     //     encabezado instancie cada especializacion como lo hace un consumidor con encabezado.
     if (!metadata.genericTemplates.empty())
@@ -3070,10 +3070,10 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         for (const auto& key : std::vector<std::string>(identities.begin(), identities.end())) addEnclosing(project, key);
     for (auto& [project, identities] : seeds)
         for (const auto& key : std::vector<std::string>(identities.begin(), identities.end())) addEnclosing(project, key);
-    // EN: NSMeta R1-05. A function that takes or returns a sysv_abi function pointer travels with its reference as a
+    // EN: NSMeta X4-06. A function that takes or returns a sysv_abi function pointer travels with its reference as a
     //     source session: a consumer without the header converts a NativeSharp callback with the Clang plan of the
     //     reference's typedef of that pointer type, also when the published template does not name the typedef.
-    // ES: NSMeta R1-05. Una funcion que recibe o devuelve un puntero a funcion sysv_abi viaja con su referencia como
+    // ES: NSMeta X4-06. Una funcion que recibe o devuelve un puntero a funcion sysv_abi viaja con su referencia como
     //     sesion de fuente: un consumidor sin encabezado convierte un callback NativeSharp con el plan de Clang del
     //     typedef de ese puntero de la referencia, tambien si la plantilla publicada no nombra el typedef.
     {
@@ -3115,11 +3115,11 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         if (const auto* failure = std::get_if<CppCRecordSnapshotFailure>(&closure))
         { error = failure->message; return false; }
         auto& selected = std::get<CppCRecordClosure>(closure);
-        // EN: NSMeta R1-05. A reference whose C++ records are not byte values travels as a source session: the
+        // EN: NSMeta X4-06. A reference whose C++ records are not byte values travels as a source session: the
         //     consumer without the header opens a full Clang session over the producer's preprocessed source, owned
         //     by the precompiled project, and imports those records (lifetime, bases, virtual members) from it as a
         //     consumer with the header does. The marker extends the existing macro-source entry.
-        // ES: NSMeta R1-05. Una referencia cuyos records C++ no son valores de bytes viaja como sesion de fuente: el
+        // ES: NSMeta X4-06. Una referencia cuyos records C++ no son valores de bytes viaja como sesion de fuente: el
         //     consumidor sin encabezado abre una sesion Clang completa sobre la fuente preprocesada del productor,
         //     propia del proyecto precompilado, e importa de ella esos records (vida, bases, miembros virtuales) como
         //     lo hace un consumidor con encabezado. La marca amplia la entrada de fuente de macros existente.
@@ -3305,7 +3305,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         };
         for (const auto& field : record.fields) if (!checkEnum(field.type, 0)) return false;
     }
-    // EN: NSMeta R1-05. Members of a C++ record left out of the catalogue (not a byte value) are described by the
+    // EN: NSMeta X4-06. Members of a C++ record left out of the catalogue (not a byte value) are described by the
     //     producer's source session, not by the catalogue. / ES: Los miembros de un record C++ que no entra al
     //     catalogo (no es un valor de bytes) los describe la sesion de fuente del productor, no el catalogo.
     {
@@ -3381,9 +3381,9 @@ bool providePrecompiledCParserTypes(const frontend::ProjectCompilation& compilat
     if (!metadata_detail::reconstructPrecompiledCImportedTypes(compilation.precompiledModules(), *graph,
             "x86_64-pc-windows-msvc", restored, error)) return false;
     output.insert(output.end(), std::make_move_iterator(restored.begin()), std::make_move_iterator(restored.end()));
-    // EN: NSMeta R1-05. The records a source session describes are named for the parser by the live selection over
+    // EN: NSMeta X4-06. The records a source session describes are named for the parser by the live selection over
     //     that session (the precompiled project owns it).
-    // ES: NSMeta R1-05. Los records que describe una sesion de fuente se nombran para el analizador con la seleccion
+    // ES: NSMeta X4-06. Los records que describe una sesion de fuente se nombran para el analizador con la seleccion
     //     en vivo sobre esa sesion (propia del proyecto precompilado).
     std::set<std::string> described;
     for (const auto& module : compilation.precompiledModules())

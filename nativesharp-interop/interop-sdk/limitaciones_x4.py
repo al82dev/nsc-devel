@@ -34,7 +34,7 @@ BODY = r'''
     return lib.wide(41);
 '''
 c = Caso('x4-plantillas', H, None, **CPP)
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(c, BODY, modes=['directo', 'dll', 'lib'])
@@ -77,7 +77,7 @@ positivo(Caso('x4-plantilla-variable-flotante', HVF, None, **CPP),
          'double d = lib.pi<double>; float f = lib.pi<float>; double t = lib.tenth<double>;\n'
          '    if (d != 3.25 || f != 3.25f || t != 0.1 || lib.tenth<float> != 0.1f || lib.half<5> != 2.5) return 1;\n'
          '    return 42;', modes=['directo', 'dll'])
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x4-comparacion', HV, None, **CPP), 'int a = 3, b = 2, c = 1; bool x = a < b; return x || c > a ? 1 : 42;',
@@ -135,7 +135,7 @@ struct Maker { int base; template <typename T> Box<T> make(T x) const { return B
 STPL = r'''
 namespace lib { static int c, d; int& ct() { return c; } int& dt() { return d; } }
 '''
-# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
 # source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
 # fuente del productor.
 positivo(Caso('x4-plantilla-resultado', HTPL, STPL, language='C++', standard='c++20', extra_ref=' Exceptions="false"'),

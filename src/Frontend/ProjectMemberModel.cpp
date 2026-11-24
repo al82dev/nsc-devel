@@ -202,7 +202,7 @@ bool ProjectMemberModel::setExperimentalCppLifetimeMethods(
 {
     if (built_) { error = "C++ lifetime methods must be configured before building members"; return false; }
     std::set<std::tuple<std::size_t, std::string, CppImportedLifetimeKind, std::vector<std::string>>> signatures;
-    // NSMeta R1-05: a symbol is unique within a project; a consumer with the header and a precompiled source session
+    // NSMeta X4-06: a symbol is unique within a project; a consumer with the header and a precompiled source session
     // name the same C++ special member. / Un simbolo es unico en un proyecto.
     std::set<std::pair<std::size_t, std::string>> symbols;
     for (const auto& method : methods)

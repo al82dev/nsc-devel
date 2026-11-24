@@ -434,7 +434,7 @@ private:
     CppPrecompiledParserTypeProvider cppPrecompiledParserTypeProvider_;
     ExperimentalCppInstanceMethodProvider experimentalCppInstanceMethodProvider_;
     ExperimentalCppLifetimeMethodProvider experimentalCppLifetimeMethodProvider_;
-    // NSMeta R1-05: (project, session) of each class template a source instantiated. / Plantillas de clase usadas.
+    // NSMeta X4-06: (project, session) of each class template a source instantiated. / Plantillas de clase usadas.
     std::set<std::pair<std::size_t, const interop::CppInteropSession*>> cppClassTemplateSessions_;
     ExperimentalCppInstanceFieldProvider experimentalCppInstanceFieldProvider_;
     ExperimentalCppStaticMethodProvider experimentalCppStaticMethodProvider_;
