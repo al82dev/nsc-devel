@@ -1887,6 +1887,11 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
                         {
                             answered = true;
                             if (result->instantiated) deduced = true;
+                            // NSMeta X4-06: a deduced function template (member or operator) makes its reference
+                            //     travel as a source session. / Una plantilla de funcion deducida hace viajar su
+                            //     referencia como sesion de fuente.
+                            if (result->instantiated && (memberTemplate || operatorTemplate))
+                                cppClassTemplateSessions_.emplace(request.projectOrdinal, session.get());
                             // X2: the specialization is imported by name, from its record's namespace. / La
                             //     especializacion se importa por nombre, desde el namespace de su record.
                             if (result->instantiated && memberTemplate && result->memberNamespace && request.syntax)

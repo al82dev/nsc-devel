@@ -5024,6 +5024,24 @@ public:
     //     also through inline namespaces. NativeSharp writes a specialization of one of them by that name.
     // ES: T13-006. Las plantillas de clase y de funcion declaradas en un namespace, por sus nombres C++
     //     calificados, tambien a traves de namespaces inline. NativeSharp escribe una especializacion con ese nombre.
+    bool recordHasMemberTemplates(std::string_view usr) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || !ast_->getASTContext().getLangOpts().CPlusPlus || options_.macroExpansionOnly) return false;
+        const auto* tag = findTagByUsr(*ast_->getASTContext().getTranslationUnitDecl(), usr);
+        const auto* record = tag ? llvm::dyn_cast<clang::CXXRecordDecl>(tag) : nullptr;
+        std::vector<const clang::CXXRecordDecl*> pending;
+        if (record && record->getDefinition()) pending.push_back(record->getDefinition());
+        for (std::size_t index = 0; index < pending.size() && index < 64; ++index)
+        {
+            for (const auto* member : pending[index]->decls())
+                if (llvm::isa<clang::FunctionTemplateDecl>(member)) return true;
+            for (const auto& base : pending[index]->bases())
+                if (const auto* baseRecord = base.getType()->getAsCXXRecordDecl(); baseRecord && baseRecord->getDefinition())
+                    pending.push_back(baseRecord->getDefinition());
+        }
+        return false;
+    }
     std::vector<CppTemplateName> templatesSnapshot() const override
     {
         std::lock_guard lock(mutex_);

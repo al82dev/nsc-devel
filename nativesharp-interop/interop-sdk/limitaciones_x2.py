@@ -636,9 +636,12 @@ template <class T> bool operator==(const Box<T>& a, const Box<T>& b) { return a.
 struct Use { Box<int> a; };
 }
 '''
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x2-operador-plantilla-libre', HOT, '', **CRG),
          'lib.Use u; u.a.v = 3; lib.Use w; w.a.v = 4; lib.Use z; z.a.v = 3;'
-         ' return (u.a == z.a ? 40 : 0) + (u.a != w.a ? 2 : 0) + (u.a != z.a ? 100 : 0);', modes=['directo', 'dll'])
+         ' return (u.a == z.a ? 40 : 0) + (u.a != w.a ? 2 : 0) + (u.a != z.a ? 100 : 0);', modes=['directo', 'dll', 'lib'])
 # X2: C++20's `a < b` (and `<=`, `>`, `>=`) rewritten from a free `operator<=>` template, an adapter comparing its
 # result with 0. / Relacionales de C++20 reescritos desde una plantilla `operator<=>` libre.
 HSS = r'''
@@ -648,10 +651,13 @@ template <class T> int operator<=>(const Box<T>& a, const Box<T>& b) { return a.
 struct Use { Box<int> a; };
 }
 '''
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x2-relacional-reescrito', HSS, '', **CRG),
          'lib.Use u; u.a.v = 3; lib.Use w; w.a.v = 4;'
          ' return (u.a < w.a ? 1 : 0) + (u.a <= w.a ? 2 : 0) + (u.a > w.a ? 4 : 0) + (w.a >= u.a ? 8 : 0) + 31;',
-         modes=['directo', 'dll'])
+         modes=['directo', 'dll', 'lib'])
 # X2: overloads by `const T&` and `T&&` of a C++ method or indexer (std::map's `operator[]`): an lvalue binds the
 # `const T&`, a prvalue prefers the `T&&` (any T, not only records), and a C++ indexer's reference parameters bind
 # like an operator's (they were ambiguous or not viable). / Sobrecargas `const T&`/`T&&` de metodos e indexadores.

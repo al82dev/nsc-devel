@@ -2815,6 +2815,42 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                 }
                 break;
             }
+    // EN: NSMeta X4-06. A reference whose records declare member function templates, or whose namespaces declare
+    //     operator function templates (called implicitly, also rewritten), travels as a source session: the producer
+    //     never deduces them in a generic body, the consumer deduces them as a consumer with the header does.
+    // ES: NSMeta X4-06. Una referencia cuyos records declaran plantillas de funcion miembro, o cuyos namespaces
+    //     declaran plantillas de funcion operador (llamadas implicitamente, tambien reescritas), viaja como sesion de
+    //     fuente: el productor nunca las deduce en un cuerpo generico; el consumidor las deduce como con encabezado.
+    if (!metadata.genericTemplates.empty())
+        for (const auto& [project, identities] : seeds)
+            for (const auto& group : compilation.cppProjectSessions())
+            {
+                std::error_code ec;
+                if (project >= graph->projects().size() ||
+                    !std::filesystem::equivalent(group.projectFile, graph->projects()[project].projectFile(), ec) || ec)
+                    continue;
+                for (std::size_t reference = 0; reference < group.sessions.size(); ++reference)
+                {
+                    const auto* session = group.sessions[reference].get();
+                    if (!session || session->optionsSnapshot().macroExpansionOnly) continue;
+                    bool needed = false;
+                    for (const auto& key : identities)
+                    {
+                        const auto ordinal = lookup->typeOrdinalForIdentity(key);
+                        const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+                        if (imported && imported->origin == frontend::CppImportedTypeOrigin::CppRecord &&
+                            imported->clangUsr && session->recordHasMemberTemplates(*imported->clangUsr))
+                        { needed = true; break; }
+                    }
+                    if (!needed)
+                        for (const auto& name : session->templatesSnapshot())
+                            if (name.function && name.qualifiedName.find("operator") != std::string::npos)
+                            { needed = true; break; }
+                    if (needed && !addCppSourceSession(compilation, *graph, project, reference, {}, dependencies, error))
+                        return false;
+                }
+                break;
+            }
     if (seeds.empty() && enumSeeds.empty() && dependencies.aliases.empty() && dependencies.functions.empty() &&
         dependencies.globals.empty() && dependencies.enumerators.empty() && dependencies.macroSources.empty())
     { output.clear(); error.clear(); return true; }

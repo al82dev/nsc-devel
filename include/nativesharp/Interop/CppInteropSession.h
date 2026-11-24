@@ -406,6 +406,9 @@ public:
     { error = "the session cannot generate C++ interface adapters"; return std::nullopt; }
     // T13-006: the class and function templates declared at namespace scope.
     virtual std::vector<CppTemplateName> templatesSnapshot() const { return {}; }
+    // NSMeta X4-06: whether the record with this Clang USR (or a public base) declares a member function template.
+    //     Si el record con este USR de Clang (o una base publica) declara una plantilla de funcion miembro.
+    virtual bool recordHasMemberTemplates(std::string_view) const { return false; }
     // T14-001: the macros of the header and whether each is an imported constant. / Las macros del encabezado.
     virtual std::vector<CppMacroName> macrosSnapshot() const { return {}; }
     // EN: C2-04. Evaluates a C/C++ expression written with the header's macros (`LZ4_COMPRESSBOUND(64)`) as an integer
