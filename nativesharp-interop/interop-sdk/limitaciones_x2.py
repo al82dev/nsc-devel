@@ -730,4 +730,15 @@ SCB = 'namespace lib { int g_wdtors; }'+chr(10)
 # fuente del productor.
 positivo(Caso('x2-constructor-no-mapeable', HCB, SCB, **CRG),
          'int r = 0; { lib.W w = new lib.W(41); r = w.get(); } return r + lib.wdtors();', modes=['directo', 'dll', 'lib'])
+# EN: NSMeta X4-06. A published template that calls public NativeSharp functions returning a non-trivial C++ record by
+#     value (constructed in place) or passing a prvalue to `const T&`, for a consumer without the header: the record
+#     is declared by the producer's source session. / Una plantilla publicada que llama funciones NativeSharp publicas
+#     que devuelven un record C++ no trivial por valor, para un consumidor sin encabezado.
+PRE_RET_PUB = ('namespace SdkProbe { public lib.Obj Make(int k) { if (k < 0) return lib.make(-k); return lib.make(k); }\n'
+               'public lib.Obj Twice(int k) { return Make(k * 2); } }\n')
+# dll: pending - the consumer's inline code names a C++ operator defined in the producer's C++ library, which it does
+#     not link. / dll: pendiente.
+positivo(Caso('x2-retorno-ns-publico', H, S, **CPP), BODY_RET, preludio=PRE_RET_PUB, modes=['lib'])
+PRE_CR_PUB = 'namespace SdkProbe { public lib.Obj Make(int k) { return lib.make(k); } }\n'
+positivo(Caso('x2-constref-prvalue-publico', HF2, SF2, **CPP), BODY_CR, preludio=PRE_CR_PUB, modes=['lib'])
 fin()

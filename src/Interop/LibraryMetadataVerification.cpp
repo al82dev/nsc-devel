@@ -1092,6 +1092,24 @@ bool verifyGenericAndExternalTypeCatalogues(
     };
     for (const auto& record : records) if (!includeCType(record.identityKey)) return false;
     for (const auto& enumeration : enums) if (!includeCType(enumeration.identityKey)) return false;
+    // NSMeta X4-06: the records and enums a source session describes are declared by its entry. / Los records y
+    //     enums que describe una sesion de fuente los declara su entrada.
+    {
+        std::vector<CppCRecordSnapshot> unusedRecords;
+        std::vector<CppCEnumSnapshot> unusedEnums;
+        metadata_detail::CDependencyCatalog dependencies;
+        std::string ignored;
+        if (metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog, unusedRecords, unusedEnums,
+                dependencies, ignored))
+            for (const auto& source : dependencies.macroSources)
+            {
+                if (std::find(source.macros.begin(), source.macros.end(), metadata_detail::cppSourceSessionMarker) ==
+                    source.macros.end()) continue;
+                for (const auto& name : source.macros)
+                    if (name.starts_with("type:") && !declaredTypeKeys.contains(name) &&
+                        !includeCType(name.substr(5))) return false;
+            }
+    }
     return true;
 }
 
