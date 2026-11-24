@@ -105,7 +105,9 @@ rechazo(c, 'int v = 41; return lib.sink(v);', 'lib.sink')
 rechazo(c, 'lib.Acc acc = new lib.Acc(); return acc.take();', 'take')
 # X1-05: an `&&` method runs on a temporary, as C++ allows it only on an rvalue; on a named object it is rejected (above).
 # Un metodo `&&` se ejecuta sobre un temporal; sobre un objeto con nombre se rechaza (arriba).
-positivo(Caso('x1-receptor-rvalue', H, S, **CPP), 'return (new lib.Acc()).take() + 42;', modes=['directo', 'dll'])
+# NSMeta X4-06 (X1-05 in lib): a record with an `&&` method travels as a source session, which carries the lifetime of
+#     the temporary receiver. / Un record con un metodo `&&` viaja como sesion de fuente, que lleva la vida del temporal.
+positivo(Caso('x1-receptor-rvalue', H, S, **CPP), 'return (new lib.Acc()).take() + 42;', modes=['directo', 'dll', 'lib'])
 # X1 in lib: a C++ record only declared in the header (`struct Fwd;`, defined in a source) is an opaque type, as a C
 #     one: the producer's metadata carries it by identity and a consumer without the header passes its pointer (the
 #     producer failed 'C++ record requires one definition'). / Un record C++ solo declarado es un tipo opaco.

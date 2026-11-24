@@ -1913,6 +1913,12 @@ static CppCRecordSnapshotResult captureRecordSnapshot(
             if (std::any_of(overloads.begin(), overloads.end(), [](const auto& item) {
                     return item.second > 1 || item.first.starts_with("operator"); }))
                 return fail(cppRecordNotCatalogueValue);
+            // X1-05 in lib: an `&&` method runs on a temporary (`(new T()).take()`), whose lifetime the value catalogue
+            //     does not carry. / Un metodo `&&` se ejecuta sobre un temporal, cuya vida el catalogo no lleva.
+            if (std::any_of(record.methods.begin(), record.methods.end(), [](const auto& method) {
+                    return method.kind == CppMethodKind::Method && !method.isDeleted &&
+                        method.refQualifier == CppMethodRefQualifier::RValue; }))
+                return fail(cppRecordNotCatalogueValue);
         }
         snapshot.cppValueObservation = std::move(observed);
         // EN: T19-036. The consumer of a precompiled catalog returns this record as Clang does (T12-001).
