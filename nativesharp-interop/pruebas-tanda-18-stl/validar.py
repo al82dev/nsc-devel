@@ -35,7 +35,7 @@ CRT = [TOOLSET / 'lib/x64/libcmt.lib', TOOLSET / 'lib/x64/libvcruntime.lib', TOO
        SDK / 'lib/ucrt/x64/libucrt.lib', SDK / 'lib/um/x64/kernel32.lib']
 SYSTEM = [TOOLSET / 'include', SDK / 'include/ucrt']
 HEADER = ('#pragma once\n#include <algorithm>\n#include <array>\n#include <bit>\n#include <limits>\n#include <numeric>\n'
-          '#include <type_traits>\n#include <vector>\n')
+          '#include <type_traits>\n#include <vector>\n#include <string>\n')
 # (name, NativeSharp body, C++ body)
 CASES = [
     ('array', 'std.array<int, 4> a = new std.array<int, 4>(); a._Elems[2] = 7; return (int)a.size() * 10 + a._Elems[2];',
@@ -71,6 +71,12 @@ CASES = [
                        'v.push_back(in b); int s = 0; foreach (var x in v) { s += x; } return s + (int)v.size();',
      'std::vector<int> v; int a = 7; int b = 9; v.push_back(a); v.push_back(b); int s = 0; for (int x : v) { s += x; } '
      'return s + (int)v.size();'),
+    # X2: std::string named as `std.string`, built from a literal (constructor `const char* const`), `append`
+    #     chained as a statement (its `basic_string&` result discarded), `+=` with a literal and `[]`.
+    #     / std::string desde un literal, `append` encadenado, `+=` con literal e indice.
+    ('string', 'std.string s = new std.string("hola"); s.append("mundo").append("!"); s += "xy"; '
+               'return (int)s.size() * 10 + (int)s[0] - 100;',
+     'std::string s("hola"); s.append("mundo").append("!"); s += "xy"; return (int)s.size() * 10 + (int)s[0] - 100;'),
 ]
 
 

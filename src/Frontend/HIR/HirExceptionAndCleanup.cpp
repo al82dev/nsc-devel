@@ -270,6 +270,33 @@ bool hirLentTemporaryArgument(const ProjectOopHirNode& argument) noexcept
 void ProjectOopHirModel::ownCppTemporaries()
 {
     if (nameLookup_ == nullptr) return;
+    // EN: X2. A call whose result is a reference to a C++ record (`s.append("x")` returning `basic_string&`), used as
+    //     a statement, discards that reference: nothing reads the object, so no load (a bitwise copy of a C++
+    //     object) is made.
+    // ES: X2. Una llamada cuyo resultado es una referencia a un record C++, usada como sentencia, descarta esa
+    //     referencia: nada lee el objeto, asi que no se hace una carga (copia bit a bit de un objeto C++).
+    for (ProjectOopHirFunction& function : functions_)
+    {
+        if (!function.body) continue;
+        std::vector<ProjectOopHirNode*> pending{function.body.get()};
+        while (!pending.empty())
+        {
+            ProjectOopHirNode* node = pending.back();
+            pending.pop_back();
+            for (auto& child : node->children) if (child) pending.push_back(child.get());
+            if (node->kind != ProjectOopHirNodeKind::ExpressionStatement || node->children.size() != 1 ||
+                !node->children[0] || node->children[0]->kind != ProjectOopHirNodeKind::PointerLoad ||
+                node->children[0]->children.size() != 1 || !node->children[0]->children[0] ||
+                !node->children[0]->children[0]->referenceResult ||
+                !node->children[0]->typeKey.starts_with("type:")) continue;
+            const auto ordinal = nameLookup_->typeOrdinalForIdentity(
+                std::string_view(node->children[0]->typeKey).substr(5));
+            const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+            if (imported == nullptr || imported->origin != CppImportedTypeOrigin::CppRecord) continue;
+            auto call = std::move(node->children[0]->children[0]);
+            node->children[0] = std::move(call);
+        }
+    }
     // X2-05: NativeSharp functions whose result is a non-trivial C++ record construct it in the caller's storage.
     //     / Las funciones NativeSharp cuyo resultado es un record C++ no trivial lo construyen en el destino.
     for (ProjectOopHirFunction& function : functions_)

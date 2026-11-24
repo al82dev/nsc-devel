@@ -1711,7 +1711,11 @@ CppSemanticLifetimeMethodResult projectCppSemanticLifetimeMethod(
         const bool reference = referenceType.kind == CppTypeKind::LValueReference || rvalue;
         const auto carrier = reference ? cppParameterReferenceCarrier(referenceType) : std::nullopt;
         if (reference && !carrier) return fail("C++ lifetime method reference parameter is not yet mapped");
-        auto mapped = mapFunctionType(carrier ? *carrier : parameter.type, true, records ? &recordIndex : nullptr,
+        // X2: a by-value pointer's top-level qualifiers (`const char* const p`) describe the callee's local, as
+        //     for a function. / Los calificadores de nivel superior de un puntero por valor son del local del llamado.
+        CppType byValue = parameter.type;
+        if (!carrier && byValue.kind == CppTypeKind::Pointer) { byValue.isConst = false; byValue.isVolatile = false; }
+        auto mapped = mapFunctionType(carrier ? *carrier : byValue, true, records ? &recordIndex : nullptr,
                                       moduleName, 0, lookup, projectOrdinal, false, false, lookup != nullptr);
         if (!mapped || parameter.type.kind == CppTypeKind::Void)
             return fail("C++ lifetime method parameter type is not yet mapped");

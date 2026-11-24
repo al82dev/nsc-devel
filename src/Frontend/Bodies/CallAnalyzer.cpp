@@ -9248,6 +9248,18 @@ bool ProjectMethodBodyModel::evaluateSyntheticCandidates(
                 arguments[argumentOrdinal].typeKey,
                 conversionTarget,
                 arguments[argumentOrdinal].integerConstant);
+            // X2: a literal reaches a C++ operator's `const char*` (`s += "text"`), as a C/C++ function's (Item 3.2).
+            //     / Un literal llega al `const char*` de un operador C++, como al de una funcion C/C++.
+            if (!conversion.exists() && arguments[argumentOrdinal].typeKey == "string-literal" &&
+                (conversionTarget == "builtin:sbyte*" || conversionTarget == "builtin:byte*" ||
+                 conversionTarget == "builtin:char*") &&
+                parameter.passKind == ParameterPassKind::Value && parameter.pointerPointeeReadonly &&
+                namespaceFunctionModel_ != nullptr && candidateOrdinal >= namespaceCallableBase_ &&
+                candidateOrdinal - namespaceCallableBase_ < namespaceFunctionModel_->functions().size() &&
+                !namespaceFunctionModel_->functions()[candidateOrdinal - namespaceCallableBase_]
+                     .cppCanonicalIdentity.empty())
+                conversion = {ProjectConversionKind::StringLiteralToCharPointer, 4, arguments[argumentOrdinal].typeKey,
+                              std::string(conversionTarget), std::nullopt};
             if (!conversion.exists() ||
                 (arguments[argumentOrdinal].readonlyBorrowedObject &&
                  !(implicitOperatorReference && parameter.passKind == ParameterPassKind::In)) ||

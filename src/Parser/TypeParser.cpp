@@ -382,9 +382,12 @@ bool Parser::scanNamedTypeIdentityAt(
         qualified = true;
         moduleQualified = true;
     }
+    // X2: after a dot, `string` names a member of a namespace (C++'s `std.string`), not the builtin type. /
+    //     Tras un punto, `string` nombra un miembro de un namespace, no el tipo incorporado.
     while (cursor + 1U < tokens_.size() &&
            tokens_[cursor].kind() == TokenKind::Dot &&
-           tokens_[cursor + 1U].kind() == TokenKind::Identifier)
+           (tokens_[cursor + 1U].kind() == TokenKind::Identifier ||
+            tokens_[cursor + 1U].kind() == TokenKind::KwString))
     {
         qualified = true;
         candidate.push_back('.');
@@ -511,7 +514,8 @@ bool Parser::parseQualifiedName(std::string& name, SourceRange& range)
     }
     while (consumeIf(TokenKind::Dot))
     {
-        if (!at(TokenKind::Identifier))
+        // X2: `std.string`. / `std.string`.
+        if (!at(TokenKind::Identifier) && !at(TokenKind::KwString))
         {
             expect(TokenKind::Identifier, "identifier after '.'");
             range = join(start, end);

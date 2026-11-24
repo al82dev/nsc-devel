@@ -569,4 +569,16 @@ positivo(Caso('x2-plantilla-miembro-explicita', HEX, '', **CRG),
          modes=['directo', 'dll'])
 rechazo(Caso('x2-plantilla-miembro-explicita-ausente', HEX, '', **CRG), 'lib.M m; return m.nada<int>(1);',
         "has no compatible member named 'nada'")
+# X2: a constructor taking `const char* const` (a top-level const by-value pointer, as std::string's) was not
+# imported ('lifetime method parameter type is not yet mapped'); it is, and takes a literal as a function does.
+# A method returning a reference to its record (`T& add(...)`) used as a statement is no longer loaded (copied).
+# X2: constructor con `const char* const` y resultado por referencia descartado como sentencia.
+HCS = r'''
+namespace lib {
+struct Txt { int n; Txt(const char* const s) : n(0) { while (s[n]) ++n; } Txt(const Txt& o) : n(o.n) {} ~Txt() {}
+  Txt& add(int k) { n += k; return *this; } };
+}
+'''
+positivo(Caso('x2-constructor-puntero-const', HCS, '', **CRG),
+         'lib.Txt t = new lib.Txt("hola"); t.add(30).add(8); return t.n;', modes=['directo', 'dll'])
 fin()

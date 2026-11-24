@@ -163,6 +163,17 @@ void ProjectConstructionModel::evaluateConstructorArgument(
         argumentTypes[argumentOrdinal].typeKey,
         conversionTarget,
         argumentTypes[argumentOrdinal].integerConstant);
+    // EN: X2. As for a C/C++ function (Item 3.2), a literal reaches a C++ constructor's `const char*` as its
+    //     NUL-terminated UTF-8 bytes (`new std.string("text")`).
+    // ES: X2. Como para una funcion C/C++ (Item 3.2), un literal llega al `const char*` de un constructor C++ como
+    //     sus bytes UTF-8 con terminador NUL.
+    if (!conversion.exists() && !packElement && constructor.isCppExternal &&
+        argumentTypes[argumentOrdinal].typeKey == "string-literal" &&
+        (conversionTarget == "builtin:sbyte*" || conversionTarget == "builtin:byte*" ||
+         conversionTarget == "builtin:char*") &&
+        parameter.passKind == ParameterPassKind::Value && parameter.pointerPointeeReadonly)
+        conversion = {ProjectConversionKind::StringLiteralToCharPointer, 4, argumentTypes[argumentOrdinal].typeKey,
+                      conversionTarget, std::nullopt};
     if (!conversion.exists()) candidate.viable = false;
     if (rvalueArgument && conversion.exists() && conversion.kind == ProjectConversionKind::Identity &&
         sema::isPlaceCategory(argumentTypes[argumentOrdinal].valueCategory))

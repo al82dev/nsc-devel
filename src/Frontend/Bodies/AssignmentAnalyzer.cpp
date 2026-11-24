@@ -4414,6 +4414,13 @@ bool ProjectMethodBodyModel::tryCppCompoundAssignment(
             ProjectImplicitConversion conversion;
             if (source.passKind == ParameterPassKind::Value)
                 conversion = classifyImplicit(right.typeKey, source.typeKey, right.integerConstant);
+            // X2: a literal reaches the operator's `const char*` (`s += "text"`), as a C/C++ function's (Item 3.2).
+            //     / Un literal llega al `const char*` del operador, como al de una funcion C/C++.
+            if (!conversion.exists() && source.passKind == ParameterPassKind::Value && right.typeKey == "string-literal" &&
+                (source.typeKey == "builtin:sbyte*" || source.typeKey == "builtin:byte*" ||
+                 source.typeKey == "builtin:char*") && source.pointerPointeeReadonly)
+                conversion = ProjectImplicitConversion{ProjectConversionKind::StringLiteralToCharPointer, 4, right.typeKey,
+                                                       source.typeKey, std::nullopt};
             else if (right.addressable && right.typeKey == source.pointeeTypeKey &&
                      (source.passKind == ParameterPassKind::In || !right.readonlyReceiver))
                 conversion = ProjectImplicitConversion{ProjectConversionKind::Identity, 0, right.typeKey + "*",

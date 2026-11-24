@@ -2704,7 +2704,40 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                     return projected;
                 };
                 const auto ownerUsr = declarationUsr(cppRecord);
-                for (const clang::CXXMethodDecl* method : cppRecord->methods())
+                // EN: X2. A constructor template whose template parameters all have defaults (MSVC's guards,
+                //     `template <class _Alloc2 = _Alloc, enable_if_t<...> = 0> basic_string(const _Elem*)`) is
+                //     instantiated with them as the record is imported, and is then an ordinary constructor; a
+                //     substitution failure (the guard rejecting) leaves it out.
+                // ES: X2. Un constructor plantilla cuyos parametros de plantilla tienen todos valor por defecto se
+                //     instancia con ellos al importar el record y es un constructor normal; un fallo de sustitucion
+                //     lo deja fuera.
+                std::vector<const clang::CXXMethodDecl*> recordMethods(cppRecord->method_begin(), cppRecord->method_end());
+                if (sema && !cppRecord->isDependentContext())
+                    for (const auto* member : cppRecord->decls())
+                    {
+                        auto* constructorTemplate = const_cast<clang::FunctionTemplateDecl*>(
+                            llvm::dyn_cast<clang::FunctionTemplateDecl>(member));
+                        if (!constructorTemplate || constructorTemplate->getAccess() != clang::AS_public ||
+                            !llvm::isa<clang::CXXConstructorDecl>(constructorTemplate->getTemplatedDecl()) ||
+                            constructorTemplate->getTemplatedDecl()->isConsteval() ||
+                            constructorTemplate->getTemplatedDecl()->isDeleted()) continue;
+                        const auto* parameters = constructorTemplate->getTemplateParameters();
+                        if (parameters->size() == 0 || !std::all_of(parameters->begin(), parameters->end(), [](const clang::NamedDecl* parameter) {
+                                if (const auto* type = llvm::dyn_cast<clang::TemplateTypeParmDecl>(parameter)) return type->hasDefaultArgument() && !type->isParameterPack();
+                                if (const auto* value = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(parameter)) return value->hasDefaultArgument() && !value->isParameterPack();
+                                return false;
+                            })) continue;
+                        clang::TemplateArgumentListInfo none;
+                        clang::sema::TemplateDeductionInfo info(constructorTemplate->getLocation());
+                        clang::FunctionDecl* specialization = nullptr;
+                        clang::Sema::SFINAETrap trap(*sema);
+                        const auto outcome = sema->DeduceTemplateArguments(constructorTemplate, &none, specialization, info);
+                        if (outcome == clang::TemplateDeductionResult::Success && specialization && !trap.hasErrorOccurred() &&
+                            !specialization->isInvalidDecl() && !specialization->isDeleted())
+                            if (const auto* constructor = llvm::dyn_cast<clang::CXXConstructorDecl>(specialization))
+                                recordMethods.push_back(constructor);
+                    }
+                for (const clang::CXXMethodDecl* method : recordMethods)
                 {
                     if (method->isImplicit() || method->isDependentContext() ||
                         method->getDescribedFunctionTemplate()) continue;
