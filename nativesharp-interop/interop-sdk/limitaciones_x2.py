@@ -652,4 +652,19 @@ inline Box make(int x) { Box b; b.v = x; return b; }
 '''
 positivo(Caso('x2-calificadores-receptor', HRQ, '', **CRG),
          'lib.Box b; b.v = 1; b.get() = 40; return b.get() + lib.make(2).get() - 1000;', modes=['directo', 'dll'])
+# X2: a record with one constructor NativeSharp cannot map (a pointer to member) lost every constructor and its
+# destructor (std::optional's `optional(nullopt_t)`); an unprojected constructor C++ could not select for a
+# projected one's arguments (checked by Clang) no longer discards them.
+# X2: un constructor no mapeable ya no oculta los demas constructores ni el destructor.
+HCB = r'''
+namespace lib {
+extern int g_wdtors;
+struct W { int v; W(int x) : v(x) {} W(int (W::*)() const) : v(0) {} W(const W& o) : v(o.v) {} ~W() { ++g_wdtors; }
+  int get() const { return v; } };
+inline int wdtors() { return g_wdtors; }
+}
+'''
+SCB = 'namespace lib { int g_wdtors; }'+chr(10)
+positivo(Caso('x2-constructor-no-mapeable', HCB, SCB, **CRG),
+         'int r = 0; { lib.W w = new lib.W(41); r = w.get(); } return r + lib.wdtors();', modes=['directo', 'dll'])
 fin()

@@ -1878,7 +1878,15 @@ bool collectCppSemanticLifetimeFamilies(
                 if (!signatures.emplace(kind, std::move(parameters)).second)
                     family.hasProjectedSignatureCollision = true;
                 family.methods.push_back(std::move(*method));
+                if (declared.clangUsr) family.projectedUsrs.insert(*declared.clangUsr); // X2
             }
+            // EN: X2. An unprojected constructor C++ could not select for a projected one's arguments (Clang's check,
+            //     as for methods) does not discard the family: optional's `optional(nullopt_t)` no longer hides
+            //     every constructor and the destructor.
+            // ES: X2. Un constructor no proyectado que C++ no podria elegir para los argumentos de uno proyectado no
+            //     descarta la familia.
+            else if (kind == CppMethodKind::Constructor && declared.viableForSiblings)
+                family.blockingSiblings.insert(declared.viableForSiblings->begin(), declared.viableForSiblings->end());
             else family.deferred.push_back({index, kind, std::get<CppSemanticFunctionFailure>(projected).message});
         }
         if (!family.methods.empty() || !family.deferred.empty() || family.implicitMembers)
@@ -1956,7 +1964,9 @@ bool provideExperimentalCppLifetimeMethods(
     }
     for (const auto& family : families)
     {
-        if (!family.deferred.empty() || family.hasProjectedSignatureCollision || !family.implicitDeclarations) continue;
+        if (!family.deferred.empty() || family.hasProjectedSignatureCollision || !family.implicitDeclarations ||
+            std::any_of(family.projectedUsrs.begin(), family.projectedUsrs.end(), [&](const std::string& usr) {
+                return family.blockingSiblings.contains(usr); })) continue;
         for (const auto& method : family.methods) result.push_back(toCppImportedLifetimeMethod(method));
         for (const auto& method : *family.implicitDeclarations)
         {

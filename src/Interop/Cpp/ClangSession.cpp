@@ -2746,8 +2746,9 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                     projected.clangUsr = declarationUsr(method);
                     // X2: the siblings for whose argument types C++ could select this overload (Item 9.1). / Las
                     //     hermanas para cuyos tipos de argumento C++ podria elegir esta sobrecarga.
-                    if (sema && !llvm::isa<clang::CXXConstructorDecl>(method) &&
-                        !llvm::isa<clang::CXXDestructorDecl>(method) && method->getDeclName().isIdentifier())
+                    // X2: constructors too (looked up by the constructor name). / Tambien los constructores.
+                    if (sema && !llvm::isa<clang::CXXDestructorDecl>(method) &&
+                        (method->getDeclName().isIdentifier() || llvm::isa<clang::CXXConstructorDecl>(method)))
                     {
                         std::vector<std::string> viable;
                         const auto location = method->getLocation();

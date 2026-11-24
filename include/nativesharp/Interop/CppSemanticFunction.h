@@ -201,6 +201,10 @@ struct CppSemanticLifetimeFamily
     // X3-03: the record's USR when it has virtual bases (its lifetime goes through adapters). / El USR del record
     //     cuando tiene bases virtuales.
     std::optional<std::string> virtualBaseRecordUsr = std::nullopt;
+    // X2: the Clang USRs of projected constructors and of those an unprojected constructor is viable for. / Los
+    //     USR de los constructores proyectados y de aquellos para los que uno no proyectado es viable.
+    std::set<std::string> projectedUsrs{};
+    std::set<std::string> blockingSiblings{};
 };
 // The snapshot contains observed explicit declarations only; it does not certify implicit
 // special members, overload resolution, or safe object construction and destruction.
