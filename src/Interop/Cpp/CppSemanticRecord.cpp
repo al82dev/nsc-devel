@@ -1891,6 +1891,20 @@ static CppCRecordSnapshotResult captureRecordSnapshot(
         if (std::any_of(record.methods.begin(), record.methods.end(),
                 [](const auto& method) { return method.kind == CppMethodKind::Constructor; }))
             return fail(cppRecordNotCatalogueValue);
+        // EN: NSMeta X4-06. Member operators (an indexer, `operator*`) and overloads of one name (by reference
+        //     kind, `const T&`/`T&&`, or by receiver qualifier, `&`/`const&`/`&&`) are chosen as C++ does over the
+        //     declarations, which the value catalogue does not keep apart: the record travels as a source session.
+        // ES: NSMeta X4-06. Los operadores miembro y las sobrecargas de un nombre (por tipo de referencia o por
+        //     calificador de receptor) se eligen como en C++ sobre las declaraciones, que el catalogo de valores no
+        //     separa: el record viaja como sesion de fuente.
+        {
+            std::map<std::string, std::size_t> overloads;
+            for (const auto& method : record.methods)
+                if (method.kind == CppMethodKind::Method && !method.isDeleted) ++overloads[method.name];
+            if (std::any_of(overloads.begin(), overloads.end(), [](const auto& item) {
+                    return item.second > 1 || item.first.starts_with("operator"); }))
+                return fail(cppRecordNotCatalogueValue);
+        }
         snapshot.cppValueObservation = std::move(observed);
         // EN: T19-036. The consumer of a precompiled catalog returns this record as Clang does (T12-001).
         // ES: T19-036. El consumidor de un catalogo precompilado devuelve este record como Clang (T12-001).

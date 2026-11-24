@@ -668,9 +668,12 @@ struct M { int v[4]; int& at(const int& k) { return v[k]; } int& at(int&& k) { r
 struct N { int v[4]; int& operator[](const int& k) { return v[k]; } };
 }
 '''
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x2-referencias-sobrecarga', HRR, '', **CRG),
          'lib.M m; int k = 1; m.at(k) = 30; m.at(2) = 2; m[3] = 4; lib.N n; n[k] = 6;'
-         ' return m.at(k) + m.at(2) + m[3] + n[k];', modes=['directo', 'dll'])
+         ' return m.at(k) + m.at(2) + m[3] + n[k];', modes=['directo', 'dll', 'lib'])
 # X2: std::set's insert (`using _Mybase::insert;` of a `template <bool _Multi2 = _Multi, ...>` member returning a
 # non-trivial pair) was not imported. A `using Base::name;` brings the base's members back next to the record's own,
 # a member template whose parameters all have defaults is instantiated with them, a same-arity overload C++ could
@@ -704,8 +707,11 @@ struct Box { int v; int& get() & { return v; } const int& get() const& { return 
 inline Box make(int x) { Box b; b.v = x; return b; }
 }
 '''
+# NSMeta X4-06: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x2-calificadores-receptor', HRQ, '', **CRG),
-         'lib.Box b; b.v = 1; b.get() = 40; return b.get() + lib.make(2).get() - 1000;', modes=['directo', 'dll'])
+         'lib.Box b; b.v = 1; b.get() = 40; return b.get() + lib.make(2).get() - 1000;', modes=['directo', 'dll', 'lib'])
 # X2: a record with one constructor NativeSharp cannot map (a pointer to member) lost every constructor and its
 # destructor (std::optional's `optional(nullopt_t)`); an unprojected constructor C++ could not select for a
 # projected one's arguments (checked by Clang) no longer discards them.
