@@ -387,7 +387,8 @@ bool Parser::scanNamedTypeIdentityAt(
     while (cursor + 1U < tokens_.size() &&
            tokens_[cursor].kind() == TokenKind::Dot &&
            (tokens_[cursor + 1U].kind() == TokenKind::Identifier ||
-            tokens_[cursor + 1U].kind() == TokenKind::KwString))
+            tokens_[cursor + 1U].kind() == TokenKind::KwString || tokens_[cursor + 1U].kind() == TokenKind::KwSet ||
+            tokens_[cursor + 1U].kind() == TokenKind::KwGet))
     {
         qualified = true;
         candidate.push_back('.');
@@ -515,7 +516,8 @@ bool Parser::parseQualifiedName(std::string& name, SourceRange& range)
     while (consumeIf(TokenKind::Dot))
     {
         // X2: `std.string`. / `std.string`.
-        if (!at(TokenKind::Identifier) && !at(TokenKind::KwString))
+        // X2: also `std.set`, `x.get`. / Tambien `std.set`, `x.get`.
+        if (!at(TokenKind::Identifier) && !at(TokenKind::KwString) && !at(TokenKind::KwSet) && !at(TokenKind::KwGet))
         {
             expect(TokenKind::Identifier, "identifier after '.'");
             range = join(start, end);

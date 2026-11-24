@@ -4477,13 +4477,16 @@ public:
         // ES: Todos los adaptadores se compilan con un solo reanalisis de la fuente. Si Clang rechaza uno, se
         //     compila cada uno por separado: el que Clang rechaza no se emite ni oculta a los demas.
         std::vector<std::string> modules;
+        // X2: the diagnostics of the last compilation, to find the adapters Clang rejected. / Los diagnosticos de
+        //     la ultima compilacion, para hallar los adaptadores que Clang rechazo.
+        std::vector<CppSessionDiagnostic> thunkDiagnostics;
         const auto compile = [&](std::span<const std::pair<std::size_t, std::string>> selected) -> bool {
+            thunkDiagnostics.clear();
             std::string code = source_ + "\n";
             std::set<std::string> names;
             for (const auto& [index, snippet] : selected) { code += snippet; names.insert(requests[index].symbol); }
             llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(llvm::vfs::createPhysicalFileSystem().release());
             if (filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory))) return false;
-            std::vector<CppSessionDiagnostic> thunkDiagnostics;
             detail::DiagnosticCollector collector(thunkDiagnostics);
             auto unit = detail::runClangSessionAction(code, detail::buildClangInvocationArguments(options_), inputPath_,
                 utf8(options_.driverReferencePath), &collector, std::move(filesystem), CppCancellationToken{});
@@ -4583,8 +4586,59 @@ public:
             return true;
         };
         if (snippets.empty()) return modules;
-        if (!compile(snippets) && snippets.size() > 1)
-            for (const auto& snippet : snippets) compile(std::span(&snippet, 1));
+        // EN: X2. When Clang rejects some adapters (a member of a specialization C++ never instantiates unless used,
+        //     such as `reverse_iterator<list::iterator>::operator[]`), the rejected ones are found by the lines of
+        //     their diagnostics (or of the notes that point back at them) and left out, and the rest compiled again;
+        //     when the lines do not tell, the set is halved. Compiling each alone reparsed the header per adapter.
+        // ES: X2. Si Clang rechaza algunos adaptadores, se hallan por las lineas de sus diagnosticos (o de las notas
+        //     que los señalan) y se dejan fuera, y el resto se compila otra vez; si las lineas no lo dicen, el
+        //     conjunto se divide a la mitad. Compilar cada uno aparte reanalizaba el encabezado por adaptador.
+        const auto sourceLines = static_cast<unsigned>(std::count(source_.begin(), source_.end(), '\n')) + 1;
+        const auto rejected = [&](std::span<const std::pair<std::size_t, std::string>> selected) {
+            std::vector<std::pair<unsigned, unsigned>> ranges;
+            unsigned line = sourceLines + 1;
+            for (const auto& entry : selected)
+            {
+                const auto count = static_cast<unsigned>(std::count(entry.second.begin(), entry.second.end(), '\n'));
+                ranges.emplace_back(line, line + std::max(count, 1u) - 1);
+                line += count;
+            }
+            const auto mainFile = std::filesystem::path(inputPath_).filename();
+            std::set<std::size_t> bad;
+            std::function<void(const CppSessionDiagnostic&)> mark = [&](const CppSessionDiagnostic& diagnostic) {
+                if (diagnostic.location && diagnostic.location->file.filename() == mainFile &&
+                    diagnostic.location->line > sourceLines)
+                    for (std::size_t index = 0; index < ranges.size(); ++index)
+                        if (diagnostic.location->line >= ranges[index].first &&
+                            diagnostic.location->line <= ranges[index].second) bad.insert(index);
+                for (const auto& note : diagnostic.notes) mark(note);
+            };
+            // Only errors (with their notes) reject an adapter; a warning does not. / Solo los errores rechazan.
+            for (const auto& diagnostic : thunkDiagnostics)
+                if (diagnostic.severity == CppSessionDiagnosticSeverity::Error ||
+                    diagnostic.severity == CppSessionDiagnosticSeverity::Fatal) mark(diagnostic);
+            return bad;
+        };
+        std::function<void(std::vector<std::pair<std::size_t, std::string>>)> halve =
+            [&](std::vector<std::pair<std::size_t, std::string>> part) {
+                if (part.empty() || compile(part) || part.size() == 1) return;
+                const auto middle = part.begin() + static_cast<std::ptrdiff_t>(part.size() / 2);
+                halve({part.begin(), middle});
+                halve({middle, part.end()});
+            };
+        std::vector<std::pair<std::size_t, std::string>> current(snippets.begin(), snippets.end());
+        for (int attempt = 0; attempt < 8 && !current.empty(); ++attempt)
+        {
+            if (compile(current)) return modules;
+            if (current.size() == 1) return modules;
+            const auto bad = rejected(current);
+            if (bad.empty()) { halve(std::move(current)); return modules; }
+            std::vector<std::pair<std::size_t, std::string>> kept;
+            for (std::size_t index = 0; index < current.size(); ++index)
+                if (!bad.contains(index)) kept.push_back(std::move(current[index]));
+            current = std::move(kept);
+        }
+        if (!current.empty()) halve(std::move(current));
         return modules;
     }
 
@@ -5553,12 +5607,26 @@ public:
         {
             auto& sema = ast_->getSema();
             bool instantiated = false;
+            // EN: X2. Each member is instantiated on its own: a member C++ never instantiates unless it is used
+            //     (`reverse_iterator<list::iterator>::operator[]`) fails to instantiate, and that error must not
+            //     discard the whole module; such a member is left out (it is not called) and the error count reset.
+            // ES: X2. Cada miembro se instancia por separado: un miembro que C++ nunca instancia si no se usa falla
+            //     al instanciarse, y ese error no debe descartar el modulo entero; ese miembro queda fuera.
+            auto& engine = sema.getDiagnostics();
+            std::set<const clang::Decl*> failed;
             for (const auto& [declaration, name] : selected)
                 if (auto* function = llvm::dyn_cast<clang::FunctionDecl>(const_cast<clang::Decl*>(declaration.getDecl()));
                     function && !function->getDefinition() && function->isImplicitlyInstantiable())
                 {
+                    const auto errorsBefore = engine.getNumErrors();
                     sema.InstantiateFunctionDefinition(function->getLocation(), function, true, false, true);
-                    instantiated = true;
+                    sema.PerformPendingInstantiations();
+                    if (engine.getNumErrors() > errorsBefore)
+                    {
+                        function->setInvalidDecl();
+                        failed.insert(function);
+                        if (errorsBefore == 0) engine.Reset(/*soft=*/true);
+                    }
                 }
                 else if (auto* variable = llvm::dyn_cast<clang::VarDecl>(const_cast<clang::Decl*>(declaration.getDecl()));
                          variable && variable->isStaticDataMember() &&
@@ -5568,6 +5636,8 @@ public:
                     instantiated = true;
                 }
             if (instantiated) sema.PerformPendingInstantiations();
+            std::erase_if(selected, [&](const auto& entry) { return failed.contains(entry.first.getDecl()); });
+            if (selected.empty()) return std::nullopt;
         }
         for (auto& [declaration, name] : selected)
         {
@@ -5620,9 +5690,54 @@ public:
                 if (streamed.insert(decl).second && !generator->HandleTopLevelDecl(clang::DeclGroupRef(decl)))
                     return std::nullopt;
         }
+        // EN: X2. The specializations of function templates that are never defined (std's `_Returns_exactly<T>()`,
+        //     named only in unevaluated contexts) have no definition anywhere; an emitted body calling one (the
+        //     defaulted `_List_node()`, which C++ never uses) could not link, so it, and what calls it, stays a
+        //     declaration. Every member is requested whether used or not; such a member cannot be used.
+        // ES: X2. Las especializaciones de plantillas de funcion nunca definidas no tienen definicion; un cuerpo
+        //     emitido que llama a una (que C++ nunca usa) queda como declaracion, y tambien lo que lo llama.
+        std::set<std::string> undefinable;
+        {
+            std::function<void(const clang::DeclContext&)> scan = [&](const clang::DeclContext& scope) {
+                for (const auto* declaration : scope.decls())
+                {
+                    if (const auto* functionTemplate = llvm::dyn_cast<clang::FunctionTemplateDecl>(declaration))
+                    {
+                        if (!functionTemplate->getTemplatedDecl()->isDefined())
+                            for (const auto* specialization : functionTemplate->specializations())
+                                if (!specialization->isDefined() && !specialization->isDependentContext())
+                                    undefinable.insert(generator->GetMangledName(clang::GlobalDecl(specialization)).str());
+                    }
+                    else if (llvm::isa<clang::NamespaceDecl>(declaration) || llvm::isa<clang::LinkageSpecDecl>(declaration) ||
+                             llvm::isa<clang::ExportDecl>(declaration))
+                        scan(*llvm::cast<clang::DeclContext>(declaration));
+                }
+            };
+            scan(*context.getTranslationUnitDecl());
+        }
         generator->HandleTranslationUnit(context);
         auto module = generator->ReleaseModule();
         if (!module) return std::nullopt;
+        for (bool changed = !undefinable.empty(); changed;)
+        {
+            changed = false;
+            for (auto& function : *module)
+            {
+                if (function.isDeclaration()) continue;
+                bool unlinkable = false;
+                for (auto& block : function)
+                    for (auto& instruction : block)
+                        if (const auto* call = llvm::dyn_cast<llvm::CallBase>(&instruction))
+                            if (const auto* callee = call->getCalledFunction();
+                                callee && callee->isDeclaration() && undefinable.contains(callee->getName().str()))
+                                unlinkable = true;
+                if (!unlinkable) continue;
+                undefinable.insert(function.getName().str());
+                function.deleteBody();
+                function.setComdat(nullptr);
+                changed = true;
+            }
+        }
         // Item 9.7: the definitions of in-class `static const` members. / Las definiciones de miembros en clase.
         for (const auto& [name, constant] : inClassConstants)
             if (auto* variable = module->getGlobalVariable(name, true); variable && variable->isDeclaration())

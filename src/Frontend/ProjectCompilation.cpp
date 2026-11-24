@@ -3566,8 +3566,13 @@ public:
         std::string path(tokens_[index].lexeme());
         std::size_t last = index;
         std::size_t position = index + 1;
+        // X2: `std.set`, `std.string` (a keyword after a dot names a namespace member). / Una palabra clave tras un
+        //     punto nombra un miembro de namespace.
         while (position + 1 < tokens_.size() && tokens_[position].kind() == lexer::TokenKind::Dot &&
-               tokens_[position + 1].kind() == lexer::TokenKind::Identifier)
+               (tokens_[position + 1].kind() == lexer::TokenKind::Identifier ||
+                tokens_[position + 1].kind() == lexer::TokenKind::KwSet ||
+                tokens_[position + 1].kind() == lexer::TokenKind::KwGet ||
+                tokens_[position + 1].kind() == lexer::TokenKind::KwString))
         {
             path += '.';
             path += tokens_[position + 1].lexeme();

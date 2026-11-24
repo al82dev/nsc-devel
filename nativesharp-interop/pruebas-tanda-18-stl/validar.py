@@ -32,10 +32,13 @@ if args.dll:
 TOOLSET = Path('A:/vc2026-runtime/toolsets/14.52.36815')
 SDK = Path('A:/vc2026-runtime/windows-sdk/10.0.28000.0')
 CRT = [TOOLSET / 'lib/x64/libcmt.lib', TOOLSET / 'lib/x64/libvcruntime.lib', TOOLSET / 'lib/x64/libcpmt.lib',
-       SDK / 'lib/ucrt/x64/libucrt.lib', SDK / 'lib/um/x64/kernel32.lib']
+       SDK / 'lib/ucrt/x64/libucrt.lib', SDK / 'lib/um/x64/kernel32.lib',
+       # X2: the associative containers wait on addresses (WaitOnAddress). / Los contenedores asociativos.
+       SDK / 'lib/um/x64/synchronization.lib']
 SYSTEM = [TOOLSET / 'include', SDK / 'include/ucrt']
 HEADER = ('#pragma once\n#include <algorithm>\n#include <array>\n#include <bit>\n#include <limits>\n#include <numeric>\n'
-          '#include <type_traits>\n#include <vector>\n#include <string>\n')
+          '#include <type_traits>\n#include <vector>\n#include <string>\n#include <list>\n#include <map>\n'
+          '#include <unordered_map>\n')
 # (name, NativeSharp body, C++ body)
 CASES = [
     ('array', 'std.array<int, 4> a = new std.array<int, 4>(); a._Elems[2] = 7; return (int)a.size() * 10 + a._Elems[2];',
@@ -88,6 +91,16 @@ CASES = [
                      'return (s < t ? 1 : 0) + (s <= t ? 2 : 0) + (s > t ? 4 : 0) + (s >= t ? 8 : 0) + (t > s ? 16 : 0);',
      'std::string s("abc"); std::string t("abd"); '
      'return (s < t ? 1 : 0) + (s <= t ? 2 : 0) + (s > t ? 4 : 0) + (s >= t ? 8 : 0) + (t > s ? 16 : 0);'),
+    # X2: std::list, std::map and std::unordered_map (`operator[](const K&)` / `(K&&)`, members C++ never instantiates
+    #     left out of the emission). / list, map y unordered_map.
+    ('list', 'std.list<int> l = new std.list<int>(); int a = 40; int b = 2; l.push_back(in a); l.push_back(in b); '
+             'return l.front() + l.back() + (int)l.size();',
+     'std::list<int> l; int a = 40; int b = 2; l.push_back(a); l.push_back(b); return l.front() + l.back() + (int)l.size();'),
+    ('map', 'std.map<int, int> m = new std.map<int, int>(); int k = 1; m[k] = 40; m[2] = 2; return m[k] + m[2] + (int)m.size();',
+     'std::map<int, int> m; int k = 1; m[k] = 40; m[2] = 2; return m[k] + m[2] + (int)m.size();'),
+    ('unordered-map', 'std.unordered_map<int, int> m = new std.unordered_map<int, int>(); int k = 7; m[k] = 30; m[9] = 5; '
+                      'return m[k] + m[9] + (int)m.size();',
+     'std::unordered_map<int, int> m; int k = 7; m[k] = 30; m[9] = 5; return m[k] + m[9] + (int)m.size();'),
 ]
 
 
