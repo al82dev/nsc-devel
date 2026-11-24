@@ -590,6 +590,8 @@ bool ProjectCompilation::buildInheritanceModel()
             if (!field.cppInterfaceTypeOrdinal || field.name != "__nsc_cpp_interface_vptr") continue;
             const auto* interface = nameLookup_->cppImportedType(*field.cppInterfaceTypeOrdinal);
             const auto& owner = nameLookup_->namedTypes()[field.declaringTypeOrdinal];
+            // NSMeta X4-06: its producer checked a precompiled class. / El productor ya comprobo una clase precompilada.
+            if (owner.isPrecompiled) continue;
             const auto range = owner.parts.empty() || owner.parts.front().syntax == nullptr
                 ? SourceRange{} : owner.parts.front().syntax->range();
             const auto report = [&](const std::string& message) {

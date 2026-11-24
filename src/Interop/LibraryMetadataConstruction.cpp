@@ -2110,7 +2110,8 @@ std::uint8_t pointeeQualifiers(const ast::TypeSyntax* syntax, bool readonly = fa
 LibraryMetadataField buildFieldMetadata(
     std::span<const frontend::ClassMemberSymbol> members,
     const frontend::ObjectFieldLayout& fieldLayout,
-    bool publishLifetimeContracts)
+    bool publishLifetimeContracts,
+    const frontend::ProjectNameLookup* lookup = nullptr)
 {
     LibraryMetadataField field;
     if (fieldLayout.memberOrdinal < members.size())
@@ -2127,6 +2128,16 @@ LibraryMetadataField buildFieldMetadata(
                 member.declaredPointerLevelQualifiers);
     }
     field.typeKey = fieldLayout.typeKey;
+    // EN: NSMeta X4-06 (X3 in lib). The hidden pointer of a C++ base or interface is published as a pointer to that
+    //     C++ type, so a consumer knows the conversion it binds; it is a pointer either way.
+    // ES: NSMeta X4-06. El puntero oculto de una base o interfaz C++ se publica como puntero a ese tipo C++, para que
+    //     un consumidor sepa la conversion que enlaza; es un puntero de todos modos.
+    if (lookup != nullptr && fieldLayout.memberOrdinal < members.size() &&
+        members[fieldLayout.memberOrdinal].cppInterfaceTypeOrdinal &&
+        members[fieldLayout.memberOrdinal].name == "__nsc_cpp_interface_vptr" &&
+        *members[fieldLayout.memberOrdinal].cppInterfaceTypeOrdinal < lookup->namedTypes().size())
+        field.typeKey = "type:" +
+            lookup->namedTypes()[*members[fieldLayout.memberOrdinal].cppInterfaceTypeOrdinal].identity.key() + "*";
     field.offset = fieldLayout.offset;
     field.size = fieldLayout.size;
     field.alignment = fieldLayout.alignment;
@@ -2164,16 +2175,24 @@ void appendClassLayoutMetadata(
     std::span<const frontend::ClassMemberSymbol> members,
     const frontend::ClassObjectLayout& classLayout,
     bool publishLifetimeContracts,
-    LibraryMetadataType& record)
+    LibraryMetadataType& record,
+    const frontend::ProjectNameLookup* lookup = nullptr)
 {
     record.size = classLayout.size;
     record.alignment = classLayout.alignment;
     record.headerSize = classLayout.headerSize;
     record.referenceSize = classLayout.referenceSize;
     record.referenceAlignment = classLayout.referenceAlignment;
+    // X3-07: each further C++ interface's hidden pointer gets a distinct published name. / El puntero oculto de cada
+    //     interfaz C++ adicional se publica con un nombre distinto.
+    std::size_t interfaces = 0;
     for (const frontend::ObjectFieldLayout& fieldLayout : classLayout.fields)
+    {
         record.fields.push_back(
-            buildFieldMetadata(members, fieldLayout, publishLifetimeContracts));
+            buildFieldMetadata(members, fieldLayout, publishLifetimeContracts, lookup));
+        if (record.fields.back().name == "__nsc_cpp_interface_vptr" && interfaces++ != 0)
+            record.fields.back().name += "__" + std::to_string(interfaces);
+    }
 }
 
 void appendEnumLayoutMetadata(
@@ -2303,7 +2322,7 @@ void appendTypeLayoutMetadata(
     else if (classLayout != nullptr)
     {
         appendClassLayoutMetadata(
-            members, *classLayout, publishLifetimeContracts, record);
+            members, *classLayout, publishLifetimeContracts, record, compilation.nameLookup());
     }
     else if (type.kind == frontend::NamedTypeDeclarationKind::Enum)
     {

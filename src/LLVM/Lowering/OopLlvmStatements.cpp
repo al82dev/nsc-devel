@@ -325,6 +325,11 @@ bool OopLlvmImplementation::lowerBlockStatement(
                 {
                     if (cppBasesBuilt || thisValue_ == nullptr) return true;
                     cppBasesBuilt = true;
+                    // EN: NSMeta X4-06 (X3 in lib). The implicit constructor a library exports for a class without
+                    //     constructors builds no C++ base, as an implicit construction does: the conversion binds it.
+                    // ES: NSMeta X4-06. El constructor implicito que exporta una biblioteca para una clase sin
+                    //     constructores no construye bases C++, como una construccion implicita: lo enlaza la conversion.
+                    if (currentMirFunction_->memberOrdinal == std::numeric_limits<std::size_t>::max()) return true;
                     std::vector<std::string> skip;
                     for (const auto& item : completedBases)
                         if (item.second->stringValue == "constructor.cpp.base.cleanup")

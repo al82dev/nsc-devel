@@ -362,6 +362,9 @@ static bool appendCppInlineObjects(frontend::ProjectCompilation &compilation,
         for (const auto& field : members->members())
         {
             if (!field.cppInterfaceTypeOrdinal || field.name != "__nsc_cpp_interface_vptr") continue;
+            // NSMeta X4-06: a precompiled class's adapter is in its producer's library. / El adaptador de una clase
+            //     precompilada esta en la biblioteca de su productor.
+            if (compilation.nameLookup()->namedTypes()[field.declaringTypeOrdinal].isPrecompiled) continue;
             const auto* interface = compilation.nameLookup()->cppImportedType(*field.cppInterfaceTypeOrdinal);
             if (!interface || !interface->clangUsr) { error = "C++ interface has no Clang identity"; return false; }
             const auto classKey = compilation.nameLookup()->namedTypes()[field.declaringTypeOrdinal].identity.key();

@@ -192,6 +192,23 @@ bool ProjectMemberModel::initializeMemberDeclaredType(
         : symbol.kind == ClassMemberKind::Destructor
             ? "builtin:void"
             : canonicalTypeKey(memberNode->typeSyntax(), nameLookup);
+    // EN: NSMeta X4-06 (X3 in lib). A precompiled class publishes the hidden pointer of a C++ base or interface as a
+    //     pointer to that C++ type; it binds the conversion to that type as in the producer.
+    // ES: NSMeta X4-06. Una clase precompilada publica el puntero oculto de una base o interfaz C++ como puntero a ese
+    //     tipo C++; enlaza la conversion a ese tipo como en el productor.
+    if (symbol.kind == ClassMemberKind::Field && symbol.name.starts_with("__nsc_cpp_interface_vptr") &&
+        symbol.declaredTypeKey.starts_with("type:") && symbol.declaredTypeKey.ends_with('*'))
+    {
+        const std::string_view identity = std::string_view(symbol.declaredTypeKey).substr(5,
+            symbol.declaredTypeKey.size() - 6);
+        if (const auto ordinal = nameLookup.typeOrdinalForIdentity(identity))
+            if (const auto* imported = nameLookup.cppImportedType(*ordinal);
+                imported != nullptr && !imported->cppInterfaceMethods.empty())
+            {
+                symbol.cppInterfaceTypeOrdinal = *ordinal;
+                symbol.isCompilerGenerated = true;
+            }
+    }
     symbol.declaredErrorTypeSyntax = memberNode->throwsTypeSyntax();
     symbol.declaredErrorTypeKey = memberNode->throwsTypeSyntax() == nullptr
         ? std::string{}

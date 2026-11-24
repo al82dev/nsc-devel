@@ -108,6 +108,11 @@ bool OopLlvmImplementation::defineCallbackGuardThunks(std::string& error, bool d
                 function.memberOrdinal < memberModel_->members().size())
             {
                 const auto& method = memberModel_->members()[function.memberOrdinal];
+                // NSMeta X4-06: a precompiled class's C boundaries are in its producer's library. / Los limites C de
+                //     una clase precompilada estan en la biblioteca de su productor.
+                const bool precompiled = method.declaringTypeOrdinal < nameLookup_.namedTypes().size() &&
+                    nameLookup_.namedTypes()[method.declaringTypeOrdinal].isPrecompiled;
+                if (!precompiled)
                 for (const std::size_t member : memberModel_->membersOfType(method.declaringTypeOrdinal))
                 {
                     if (member >= memberModel_->members().size()) continue;

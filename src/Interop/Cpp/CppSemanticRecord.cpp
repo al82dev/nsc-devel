@@ -1891,6 +1891,11 @@ static CppCRecordSnapshotResult captureRecordSnapshot(
         if (std::any_of(record.methods.begin(), record.methods.end(),
                 [](const auto& method) { return method.kind == CppMethodKind::Constructor; }))
             return fail(cppRecordNotCatalogueValue);
+        // EN: NSMeta X4-06 (X3 in lib). A derived record calls its bases' methods and converts to them, which the
+        //     value catalogue does not carry: it travels as a source session too.
+        // ES: NSMeta X4-06. Un record derivado llama a los metodos de sus bases y se convierte a ellas, lo que el
+        //     catalogo de valores no lleva: tambien viaja como sesion de fuente.
+        if (!record.bases.empty()) return fail(cppRecordNotCatalogueValue);
         // EN: NSMeta X4-06. Member operators (an indexer, `operator*`) and overloads of one name (by reference
         //     kind, `const T&`/`T&&`, or by receiver qualifier, `&`/`const&`/`&&`) are chosen as C++ does over the
         //     declarations, which the value catalogue does not keep apart: the record travels as a source session.

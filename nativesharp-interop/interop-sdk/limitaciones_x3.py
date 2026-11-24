@@ -11,8 +11,18 @@ X3-07: COM consumido y entrante: interfaz abstracta `__stdcall` con AddRef/Relea
 tambien implementada por una clase NativeSharp y llamada desde C++.
 X3-03: un record con bases virtuales se construye y destruye por adaptadores de Clang (indicador de mas derivado, destructor de bases virtuales).
 """
+import re
+
 import comun
-from comun import Caso, positivo, rechazo, fin
+from comun import Caso, rechazo, fin
+
+
+def positivo(caso, body, preludio='', opts=None, modes=None):
+    """In lib the prelude's classes are the producer's, so they are public for the consumer. / En lib las clases del
+    preludio son del productor: son publicas para el consumidor."""
+    if modes is not None and 'lib' in modes:
+        preludio = re.sub(r'(^|[;}\n])(\s*)(class|struct|interface|enum) ', r'\1\2public \3 ', preludio)
+    return comun.positivo(caso, body, preludio=preludio, opts=opts, modes=modes)
 
 CPP = dict(language='C++', standard='c++20', clang_args=['-fno-exceptions', '-fno-rtti', '-fno-threadsafe-statics'])
 
@@ -26,9 +36,12 @@ int take_a(A& r);
 }
 '''
 S1 = 'namespace lib { int take_b(const B* p) { return p->b; } int take_a(A& r) { return r.a; } }\n'
+# NSMeta X4-06 (X3 in lib): the producer publishes its classes' C++ bases and a consumer without the header
+# converts to them with the producer's adapters. / El productor publica las bases C++ de sus clases y un
+# consumidor sin encabezado se convierte a ellas con los adaptadores del productor.
 positivo(Caso('x3-bases', H1, S1, **CPP),
          'lib.D d = new lib.D(); if (d.sum() != 42 || d.geta() != 10 || d.getb() != 20) return 1;\n'
-         '    return lib.take_b(&d) + lib.take_a(ref d) + 12;', modes=['directo', 'dll'])
+         '    return lib.take_b(&d) + lib.take_a(ref d) + 12;', modes=['directo', 'dll', 'lib'])
 
 H2 = r'''
 namespace lib {
@@ -129,8 +142,11 @@ class MyCalc : ICalc
     public int Add(int a, int b, int* out) { *out = a + b; return 0; }
 }
 '''
+# NSMeta X4-06 (X3 in lib): the producer publishes its classes' C++ bases and a consumer without the header
+# converts to them with the producer's adapters. / El productor publica las bases C++ de sus clases y un
+# consumidor sin encabezado se convierte a ellas con los adaptadores del productor.
 positivo(Caso('x3-com-entrante', HCOM, SCOM, **CPP), 'var c = new MyCalc(); return UseCalc((ICalc*)c);',
-         preludio=PRECOM, modes=['directo', 'dll'])
+         preludio=PRECOM, modes=['directo', 'dll', 'lib'])
 # A class must implement every pure virtual method with its NativeSharp signature. / Debe implementar cada metodo
 # virtual puro con su firma NativeSharp.
 rechazo(c3, 'return 0;', "it must declare one public instance method 'QueryInterface'", preludio='class MyCalc : ICalc { }\n')
@@ -138,9 +154,12 @@ rechazo(c3, 'return 0;', "it must declare one public instance method 'QueryInter
 # ('cannot derive from the C/C++ record'); the override is reached through C++'s virtual dispatch, also from
 # NativeSharp through the C++ pointer. / Derivar de `lib.Shape` era un rechazo; la sobreescritura se alcanza por el
 # despacho virtual de C++, tambien desde NativeSharp por el puntero C++.
+# NSMeta X4-06 (X3 in lib): the producer publishes its classes' C++ bases and a consumer without the header
+# converts to them with the producer's adapters. / El productor publica las bases C++ de sus clases y un
+# consumidor sin encabezado se convierte a ellas con los adaptadores del productor.
 positivo(Caso('x3-base-no-interfaz', H2, S2, **CPP),
          'var m = new MyShape(); lib.Shape* p = (lib.Shape*)m; return p->area() + p->tag + p->scale(0);',
-         preludio='class MyShape : lib.Shape { public int area() { return 40; } }\n', modes=['directo', 'dll'])
+         preludio='class MyShape : lib.Shape { public int area() { return 40; } }\n', modes=['directo', 'dll', 'lib'])
 
 H4 = 'namespace lib { struct VB { int v = 40; }; struct M1 : virtual VB { int m1 = 1; }; struct M2 : virtual VB { int m2 = 1; };\n' \
      'struct DD : M1, M2 { int dd = 0; }; int vb_value(DD* p); }\n'
@@ -204,11 +223,14 @@ class Full : lib.Listener
     public int compute(int x) { return total + x; }
 }
 '''
+# NSMeta X4-06 (X3 in lib): the producer publishes its classes' C++ bases and a consumer without the header
+# converts to them with the producer's adapters. / El productor publica las bases C++ de sus clases y un
+# consumidor sin encabezado se convierte a ellas con los adaptadores del productor.
 positivo(Caso('x3-observador', HOBS, 'namespace lib { int drive(Listener* l) { return l->onEvent(10) + l->compute(1); } }\n',
               **CPP),
          'var d = new Doubler(); if (lib.drive((lib.Listener*)d) != 12) return 1;\n'
          '    var f = new Full(); return lib.drive((lib.Listener*)f) == 41 && f.total == 10 ? 42 : 2;',
-         preludio=PREOBS, modes=['directo', 'dll'])
+         preludio=PREOBS, modes=['directo', 'dll', 'lib'])
 # X3-01: a NativeSharp class derived from a polymorphic C++ class with data, default-constructible and with a trivial
 # destructor: the C++ object (base and adapter) lives in the hidden fields, constructed once by default (its `id = 7`
 # persists across conversions) and never destroyed there. A base with a non-trivial destructor stays a rejection.
@@ -222,10 +244,13 @@ int render(Widget* w);
 }
 '''
 SW = 'namespace lib { int render(Widget* w) { return w->draw() + w->scale(2) + (int)w->pad[1]; } }\n'
+# NSMeta X4-06 (X3 in lib): the producer publishes its classes' C++ bases and a consumer without the header
+# converts to them with the producer's adapters. / El productor publica las bases C++ de sus clases y un
+# consumidor sin encabezado se convierte a ellas con los adaptadores del productor.
 positivo(Caso('x3-base-con-datos', HW, SW, **CPP),
          'var w = new MyWidget(); if (lib.render((lib.Widget*)w) != 42) return 1;\n'
          '    return lib.render((lib.Widget*)w) == 44 ? 42 : 2;',
-         preludio='class MyWidget : lib.Widget { public int draw() { return 26; } }\n', modes=['directo', 'dll'])
+         preludio='class MyWidget : lib.Widget { public int draw() { return 26; } }\n', modes=['directo', 'dll', 'lib'])
 # X3-01: a base with a non-trivial destructor was a rejection ('cannot derive from the C/C++ record'); the C++ object is
 # now destroyed with the NativeSharp object, after the class's own fields as a C++ base subobject is, and only if a
 # conversion constructed it; a virtual destructor too. / Una base con destructor no trivial era un rechazo; el objeto
@@ -263,9 +288,12 @@ BODYO = r'''
 HN = 'namespace lib { struct Node { int id; Node(int i); virtual int value() const; }; int read(Node* n); }\n'
 SN = ('namespace lib { Node::Node(int i) : id(i) {} int Node::value() const { return id; }\n'
       'int read(Node* n) { return n->value() + n->id; } }\n')
+# NSMeta X4-06 (X3 in lib): the producer publishes its classes' C++ bases and a consumer without the header
+# converts to them with the producer's adapters. / El productor publica las bases C++ de sus clases y un
+# consumidor sin encabezado se convierte a ellas con los adaptadores del productor.
 positivo(Caso('x3-base-argumentos', HN, SN, **CPP), 'var l = new Leaf(12); return lib.read((lib.Node*)l);',
          preludio='class Leaf : lib.Node { public Leaf(int k) : base(k) { } public int value() { return 30; } }\n',
-         modes=['directo', 'dll'])
+         modes=['directo', 'dll', 'lib'])
 # X3-04: overloaded virtual methods of one name are matched by signature (C++ parameter spellings), each with its own
 # override; a pure overload left unimplemented is diagnosed. / Las sobrecargas virtuales de un nombre se emparejan por
 # firma; una sobrecarga pura sin implementar se diagnostica.
@@ -276,18 +304,24 @@ int pour(Sink* s);
 }
 '''
 SSINK = 'namespace lib { int pour(Sink* s) { return s->f(10) + s->f(2.5) + s->g(7); } }\n'
+# NSMeta X4-06 (X3 in lib): the producer publishes its classes' C++ bases and a consumer without the header
+# converts to them with the producer's adapters. / El productor publica las bases C++ de sus clases y un
+# consumidor sin encabezado se convierte a ellas con los adaptadores del productor.
 positivo(Caso('x3-sobrecargas-virtuales', HSINK, SSINK, **CPP), 'var c = new Cup(); return lib.pour((lib.Sink*)c);',
          preludio='class Cup : lib.Sink { public int f(int x) { return x * 2; } public int f(double x) { return (int)(x * 6); } }\n',
-         modes=['directo', 'dll'])
+         modes=['directo', 'dll', 'lib'])
 rechazo(Caso('x3-sobrecargas-virtuales', HSINK, SSINK, **CPP), 'return 0;', "it must declare one public instance method 'f'",
         preludio='class Cup : lib.Sink { public int f(int x) { return x; } }\n')
 rechazo(Caso('x3-base-sin-defecto', HN, SN, **CPP), 'return 0;', 'must declare a constructor that calls base(...)',
         preludio='class Leaf : lib.Node { public int value() { return 30; } }\n')
 rechazo(Caso('x3-base-sin-defecto', HN, SN, **CPP), 'return 0;', 'must call base(...)',
         preludio='class Leaf : lib.Node { public Leaf() { } public int value() { return 30; } }\n')
+# NSMeta X4-06 (X3 in lib): the producer publishes its classes' C++ bases and a consumer without the header
+# converts to them with the producer's adapters. / El productor publica las bases C++ de sus clases y un
+# consumidor sin encabezado se convierte a ellas con los adaptadores del productor.
 positivo(Caso('x3-base-destructor', HO, SO, **CPP), BODYO,
          preludio='class X : lib.Owning { public int f() { return 32; } }\nclass Y : lib.VOwning { public int g() { return 33; } }\n',
-         modes=['directo', 'dll'])
+         modes=['directo', 'dll', 'lib'])
 # X3-07: a class implements several C++ interfaces (COM, both from one IUnknown): an adapter per interface, each in its
 # own hidden fields; QueryInterface hands out either pointer and both reach the same object.
 # X3-07: una clase implementa varias interfaces C++ (COM): un adaptador por interfaz.
@@ -320,8 +354,11 @@ class Both : ICalc, IName
     public int Code() { return 12; }
 }
 '''
+# NSMeta X4-06 (X3 in lib): the producer publishes its classes' C++ bases and a consumer without the header
+# converts to them with the producer's adapters. / El productor publica las bases C++ de sus clases y un
+# consumidor sin encabezado se convierte a ellas con los adaptadores del productor.
 positivo(Caso('x3-com-multiple', HMULTI, SMULTI, **CPP), 'var b = new Both(); return UseBoth((ICalc*)b);',
-         preludio=PREMULTI, modes=['directo', 'dll'])
+         preludio=PREMULTI, modes=['directo', 'dll', 'lib'])
 # X3-08: a polymorphic class defined entirely inline in the header makes NSC emit its vtable; with RTTI that vtable
 # needs `type_info` from the C runtime. `Rtti="false"` on the reference (the library built with /GR- or -fno-rtti)
 # compiles NSC's Clang session with -fno-rtti too, so the derivation links without the CRT; a bad value is rejected.
@@ -333,10 +370,13 @@ inline int read(Node* n) { return n->value() + n->id; }
 }
 '''
 CPPNORTTI = dict(language='C++', standard='c++20', clang_args=['-fno-rtti'])
+# NSMeta X4-06 (X3 in lib): the producer publishes its classes' C++ bases and a consumer without the header
+# converts to them with the producer's adapters. / El productor publica las bases C++ de sus clases y un
+# consumidor sin encabezado se convierte a ellas con los adaptadores del productor.
 positivo(Caso('x3-rtti-false', HRTTI, None, extra_ref=' Rtti="false"', **CPPNORTTI),
          'var l = new Leaf(12); return lib.read((lib.Node*)l);',
          preludio='class Leaf : lib.Node { public Leaf(int k) : base(k) { } public int value() { return 30; } }\n',
-         modes=['directo', 'dll'])
+         modes=['directo', 'dll', 'lib'])
 rechazo(Caso('x3-rtti-invalido', HRTTI, None, extra_ref=' Rtti="no"', **CPPNORTTI), 'return 0;',
         'Rtti must be true or false')
 # X3/X2-05: a NativeSharp class implementing a C++ interface whose methods return a non-trivial record (constructed
@@ -367,5 +407,8 @@ NoDefault::~NoDefault() {}
 HIR = HFX3.replace('Obj make(int v);', 'Obj make(int v);\nstruct Big { long long a, b, c, d; };\nstruct IFactory { virtual Obj create(int v) = 0; virtual int sum(const Obj& o) = 0; virtual Big big(int k) = 0; };\nint use(IFactory* f);')
 SIR = SFX3.replace('Obj make(int v) { return Obj(v); }', 'Obj make(int v) { return Obj(v); }\nint use(IFactory* f) { Obj o = f->create(40); Big g = f->big(1); if (g.a + g.b + g.c + g.d != 10) return -1; return o.v + f->sum(Obj(2)); }')
 PREIR = 'class F : lib.IFactory { public lib.Obj create(int v) { return lib.make(v); } public int sum(in lib.Obj o) { return o.v; } public lib.Big big(int k) { lib.Big g; g.a = k; g.b = 2 * k; g.c = 3 * k; g.d = 4 * k; return g; } }\n'
-positivo(Caso('x3-interfaz-resultado-record', HIR, SIR, **CPP), '{ var f = new F(); int r = lib.use((lib.IFactory*)f); if (r != 42) return 1; } return lib.c().ctor == lib.c().dtor ? 42 : 2;', preludio=PREIR, modes=['directo'])
+# NSMeta X4-06 (X3 in lib): the producer publishes its classes' C++ bases and a consumer without the header
+# converts to them with the producer's adapters. / El productor publica las bases C++ de sus clases y un
+# consumidor sin encabezado se convierte a ellas con los adaptadores del productor.
+positivo(Caso('x3-interfaz-resultado-record', HIR, SIR, **CPP), '{ var f = new F(); int r = lib.use((lib.IFactory*)f); if (r != 42) return 1; } return lib.c().ctor == lib.c().dtor ? 42 : 2;', preludio=PREIR, modes=['directo', 'lib'])
 fin()

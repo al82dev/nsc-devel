@@ -230,6 +230,10 @@ void ProjectMemberModel::collectTypeMember(
     validateUserConversion(symbol, type, diagnostics);
     captureSnapshotMember(part, symbol);
     if (isDuplicateMember(symbol, type, byName, diagnostics)) return;
+    // NSMeta X4-06 (X3-07 in lib): a precompiled class's further interface pointers keep their compiler name. / Los
+    //     punteros de interfaz adicionales de una clase precompilada recuperan su nombre del compilador.
+    if (symbol.cppInterfaceTypeOrdinal && symbol.name.starts_with("__nsc_cpp_interface_vptr__"))
+        symbol.name = "__nsc_cpp_interface_vptr";
     appendCollectedMember(std::move(symbol), typeOrdinal, memberNode, byName);
 }
 
