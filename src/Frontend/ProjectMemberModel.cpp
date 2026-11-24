@@ -157,6 +157,7 @@ bool ProjectMemberModel::setExperimentalCppInstanceMethods(
         // T19-006: the C++ spellings keep overloads with equal NativeSharp types apart. / Las separan.
         signature += method.cppSignatureSuffix;
         if (method.receiverConst) signature += " const";
+        if (method.receiverRvalue) signature += " &&"; // X2: `value() &` and `value() &&`
         const auto [symbol, inserted] = symbols.emplace(method.externalSymbol, &method);
         if (!signatures.insert(std::move(signature)).second || (!inserted &&
             (!symbol->second->sharedExternalSymbolVerified || !method.sharedExternalSymbolVerified ||

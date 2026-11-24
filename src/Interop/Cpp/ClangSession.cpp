@@ -2766,6 +2766,12 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                             for (const auto* sibling : siblings)
                             {
                                 if (sibling == method || sibling->getNumParams() != method->getNumParams()) continue;
+                                // The receiver a call selecting the sibling has: rvalue for `&&`, const for a const
+                                //     sibling. / El receptor de una llamada que elige la hermana.
+                                const bool rvalueReceiver = sibling->getRefQualifier() == clang::RQ_RValue;
+                                if ((method->getRefQualifier() == clang::RQ_RValue && !rvalueReceiver) ||
+                                    (method->getRefQualifier() == clang::RQ_LValue && rvalueReceiver && !method->isConst()) ||
+                                    (!method->isConst() && sibling->isConst())) continue;
                                 bool accepts = true;
                                 for (unsigned index = 0; accepts && index < method->getNumParams(); ++index)
                                 {

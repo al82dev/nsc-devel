@@ -640,4 +640,16 @@ SUS = 'namespace lib { int g_dtors; }'+chr(10)
 positivo(Caso('x2-using-base-plantilla-defecto', HUS, SUS, **CRG),
          'lib.Derived d; d.n = 0; int a = 40; int b = 2; d.put(in a); d.put(in b); return d.count() + lib.dtors() - 2;',
          modes=['directo', 'dll'])
+# X2: ref-qualified and const overloads of a C++ method (std::optional's `value() &` / `const&` / `&&`) were dropped
+# as ambiguous or blocked; they are kept apart by their qualifier and selected as C++ does: on a named non-const
+# receiver the non-const `&` one. / Sobrecargas con calificador de referencia y const, elegidas como en C++.
+HRQ = r'''
+namespace lib {
+struct Box { int v; int& get() & { return v; } const int& get() const& { return v; } int get() && { return v + 1000; }
+  int get() const&& { return v + 2000; } };
+inline Box make(int x) { Box b; b.v = x; return b; }
+}
+'''
+positivo(Caso('x2-calificadores-receptor', HRQ, '', **CRG),
+         'lib.Box b; b.v = 1; b.get() = 40; return b.get() + lib.make(2).get() - 1000;', modes=['directo', 'dll'])
 fin()

@@ -2708,13 +2708,14 @@ bool provideExperimentalCppInstanceMethods(
             std::any_of(projectedUsrs[family].begin(), projectedUsrs[family].end(), [&](const std::string& usr) {
                 return found->second.contains(usr); })) continue;
         // T19-006: the C++ spelling suffix keeps `f(int)` and `f(long)` apart. / Separa `f(int)` de `f(long)`.
-        std::set<std::tuple<std::vector<std::string>, bool, bool, std::string>> signatures;
+        // X2: the receiver's ref qualifier tells `value() &` from `value() &&`. / Distingue `&` de `&&`.
+        std::set<std::tuple<std::vector<std::string>, bool, bool, std::string, bool>> signatures;
         bool ambiguous = false;
         for (const auto& method : methods)
             if (!signatures.emplace(method.parameterTypeKeys,
                 method.parameterTypeKeys.size() == 1 && method.parameterTypeKeys[0].ends_with('*') &&
                 !method.parameterPointeeReadonly.empty() && method.parameterPointeeReadonly[0],
-                method.receiverConst, method.cppSignatureSuffix).second) ambiguous = true;
+                method.receiverConst, method.cppSignatureSuffix, method.receiverRvalue).second) ambiguous = true;
         if (ambiguous) continue;
         for (auto& method : methods) result.push_back(std::move(method));
     }

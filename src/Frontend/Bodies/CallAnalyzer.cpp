@@ -6623,6 +6623,63 @@ void ProjectMethodBodyModel::evaluateCallCandidates(
             constraintRejectedSyntaxes, candidateBinding, candidate, candidateOrdinal, call);
         call.evaluatedCandidates.push_back(std::move(candidateBinding));
     }
+    // EN: X2. Ref-qualified and const overloads of a C++ method (optional's `value() &`, `value() const&`,
+    //     `value() &&`), as C++ selects them: on a named receiver an `&&` overload yields to the others, and on a
+    //     non-const receiver a const overload yields to a non-const one with the same parameters.
+    // ES: X2. Sobrecargas con calificador de referencia y const de un metodo C++, como las elige C++: sobre un receptor
+    //     con nombre una `&&` cede ante las otras, y sobre uno no const una const cede ante una no const igual.
+    const auto& members = memberModel_->members();
+    const auto viableMember = [&](std::size_t ordinal) -> const ClassMemberSymbol* {
+        return ordinal < members.size() && members[ordinal].isCppExternal ? &members[ordinal] : nullptr;
+    };
+    const ast::AstNode* receiverSyntax = callee.receiverSyntax;
+    const bool namedReceiver = receiverSyntax != nullptr &&
+        receiverSyntax->kind() != ast::AstNodeKind::CallExpression &&
+        receiverSyntax->kind() != ast::AstNodeKind::ObjectCreationExpression &&
+        receiverSyntax->kind() != ast::AstNodeKind::NewExpression;
+    const auto drop = [&](const auto& predicate) {
+        std::vector<std::size_t> kept;
+        for (const std::size_t ordinal : call.viableCandidateMemberOrdinals)
+            if (!predicate(ordinal)) kept.push_back(ordinal);
+        if (kept.empty() || kept.size() == call.viableCandidateMemberOrdinals.size()) return;
+        for (auto& evaluated : call.evaluatedCandidates)
+            if (std::find(kept.begin(), kept.end(), evaluated.memberOrdinal) == kept.end()) evaluated.viable = false;
+        call.viableCandidateMemberOrdinals = std::move(kept);
+    };
+    if (call.viableCandidateMemberOrdinals.size() > 1)
+    {
+        if (namedReceiver)
+            drop([&](std::size_t ordinal) {
+                const auto* member = viableMember(ordinal);
+                return member != nullptr && member->cppRvalueReceiver;
+            });
+        // On a temporary an `&&` overload binds better than an `&` / `const&` one. / Sobre un temporal es mejor `&&`.
+        else if (receiverSyntax != nullptr &&
+                 std::any_of(call.viableCandidateMemberOrdinals.begin(), call.viableCandidateMemberOrdinals.end(),
+                     [&](std::size_t ordinal) {
+                         const auto* member = viableMember(ordinal);
+                         return member != nullptr && member->cppRvalueReceiver;
+                     }))
+            drop([&](std::size_t ordinal) {
+                const auto* member = viableMember(ordinal);
+                return member != nullptr && !member->cppRvalueReceiver;
+            });
+        if (!callee.readonlyReceiver)
+            drop([&](std::size_t ordinal) {
+                const auto* member = viableMember(ordinal);
+                if (member == nullptr || !member->isReadonly) return false;
+                return std::any_of(call.viableCandidateMemberOrdinals.begin(), call.viableCandidateMemberOrdinals.end(),
+                    [&](std::size_t other) {
+                        const auto* sibling = viableMember(other);
+                        if (sibling == nullptr || sibling->isReadonly || sibling->cppRvalueReceiver != member->cppRvalueReceiver ||
+                            sibling->parameters.size() != member->parameters.size()) return false;
+                        for (std::size_t index = 0; index < member->parameters.size(); ++index)
+                            if (sibling->parameters[index].typeKey != member->parameters[index].typeKey ||
+                                sibling->parameters[index].passKind != member->parameters[index].passKind) return false;
+                        return true;
+                    });
+            });
+    }
 }
 
 bool ProjectMethodBodyModel::prepareCallCandidateMapping(
