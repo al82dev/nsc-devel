@@ -4470,7 +4470,32 @@ public:
                 else if (method)
                     call = alias("o", context.getCanonicalTagType(method->getParent())) + "::" +
                         method->getNameAsString() + "(" + arguments + ")";
-                else call = "::" + callee->getQualifiedNameAsString() + "(" + arguments + ")";
+                else
+                {
+                    // STL: a function template specialization (`make_unique<int, int>`) is called with its
+                    //     template arguments, which a call cannot always deduce. / Una especializacion de
+                    //     plantilla de funcion se llama con sus argumentos de plantilla.
+                    std::string templateArguments;
+                    if (const auto* specializationArguments = callee->getTemplateSpecializationArgs())
+                    {
+                        clang::PrintingPolicy printing(context.getLangOpts());
+                        printing.SuppressTagKeyword = true;
+                        printing.FullyQualifiedName = true;
+                        llvm::raw_string_ostream stream(templateArguments);
+                        // Only the arguments before the first pack: the pack and what follows it are deduced from
+                        //     the call. / Solo los anteriores al primer paquete; el resto se deduce de la llamada.
+                        std::vector<clang::TemplateArgument> leading;
+                        for (const auto& argument : specializationArguments->asArray())
+                        {
+                            if (argument.getKind() == clang::TemplateArgument::Pack) break;
+                            leading.push_back(argument);
+                        }
+                        if (leading.size() != specializationArguments->size())
+                            clang::printTemplateArgumentList(stream, leading, printing);
+                        else clang::printTemplateArgumentList(stream, specializationArguments->asArray(), printing);
+                    }
+                    call = "::" + callee->getQualifiedNameAsString() + templateArguments + "(" + arguments + ")";
+                }
                 std::string resultType = "void";
                 std::string body = call + ";";
                 if (constructor)
@@ -5475,6 +5500,20 @@ public:
         std::span<const CppTemplateArgument> explicitTypes) const override
     {
         std::lock_guard lock(mutex_);
+        auto result = deduceFunctionTemplateCallWithExplicitLocked(qualifiedName, argumentTypes, explicitTypes);
+        // STL: repeated after a reparse, as the instantiations are (a call deduced before the members are
+        //     imported). / Se repite tras un nuevo analisis, como las instanciaciones.
+        if (result && result->instantiated)
+            templateDeductions_.push_back({std::string(qualifiedName), {argumentTypes.begin(), argumentTypes.end()},
+                                           {explicitTypes.begin(), explicitTypes.end()}});
+        return result;
+    }
+
+    // The deduction; the caller holds the mutex. / La deduccion; quien llama tiene el mutex.
+    std::optional<CppTemplateInstantiation> deduceFunctionTemplateCallWithExplicitLocked(
+        std::string_view qualifiedName, std::span<const CppTemplateArgument> argumentTypes,
+        std::span<const CppTemplateArgument> explicitTypes) const
+    {
         // T19-003: a call to a function-like macro. / Una llamada a una macro de funcion.
         if (ast_)
             if (auto expanded = expandCFunctionMacroCall(qualifiedName, argumentTypes)) return expanded;
@@ -6374,6 +6413,9 @@ public:
         instantiateNamedSpecializations(ast_->getASTContext(), ast_->getSema());
         const auto uses = templateUses_;
         for (const auto& use : uses) instantiateTemplateLocked(use.name, use.function, use.arguments);
+        const auto deductions = templateDeductions_;
+        for (const auto& deduction : deductions)
+            deduceFunctionTemplateCallWithExplicitLocked(deduction.name, deduction.arguments, deduction.explicitArguments);
         macroOfAccessor_.emplace(accessor, std::make_pair(name, true));
         return name;
     }
@@ -7814,6 +7856,9 @@ private:
                 instantiateNamedSpecializations(ast_->getASTContext(), ast_->getSema());
                 const auto uses = templateUses_;
                 for (const auto& use : uses) instantiateTemplateLocked(use.name, use.function, use.arguments);
+                const auto deductions = templateDeductions_;
+                for (const auto& deduction : deductions)
+                    deduceFunctionTemplateCallWithExplicitLocked(deduction.name, deduction.arguments, deduction.explicitArguments);
             }
             macroWrapperByCall_.emplace(key, wrapper);
             macroOfWrapper_.emplace(wrapper, std::string(name));
@@ -8026,6 +8071,13 @@ private:
         std::vector<CppTemplateArgument> arguments;
     };
     mutable std::vector<TemplateUse> templateUses_;
+    struct TemplateDeduction
+    {
+        std::string name;
+        std::vector<CppTemplateArgument> arguments;
+        std::vector<CppTemplateArgument> explicitArguments;
+    };
+    mutable std::vector<TemplateDeduction> templateDeductions_;
     std::string inputPath_;
     std::optional<basic::Sha256Digest> preprocessingFingerprint_;
     // T13-005: the function template specializations NativeSharp requested. / Las que pidio NativeSharp.

@@ -3574,6 +3574,10 @@ public:
     using DeduceClass = std::function<std::optional<Specialization>(const std::string& qualifiedName,
         const std::vector<interop::CppTemplateArgument>& arguments)>;
     CppTemplateUseRewriter& deduceClass(DeduceClass value) { deduceClass_ = std::move(value); return *this; }
+    using PreDeduce = std::function<void(const std::string& qualifiedName,
+        const std::vector<interop::CppTemplateArgument>& explicitArguments,
+        const std::vector<interop::CppTemplateArgument>& callArguments)>;
+    CppTemplateUseRewriter& preDeduce(PreDeduce value) { preDeduce_ = std::move(value); return *this; }
 
     // A specialization use whose qualified name starts at index, or nullopt when the tokens are not one.
     std::optional<Use> match(std::size_t index, unsigned depth = 0) const
@@ -3605,68 +3609,7 @@ public:
             if (const auto found = templates_.find(path); found != templates_.end() && !found->second)
             {
                 std::vector<interop::CppTemplateArgument> arguments;
-                std::size_t cursor = position + 1;
-                bool literals = true;
-                while (literals && cursor < tokens_.size() && tokens_[cursor].kind() != lexer::TokenKind::RightParen)
-                {
-                    interop::CppTemplateArgument argument;
-                    const auto& token = tokens_[cursor];
-                    const auto text = token.lexeme();
-                    switch (token.kind())
-                    {
-                    case lexer::TokenKind::IntegerLiteral: argument.builtin = "int"; break;
-                    case lexer::TokenKind::FloatingLiteral:
-                        argument.builtin = !text.empty() && (text.back() == 'f' || text.back() == 'F') ? "float" : "double";
-                        break;
-                    case lexer::TokenKind::KwTrue: case lexer::TokenKind::KwFalse: argument.builtin = "bool"; break;
-                    case lexer::TokenKind::StringLiteral: argument.builtin = "const char"; argument.pointerDepth = 1; break;
-                    case lexer::TokenKind::Identifier:
-                    {
-                        // STL (CTAD): a local declared before with an explicit builtin type (`int a = 40;`), the
-                        //     nearest such declaration of that name in the unit; an lvalue, as C++ passes it.
-                        //     Un local declarado antes con un tipo builtin explicito, la declaracion mas cercana.
-                        const auto builtinOf = [](lexer::TokenKind kind) -> std::string_view {
-                            switch (kind)
-                            {
-                            case lexer::TokenKind::KwBool: return "bool";
-                            case lexer::TokenKind::KwSByte: return "signed char";
-                            case lexer::TokenKind::KwByte: return "unsigned char";
-                            case lexer::TokenKind::KwShort: return "short";
-                            case lexer::TokenKind::KwUShort: return "unsigned short";
-                            case lexer::TokenKind::KwInt: return "int";
-                            case lexer::TokenKind::KwUInt: return "unsigned int";
-                            case lexer::TokenKind::KwLong: return "long long";
-                            case lexer::TokenKind::KwULong: return "unsigned long long";
-                            case lexer::TokenKind::KwFloat: return "float";
-                            case lexer::TokenKind::KwDouble: return "double";
-                            default: return {};
-                            }
-                        };
-                        literals = false;
-                        for (std::size_t back = index; back-- > 1;)
-                        {
-                            if (tokens_[back].kind() != lexer::TokenKind::Identifier || tokens_[back].lexeme() != text ||
-                                back + 1 >= tokens_.size()) continue;
-                            const auto after = tokens_[back + 1].kind();
-                            if (after != lexer::TokenKind::Equal && after != lexer::TokenKind::Semicolon) continue;
-                            const auto builtin = builtinOf(tokens_[back - 1].kind());
-                            if (builtin.empty()) break;
-                            argument.builtin = std::string(builtin);
-                            argument.lvalue = true;
-                            literals = true;
-                            break;
-                        }
-                        break;
-                    }
-                    default: literals = false; break;
-                    }
-                    if (!literals) break;
-                    arguments.push_back(std::move(argument));
-                    ++cursor;
-                    if (cursor < tokens_.size() && tokens_[cursor].kind() == lexer::TokenKind::Comma) ++cursor;
-                    else if (cursor >= tokens_.size() || tokens_[cursor].kind() != lexer::TokenKind::RightParen)
-                        literals = false;
-                }
+                const bool literals = callArgumentTypes(index, position, arguments);
                 std::string qualified;
                 for (std::size_t start = 0; start <= path.size();)
                 {
@@ -3676,7 +3619,7 @@ public:
                     if (end == std::string::npos) break;
                     start = end + 1;
                 }
-                if (literals && !arguments.empty())
+                if (literals)
                     if (const auto specialization = deduceClass_(qualified, arguments))
                     {
                         Use use;
@@ -3733,12 +3676,109 @@ public:
         //     ones). / Una llamada cuyo paquete no fijan los explicitos deduce el resto de sus argumentos.
         if (found->second && deferUnboundPack_ && closed->index < tokens_.size() && !closed->half &&
             tokens_[closed->index].kind() == lexer::TokenKind::LeftParen && deferUnboundPack_(qualified, arguments.size()))
+        {
+            // STL: with literal or typed-local arguments the call is deduced now, so its specialization exists when
+            //     the members are imported (`make_unique<T>(42)` constructs its result in place); the call itself
+            //     still binds in the deduction round. / Con argumentos literales o locales tipados la llamada se
+            //     deduce ahora, para que su especializacion exista al importar los miembros.
+            std::vector<interop::CppTemplateArgument> callArguments;
+            if (preDeduce_ && callArgumentTypes(index, closed->index, callArguments))
+            {
+                // A local written without `ref`/`in` is passed as a value, as the deduction round passes it.
+                //     Un local escrito sin `ref`/`in` se pasa como valor, como en la ronda de deduccion.
+                for (auto& argument : callArguments)
+                {
+                    argument.lvalue = argument.integralUnsigned;
+                    argument.integralUnsigned = false;
+                }
+                preDeduce_(qualified, arguments, callArguments);
+            }
             return std::nullopt;
+        }
         const SourceRange range(tokens_[last].range().begin(), tokens_[closeIndex].range().end());
         const auto specialization = instantiate_(qualified, found->second, arguments, range);
         if (!specialization) use.failed = true;
         else { use.name = specialization->name; use.usr = specialization->usr; use.alias = specialization->alias; }
         return use;
+    }
+
+    // STL: the types of a call's arguments when each is a literal or a local declared before with an explicit builtin
+    //     type (an lvalue); false otherwise. `open` is the index of the call's `(`, `start` the use's first token.
+    //     Los tipos de los argumentos de una llamada cuando cada uno es un literal o un local tipado.
+    bool callArgumentTypes(std::size_t start, std::size_t open, std::vector<interop::CppTemplateArgument>& arguments) const
+    {
+        const std::size_t index = start;
+        std::size_t cursor = open + 1;
+        bool literals = true;
+        while (literals && cursor < tokens_.size() && tokens_[cursor].kind() != lexer::TokenKind::RightParen)
+        {
+            interop::CppTemplateArgument argument;
+            // `ref x` / `in x`: the local as a place (an lvalue). / El local como lugar.
+            bool place = false;
+            if ((tokens_[cursor].kind() == lexer::TokenKind::KwIn || (tokens_[cursor].kind() == lexer::TokenKind::Identifier &&
+                    tokens_[cursor].lexeme() == "ref")) &&
+                cursor + 1 < tokens_.size() && tokens_[cursor + 1].kind() == lexer::TokenKind::Identifier)
+            { place = true; ++cursor; }
+            const auto& token = tokens_[cursor];
+            const auto text = token.lexeme();
+            switch (token.kind())
+            {
+            case lexer::TokenKind::IntegerLiteral: argument.builtin = "int"; break;
+            case lexer::TokenKind::FloatingLiteral:
+                argument.builtin = !text.empty() && (text.back() == 'f' || text.back() == 'F') ? "float" : "double";
+                break;
+            case lexer::TokenKind::KwTrue: case lexer::TokenKind::KwFalse: argument.builtin = "bool"; break;
+            case lexer::TokenKind::StringLiteral: argument.builtin = "const char"; argument.pointerDepth = 1; break;
+            case lexer::TokenKind::Identifier:
+            {
+                // STL (CTAD): a local declared before with an explicit builtin type (`int a = 40;`), the
+                //     nearest such declaration of that name in the unit; an lvalue, as C++ passes it.
+                //     Un local declarado antes con un tipo builtin explicito, la declaracion mas cercana.
+                const auto builtinOf = [](lexer::TokenKind kind) -> std::string_view {
+                    switch (kind)
+                    {
+                    case lexer::TokenKind::KwBool: return "bool";
+                    case lexer::TokenKind::KwSByte: return "signed char";
+                    case lexer::TokenKind::KwByte: return "unsigned char";
+                    case lexer::TokenKind::KwShort: return "short";
+                    case lexer::TokenKind::KwUShort: return "unsigned short";
+                    case lexer::TokenKind::KwInt: return "int";
+                    case lexer::TokenKind::KwUInt: return "unsigned int";
+                    case lexer::TokenKind::KwLong: return "long long";
+                    case lexer::TokenKind::KwULong: return "unsigned long long";
+                    case lexer::TokenKind::KwFloat: return "float";
+                    case lexer::TokenKind::KwDouble: return "double";
+                    default: return {};
+                    }
+                };
+                literals = false;
+                for (std::size_t back = index; back-- > 1;)
+                {
+                    if (tokens_[back].kind() != lexer::TokenKind::Identifier || tokens_[back].lexeme() != text ||
+                        back + 1 >= tokens_.size()) continue;
+                    const auto after = tokens_[back + 1].kind();
+                    if (after != lexer::TokenKind::Equal && after != lexer::TokenKind::Semicolon) continue;
+                    const auto builtin = builtinOf(tokens_[back - 1].kind());
+                    if (builtin.empty()) break;
+                    argument.builtin = std::string(builtin);
+                    argument.lvalue = true;
+                    literals = true;
+                    break;
+                }
+                break;
+            }
+            default: literals = false; break;
+            }
+            if (!literals) break;
+            argument.integralUnsigned = place; // marks a written place for preDeduce / marca un lugar escrito
+            arguments.push_back(std::move(argument));
+            ++cursor;
+            if (cursor < tokens_.size() && tokens_[cursor].kind() == lexer::TokenKind::Comma) ++cursor;
+            else if (cursor >= tokens_.size() || tokens_[cursor].kind() != lexer::TokenKind::RightParen)
+                literals = false;
+        }
+        return literals && !arguments.empty() && cursor < tokens_.size() &&
+            tokens_[cursor].kind() == lexer::TokenKind::RightParen;
     }
 
 private:
@@ -3892,6 +3932,7 @@ private:
     Reject reject_;
     DeferUnboundPack deferUnboundPack_;
     DeduceClass deduceClass_;
+    PreDeduce preDeduce_;
 };
 }
 
@@ -4515,6 +4556,13 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
                                                                               result->aliasTarget};
                             }
                         return std::nullopt;
+                    }).preDeduce([&](const std::string& qualifiedName,
+                                     const std::vector<interop::CppTemplateArgument>& explicitArguments,
+                                     const std::vector<interop::CppTemplateArgument>& callArguments) {
+                        for (auto* session : project->second.sessions)
+                            if (const auto result = session->deduceFunctionTemplateCallWithExplicit(
+                                    qualifiedName, callArguments, explicitArguments); result && result->instantiated)
+                                break;
                     }).deferUnboundPack([&](const std::string& qualifiedName, std::size_t explicitCount) {
                         return std::any_of(project->second.sessions.begin(), project->second.sessions.end(),
                             [&](const auto* session) {

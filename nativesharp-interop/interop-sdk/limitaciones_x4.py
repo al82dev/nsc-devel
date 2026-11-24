@@ -183,4 +183,22 @@ positivo(Caso('x4-deduccion-clase', HCT, None, language='C++', standard='c++20')
 # declarado antes con un tipo builtin explicito.
 positivo(Caso('x4-deduccion-clase-local', HCT, None, language='C++', standard='c++20'),
          'long k = 40; double d = 2.5; var t = new lib.Two(k, d); return t.sum();', modes=['directo', 'dll', 'lib'])
+# EN: STL. A variadic factory template that returns a non-trivial record by value (`make_unique<T>(args)`), called
+#     with literal or `ref` local arguments: the call is deduced before the members are imported, so its result is
+#     constructed in place; its adapter names the template arguments before the pack (`make<Box>(...)`), the pack is
+#     deduced from the call. / Una fabrica variadica que devuelve un record no trivial por valor.
+HMK = r'''
+namespace lib {
+extern int alive;
+struct Box { int v; Box(int a, int b) : v(a + b) { ++alive; } Box(const Box& o) : v(o.v) { ++alive; } ~Box() { --alive; } };
+template <class T, class... A> T make(A&&... a) { return T(static_cast<A&&>(a)...); }
+inline int live() { return alive; }
+}
+'''
+SMK = 'namespace lib { int alive; }\n'
+positivo(Caso('x4-fabrica-variadica', HMK, SMK, language='C++', standard='c++20', extra_ref=' Exceptions="false"'),
+         'int k = 2; int r = 0; { var b = lib.make<lib.Box>(40, ref k); r = b.v; } return r + lib.live();',
+         # lib: pending - before parsing, the consumer without the header cannot name the explicit record argument
+         # (`lib.Box`) to deduce early. / lib: pendiente.
+         modes=['directo', 'dll'])
 fin()
