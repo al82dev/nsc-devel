@@ -1777,6 +1777,8 @@ static std::string cppQualifiedRecordName(const std::vector<std::string>& namesp
     return qualified;
 }
 
+constexpr const char* cppRecordNotCatalogueValue = "C++ record has no eligible value observation";
+
 static CppCRecordSnapshotResult captureRecordSnapshot(
     std::span<const CppSemanticRecordEntry> inventory, const CppRecordGroup& group,
     std::span<const CppProjectSessions> cppValueSessions)
@@ -1881,7 +1883,7 @@ static CppCRecordSnapshotResult captureRecordSnapshot(
         const auto observed = observeCppRecordValueForEntry(inventory[*selected], cppValueSessions);
         if (!observed || observed->operations.clangUsr != knownUsr ||
             !cppRecordValueOperationsEligible(observed->traits, observed->operations))
-            return fail("C++ record has no eligible value observation");
+            return fail(cppRecordNotCatalogueValue);
         snapshot.cppValueObservation = std::move(observed);
         // EN: T19-036. The consumer of a precompiled catalog returns this record as Clang does (T12-001).
         // ES: T19-036. El consumidor de un catalogo precompilado devuelve este record como Clang (T12-001).
@@ -1946,7 +1948,8 @@ CppCRecordCatalogResult captureCppCRecordCatalog(
 CppCRecordClosureResult collectCppCRecordClosure(
     std::span<const CppSemanticRecordEntry> inventory, std::span<const CppRecordGroup> groups,
     std::size_t projectOrdinal, std::span<const std::string> seedIdentityKeys,
-    std::span<const CppProjectSessions> cppValueSessions)
+    std::span<const CppProjectSessions> cppValueSessions,
+    std::span<const std::size_t> forcedSourceReferences)
 {
     std::map<std::string, std::size_t> byIdentity;
     for (std::size_t i = 0; i < groups.size(); ++i)
@@ -1967,12 +1970,21 @@ CppCRecordClosureResult collectCppCRecordClosure(
     for (const auto& seed : seedIdentityKeys)
         if (!addRecord(seed, std::nullopt)) return CppCRecordSnapshotFailure{"C record seed is unavailable: " + seed};
     std::set<std::string> enums;
+    std::set<std::size_t> excluded;
     std::string failure;
     while (!pending.empty())
     {
         const auto index = pending.back(); pending.pop_back();
         auto captured = captureRecordSnapshot(inventory, groups[index], cppValueSessions);
-        if (const auto* why = std::get_if<CppCRecordSnapshotFailure>(&captured)) return *why;
+        if (const auto* why = std::get_if<CppCRecordSnapshotFailure>(&captured))
+        {
+            // EN: NSMeta R1-05. A C++ record that is not a byte value (non-trivial or polymorphic) is not a catalogue
+            //     value: it is described to a consumer without the header by the producer's source session instead.
+            // ES: NSMeta R1-05. Un record C++ que no es un valor de bytes (no trivial o polimorfico) no es un valor del
+            //     catalogo: lo describe la sesion de fuente del productor a un consumidor sin encabezado.
+            if (why->message == cppRecordNotCatalogueValue) { excluded.insert(index); continue; }
+            return *why;
+        }
         const auto& record = std::get<CppCRecordSnapshot>(captured);
         const std::string module = groups[index].identity.moduleName();
         std::function<bool(const CppType&, unsigned)> visit = [&](const CppType& type, unsigned depth) {
@@ -2020,9 +2032,33 @@ CppCRecordClosureResult collectCppCRecordClosure(
         for (const auto& field : record.fields)
             if (!visit(field.type, 0)) return CppCRecordSnapshotFailure{failure};
     }
+    // EN: NSMeta R1-05. A reference that travels as a source session is described by it alone: its other records
+    //     leave the catalogue too, so a consumer never sees the same record from the catalogue and from the session.
+    // ES: NSMeta R1-05. Una referencia que viaja como sesion de fuente la describe solo ella: sus demas records
+    //     tambien salen del catalogo, para que un consumidor nunca vea el mismo record por ambas vias.
+    {
+        const auto referenceOf = [&](std::size_t index) -> std::optional<std::size_t> {
+            const auto& indices = groups[index].inventoryIndices;
+            if (indices.empty() || indices.front() >= inventory.size()) return std::nullopt;
+            return inventory[indices.front()].referenceIndex;
+        };
+        std::set<std::size_t> sourceReferences(forcedSourceReferences.begin(), forcedSourceReferences.end());
+        for (const auto index : excluded)
+            if (const auto reference = referenceOf(index)) sourceReferences.insert(*reference);
+        for (const auto index : selected)
+            if (const auto reference = referenceOf(index); reference && sourceReferences.contains(*reference))
+                excluded.insert(index);
+    }
     CppCRecordClosure result;
+    for (const auto index : excluded)
+    {
+        const auto& indices = groups[index].inventoryIndices;
+        if (indices.empty() || indices.front() >= inventory.size()) continue;
+        result.sourceSessionRecords.emplace_back(inventory[indices.front()].referenceIndex, groups[index].identity.key());
+    }
     for (const auto index : selected)
     {
+        if (excluded.contains(index)) continue;
         auto captured = captureRecordSnapshot(inventory, groups[index], cppValueSessions);
         if (const auto* why = std::get_if<CppCRecordSnapshotFailure>(&captured)) return *why;
         result.records.push_back(std::move(std::get<CppCRecordSnapshot>(captured)));
@@ -2116,6 +2152,54 @@ bool metadata_detail::selectResolvedTemplateInstanceMethods(const frontend::Proj
     std::vector<TemplateInstanceMethodCandidate> result;
     for (const auto& [owner, method] : selected) result.push_back({owner, method});
     output = std::move(result); error.clear(); return true;
+}
+
+// EN: NSMeta R1-05. Marks (or adds) the macro-source entry of a reference as a full source session.
+// ES: NSMeta R1-05. Marca (o agrega) la entrada de fuente de macros de una referencia como sesion de fuente completa.
+static bool addCppSourceSession(const frontend::ProjectCompilation& compilation, const compilation::ProjectGraph& graph,
+    std::size_t project, std::size_t reference, const std::string& typeKey,
+    metadata_detail::CDependencyCatalog& dependencies, std::string& error)
+{
+    const CppInteropSession* session = nullptr;
+    for (const auto& group : compilation.cppProjectSessions())
+    {
+        std::error_code ec;
+        if (!std::filesystem::equivalent(group.projectFile, graph.projects()[project].projectFile(), ec) || ec) continue;
+        if (reference < group.sessions.size()) session = group.sessions[reference].get();
+        break;
+    }
+    if (!session) { error = "the C++ session of a source-session reference is unavailable"; return false; }
+    const auto options = session->optionsSnapshot();
+    // The entry names each record it describes (`type:<identity>`), so the public template surface parses, and the
+    // reference's code-generation options. / La entrada nombra cada record que describe, para que la superficie de
+    // plantillas publicadas se analice, y las opciones de generacion de codigo de la referencia.
+    std::vector<std::string> names{metadata_detail::cppSourceSessionMarker};
+    if (!typeKey.empty()) names.push_back("type:" + typeKey);
+    if (!options.rtti) names.push_back("option:rtti=0");
+    if (!options.exceptions) names.push_back("option:exceptions=0");
+    const std::string moduleName = graph.projects()[project].moduleName();
+    const std::string identity = "cpp-reference:" + std::to_string(reference);
+    auto entry = std::find_if(dependencies.macroSources.begin(), dependencies.macroSources.end(), [&](const auto& item) {
+        return item.moduleName == moduleName && item.referenceIdentity == identity;
+    });
+    if (entry == dependencies.macroSources.end())
+    {
+        auto source = session->preprocessedSourceWithMacros();
+        if (!source || source->empty())
+        { error = "the preprocessed C++ source of a source-session reference is unavailable"; return false; }
+        metadata_detail::CDependencyCatalog::MacroSource value;
+        value.moduleName = moduleName;
+        value.referenceIdentity = identity;
+        value.languageStandard = options.languageStandard;
+        value.volatileMode = static_cast<std::uint8_t>(options.volatileMode);
+        value.source = std::move(*source);
+        dependencies.macroSources.push_back(std::move(value));
+        entry = std::prev(dependencies.macroSources.end());
+    }
+    entry->macros.insert(entry->macros.end(), names.begin(), names.end());
+    std::sort(entry->macros.begin(), entry->macros.end());
+    entry->macros.erase(std::unique(entry->macros.begin(), entry->macros.end()), entry->macros.end());
+    return true;
 }
 
 bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compilation,
@@ -2342,8 +2426,9 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         if (imported->origin == frontend::CppImportedTypeOrigin::CEnum ||
             imported->origin == frontend::CppImportedTypeOrigin::CppEnum)
         { enumSeeds[imported->projectOrdinal].insert(imported->identity.key()); return true; }
-        if (imported->origin == frontend::CppImportedTypeOrigin::CppRecord && ordinal &&
-            lookup->cppTrivialValueEligible(*ordinal))
+        // NSMeta R1-05: a non-value C++ record is seeded too; the closure sends it to the source session.
+        //     Un record C++ no valor tambien se siembra; el cierre lo envia a la sesion de fuente.
+        if (imported->origin == frontend::CppImportedTypeOrigin::CppRecord && ordinal)
         { seeds[imported->projectOrdinal].insert(imported->identity.key()); return true; }
         if (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
             imported->origin != frontend::CppImportedTypeOrigin::CUnion)
@@ -2692,6 +2777,44 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                 dependencies.macroSources.push_back(std::move(value));
             }
         }
+    // EN: NSMeta R1-05. A reference whose C++ class templates the project instantiates (a specialization written in
+    //     a published template) travels as a source session that names its templates, so the consumer without the
+    //     header instantiates each specialization as a consumer with the header does.
+    // ES: NSMeta R1-05. Una referencia cuyas plantillas de clase C++ instancia el proyecto (una especializacion escrita
+    //     en una plantilla publicada) viaja como sesion de fuente que nombra sus plantillas, para que el consumidor sin
+    //     encabezado instancie cada especializacion como lo hace un consumidor con encabezado.
+    if (!metadata.genericTemplates.empty())
+        for (const auto& [project, used] : compilation.cppClassTemplateSessions())
+            for (const auto& group : compilation.cppProjectSessions())
+            {
+                std::error_code ec;
+                if (project >= graph->projects().size() ||
+                    !std::filesystem::equivalent(group.projectFile, graph->projects()[project].projectFile(), ec) || ec)
+                    continue;
+                for (std::size_t reference = 0; reference < group.sessions.size(); ++reference)
+                {
+                    if (group.sessions[reference].get() != used) continue;
+                    if (!addCppSourceSession(compilation, *graph, project, reference, {}, dependencies, error))
+                        return false;
+                    for (auto& candidate : dependencies.macroSources)
+                        if (candidate.moduleName == graph->projects()[project].moduleName() &&
+                            candidate.referenceIdentity == "cpp-reference:" + std::to_string(reference))
+                        {
+                            for (const auto& name : used->templatesSnapshot())
+                                if (!name.function)
+                                {
+                                    std::string dotted = name.qualifiedName;
+                                    for (std::size_t at = 0; (at = dotted.find("::", at)) != std::string::npos;)
+                                        dotted.replace(at, 2, ".");
+                                    const auto value = "template:" + dotted;
+                                    if (std::find(candidate.macros.begin(), candidate.macros.end(), value) ==
+                                        candidate.macros.end()) candidate.macros.push_back(value);
+                                }
+                            std::sort(candidate.macros.begin(), candidate.macros.end());
+                        }
+                }
+                break;
+            }
     if (seeds.empty() && enumSeeds.empty() && dependencies.aliases.empty() && dependencies.functions.empty() &&
         dependencies.globals.empty() && dependencies.enumerators.empty() && dependencies.macroSources.empty())
     { output.clear(); error.clear(); return true; }
@@ -2944,14 +3067,61 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         for (const auto& key : std::vector<std::string>(identities.begin(), identities.end())) addEnclosing(project, key);
     for (auto& [project, identities] : seeds)
         for (const auto& key : std::vector<std::string>(identities.begin(), identities.end())) addEnclosing(project, key);
+    // EN: NSMeta R1-05. A function that takes or returns a sysv_abi function pointer travels with its reference as a
+    //     source session: a consumer without the header converts a NativeSharp callback with the Clang plan of the
+    //     reference's typedef of that pointer type, also when the published template does not name the typedef.
+    // ES: NSMeta R1-05. Una funcion que recibe o devuelve un puntero a funcion sysv_abi viaja con su referencia como
+    //     sesion de fuente: un consumidor sin encabezado convierte un callback NativeSharp con el plan de Clang del
+    //     typedef de ese puntero de la referencia, tambien si la plantilla publicada no nombra el typedef.
+    {
+        const auto sysvPointer = [](const CppType& type) {
+            return type.kind == CppTypeKind::Pointer && type.element && type.element->function &&
+                type.element->function->callingConvention == "sysv_abi";
+        };
+        std::vector<std::pair<std::size_t, std::size_t>> sysvReferences;
+        for (const auto& function : dependencies.functions)
+        {
+            const auto& declaration = function.declaration;
+            if (!sysvPointer(declaration.returnType) &&
+                std::none_of(declaration.parameters.begin(), declaration.parameters.end(),
+                    [&](const auto& parameter) { return sysvPointer(parameter.type); })) continue;
+            if (!function.referenceIdentity.starts_with("cpp-reference:")) continue;
+            const auto digits = function.referenceIdentity.substr(14);
+            const auto end = digits.find_first_not_of("0123456789");
+            if (end == 0) continue;
+            const auto reference = static_cast<std::size_t>(std::stoull(digits.substr(0, end)));
+            for (std::size_t project = 0; project < graph->projects().size(); ++project)
+                if (graph->projects()[project].moduleName() == function.moduleName)
+                    sysvReferences.emplace_back(project, reference);
+        }
+        for (const auto& [project, reference] : sysvReferences)
+            if (!addCppSourceSession(compilation, *graph, project, reference, {}, dependencies, error)) return false;
+    }
     std::vector<CppCRecordSnapshot> records;
     for (const auto& [project, identities] : seeds)
     {
         const std::vector<std::string> requested(identities.begin(), identities.end());
-        auto closure = collectCppCRecordClosure(inventory, groups, project, requested, compilation.cppProjectSessions());
+        std::vector<std::size_t> sourceReferences;
+        for (const auto& source : dependencies.macroSources)
+            if (source.moduleName == graph->projects()[project].moduleName() &&
+                std::find(source.macros.begin(), source.macros.end(), metadata_detail::cppSourceSessionMarker) !=
+                    source.macros.end() && source.referenceIdentity.starts_with("cpp-reference:"))
+                sourceReferences.push_back(std::stoull(source.referenceIdentity.substr(14)));
+        auto closure = collectCppCRecordClosure(inventory, groups, project, requested, compilation.cppProjectSessions(),
+            sourceReferences);
         if (const auto* failure = std::get_if<CppCRecordSnapshotFailure>(&closure))
         { error = failure->message; return false; }
         auto& selected = std::get<CppCRecordClosure>(closure);
+        // EN: NSMeta R1-05. A reference whose C++ records are not byte values travels as a source session: the
+        //     consumer without the header opens a full Clang session over the producer's preprocessed source, owned
+        //     by the precompiled project, and imports those records (lifetime, bases, virtual members) from it as a
+        //     consumer with the header does. The marker extends the existing macro-source entry.
+        // ES: NSMeta R1-05. Una referencia cuyos records C++ no son valores de bytes viaja como sesion de fuente: el
+        //     consumidor sin encabezado abre una sesion Clang completa sobre la fuente preprocesada del productor,
+        //     propia del proyecto precompilado, e importa de ella esos records (vida, bases, miembros virtuales) como
+        //     lo hace un consumidor con encabezado. La marca amplia la entrada de fuente de macros existente.
+        for (const auto& [reference, key] : selected.sourceSessionRecords)
+            if (!addCppSourceSession(compilation, *graph, project, reference, key, dependencies, error)) return false;
         for (auto& record : selected.records)
         {
             if (!record.clangUsr || record.clangUsr->empty() ||
@@ -3132,6 +3302,52 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         };
         for (const auto& field : record.fields) if (!checkEnum(field.type, 0)) return false;
     }
+    // EN: NSMeta R1-05. Members of a C++ record left out of the catalogue (not a byte value) are described by the
+    //     producer's source session, not by the catalogue. / ES: Los miembros de un record C++ que no entra al
+    //     catalogo (no es un valor de bytes) los describe la sesion de fuente del productor, no el catalogo.
+    {
+        std::set<std::string> catalogued;
+        for (const auto& record : records) catalogued.insert(record.identityKey);
+        const auto absent = [&](const std::string& owner) { return !catalogued.contains(owner); };
+        std::erase_if(dependencies.staticMethods, [&](const auto& item) { return absent(item.ownerIdentityKey); });
+        std::erase_if(dependencies.instanceMethods,
+            [&](const auto& item) { return absent(item.method.ownerIdentityKey); });
+        std::erase_if(dependencies.staticFields, [&](const auto& item) { return absent(item.ownerIdentityKey); });
+        // The functions, globals and aliases of a source-session reference come from that session as well.
+        // Las funciones, globales y alias de una referencia de sesion de fuente tambien vienen de esa sesion.
+        std::set<std::pair<std::string, std::string>> sourceReferences;
+        for (const auto& source : dependencies.macroSources)
+            if (std::find(source.macros.begin(), source.macros.end(), metadata_detail::cppSourceSessionMarker) !=
+                source.macros.end()) sourceReferences.emplace(source.moduleName, source.referenceIdentity);
+        const auto fromSource = [&](const std::string& module, const std::string& reference) {
+            const auto end = reference.find('#');
+            return sourceReferences.contains({module, reference.substr(0, end)});
+        };
+        std::erase_if(dependencies.functions,
+            [&](const auto& item) { return fromSource(item.moduleName, item.referenceIdentity); });
+        std::erase_if(dependencies.globals,
+            [&](const auto& item) { return fromSource(item.moduleName, item.referenceIdentity); });
+        // An alias leaves the catalogue but keeps its name in the entry, for the published template surface.
+        // Un alias sale del catalogo pero conserva su nombre en la entrada, para la superficie publicada.
+        for (const auto& alias : dependencies.aliases)
+        {
+            if (!fromSource(alias.moduleName, alias.referenceIdentity)) continue;
+            const auto end = alias.referenceIdentity.find('#');
+            for (auto& source : dependencies.macroSources)
+            {
+                if (source.moduleName != alias.moduleName ||
+                    source.referenceIdentity != alias.referenceIdentity.substr(0, end)) continue;
+                std::string dotted = alias.declaration.qualifiedName;
+                for (std::size_t at = 0; (at = dotted.find("::", at)) != std::string::npos;) dotted.replace(at, 2, ".");
+                for (const auto& name : {alias.declaration.name, dotted})
+                    if (!name.empty()) source.macros.push_back("name:" + name);
+                std::sort(source.macros.begin(), source.macros.end());
+                source.macros.erase(std::unique(source.macros.begin(), source.macros.end()), source.macros.end());
+            }
+        }
+        std::erase_if(dependencies.aliases,
+            [&](const auto& item) { return fromSource(item.moduleName, item.referenceIdentity); });
+    }
     const bool hasEnumProvenance = std::any_of(enums.begin(), enums.end(), [](const auto& value) {
         return value.declaration.sourceProvenance.has_value();
     });
@@ -3162,6 +3378,42 @@ bool providePrecompiledCParserTypes(const frontend::ProjectCompilation& compilat
     if (!metadata_detail::reconstructPrecompiledCImportedTypes(compilation.precompiledModules(), *graph,
             "x86_64-pc-windows-msvc", restored, error)) return false;
     output.insert(output.end(), std::make_move_iterator(restored.begin()), std::make_move_iterator(restored.end()));
+    // EN: NSMeta R1-05. The records a source session describes are named for the parser by the live selection over
+    //     that session (the precompiled project owns it).
+    // ES: NSMeta R1-05. Los records que describe una sesion de fuente se nombran para el analizador con la seleccion
+    //     en vivo sobre esa sesion (propia del proyecto precompilado).
+    std::set<std::string> described;
+    for (const auto& module : compilation.precompiledModules())
+    {
+        if (module.cppCTypeCatalog.empty()) continue;
+        std::vector<CppCRecordSnapshot> records;
+        std::vector<CppCEnumSnapshot> enums;
+        metadata_detail::CDependencyCatalog dependencies;
+        if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog, records, enums, dependencies,
+                error)) return false;
+        for (const auto& source : dependencies.macroSources)
+            if (std::find(source.macros.begin(), source.macros.end(), metadata_detail::cppSourceSessionMarker) !=
+                source.macros.end())
+                for (const auto& name : source.macros)
+                    if (name.starts_with("type:")) described.insert(name.substr(5));
+    }
+    if (described.empty() || compilation.cppProjectSessions().empty()) return true;
+    // The parser needs the names only; the selection after parsing gives these records their full import.
+    // El analizador solo necesita los nombres; la seleccion posterior da a estos records su importacion completa.
+    auto inventory = collectCppSemanticRecords(*graph, compilation.cppProjectSessions());
+    if (const auto* failure = std::get_if<CppSemanticRecordFailure>(&inventory))
+    { error = failure->message; return false; }
+    for (const auto& entry : std::get<std::vector<CppSemanticRecordEntry>>(inventory))
+    {
+        if (!entry.identity || !described.contains(entry.identity->key()) ||
+            std::any_of(output.begin(), output.end(), [&](const auto& item) { return item.identity == *entry.identity; }))
+            continue;
+        frontend::CppImportedTypeDeclaration type{*entry.identity, frontend::NamedTypeDeclarationKind::Struct,
+            frontend::NamedTypeAccessibility::Public, entry.projectOrdinal, entry.projectFile.string()};
+        type.clangUsr = entry.declaration.clangUsr;
+        type.origin = frontend::CppImportedTypeOrigin::CppRecord;
+        output.push_back(std::move(type));
+    }
     return true;
 }
 

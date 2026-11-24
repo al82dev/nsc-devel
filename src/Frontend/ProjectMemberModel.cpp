@@ -202,7 +202,9 @@ bool ProjectMemberModel::setExperimentalCppLifetimeMethods(
 {
     if (built_) { error = "C++ lifetime methods must be configured before building members"; return false; }
     std::set<std::tuple<std::size_t, std::string, CppImportedLifetimeKind, std::vector<std::string>>> signatures;
-    std::set<std::string> symbols;
+    // NSMeta R1-05: a symbol is unique within a project; a consumer with the header and a precompiled source session
+    // name the same C++ special member. / Un simbolo es unico en un proyecto.
+    std::set<std::pair<std::size_t, std::string>> symbols;
     for (const auto& method : methods)
     {
         if (method.ownerIdentityKey.empty() || method.externalSymbol.empty() ||
@@ -232,7 +234,7 @@ bool ProjectMemberModel::setExperimentalCppLifetimeMethods(
         // T19-006: the C++ spellings keep `S(int)` and `S(long)` apart. / Las separan.
         if (!method.cppSignatureSuffix.empty()) signatureTypes.push_back(method.cppSignatureSuffix);
         if (!signatures.emplace(method.projectOrdinal, method.ownerIdentityKey, method.kind, std::move(signatureTypes)).second ||
-            !symbols.insert(method.externalSymbol).second)
+            !symbols.emplace(method.projectOrdinal, method.externalSymbol).second)
         { error = "duplicate C++ lifetime method signature or symbol"; return false; }
     }
     experimentalCppLifetimeMethods_ = std::move(methods);

@@ -2441,8 +2441,10 @@ bool provideCppStaticMethodsWithPrecompiledCatalogs(
                 { error = "shared C++ static method observation is ambiguous"; return false; }
                 const auto& live = (*entries)[*selected];
                 const auto& project = graph.projects()[candidate.projectOrdinal];
+                // NSMeta R1-05: as for instance methods, a source session's record. / Como en los de instancia.
+                const bool sourceSession = project.cppLibraryReferences().empty();
                 if (!live.declaration.clangUsr || *live.declaration.clangUsr != saved.ownerClangUsr ||
-                    live.referenceIndex >= project.cppLibraryReferences().size())
+                    (!sourceSession && live.referenceIndex >= project.cppLibraryReferences().size()))
                 { error = "shared C++ static method owner differs"; return false; }
                 const auto method = std::find_if(live.declaration.methods.begin(), live.declaration.methods.end(),
                     [&](const auto& item) { return item.externalSymbol && *item.externalSymbol == value.externalSymbol; });
@@ -2457,6 +2459,12 @@ bool provideCppStaticMethodsWithPrecompiledCatalogs(
                     candidate.dllImport != value.dllImport || candidate.returnPointeeReadonly != value.returnPointeeReadonly ||
                     candidate.parameterPointeeReadonly != value.parameterPointeeReadonly)
                 { error = "shared C++ static method declaration differs"; return false; }
+                if (sourceSession)
+                {
+                    candidate.sharedExternalSymbolVerified = true;
+                    value.sharedExternalSymbolVerified = true;
+                    continue;
+                }
                 const auto& reference = project.cppLibraryReferences()[live.referenceIndex];
                 if (reference.libraryPath.empty()) { error = "shared C++ static method has no library identity"; return false; }
                 basic::Sha256Digest digest{};
@@ -2595,8 +2603,13 @@ bool provideCppInstanceMethodsWithPrecompiledCatalogs(
                 { error = "shared C++ instance method observation is ambiguous"; return false; }
                 const auto& live = (*entries)[*selected];
                 const auto& project = graph.projects()[candidate.projectOrdinal];
+                // EN: NSMeta R1-05. A live record of the precompiled project's own source session (it declares no
+                //     C/C++ references) is the producer's declaration: its library is the one the saved method names.
+                // ES: NSMeta R1-05. Un record en vivo de la sesion de fuente del propio proyecto precompilado (no
+                //     declara referencias C/C++) es la declaracion del productor: su biblioteca es la del metodo guardado.
+                const bool sourceSession = project.cppLibraryReferences().empty();
                 if (!live.declaration.clangUsr || *live.declaration.clangUsr != saved.ownerClangUsr ||
-                    live.referenceIndex >= project.cppLibraryReferences().size())
+                    (!sourceSession && live.referenceIndex >= project.cppLibraryReferences().size()))
                 { error = "shared C++ instance method owner differs"; return false; }
                 // T19-006: an adapter is found by its own symbol. / Un adaptador se busca por su propio simbolo.
                 const auto method = std::find_if(live.declaration.methods.begin(), live.declaration.methods.end(),
@@ -2613,6 +2626,12 @@ bool provideCppInstanceMethodsWithPrecompiledCatalogs(
                     candidate.dllImport != value.dllImport || candidate.returnPointeeReadonly != value.returnPointeeReadonly ||
                     candidate.parameterPointeeReadonly != value.parameterPointeeReadonly)
                 { error = "shared C++ instance method declaration differs"; return false; }
+                if (sourceSession)
+                {
+                    candidate.sharedExternalSymbolVerified = true;
+                    value.sharedExternalSymbolVerified = true;
+                    continue;
+                }
                 const auto& reference = project.cppLibraryReferences()[live.referenceIndex];
                 if (reference.libraryPath.empty()) { error = "shared C++ instance method has no library identity"; return false; }
                 basic::Sha256Digest digest{};

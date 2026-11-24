@@ -102,7 +102,10 @@ BODY = r'''
 '''
 c = Caso('x2-vida-operadores', H, S, **CPP)
 # A precompiled template cannot yet carry a non-trivial C++ record (catalog, R2): direct and DLL modes.
-positivo(c, BODY, modes=['directo', 'dll'])
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
+positivo(c, BODY, modes=['directo', 'dll', 'lib'])
 # An early return destroys the local exactly once (the prelude function lives in the program: direct mode).
 positivo(Caso('x2-retorno-temprano', H, S, **CPP),
          'lib.reset(); int r = Early(); ref lib.Counters k = ref lib.counters(); return k.ctor == 1 && k.dtor == 1 ? r : 1;',
@@ -128,7 +131,10 @@ BODY_PRVALUE = r'''
     if (lib.take_mo(new lib.MoveOnly(42)) != 42 || k.ctor != 1 || k.move != 0 || k.dtor != 1) return 7;
     return 42;
 '''
-positivo(Caso('x2-prvalue-por-valor', H, S, **CPP), BODY_PRVALUE, modes=['directo', 'dll'])
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
+positivo(Caso('x2-prvalue-por-valor', H, S, **CPP), BODY_PRVALUE, modes=['directo', 'dll', 'lib'])
 # X2-05: mixing a prvalue with an object lent with `in` was a rejection ('is lent with'); the lent object is now the
 # copy C++ constructs in its parameter (`ref m` the move of a move-only record), built in the temporary the callee
 # destroys, so the by-value adapter is not needed: `take_two(in o, in p)`, which did not link without the CRT
@@ -149,7 +155,10 @@ BODY_LENT = r'''
       if (k.ctor != 1 || k.move != 1 || k.dtor != 1) return 7; }
     return k.dtor == 2 ? 42 : 8;
 '''
-positivo(Caso('x2-prestado-por-valor', H, S, **CPP), BODY_LENT, modes=['directo', 'dll'])
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
+positivo(Caso('x2-prestado-por-valor', H, S, **CPP), BODY_LENT, modes=['directo', 'dll', 'lib'])
 rechazo(c, 'var m = new lib.MoveOnly(1); var m2 = new lib.MoveOnly(in m); return 0;', 'constructor')
 # X2-05: the forms that still need a non-local destination keep the former rejection's coverage.
 # X2-05: las formas que aun necesitan un destino no local conservan la cobertura del rechazo anterior.
@@ -207,7 +216,10 @@ BODY_TEMP = r'''
     if (d != 2 || k.ctor != 5 || k.copy + k.move != 0 || k.dtor != 5) return 3;
     return a + b;
 '''
-positivo(Caso('x2-temporal-receptor', H, S, **CPP), BODY_TEMP, modes=['directo', 'dll'])
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
+positivo(Caso('x2-temporal-receptor', H, S, **CPP), BODY_TEMP, modes=['directo', 'dll', 'lib'])
 # X2-05: `o = value` calls the operator= C++ selects. Obj declares a move constructor, so C++ deletes its implicit
 # copy assignment: the reassignment stays rejected, now with that reason (it was 'cannot copy or transfer a C++ value').
 # X2-05: `o = valor` llama al operator= que elige C++; el de Obj esta borrado, asi que sigue rechazado con ese motivo.
@@ -254,7 +266,10 @@ BODY_ASSIGN = r'''
     if (lib.counters2().copy + lib.counters2().move != 0 || lib.counters2().dtor != 3) return 3;
     return 42;
 '''
-positivo(Caso('x2-asignacion', HA, SA, **CPP), BODY_ASSIGN, modes=['directo', 'dll'])
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
+positivo(Caso('x2-asignacion', HA, SA, **CPP), BODY_ASSIGN, modes=['directo', 'dll', 'lib'])
 # X2-06: a NativeSharp struct with a field of a C++ record that is a transport value (trivially copyable and
 # destructible) was rejected ("has no imported object layout yet"); its bytes are its value, as for a C record, so the
 # struct holds it, copies it and passes the field by value. A non-trivial C++ field stays a conscious restriction.
@@ -380,9 +395,12 @@ BODY_CR = r'''
     return lib.c().ctor == 4 && lib.c().dtor == 4 && lib.c().assign == 0 ? 42 : 6;
 '''
 positivo(Caso('x2-constref-prvalue', HF2, SF2, **CPP), BODY_CR, preludio=PRE_CR, modes=['directo'])
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x2-constref-miembro', HF2, SF2, **CPP),
          'lib.Cmp k; k.base = 1; int d = k.diff(lib.make(43)); return d == 42 && lib.c().ctor == 1 && lib.c().dtor == 1 ? 42 : 1;',
-         modes=['directo', 'dll'])
+         modes=['directo', 'dll', 'lib'])
 rechazo(Caso('x2-constref-lugar', HF2, SF2, **CPP), 'var x = lib.make(1); return lib.peek(x);', 'lib.peek')
 # X2-05: a C++ method returning a non-trivial record by value was not imported ('no compatible member'). It now
 # constructs the result in the caller's destination, passed after this as MSVC does: a non-virtual method directly, a
@@ -404,15 +422,21 @@ BODY_MR = r'''
     }
     return lib.c().ctor == 4 && lib.c().dtor == 4 ? 42 : 4;
 '''
-positivo(Caso('x2-metodo-resultado', HMR, SMR, extra_ref=' Rtti="false"', **CPP), BODY_MR, modes=['directo', 'dll'])
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
+positivo(Caso('x2-metodo-resultado', HMR, SMR, extra_ref=' Rtti="false"', **CPP), BODY_MR, modes=['directo', 'dll', 'lib'])
 # X2-05: a static C++ method returning a non-trivial record by value (not imported before) constructs it in the
 # caller's destination, through the first hidden pointer as a free function. / Un metodo estatico C++ que devuelve un
 # record no trivial por valor lo construye en el destino del llamador.
 HSM = HF.replace('Obj make(int v);', 'Obj make(int v);'+chr(10)+'struct Maker2 { static Obj build(int v); };')
 SSM = SF.replace('Obj make(int v) { return Obj(v); }', 'Obj make(int v) { return Obj(v); }'+chr(10)+'Obj Maker2::build(int v) { return Obj(v); }')
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x2-estatico-resultado', HSM, SSM, **CPP),
          '{ var o = lib.Maker2.build(42); if (o.v != 42) return 1; if (lib.Maker2.build(3).v != 3) return 2; }'
-         ' return lib.c().ctor == 2 && lib.c().dtor == 2 ? 42 : 3;', modes=['directo', 'dll'])
+         ' return lib.c().ctor == 2 && lib.c().dtor == 2 ? 42 : 3;', modes=['directo', 'dll', 'lib'])
 # X2-05: a free C++ operator returning a non-trivial record by value (`Obj operator+(const Obj&, const Obj&)`, as
 # std::string's) failed in the backend ('static call target was not declared'): the operator call is now the
 # construction of its record with the factory constructor, as a direct factory call is, into a local or as a
@@ -420,19 +444,25 @@ positivo(Caso('x2-estatico-resultado', HSM, SSM, **CPP),
 HOP = HF.replace('Obj make(int v);', 'Obj make(int v);'+chr(10)+'Obj operator+(const Obj& a, const Obj& b);')
 SOP = SF.replace('Obj make(int v) { return Obj(v); }', 'Obj make(int v) { return Obj(v); }'+chr(10)+
                  'Obj operator+(const Obj& a, const Obj& b) { return Obj(a.v + b.v); }')
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x2-operador-resultado', HOP, SOP, **CPP),
          '{ var a = lib.make(40); var b = lib.make(2); var c = a + b; if (c.v != 42) return 1;'
          ' if ((a + lib.make(1)).v != 41) return 2; if (lib.c().ctor != 5 || lib.c().dtor != 2) return 3; }'
-         ' return lib.c().ctor == 5 && lib.c().dtor == 5 ? 42 : 4;', modes=['directo', 'dll'])
+         ' return lib.c().ctor == 5 && lib.c().dtor == 5 ? 42 : 4;', modes=['directo', 'dll', 'lib'])
 # X2-05: a member operator returning such a record (`Obj Vec::operator*(int) const`) was not found ('requires
 # compatible numeric operands'); its adapter returns the prvalue into the caller's storage, as a factory's does.
 # Un operador miembro que devuelve ese record: su adaptador lo construye en el almacenamiento del llamador.
 HOPM = HF.replace('Obj make(int v);', 'Obj make(int v);'+chr(10)+'struct Vec { int x; Obj operator*(int k) const; };')
 SOPM = SF.replace('Obj make(int v) { return Obj(v); }', 'Obj make(int v) { return Obj(v); }'+chr(10)+
                   'Obj Vec::operator*(int k) const { return Obj(x * k); }')
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x2-operador-miembro-resultado', HOPM, SOPM, **CPP),
          '{ lib.Vec w; w.x = 21; var c = w * 2; if (c.v != 42 || (w * 1).v != 21) return 1; }'
-         ' return lib.c().ctor == 2 && lib.c().dtor == 2 ? 42 : 2;', modes=['directo', 'dll'])
+         ' return lib.c().ctor == 2 && lib.c().dtor == 2 ? 42 : 2;', modes=['directo', 'dll', 'lib'])
 # X2: `(int)h` of an imported C/C++ record with no conversion reached the backend ('unsupported Stage 34 LLVM
 # conversion'); it is a frontend diagnostic now. / Un cast de un record importado sin conversion es un diagnostico.
 rechazo(Caso('x2-cast-record', HF, SF, **CPP), 'var o = lib.make(3); return (int)o;', 'no conversion from C/C++ type')
@@ -455,6 +485,9 @@ Owner::Owner(int x) : p(x ? &store[x] : nullptr) {} Owner::~Owner() {} Owner::op
 Owner make_owner(int x) { return Owner(x); }
 }
 '''
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x2-conversion', HCV, SCV, **CPP), r'''
     lib.Handle h; h.v = 21;
     if (!(bool)h) return 1;
@@ -463,7 +496,7 @@ positivo(Caso('x2-conversion', HCV, SCV, **CPP), r'''
     var o = lib.make_owner(1);
     if (!(bool)o || (bool)lib.make_owner(0)) return 3;
     return (int)h;
-''', modes=['directo', 'dll'])
+''', modes=['directo', 'dll', 'lib'])
 rechazo(Caso('x2-conversion-implicita', HCV, SCV, **CPP), 'lib.Handle h; h.v = 21; int k = h; return k;', 'cannot initialize')
 # X2-05: with `const T&` binding prvalues, `take(const Obj&)` and `take(Obj&&)` were ambiguous for `take(new Obj(2))`;
 # as in C++, a record prvalue binds `T&&` better. / Como en C++, un prvalue record enlaza mejor `T&&`.
@@ -475,8 +508,11 @@ int take(Obj&& o);
 }
 '''
 SRK = 'namespace lib { int take(const Obj& o) { return 1; } int take(Obj&& o) { return 2; } }'+chr(10)
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x2-rvalue-preferido', HRK, SRK, **CPP),
-         'var o = new lib.Obj(1); return lib.take(in o) * 10 + lib.take(new lib.Obj(2)) == 12 ? 42 : 1;', modes=['directo'])
+         'var o = new lib.Obj(1); return lib.take(in o) * 10 + lib.take(new lib.Obj(2)) == 12 ? 42 : 1;', modes=['directo', 'lib'])
 # X2: foreach over a C++ range (a record with begin() and end(), as std::vector is) failed ('no compatible member
 # named GetEnumerator'); it iterates as a C++ range-for does, with a pointer iterator or a class iterator's C++ `!=`,
 # `*` and prefix `++`. A mutable reference to `*it` would write a copy, so `foreach ref mut` is rejected.
@@ -495,10 +531,13 @@ It Bag::begin() { return It{data}; } It Bag::end() { return It{data + 4}; }
 }
 '''
 CRG = dict(language='C++', standard='c++20', extra_ref=' Exceptions="false"')
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x2-foreach-rango', HRG, SRG, **CRG),
          'lib.Bag b; b.data[0] = 10; b.data[1] = 12; b.data[2] = 15; b.data[3] = 5; int s = 0; foreach (var x in b) { s += x; }'
          ' lib.Vec3 v; v.data[0] = 0; v.data[1] = 0; v.data[2] = 0; foreach (var y in v) { s += y; } return s;',
-         modes=['directo', 'dll'])
+         modes=['directo', 'dll', 'lib'])
 rechazo(Caso('x2-foreach-rango-ref-mut', HRG, SRG, **CRG), 'lib.Vec3 v; foreach (ref mut var x in v) { x = 1; } return 0;',
         'foreach ref mut cannot iterate a C++ range')
 # X2: an operator a base declares is the derived record's too (`D == D` through the base's `operator==`), and in
@@ -518,10 +557,13 @@ D& D::operator++() { ++p; return *this; } int& D::operator*() const { return *p;
 D Bag::begin() { D d; d.p = data; return d; } D Bag::end() { D d; d.p = data + 3; return d; }
 }
 '''
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x2-operador-heredado', HIH, SIH, **CRG),
          'lib.Bag b; b.data[0] = 40; b.data[1] = 1; b.data[2] = 1; lib.B x; x.p = null; lib.B y; y.p = null;'
          ' var e = b.end(); var i = b.end(); if (x != y || !(i == e)) return 1; int s = 0; foreach (var v in b) { s += v; }'
-         ' return s;', modes=['directo', 'dll'])
+         ' return s;', modes=['directo', 'dll', 'lib'])
 # X2: C++ defines no implicit equality for a class; `a == b` on a C++ record without an operator compared its bytes
 # (or failed internally). It is rejected. / C++ no define igualdad implicita para una clase: se rechaza.
 rechazo(Caso('x2-igualdad-implicita', 'namespace lib { struct P { int x; int y; }; }'+chr(10), '', **CRG),
@@ -579,8 +621,11 @@ struct Txt { int n; Txt(const char* const s) : n(0) { while (s[n]) ++n; } Txt(co
   Txt& add(int k) { n += k; return *this; } };
 }
 '''
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x2-constructor-puntero-const', HCS, '', **CRG),
-         'lib.Txt t = new lib.Txt("hola"); t.add(30).add(8); return t.n;', modes=['directo', 'dll'])
+         'lib.Txt t = new lib.Txt("hola"); t.add(30).add(8); return t.n;', modes=['directo', 'dll', 'lib'])
 # X2: a free operator function template of a record's namespace (`template <class T> bool operator==(const Box<T>&,
 # const Box<T>&)`) is deduced from the operands as a call's (T13-005), and C++20's `!=` is rewritten from it (an
 # adapter negating `==`). / Plantilla de operador libre deducida de los operandos y `!=` reescrito de C++20.
@@ -637,9 +682,12 @@ inline int dtors() { return g_dtors; }
 }
 '''
 SUS = 'namespace lib { int g_dtors; }'+chr(10)
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x2-using-base-plantilla-defecto', HUS, SUS, **CRG),
          'lib.Derived d; d.n = 0; int a = 40; int b = 2; d.put(in a); d.put(in b); return d.count() + lib.dtors() - 2;',
-         modes=['directo', 'dll'])
+         modes=['directo', 'dll', 'lib'])
 # X2: ref-qualified and const overloads of a C++ method (std::optional's `value() &` / `const&` / `&&`) were dropped
 # as ambiguous or blocked; they are kept apart by their qualifier and selected as C++ does: on a named non-const
 # receiver the non-const `&` one. / Sobrecargas con calificador de referencia y const, elegidas como en C++.
@@ -665,6 +713,9 @@ inline int wdtors() { return g_wdtors; }
 }
 '''
 SCB = 'namespace lib { int g_wdtors; }'+chr(10)
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x2-constructor-no-mapeable', HCB, SCB, **CRG),
-         'int r = 0; { lib.W w = new lib.W(41); r = w.get(); } return r + lib.wdtors();', modes=['directo', 'dll'])
+         'int r = 0; { lib.W w = new lib.W(41); r = w.get(); } return r + lib.wdtors();', modes=['directo', 'dll', 'lib'])
 fin()

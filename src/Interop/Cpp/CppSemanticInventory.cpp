@@ -1811,6 +1811,11 @@ bool provideCppTypeAliasesWithPrecompiledCatalogs(const compilation::ProjectGrap
             const auto owner = owners.find(alias.moduleName);
             if (owner == owners.end() || ambiguous.contains(alias.moduleName))
             { error = "precompiled C alias owner is missing or ambiguous: " + alias.moduleName; return false; }
+            // NSMeta R1-05: an alias the producer's source session already declares comes from that session.
+            //     Un alias que ya declara la sesion de fuente del productor viene de esa sesion.
+            if (std::any_of(result.begin(), result.end(), [&](const auto& live) {
+                    return !live.fromPrecompiledCatalog && live.projectOrdinal == owner->second &&
+                        live.declaration.qualifiedName == alias.declaration.qualifiedName; })) continue;
             const auto key = std::make_pair(owner->second, alias.referenceIdentity);
             auto reference = references.find(key);
             if (reference == references.end())

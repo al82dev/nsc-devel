@@ -85,7 +85,10 @@ BODY = r'''
     return x + y + need_ptr(&y) - 2;
 '''
 c = CasoContratos('r1-contratos', H, S, CONTRACTS)
-positivo(c, BODY, preludio=PRE, modes=['directo'])
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
+positivo(c, BODY, preludio=PRE, modes=['directo', 'lib'])
 rechazo(c, 'int s = 0; keep_forever(&s); return 0;', 'retains argument 0 until Static', preludio=PRE)
 rechazo(c, 'Counter c; c.hits = 0; add_timer((u) => { }, &c); return 0;', 'until Call:remove_timer', preludio=PRE)
 rechazo(c, 'int id = 0; { Counter c; c.hits = 0; id = add_timer((u) => { }, &c); } remove_timer(id); return 0;',

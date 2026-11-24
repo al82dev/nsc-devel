@@ -132,6 +132,9 @@ public:
     bool setCppPrecompiledParserTypeProvider(CppPrecompiledParserTypeProvider provider, std::string& error);
     bool setExperimentalCppInstanceMethodProvider(ExperimentalCppInstanceMethodProvider provider, std::string& error);
     bool setExperimentalCppLifetimeMethodProvider(ExperimentalCppLifetimeMethodProvider provider, std::string& error);
+    const std::set<std::pair<std::size_t, const interop::CppInteropSession*>>& cppClassTemplateSessions() const noexcept
+    { return cppClassTemplateSessions_; }
+    bool hasExperimentalCppLifetimeMethodProvider() const noexcept { return static_cast<bool>(experimentalCppLifetimeMethodProvider_); }
     bool setExperimentalCppInstanceFieldProvider(ExperimentalCppInstanceFieldProvider provider, std::string& error);
     bool setExperimentalCppStaticMethodProvider(ExperimentalCppStaticMethodProvider provider, std::string& error);
     bool setExperimentalCppStaticFieldProvider(ExperimentalCppStaticFieldProvider provider, std::string& error);
@@ -431,6 +434,8 @@ private:
     CppPrecompiledParserTypeProvider cppPrecompiledParserTypeProvider_;
     ExperimentalCppInstanceMethodProvider experimentalCppInstanceMethodProvider_;
     ExperimentalCppLifetimeMethodProvider experimentalCppLifetimeMethodProvider_;
+    // NSMeta R1-05: (project, session) of each class template a source instantiated. / Plantillas de clase usadas.
+    std::set<std::pair<std::size_t, const interop::CppInteropSession*>> cppClassTemplateSessions_;
     ExperimentalCppInstanceFieldProvider experimentalCppInstanceFieldProvider_;
     ExperimentalCppStaticMethodProvider experimentalCppStaticMethodProvider_;
     ExperimentalCppStaticFieldProvider experimentalCppStaticFieldProvider_;

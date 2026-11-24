@@ -34,7 +34,10 @@ BODY = r'''
     return lib.wide(41);
 '''
 c = Caso('x4-plantillas', H, None, **CPP)
-positivo(c, BODY, modes=['directo', 'dll'])
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
+positivo(c, BODY, modes=['directo', 'dll', 'lib'])
 rechazo(c, 'short s = 1; return lib.wide(s);', 'Clang cannot deduce the template arguments')
 # X4-05: a NativeSharp struct as a class template argument was a rejection ('is not imported in its project'): Box<P>
 # is instantiated on the C++ mirror of P (T13-007), whose layout Clang gives and NativeSharp checks; the constructor
@@ -74,8 +77,11 @@ positivo(Caso('x4-plantilla-variable-flotante', HVF, None, **CPP),
          'double d = lib.pi<double>; float f = lib.pi<float>; double t = lib.tenth<double>;\n'
          '    if (d != 3.25 || f != 3.25f || t != 0.1 || lib.tenth<float> != 0.1f || lib.half<5> != 2.5) return 1;\n'
          '    return 42;', modes=['directo', 'dll'])
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x4-comparacion', HV, None, **CPP), 'int a = 3, b = 2, c = 1; bool x = a < b; return x || c > a ? 1 : 42;',
-         modes=['directo'])
+         modes=['directo', 'lib'])
 # X4-04: a variable template that is not a constant (`inline T zero`) was a rejection ('not an integral or bool
 # constant'); its specialization is now its storage, reached through an accessor the session declares (as for a macro
 # that is not a constant, T19-041): NativeSharp reads and writes the same object C++ sees.
@@ -129,7 +135,10 @@ struct Maker { int base; template <typename T> Box<T> make(T x) const { return B
 STPL = r'''
 namespace lib { static int c, d; int& ct() { return c; } int& dt() { return d; } }
 '''
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x4-plantilla-resultado', HTPL, STPL, language='C++', standard='c++20', extra_ref=' Exceptions="false"'),
          '{ var b = lib.wrap<int>(42); if (b.v != 42 || lib.wrap<int>(7).v != 7) return 1; }'
-         ' return lib.ct() == 2 && lib.dt() == 2 ? 42 : 2;', modes=['directo', 'dll'])
+         ' return lib.ct() == 2 && lib.dt() == 2 ? 42 : 2;', modes=['directo', 'dll', 'lib'])
 fin()

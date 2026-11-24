@@ -290,6 +290,19 @@ bool verifyPrecompiledGenericTemplateSourceText(
         }
         for (const interop::CppCRecordSnapshot &record : records)
             appendKnownType("type:" + record.identityKey);
+        // NSMeta R1-05: the records of a source session are named by its entry. / Los records de una sesion de
+        //     fuente los nombra su entrada.
+        for (const auto &source : dependencies.macroSources)
+            if (std::find(source.macros.begin(), source.macros.end(),
+                    interop::metadata_detail::cppSourceSessionMarker) != source.macros.end())
+                for (const auto &name : source.macros)
+                {
+                    if (name.starts_with("type:")) appendKnownType(name);
+                    // A C++ class template a published template specializes. / Una plantilla de clase C++.
+                    if (name.starts_with("template:")) knownTypeNames.push_back(name.substr(9));
+                    // A C/C++ alias the session declares. / Un alias C/C++ que declara la sesion.
+                    if (name.starts_with("name:")) knownTypeNames.push_back(name.substr(5));
+                }
         for (const interop::CppCEnumSnapshot &value : enums)
         {
             if (!value.declaration.name.empty())

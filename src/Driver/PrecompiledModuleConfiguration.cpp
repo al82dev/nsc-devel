@@ -727,6 +727,7 @@ bool configurePrecompiledModules(
         bool hasPrecompiledStaticMethods = false;
         bool hasPrecompiledInstanceMethods = false;
         bool hasPrecompiledStaticFields = false;
+        bool hasPrecompiledSourceSessions = false;
         for (const auto& module : compilation.precompiledModules())
         {
             if (module.cppCTypeCatalog.empty()) continue;
@@ -769,7 +770,15 @@ bool configurePrecompiledModules(
                 options.driverReferencePath = environment.driverReferencePath;
                 options.resourceDirectory = environment.resourceDirectory;
                 options.workingDirectory = environment.workingDirectory;
-                options.macroExpansionOnly = true;
+                // EN: NSMeta R1-05. A marked source is a full source session (non-value C++ records).
+                // ES: NSMeta R1-05. Una fuente marcada es una sesion de fuente completa (records C++ no valor).
+                options.macroExpansionOnly = std::find(macroSource.macros.begin(), macroSource.macros.end(),
+                    interop::metadata_detail::cppSourceSessionMarker) == macroSource.macros.end();
+                for (const auto& name : macroSource.macros)
+                {
+                    if (name == "option:rtti=0") options.rtti = false;
+                    if (name == "option:exceptions=0") options.exceptions = false;
+                }
                 options.input = interop::CppBufferInput{
                     module.moduleName + "." + macroSource.referenceIdentity.substr(
                         macroSource.referenceIdentity.find(':') + 1) +
@@ -784,11 +793,26 @@ bool configurePrecompiledModules(
                     frontend::appendCppDiagnostics(failure->diagnostics, compilation.diagnostics());
                     return false;
                 }
+                hasPrecompiledSourceSessions |= !options.macroExpansionOnly &&
+                    options.language == interop::CppLanguageMode::Cpp; // C sources need no C++ lifetime
                 group.sessions.push_back(std::move(std::get<std::unique_ptr<interop::CppInteropSession>>(opened)));
             }
             std::vector<interop::CppProjectSessions> added;
             added.push_back(std::move(group));
             if (!compilation.appendCppProjectSessions(std::move(added), error)) return false;
+        }
+        // EN: NSMeta R1-05. A source session imports non-value C++ records as a consumer with the header does: their
+        //     lifetime members, methods and fields come from that session (the catalogue providers include it).
+        // ES: NSMeta R1-05. Una sesion de fuente importa records C++ no valor como lo hace un consumidor con
+        //     encabezado: sus miembros de vida, metodos y campos vienen de esa sesion (los proveedores con catalogo la
+        //     incluyen).
+        if (hasPrecompiledSourceSessions && !compilation.hasExperimentalCppLifetimeMethodProvider())
+        {
+            hasPrecompiledStaticMethods = hasPrecompiledInstanceMethods = hasPrecompiledStaticFields = true;
+            if (!compilation.setExperimentalCppLifetimeMethodProvider(interop::provideExperimentalCppLifetimeMethods,
+                    error) || !compilation.enableCppImportedMethodLowering(error) ||
+                !compilation.enableCppImportedNoexceptLocalLifetime(error) ||
+                !compilation.enableExperimentalCppDiscardedLifetimeLoweringForTests(error)) return false;
         }
         // T19-036: C++ static fields that a precompiled template names. / Campos estaticos de una plantilla.
         if (hasPrecompiledStaticFields &&

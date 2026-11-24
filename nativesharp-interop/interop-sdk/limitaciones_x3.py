@@ -54,10 +54,13 @@ Shape* make_sq(int s) { static Sq q(0); q.s = s; return &q; }
 Shape* make_multi(int s) { static Multi m(0); m.s = s; return &m; }
 }
 '''
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x3-virtual', H2, S2, **CPP),
          'var s = lib.make_sq(6); int r = s->area() + s->tag + s->scale(1) - 6 + 4;\n'
          '    var m = lib.make_multi(1); if (m->area() != 101 || m->scale(3) != 3) return 1;\n'
-         '    return r;', modes=['directo', 'dll'])
+         '    return r;', modes=['directo', 'dll', 'lib'])
 
 H3 = r'''
 typedef long HRESULT;
@@ -88,10 +91,13 @@ extern "C" ULONG LiveRefs() { return calc.refs; }
 int Pt_x(int Pt::* m, Pt* p) { return p->*m; }
 '''
 c3 = Caso('x3-com', H3, S3, **CPP)
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(c3, 'ICalc* c = null; if (CreateCalc(&c) != 0) return 1; c->AddRef(); int r = 0;\n'
              '    GUID_ g; void* q = null; if (c->QueryInterface(in g, &q) != 0 || q == null) return 4; c->Release();\n'
              '    if (c->Add(40, 2, &r) != 0) return 2; c->Release(); c->Release(); return LiveRefs() == 0 ? r : 3;',
-         modes=['directo', 'dll'])
+         modes=['directo', 'dll', 'lib'])
 rechazo(c3, 'Pt p; p.x = 4; return Pt_x(null, &p);', 'pointer to member')
 # X3-04/X3-07: `class MyCalc : ICalc` was a rejection ('cannot derive from the C/C++ record'). A NativeSharp class now
 # implements an abstract C++ interface (polymorphic, only its vtable pointer, no virtual bases or virtual destructor,
@@ -142,8 +148,11 @@ H4 = 'namespace lib { struct VB { int v = 40; }; struct M1 : virtual VB { int m1
 # lifetime member'); a record with virtual bases now constructs and destroys through adapters Clang compiles
 # (`new (self) T(...)` passes the Microsoft most-derived flag, `self->~T()` runs the vbase destructor), explicit or
 # implicit. / Este record con bases virtuales era un rechazo; ahora su vida pasa por adaptadores que compila Clang.
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x3-base-virtual', H4, 'namespace lib { int vb_value(DD* p) { return p->v + p->m1 + p->m2; } }\n', **CPP),
-         'lib.DD d = new lib.DD(); return lib.vb_value(&d);', modes=['directo', 'dll'])
+         'lib.DD d = new lib.DD(); return lib.vb_value(&d);', modes=['directo', 'dll', 'lib'])
 H4b = r'''
 namespace lib {
 struct VB { int v; VB(); };
@@ -166,9 +175,12 @@ int vb_value(DD* p) { return p->v + p->m1 + p->m2; }
 int dtors() { return d; }
 }
 '''
+# NSMeta R1-05: a precompiled consumer without the header (lib) now imports this case through the producer's
+# source session. / Un consumidor precompilado sin encabezado (lib) importa ahora este caso por la sesion de
+# fuente del productor.
 positivo(Caso('x3-base-virtual-explicita', H4b, S4b, **CPP),
          '{ var d = new lib.DD(); if (lib.vb_value(&d) != 42) return 1; } return lib.dtors() == 1 ? 42 : 2;',
-         modes=['directo', 'dll'])
+         modes=['directo', 'dll', 'lib'])
 # X3-04: an observer interface with a virtual destructor and a virtual method with a C++ body: the class implements the
 # pure method and may override the other (`Full`) or leave it to C++ (`Doubler`). C++ must not delete the object (its
 # deleting destructor traps). / Una interfaz de observador con destructor virtual y un virtual con cuerpo C++: la clase

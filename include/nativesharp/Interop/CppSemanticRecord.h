@@ -238,13 +238,20 @@ struct CppCRecordClosure
 {
     std::vector<CppCRecordSnapshot> records;
     std::vector<std::string> enumIdentityKeys;
+    // EN: NSMeta R1-05. The C/C++ references (of the closure's project) whose C++ records are not byte values and stay
+    //     out of the catalogue; their preprocessed source travels as a source session.
+    // ES: NSMeta R1-05. Las referencias C/C++ (del proyecto del cierre) cuyos records C++ no son valores de bytes y no
+    //     entran al catalogo; su fuente preprocesada viaja como sesion de fuente.
+    std::vector<std::pair<std::size_t, std::string>> sourceSessionRecords{}; // (reference index, identity key)
 };
 using CppCRecordClosureResult = std::variant<CppCRecordClosure, CppCRecordSnapshotFailure>;
 // Seeds and transitive field references are resolved within one project.
 CppCRecordClosureResult collectCppCRecordClosure(
     std::span<const CppSemanticRecordEntry> inventory, std::span<const CppRecordGroup> groups,
     std::size_t projectOrdinal, std::span<const std::string> seedIdentityKeys,
-    std::span<const CppProjectSessions> cppValueSessions = {});
+    std::span<const CppProjectSessions> cppValueSessions = {},
+    // NSMeta R1-05: references that already travel as source sessions; their records stay out of the catalogue.
+    std::span<const std::size_t> sourceSessionReferences = {});
 bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compilation,
     const LibraryMetadata& metadata, std::vector<std::uint8_t>& output, std::string& error);
 bool selectCppTypesWithPrecompiledCatalogs(const frontend::ProjectCompilation& compilation,
