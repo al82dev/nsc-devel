@@ -540,4 +540,17 @@ positivo(Caso('x2-plantilla-miembro', HMT, '', **CRG),
          modes=['directo', 'dll'])
 rechazo(Caso('x2-plantilla-miembro-ausente', HMT, '', **CRG), 'lib.M m; return m.nada(1);',
         "has no compatible member named 'nada'")
+# X2: a static member function template (`M.twice(21)`) is deduced the same way and called directly by its
+# symbol, as a static extension of its own record only (another record does not get it).
+# X2: una plantilla miembro estatica se deduce igual y es extension estatica solo de su propio record.
+HMS = r'''
+namespace lib {
+struct M { int base; template <typename T> static T twice(T v) { return v * 2; } };
+struct N { int z; };
+}
+'''
+positivo(Caso('x2-plantilla-miembro-estatica', HMS, '', **CRG), 'return lib.M.twice(20) + (int)lib.M.twice(1.0);',
+         modes=['directo', 'dll'])
+rechazo(Caso('x2-plantilla-miembro-estatica-otro', HMS, '', **CRG),
+        'int a = lib.M.twice(20); return lib.N.twice(21);', "has no compatible member named 'twice'")
 fin()

@@ -482,6 +482,19 @@ void ProjectMethodBodyModel::collectExtensionMemberCandidates(
     {
         if (functionOrdinal >= namespaceCallableAdapters().size()) continue;
         const ClassMemberSymbol& candidate = namespaceCallableAdapters()[functionOrdinal];
+        // X2: a static C++ member function template specialization extends its own record only. / Una
+        //     especializacion estatica de plantilla miembro C++ solo extiende su propio record.
+        if (namespaceFunctionModel_ != nullptr && functionOrdinal < namespaceFunctionModel_->functions().size() &&
+            namespaceFunctionModel_->functions()[functionOrdinal].cppMemberTemplateOwnerUsr)
+        {
+            const auto ordinal = typeReceiver && nameLookup_ != nullptr && receiver.typeKey.starts_with("type:")
+                ? nameLookup_->typeOrdinalForIdentity(std::string_view(receiver.typeKey).substr(5)) : std::nullopt;
+            const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+            if (imported != nullptr && imported->clangUsr ==
+                    namespaceFunctionModel_->functions()[functionOrdinal].cppMemberTemplateOwnerUsr)
+                methods.push_back(namespaceCallableBase_ + functionOrdinal);
+            continue;
+        }
         if (candidate.parameters.empty())
         {
             // NS304-T08-F03: a static extension member (no receiver) is reachable via T.Miembro().

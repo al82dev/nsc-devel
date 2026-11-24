@@ -1087,6 +1087,9 @@ CppSemanticFunctionResult projectFunction(
     {
         symbol.isExtension = true;
         symbol.cppMemberTemplate = true;
+        // X2: a static one has no receiver. / Una estatica no tiene receptor.
+        symbol.isStaticExtension = function.cppMemberTemplateOwnerUsr.has_value();
+        symbol.cppMemberTemplateOwnerUsr = function.cppMemberTemplateOwnerUsr;
     }
     symbol.cppClangUsr = function.clangUsr;
     symbol.cppMacroWrapper = function.cMacroWrapper;
@@ -1270,7 +1273,8 @@ CppSemanticFunctionResult projectFunction(
     //     operador NativeSharp) y al menos uno es un record o enum C++ importado.
     //     T19-007: tambien por `T&` (un operando ref, que exige un lugar asignable, como C++ solo lo enlaza a un
     //     lvalue), y puede devolver una referencia, como una funcion.
-    if (symbol.isExtension &&
+    // X2: not for a member function template specialization, which is no operator. / No para una plantilla miembro.
+    if (symbol.isExtension && !symbol.cppMemberTemplate &&
         (std::any_of(symbol.parameters.begin(), symbol.parameters.end(), [](const auto& parameter) {
              return parameter.passKind != frontend::ParameterPassKind::Value &&
                  parameter.passKind != frontend::ParameterPassKind::In &&

@@ -98,6 +98,8 @@ struct NamespaceFunctionSymbol final
     //     (as the member it is). / Una especializacion de plantilla miembro C++, extension visible desde cualquier
     //     namespace.
     bool cppMemberTemplate = false;
+    // X2: the Clang USR of the record of a static one. / El USR de Clang del record de una estatica.
+    std::optional<std::string> cppMemberTemplateOwnerUsr{};
     // NS304-T08-F04: for an extension operator, the operation token (Plus/Minus/...). Invalid for
     // non-operator extension functions.
     lexer::TokenKind operatorToken = lexer::TokenKind::Invalid;

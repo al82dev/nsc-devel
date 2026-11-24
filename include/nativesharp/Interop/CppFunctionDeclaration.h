@@ -104,6 +104,9 @@ struct CppFunctionDeclaration
     //     through its member adapter. / Una especializacion de plantilla de funcion miembro, publicada como metodo
     //     de extension.
     bool cppMemberTemplate = false;
+    // X2: for a static one, the USR of its record (a static extension of that record only). / Para una estatica,
+    //     el USR de su record.
+    std::optional<std::string> cppMemberTemplateOwnerUsr{};
     // EN: X2-05. For a function published as its by-value adapter: the original symbol, called directly with the
     //     address of a prvalue argument constructed in the caller's temporary (Microsoft x64: the callee destroys it).
     // ES: X2-05. Para una funcion publicada como su adaptador por valor: el simbolo original, llamado directamente con

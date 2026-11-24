@@ -1881,6 +1881,43 @@ void collectMemberOperators(const clang::DeclContext& context, clang::ASTContext
             for (const auto* specialization : memberTemplate->specializations())
             {
                 const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(specialization);
+                // EN: X2. A static one is called directly by its symbol (Clang emits the vague-linkage
+                //     instantiation, T13-011), as a static extension of this record only.
+                // ES: X2. Una estatica se llama directamente por su simbolo, como extension estatica de este
+                //     record solamente.
+                if (method && method->isStatic() && method->isDefined() && !method->isInvalidDecl() &&
+                    !method->isConsteval() && !method->isVariadic() && !method->isOverloadedOperator() &&
+                    !cppNonTrivialRecordValue(method->getReturnType()))
+                {
+                    const auto methodUsr = declarationUsr(method);
+                    if (!methodUsr) continue;
+                    std::unique_ptr<clang::MangleContext> mangler(astContext.createMangleContext());
+                    llvm::SmallString<128> symbol;
+                    llvm::raw_svector_ostream stream(symbol);
+                    mangler->mangleName(clang::GlobalDecl(method), stream);
+                    CppFunctionDeclaration value;
+                    value.clangUsr = *methodUsr + "#member-template";
+                    value.name = method->getNameAsString();
+                    value.qualifiedName = path->empty() ? value.name : *path + "::" + value.name;
+                    value.canonicalFunctionType = method->getType().getCanonicalType().getAsString();
+                    value.callingConvention = "cdecl";
+                    value.languageLinkage = CppLanguageLinkage::Cpp;
+                    value.returnTypeSpelling = method->getReturnType().getAsString();
+                    value.canonicalReturnTypeSpelling = method->getReturnType().getCanonicalType().getAsString();
+                    value.returnType = describeType(method->getReturnType(), astContext);
+                    value.hasPrototype = true;
+                    value.externalLinkage = true;
+                    for (const clang::ParmVarDecl* parameter : method->parameters())
+                        value.parameters.push_back(CppFunctionParameter{
+                            parameter->getNameAsString(), parameter->getType().getAsString(),
+                            parameter->getType().getCanonicalType().getAsString(),
+                            describeType(parameter->getType(), astContext), false});
+                    value.externalSymbol = std::string(symbol.str());
+                    value.cppMemberTemplate = true;
+                    value.cppMemberTemplateOwnerUsr = *recordUsr;
+                    result.push_back(std::move(value));
+                    continue;
+                }
                 if (!method || method->isStatic() || !method->isDefined() || method->isInvalidDecl() ||
                     method->isConsteval() || llvm::isa<clang::CXXConstructorDecl>(method) ||
                     llvm::isa<clang::CXXDestructorDecl>(method) ||

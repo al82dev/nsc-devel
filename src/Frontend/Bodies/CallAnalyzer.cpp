@@ -9045,9 +9045,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     ExpressionResult result;
+    pendingCppMemberTemplate_.reset();
     if (const auto handled = analyzePreCallKinds(
             expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
-        handled.has_value()) return *handled;
+        handled.has_value())
+    {
+        // X2: a static member function template of a C++ record (`M.twice(21)`). / Una plantilla de funcion miembro
+        //     estatica de un record C++.
+        if (pendingCppMemberTemplate_ && pendingCppMemberTemplate_->member == expression->first())
+            recordCppMemberTemplateDeduction(expression, methodMemberOrdinal, scopeOrdinal);
+        pendingCppMemberTemplate_.reset();
+        return *handled;
+    }
     MethodCallBinding call;
     ExpressionResult callee;
     bool nullConditionalCall = false;
