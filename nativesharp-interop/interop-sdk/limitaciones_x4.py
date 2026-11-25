@@ -204,13 +204,13 @@ positivo(Caso('x4-deduccion-clase-var', HCT, None, language='C++', standard='c++
          preludio='public static class P { public static int Sum(int k, double d) { var t = new lib.Two(k, d);'
                   ' return t.sum(); } }\n',
          modes=['directo', 'dll', 'lib'])
-# X4: and a builtin field (`s.v`) of a type the unit declares. In lib the published template is read without the
-#     producer's other declarations, so the field's type is not known there. / Y un campo builtin de un tipo de la
-#     unidad; en lib la plantilla publicada se lee sin las demas declaraciones del productor.
+# X4: and a builtin field (`s.v`) of a type the unit declares; in lib, of a struct of the producer, read from its
+#     published surface (NSMeta X4-06). / Y un campo builtin de un tipo de la unidad; en lib, de un struct del
+#     productor, leido de su superficie publicada.
 positivo(Caso('x4-deduccion-clase-campo', HCT, None, language='C++', standard='c++20'),
          'S s = new S(); var u = new lib.Two(s.v, s.d); return u.sum();',
          preludio='public struct S { public int v; public double d; public S() { v = 40; d = 2.5; } }\n',
-         modes=['directo', 'dll'])
+         modes=['directo', 'dll', 'lib'])
 # EN: STL. A variadic factory template that returns a non-trivial record by value (`make_unique<T>(args)`), called
 #     with literal or `ref` local arguments: the call is deduced before the members are imported, so its result is
 #     constructed in place; its adapter names the template arguments before the pack (`make<Box>(...)`), the pack is

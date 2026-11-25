@@ -3592,6 +3592,10 @@ public:
         const std::vector<interop::CppTemplateArgument>& explicitArguments,
         const std::vector<interop::CppTemplateArgument>& callArguments)>;
     CppTemplateUseRewriter& preDeduce(PreDeduce value) { preDeduce_ = std::move(value); return *this; }
+    // NSMeta X4-06: the builtin type of a field of a struct the unit does not declare (a precompiled producer's, from
+    //     its published surface), or empty. / El tipo builtin de un campo de un struct que la unidad no declara.
+    using FieldType = std::function<std::string(std::string_view typeName, std::string_view member)>;
+    CppTemplateUseRewriter& fieldType(FieldType value) { fieldType_ = std::move(value); return *this; }
 
     // A specialization use whose qualified name starts at index, or nullopt when the tokens are not one.
     std::optional<Use> match(std::size_t index, unsigned depth = 0) const
@@ -3881,10 +3885,12 @@ private:
             break;
         }
         std::string found;
+        bool declared = false;
         for (std::size_t at = 0; at + 1 < tokens_.size(); ++at)
         {
             if ((tokens_[at].kind() != lexer::TokenKind::KwClass && tokens_[at].kind() != lexer::TokenKind::KwStruct) ||
                 tokens_[at + 1].kind() != lexer::TokenKind::Identifier || tokens_[at + 1].lexeme() != typeName) continue;
+            declared = true;
             std::size_t open = at + 2;
             while (open < tokens_.size() && tokens_[open].kind() != lexer::TokenKind::LeftBrace &&
                    tokens_[open].kind() != lexer::TokenKind::Semicolon) ++open;
@@ -3906,6 +3912,10 @@ private:
                 }
             }
         }
+        // NSMeta X4-06: a type the unit does not declare (a published template of a precompiled library reads a
+        //     struct of its producer): its field from the producer's published surface. / Un tipo que la unidad no
+        //     declara: su campo desde la superficie publicada del productor.
+        if (!declared && found.empty() && fieldType_) return fieldType_(typeName, member);
         return found;
     }
 
@@ -4158,6 +4168,7 @@ private:
     DeferUnboundPack deferUnboundPack_;
     DeduceClass deduceClass_;
     PreDeduce preDeduce_;
+    FieldType fieldType_;
 };
 }
 
@@ -4795,6 +4806,24 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
                                                                               result->aliasTarget};
                             }
                         return std::nullopt;
+                    }).fieldType([&](std::string_view typeName, std::string_view member) -> std::string {
+                        // A struct of the project by its simple name; one builtin, non-pointer instance field. / Un
+                        //     struct del proyecto por su nombre simple; un campo builtin de instancia.
+                        const auto types = nativeTypes.find(projectOrdinal);
+                        if (types == nativeTypes.end()) return {};
+                        std::string found;
+                        for (const auto& [key, shape] : types->second)
+                        {
+                            if (shape.isClass || shape.name != typeName) continue;
+                            for (const auto& field : shape.fields)
+                            {
+                                if (field.name != member) continue;
+                                if (field.builtin.empty() || field.pointerDepth != 0 ||
+                                    (!found.empty() && found != field.builtin)) return {};
+                                found = field.builtin;
+                            }
+                        }
+                        return found;
                     }).preDeduce([&](const std::string& qualifiedName,
                                      const std::vector<interop::CppTemplateArgument>& explicitArguments,
                                      const std::vector<interop::CppTemplateArgument>& callArguments) {
