@@ -30,6 +30,13 @@ No se cambia código de producto.
   `VariableTemplateExpression` en 110. El oráculo pasa a 111 entradas, TA-AST-025 fija el final en
   `VariableTemplateExpression` y TA-AST-023 comprueba el ordinal 111.
 
+## TP-PAR-409 (CP-PAR-034): candidatos de `foreach`
+
+- Observado: `ForeachStatement` ya no tiene exactamente 2 hijos.
+- Causa: `775b64c41` (X2, foreach sobre rangos C++) añadió el candidato de rango C++ en `children()[2]`
+  (bloque con la declaración de `end` y un `ForStatement`).
+- Cambio: el caso exige 3 hijos y comprueba también la forma de ese candidato.
+
 ## TF-DRIVER-075 y TF-DRIVER-083 (CF-DRIVER-010/011): traza de tiempos JSON
 
 - Observado: la variante 3 de ambos contratos esperaba `"total_ms": 0`.
