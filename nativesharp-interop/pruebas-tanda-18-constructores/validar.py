@@ -5,7 +5,9 @@ su destructor anota `d`. Un callback NativeSharp construye `a(1)` y luego `b(-1)
 frame NativeSharp hasta el `catch` de la biblioteca, `a` se destruye y `b`, que nunca se construyo, no. La
 anotacion debe ser `cd` y el resultado 107, igual que con el mismo callback escrito en C++ (Clang 23.1.0),
 O0-O3. Sin excepcion, los dos locales se construyen y destruyen en orden inverso. Un local cuyo destructor
-es `noexcept(false)` sigue rechazado con su motivo. En estatica el
+es `noexcept(false)` sigue rechazado con su motivo. Con --lib (NSMeta X4-06) las clases y funciones son de una
+biblioteca NativeSharp precompilada y el cuerpo de Main una plantilla generica publicada que el consumidor, sin el
+encabezado, instancia (el negativo se comprueba en directo). En estatica el
 ejecutable arranca por el runtime de C (`--crt-startup`); con --dll la biblioteca es una DLL con su propio
 runtime.
 """
@@ -20,6 +22,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
 parser.add_argument('--dll', action='store_true')
+parser.add_argument('--lib', action='store_true')
 args = parser.parse_args()
 root = Path(tempfile.mkdtemp(prefix='nsc-t18-constructores-', dir='A:/temp'))
 env = os.environ.copy()
@@ -115,6 +118,31 @@ def run(label, command, cwd, expected=0, extra_env=None):
     return result
 
 
+def as_library(case, opt, program):
+    """NSMeta X4-06: the program's classes and functions become the producer's (public) and Main's body its published
+    generic `Run<T>`; the consumer instantiates it without the header. / Las clases y funciones del programa pasan al
+    productor y el cuerpo de Main a su plantilla publicada `Run<T>`; el consumidor la instancia sin el encabezado."""
+    head, main = program.split('int Main()', 1)
+    body = main[main.index('{') + 1:main.rindex('}')]
+    classes = ''.join('public ' + line + '\n' for line in head.splitlines() if line.startswith('class '))
+    methods = ''.join('public static ' + line + '\n' for line in head.splitlines() if line.startswith('int '))
+    (case / 'Lib.ns').write_text(classes + 'namespace T18Lib { public static class P {\n' + methods +
+                                 'public static int Run<T>(T unused) {' + body + '} } }\n', encoding='utf-8')
+    runtime = ' Runtime="api.dll"' if args.dll else ''
+    (case / 'Lib.nsproj').write_text(
+        '<Project><PropertyGroup><Name>T18Lib</Name><OutputType>Library</OutputType></PropertyGroup>'
+        '<ItemGroup><Compile Include="Lib.ns" />'
+        '<CppLibraryReference Header="api.h" Language="C++" Standard="c++20" Library="api.lib"' + runtime + ' />'
+        '</ItemGroup></Project>', encoding='utf-8')
+    run(f'O{opt}-nsc-lib', [args.nsc, '--emit-project-oop-lib', 'Lib.nsproj', '--cpp-clang-root=' + args.clang_root,
+                            '--no-artifact-cache', '-O' + str(opt), '-o', 'T18Lib.lib'], case,
+        extra_env={'NSC_LINKER': 'nslink.exe'})
+    (case / 'Main.ns').write_text('int Main() { return T18Lib.P.Run<int>(0); }\n', encoding='utf-8')
+    (case / 'App.nsproj').write_text(
+        '<Project><PropertyGroup><Name>T18Ctor</Name></PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
+        '<LibraryReference Include="T18Lib.lib" /></ItemGroup></Project>', encoding='utf-8')
+
+
 if 'clang version 23.1.0' not in run('clang-version', ['clang.exe', '--version'], root).stdout:
     raise SystemExit('Se requiere Clang 23.1.0')
 # a(1) builds (1), b(-1) throws, a is destroyed (2): 12. / a(1) se construye, b(-1) lanza, a se destruye: 12.
@@ -152,6 +180,8 @@ for opt in range(4):
         for path in CRT:
             command += ['--link-lib', str(path)]
         extra = {'NSC_LINKER': 'lld-link.exe'}
+    if args.lib:
+        as_library(case, opt, NS)
     run(f'O{opt}-nsc', command + ['-o', 'app.exe'], case, extra_env=extra)
     result = run(f'O{opt}-run', [str(case / 'app.exe')], case, expected=None).returncode
     if result != control:
@@ -166,6 +196,8 @@ for opt in range(4):
     if fieldsControl != EXPECTED:
         raise SystemExit(f'O{opt}: el control C++ de campos devolvio {fieldsControl}; evidencia: {root}')
     (case / 'Main.ns').write_text(NS_FIELDS, encoding='utf-8')
+    if args.lib:
+        as_library(case, opt, NS_FIELDS)
     run(f'O{opt}-fields-nsc', command + ['-o', 'fields.exe'], case, extra_env=extra)
     fields = run(f'O{opt}-fields-run', [str(case / 'fields.exe')], case, expected=None).returncode
     if fields != fieldsControl:
@@ -175,6 +207,10 @@ for opt in range(4):
 # A destructor that may throw stays rejected. / Un destructor que puede lanzar sigue rechazado.
 case = root / 'O0'
 (case / 'Main.ns').write_text('int Main() { T18.Risky r = new T18.Risky(); return 0; }\n', encoding='utf-8')
+(case / 'App.nsproj').write_text(
+    '<Project><PropertyGroup><Name>T18Ctor</Name></PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
+    '<CppLibraryReference Header="api.h" Language="C++" Standard="c++20" Library="api.lib"' +
+    (' Runtime="api.dll"' if args.dll else '') + ' /></ItemGroup></Project>', encoding='utf-8')
 output = run('negativo-destructor', [args.nsc, '--emit-project-oop-exe', 'App.nsproj', '--cpp-clang-root=' + args.clang_root,
                                      '--no-artifact-cache', '-o', 'riesgo.exe'], case, expected=1,
              extra_env={'NSC_LINKER': 'nslink.exe' if args.dll else 'lld-link.exe'}).stdout

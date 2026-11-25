@@ -12,6 +12,8 @@ defecto, como en C++; antes NativeSharp la construia de forma perezosa en la pri
 con una cadena `E : D : L.Base` de constructores implicitos o explicitos (la D completa se destruye si un campo de E
 lanza).
 O0-O3; en estatica el ejecutable arranca por el runtime de C (`--crt-startup`); con --dll la biblioteca es una DLL.
+Con --lib (NSMeta X4-06) las clases y una plantilla generica `Go<T>` que construye son de una biblioteca
+NativeSharp precompilada; el consumidor, sin el encabezado, instancia `Go<int>`.
 """
 import argparse
 import os
@@ -23,6 +25,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
 parser.add_argument('--dll', action='store_true')
+parser.add_argument('--lib', action='store_true')
 args = parser.parse_args()
 root = Path(tempfile.mkdtemp(prefix='nsc-x3-construccion-', dir='A:/temp'))
 env = os.environ.copy()
@@ -143,8 +146,35 @@ for opt in range(4):
         control = run(tag + '-control-run', [str(case / 'control.exe')], case, expected=None).returncode
         if control != expected:
             raise SystemExit(f'{tag}: el control C++ devolvio {control}, se esperaba {expected}; evidencia: {root}')
-        (case / 'Main.ns').write_text(nsProgram.replace('ARG', argument), encoding='utf-8')
-        command = [args.nsc, '--emit-project-oop-exe', 'App.nsproj', '--cpp-clang-root=' + args.clang_root,
+        project = 'App.nsproj'
+        if args.lib:
+            # NSMeta X4-06: the classes and a generic `Go<T>` that builds are the producer's; Main is the consumer's.
+            #     / Las clases y un `Go<T>` generico son del productor; Main es del consumidor.
+            program = nsProgram.replace('ARG', argument)
+            classes = program[:program.index('int Build()')].replace('class D', 'public class D').replace(
+                'class E', 'public class E')
+            built = 'E' if 'class E' in program else 'D'
+            (case / 'Lib.ns').write_text(
+                classes + 'namespace Ctor { public static class P {\n'
+                'static int Build<T>() { { var o = new ' + built + '(); } return 0; }\n'
+                'public static int Go<T>(T unused) { L.Cb build = () => Build<T>(); int r = L.run(build); '
+                'return (r * 1000000 + L.trace()) % 251; } } }\n', encoding='utf-8')
+            (case / 'Lib.nsproj').write_text(
+                '<Project><PropertyGroup><Name>X3CtorLib</Name><OutputType>Library</OutputType></PropertyGroup>'
+                '<ItemGroup><Compile Include="Lib.ns" />'
+                '<CppLibraryReference Header="api.h" Language="C++" Standard="c++20" Library="api.lib" />'
+                '</ItemGroup></Project>', encoding='utf-8')
+            run(tag + '-nsc-lib', [args.nsc, '--emit-project-oop-lib', 'Lib.nsproj', '--cpp-clang-root=' +
+                                   args.clang_root, '--no-artifact-cache', '-O' + str(opt), '-o', 'X3CtorLib.lib'],
+                case, extra_env={'NSC_LINKER': 'nslink.exe'})
+            (case / 'Main.ns').write_text('int Main() { return Ctor.P.Go<int>(0); }\n', encoding='utf-8')
+            (case / 'Consumer.nsproj').write_text(
+                '<Project><PropertyGroup><Name>X3Ctor</Name></PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
+                '<LibraryReference Include="X3CtorLib.lib" /></ItemGroup></Project>', encoding='utf-8')
+            project = 'Consumer.nsproj'
+        else:
+            (case / 'Main.ns').write_text(nsProgram.replace('ARG', argument), encoding='utf-8')
+        command = [args.nsc, '--emit-project-oop-exe', project, '--cpp-clang-root=' + args.clang_root,
                    '--no-artifact-cache', '-O' + str(opt)]
         extra = {'NSC_LINKER': 'nslink.exe'}
         if not args.dll:

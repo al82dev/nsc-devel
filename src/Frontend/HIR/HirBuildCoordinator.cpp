@@ -3069,7 +3069,13 @@ bool ProjectOopHirModel::buildFieldInitializer(
     // EN: X2-06. A non-trivial C++ record instance field without an initializer is constructed by default with the
     //     object, as a C++ member is (ProjectOopHirModel::appendInstanceFieldInitializers does the same).
     // ES: X2-06. Un campo de instancia record C++ no trivial sin inicializador se construye por defecto con el objeto.
-    if (!field.isStatic && field.syntax != nullptr && field.syntax->first() == nullptr &&
+    // NSMeta X4-06: a precompiled class's fields are constructed by its producer's constructors; a consumer only sees
+    //     their declarations (without initializers), so it neither requires nor emits their construction.
+    //     / Los campos de una clase precompilada los construyen los constructores del productor; el consumidor solo ve
+    //     sus declaraciones, asi que no exige ni emite su construccion.
+    const bool precompiledDeclaringType = field.declaringTypeOrdinal < nameLookup_->namedTypes().size() &&
+        nameLookup_->namedTypes()[field.declaringTypeOrdinal].isPrecompiled;
+    if (!precompiledDeclaringType && !field.isStatic && field.syntax != nullptr && field.syntax->first() == nullptr &&
         field.declaredTypeKey.starts_with("type:") && !field.declaredTypeKey.ends_with('*'))
         if (const auto type = nameLookup_->typeOrdinalForIdentity(std::string_view(field.declaredTypeKey).substr(5));
             type && nameLookup_->cppImportedType(*type) &&
