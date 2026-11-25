@@ -183,9 +183,16 @@ void ProjectConstructionModel::evaluateConstructorArgument(
         conversion = {ProjectConversionKind::StringLiteralToCharPointer, 4, argumentTypes[argumentOrdinal].typeKey,
                       conversionTarget, std::nullopt};
     if (!conversion.exists()) candidate.viable = false;
+    // STL: except a builtin local or field written without `ref`/`in` for a factory template deduced from this call
+    //     (`make<Box>(j, s.v)`): the deduction passed it as a value, so it binds as that value (CallAnalyzer).
+    //     / Salvo un local o campo builtin sin `ref`/`in` para una fabrica deducida de esta llamada.
+    const bool deducedValue = constructor.cppFactoryConstructor &&
+        argumentTypes[argumentOrdinal].argumentPassKind == ParameterPassKind::Value &&
+        argumentTypes[argumentOrdinal].typeKey.starts_with("builtin:") &&
+        !ProjectTypeConversion::isPointer(argumentTypes[argumentOrdinal].typeKey);
     if (rvalueArgument && parameter.cppRvalueReference && conversion.exists() &&
         conversion.kind == ProjectConversionKind::Identity &&
-        sema::isPlaceCategory(argumentTypes[argumentOrdinal].valueCategory))
+        sema::isPlaceCategory(argumentTypes[argumentOrdinal].valueCategory) && !deducedValue)
         candidate.viable = false;
     if (argumentTypes[argumentOrdinal].pointerPointeeVolatile &&
         (packElement || !parameter.pointerPointeeVolatile)) candidate.viable = false;

@@ -228,4 +228,16 @@ positivo(Caso('x4-fabrica-expresiones', HMK, SMK, language='C++', standard='c++2
 positivo(Caso('x4-fabrica-llamadas', HMK, SMK, language='C++', standard='c++20', extra_ref=' Exceptions="false"'),
          'int k = 2; int r = 0; { var b = lib.make<lib.Box>(dos() + 30, k * 5); r = b.v; } return r + lib.live();',
          preludio='int dos() { return 2; }\n', modes=['directo'])
+# STL: a factory argument may be a builtin local, field (`s.v`) or static/const field (`K.n`) written without
+#     `ref`/`in`, alone or in an expression: the deduction passes it as a value of its type, and the call binds it as
+#     that value (a copy). / Un argumento puede ser un local, campo o campo estatico/const builtin sin `ref`/`in`, solo
+#     o en una expresion: la deduccion lo pasa como valor de su tipo y la llamada lo enlaza como ese valor.
+positivo(Caso('x4-fabrica-miembros', HMK, SMK, language='C++', standard='c++20', extra_ref=' Exceptions="false"'),
+         'S s = new S(); s.v = 30; int j = 4; int r = 0;'
+         ' { var b = lib.make<lib.Box>(s.v, s.w * 2); r = b.v; }'
+         ' { var c = lib.make<lib.Box>(K.n, K.m + j); r += c.v; }'
+         ' { var d = lib.make<lib.Box>(j, 2); r += d.v; } return r - 92 + 42 + lib.live();',
+         preludio='public struct S { public int v; public int w; public S() { v = 0; w = 6; } }\n'
+                  'public static class K { public const int n = 30; public static int m = 10; }\n',
+         modes=['directo', 'dll', 'lib'])
 fin()

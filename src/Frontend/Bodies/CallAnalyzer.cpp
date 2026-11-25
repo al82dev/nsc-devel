@@ -1283,8 +1283,17 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
                 parameter.pointerKnownAlignment,
                 parameter.pointerAddressSpace));
     const bool implicitExtensionReceiverPass = hasForwardedReceiver && argumentOrdinal == 0;
+    // EN: STL. A builtin local or field written without `ref`/`in` for a `T&&` of a C++ function template
+    //     specialization deduced from this call (`make<Box>(j, s.v)`): the deduction passed it as a value (a prvalue
+    //     of its type), so it binds as that value, a copy for the call, as `j + 0` does. Any other lvalue for a `T&&`
+    //     stays rejected, as in C++.
+    // ES: STL. Un local o campo builtin escrito sin `ref`/`in` para un `T&&` de una especializacion deducida de esta
+    //     llamada: la deduccion lo paso como valor, asi que se enlaza como ese valor, una copia para la llamada.
+    const bool deducedValue = cFunction != nullptr && cFunction->cppTemplateSpecialization &&
+        arguments[argumentOrdinal].typeKey.starts_with("builtin:") &&
+        !ProjectTypeConversion::isPointer(arguments[argumentOrdinal].typeKey);
     const bool boundLvalue = rvalueArgument && parameter.cppRvalueReference && conversion.exists() &&
-        conversion.kind == ProjectConversionKind::Identity && arguments[argumentOrdinal].addressable;
+        conversion.kind == ProjectConversionKind::Identity && arguments[argumentOrdinal].addressable && !deducedValue;
     // X2: a receiver bound by reference converts to the referent; the pointer contract of the reference does not
     //     apply to it. / Un receptor enlazado por referencia se convierte al referente; el contrato no aplica.
     const bool referenceReceiver = implicitExtensionReceiverPass && parameter.passKind != ParameterPassKind::Value;

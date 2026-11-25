@@ -3851,6 +3851,52 @@ private:
         return found;
     }
 
+    // EN: STL. The builtin type of `owner.member`: owner is a local declared before with a type of the unit
+    //     (`S s;`) or that type's name itself (`K.n`, a static or const field); the field is declared in that class
+    //     or struct of the unit as `<builtin> member` (`;` or `=` after it). Empty otherwise.
+    // ES: STL. El tipo builtin de `owner.member`: owner es un local declarado antes con un tipo de la unidad o el
+    //     nombre de ese tipo; el campo se declara en esa clase o struct de la unidad como `<builtin> member`.
+    std::string memberType(std::size_t index, std::string_view owner, std::string_view member) const
+    {
+        std::string_view typeName = owner;
+        for (std::size_t back = index; back-- > 1;)
+        {
+            if (tokens_[back].kind() != lexer::TokenKind::Identifier || tokens_[back].lexeme() != owner ||
+                back + 1 >= tokens_.size()) continue;
+            const auto after = tokens_[back + 1].kind();
+            if (after != lexer::TokenKind::Equal && after != lexer::TokenKind::Semicolon) continue;
+            if (tokens_[back - 1].kind() == lexer::TokenKind::Identifier) typeName = tokens_[back - 1].lexeme();
+            break;
+        }
+        std::string found;
+        for (std::size_t at = 0; at + 1 < tokens_.size(); ++at)
+        {
+            if ((tokens_[at].kind() != lexer::TokenKind::KwClass && tokens_[at].kind() != lexer::TokenKind::KwStruct) ||
+                tokens_[at + 1].kind() != lexer::TokenKind::Identifier || tokens_[at + 1].lexeme() != typeName) continue;
+            std::size_t open = at + 2;
+            while (open < tokens_.size() && tokens_[open].kind() != lexer::TokenKind::LeftBrace &&
+                   tokens_[open].kind() != lexer::TokenKind::Semicolon) ++open;
+            if (open >= tokens_.size() || tokens_[open].kind() != lexer::TokenKind::LeftBrace) continue;
+            std::size_t depth = 0;
+            for (std::size_t body = open; body < tokens_.size(); ++body)
+            {
+                const auto kind = tokens_[body].kind();
+                if (kind == lexer::TokenKind::LeftBrace) ++depth;
+                else if (kind == lexer::TokenKind::RightBrace) { if (--depth == 0) break; }
+                else if (depth == 1 && kind == lexer::TokenKind::Identifier && tokens_[body].lexeme() == member &&
+                         body + 1 < tokens_.size() &&
+                         (tokens_[body + 1].kind() == lexer::TokenKind::Semicolon ||
+                          tokens_[body + 1].kind() == lexer::TokenKind::Equal))
+                {
+                    const std::string_view builtin = builtinOf(tokens_[body - 1].kind());
+                    if (builtin.empty() || (!found.empty() && found != builtin)) return {};
+                    found = std::string(builtin);
+                }
+            }
+        }
+        return found;
+    }
+
     // EN: The type of an arithmetic expression [begin, end) over literals and typed locals, by C++'s usual
     //     arithmetic conversions (a comparison or logical operator outside parentheses gives bool); empty when the
     //     expression has anything else (a call, a member, a string).
@@ -3908,7 +3954,19 @@ private:
                     at = close;
                     break;
                 }
-                if (at + 1 < end && tokens_[at + 1].kind() == lexer::TokenKind::Dot) return {};
+                if (at + 1 < end && tokens_[at + 1].kind() == lexer::TokenKind::Dot)
+                {
+                    // STL: `s.v` / `K.n`, a builtin field of a type of the unit (not a call nor a longer path).
+                    //     / Un campo builtin de un tipo de la unidad (no una llamada ni una ruta mas larga).
+                    if (at + 2 >= end || tokens_[at + 2].kind() != lexer::TokenKind::Identifier ||
+                        (at + 3 < end && (tokens_[at + 3].kind() == lexer::TokenKind::Dot ||
+                                          tokens_[at + 3].kind() == lexer::TokenKind::LeftParen))) return {};
+                    const std::string type = memberType(index, token.lexeme(), tokens_[at + 2].lexeme());
+                    if (type.empty()) return {};
+                    take(type);
+                    at += 2;
+                    break;
+                }
                 const std::string type = typedLocal(index, token.lexeme());
                 if (type.empty()) return {};
                 take(type);
