@@ -26,6 +26,9 @@ No se cambia código de producto.
 - Cambio: el oráculo independiente `ExpectedAstKinds` incluye ese tipo (109 entradas) y TA-AST-025
   fija el final del rango añadido en `StaticFieldIterationStatement`. TA-AST-023 vuelve a comprobar
   el primer ordinal fuera del dominio (109) y el máximo del tipo subyacente.
+- Después, `c7513d004` (T19-042) añadió `TypeArgumentExpression` en 109 y `ffa7672a3` (X4-04)
+  `VariableTemplateExpression` en 110. El oráculo pasa a 111 entradas, TA-AST-025 fija el final en
+  `VariableTemplateExpression` y TA-AST-023 comprueba el ordinal 111.
 
 ## TF-DRIVER-075 y TF-DRIVER-083 (CF-DRIVER-010/011): traza de tiempos JSON
 

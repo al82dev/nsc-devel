@@ -29,7 +29,9 @@ struct ExpectedAstKind final
 // TA-AST-023: la iteración tipada de campos estáticos (94d35b132) añadió StaticFieldIterationStatement en 108.
 // TA-AST-023: predefined types as macro arguments (c7513d004) appended TypeArgumentExpression at 109.
 // TA-AST-023: los tipos predefinidos como argumentos de macro (c7513d004) añadieron TypeArgumentExpression en 109.
-constexpr std::array<ExpectedAstKind, 110> ExpectedAstKinds = {{
+// TA-AST-023: C++ variable templates as values (ffa7672a3) appended VariableTemplateExpression at 110.
+// TA-AST-023: las plantillas de variable C++ como valores (ffa7672a3) añadieron VariableTemplateExpression en 110.
+constexpr std::array<ExpectedAstKind, 111> ExpectedAstKinds = {{
     {AstNodeKind::CompilationUnit, "CompilationUnit"},
     {AstNodeKind::NamespaceDeclaration, "NamespaceDeclaration"},
     {AstNodeKind::UsingNamespaceDirective, "UsingNamespaceDirective"},
@@ -140,6 +142,7 @@ constexpr std::array<ExpectedAstKind, 110> ExpectedAstKinds = {{
     {AstNodeKind::OverflowPolicyExpression, "OverflowPolicyExpression"},
     {AstNodeKind::StaticFieldIterationStatement, "StaticFieldIterationStatement"},
     {AstNodeKind::TypeArgumentExpression, "TypeArgumentExpression"},
+    {AstNodeKind::VariableTemplateExpression, "VariableTemplateExpression"},
 }};
 
 constexpr std::size_t HistoricalKindCount = 83;
@@ -151,7 +154,7 @@ void addAstNodeKindCase(TestRegistry& registry, std::string id, TestFunction fun
         {"ast", "node-kind"}, std::move(function)});
 }
 
-// Compares all 110 valid values against the independently frozen public spelling.
+// Compares all 111 valid values against the independently frozen public spelling.
 void testExactNames(TestContext& context)
 {
     for (std::size_t index = 0; index < ExpectedAstKinds.size(); ++index)
@@ -224,8 +227,8 @@ void testAppendedKindOrder(TestContext& context)
 {
     using Underlying = std::underlying_type_t<AstNodeKind>;
     context.expect(ExpectedAstKinds[HistoricalKindCount].kind == AstNodeKind::NullCoalescingExpression &&
-            ExpectedAstKinds.back().kind == AstNodeKind::TypeArgumentExpression,
-        "TA-AST-025 appended range must remain NullCoalescingExpression through TypeArgumentExpression");
+            ExpectedAstKinds.back().kind == AstNodeKind::VariableTemplateExpression,
+        "TA-AST-025 appended range must remain NullCoalescingExpression through VariableTemplateExpression");
     for (std::size_t index = HistoricalKindCount; index < ExpectedAstKinds.size(); ++index)
     {
         context.expect(static_cast<Underlying>(ExpectedAstKinds[index].kind) ==
