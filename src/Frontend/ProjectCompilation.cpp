@@ -3828,7 +3828,19 @@ private:
             if (tokens_[back].kind() != lexer::TokenKind::Identifier || tokens_[back].lexeme() != text ||
                 back + 1 >= tokens_.size()) continue;
             const auto after = tokens_[back + 1].kind();
+            // X4/STL: a parameter `<builtin> name` (`,` or `)` after it). / Un parametro `<builtin> name`.
+            if ((after == lexer::TokenKind::Comma || after == lexer::TokenKind::RightParen) &&
+                !builtinOf(tokens_[back - 1].kind()).empty())
+                return std::string(builtinOf(tokens_[back - 1].kind()));
             if (after != lexer::TokenKind::Equal && after != lexer::TokenKind::Semicolon) continue;
+            // X4/STL: `var name = <expression>;` has the type of an arithmetic expression over literals and typed
+            //     names (`var k = 40;` is int). / `var name = expr;` tiene el tipo de su expresion aritmetica.
+            if (tokens_[back - 1].kind() == lexer::TokenKind::KwVar && after == lexer::TokenKind::Equal)
+            {
+                std::size_t end = back + 2;
+                while (end < tokens_.size() && tokens_[end].kind() != lexer::TokenKind::Semicolon) ++end;
+                return end < tokens_.size() && end > back + 2 ? arithmeticType(back, back + 2, end) : std::string{};
+            }
             return std::string(builtinOf(tokens_[back - 1].kind()));
         }
         return {};

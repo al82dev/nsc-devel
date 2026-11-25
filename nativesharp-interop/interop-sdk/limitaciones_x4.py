@@ -197,6 +197,20 @@ positivo(Caso('x4-deduccion-clase', HCT, None, language='C++', standard='c++20')
 # declarado antes con un tipo builtin explicito.
 positivo(Caso('x4-deduccion-clase-local', HCT, None, language='C++', standard='c++20'),
          'long k = 40; double d = 2.5; var t = new lib.Two(k, d); return t.sum();', modes=['directo', 'dll', 'lib'])
+# X4: also a `var` local initialized by an arithmetic expression (`var k = 40;` is int) and a builtin parameter deduce
+#     (each an lvalue of its type). / Tambien un local `var` con expresion aritmetica y un parametro builtin.
+positivo(Caso('x4-deduccion-clase-var', HCT, None, language='C++', standard='c++20'),
+         'var k = 40; var d = 2.5; var t = new lib.Two(k, d); return t.sum() + P.Sum(1, 0.5) - 1;',
+         preludio='public static class P { public static int Sum(int k, double d) { var t = new lib.Two(k, d);'
+                  ' return t.sum(); } }\n',
+         modes=['directo', 'dll', 'lib'])
+# X4: and a builtin field (`s.v`) of a type the unit declares. In lib the published template is read without the
+#     producer's other declarations, so the field's type is not known there. / Y un campo builtin de un tipo de la
+#     unidad; en lib la plantilla publicada se lee sin las demas declaraciones del productor.
+positivo(Caso('x4-deduccion-clase-campo', HCT, None, language='C++', standard='c++20'),
+         'S s = new S(); var u = new lib.Two(s.v, s.d); return u.sum();',
+         preludio='public struct S { public int v; public double d; public S() { v = 40; d = 2.5; } }\n',
+         modes=['directo', 'dll'])
 # EN: STL. A variadic factory template that returns a non-trivial record by value (`make_unique<T>(args)`), called
 #     with literal or `ref` local arguments: the call is deduced before the members are imported, so its result is
 #     constructed in place; its adapter names the template arguments before the pack (`make<Box>(...)`), the pack is
