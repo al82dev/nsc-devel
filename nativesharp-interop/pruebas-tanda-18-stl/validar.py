@@ -108,6 +108,10 @@ CASES = [
     ('set', 'std.set<int> s = new std.set<int>(); int a = 40; int b = 2; s.insert(in a); s.insert(in b); s.insert(in a); '
             'return (int)s.size();',
      'std::set<int> s; int a = 40; int b = 2; s.insert(a); s.insert(b); s.insert(a); return (int)s.size();'),
+    # X4: class template argument deduction for a STL template (`new std.pair(40, 2)` is std::pair<int, int>).
+    #     / Deduccion de argumentos de plantilla de clase para una plantilla de la STL.
+    ('pair-deduccion', 'var p = new std.pair(40, 2); return p.first + p.second;',
+     'std::pair p(40, 2); return p.first + p.second;'),
     # X2: std::optional (its `optional(nullopt_t)` no longer hides every constructor; `value() &`).
     ('optional', 'std.optional<int> o = new std.optional<int>(40); std.optional<int> e = new std.optional<int>(); '
                  'return o.value() + (e.has_value() ? 100 : 0) + (o.has_value() ? 2 : 0);',
