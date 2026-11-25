@@ -51,6 +51,12 @@ public:
     //     usan las fuentes de API publica materializadas para llevar una calificacion C que NativeSharp no
     //     puede escribir.
     void allowMetadataSpellings() noexcept;
+    // EN: X2. Builds the C++ range candidate of every foreach (children()[2]). Only a compilation that can see
+    //     C++ records needs it; without it, foreach keeps its array, span and enumerator candidates.
+    // ES: X2. Construye el candidato de rango C++ de cada foreach (children()[2]). Solo lo necesita una
+    //     compilacion que puede ver records C++; sin el, foreach conserva sus candidatos de arreglo, span y
+    //     enumerador.
+    void enableCppRangeCandidates() noexcept;
 
 private:
     Parser(
@@ -1725,5 +1731,6 @@ private:
     const ScopedKnownTypeNames* scopedKnownTypeNames_ = nullptr;
     const Parser* knownTypeNameParent_ = nullptr;
     bool metadataSpellings_ = false;
+    bool cppRangeCandidates_ = false;
 };
 }

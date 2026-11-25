@@ -84,6 +84,9 @@ bool PublicSurfaceEmitter::verifyImpl(
         metadata.moduleName,
         fileId,
         true);
+    // X2: the published syntax product is reused by consumers that may see C++ records. / Lo reusan consumidores
+    //     que pueden ver records C++.
+    unit.enableCppRangeCandidates();
     std::vector<std::string> knownTypeNames;
     const auto appendKnownType = [&](const std::string &typeKey) {
         appendParserKnownTypeNames(metadata, typeKey, knownTypeNames);

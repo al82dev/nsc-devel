@@ -50,6 +50,11 @@ public:
         const parser::KnownTypeNameSet& sharedKnownTypeNames,
         const parser::ScopedKnownTypeNames* scopedKnownTypeNames = nullptr);
     bool parse(const source::SourceFile& sourceFile, diagnostics::DiagnosticEngine& diagnostics);
+    // EN: X2. The parse builds the C++ range candidate of each foreach. A precompiled unit always builds it: its
+    //     syntax product is cached and reused by compilations that may see C++ records.
+    // ES: X2. El analisis construye el candidato de rango C++ de cada foreach. Una unidad precompilada siempre lo
+    //     construye: su producto de sintaxis se guarda y lo reusan compilaciones que pueden ver records C++.
+    void enableCppRangeCandidates() noexcept;
 
     std::size_t projectOrdinal() const noexcept;
     std::size_t sourceOrdinal() const noexcept;
@@ -64,6 +69,8 @@ public:
     SyntaxUnitOrigin origin() const noexcept;
 
 private:
+    bool buildsCppRangeCandidates() const noexcept;
+
     std::size_t projectOrdinal_ = 0;
     std::size_t sourceOrdinal_ = 0;
     std::string moduleName_;
@@ -74,6 +81,7 @@ private:
     bool lexicallyValid_ = false;
     bool syntaxValid_ = false;
     bool precompiled_ = false;
+    bool cppRangeCandidates_ = false;
     SyntaxUnitOrigin origin_ = SyntaxUnitOrigin::Unknown;
 };
 }

@@ -4995,6 +4995,14 @@ bool ProjectCompilation::parseSyntaxUnits(
     std::vector<std::optional<parser::ScopedKnownTypeNames>> scopedNames;
     if (!prepareCppScopedParserNames(*projectGraph_, units_, parserTypes,
                                      cppNamespaces, cppImportedTypeAliases_, scopedNames, loadError)) return false;
+    // EN: X2. foreach builds its C++ range candidate only when this compilation may see C++ records (any C++
+    //     session, imported type, namespace or configured C++ provider); otherwise it costs a candidate per loop.
+    // ES: X2. foreach construye su candidato de rango C++ solo si esta compilacion puede ver records C++.
+    const bool cppRangeCandidates = !parserTypes.empty() || !cppNamespaces.empty() ||
+        !cppProjectSessions_.empty() || experimentalCppImportedTypesConfigured_ || cppImportedFunctionsConfigured_ ||
+        experimentalCppLifetimeMethodProvider_ || experimentalCppInstanceMethodProvider_ ||
+        experimentalCppInstanceFieldProvider_ || experimentalCppStaticMethodProvider_ ||
+        experimentalCppStaticFieldProvider_ || cppPrecompiledParserTypeProvider_;
     const std::size_t progressTotal = visibleSourceCount(units_, sourceManager_);
     std::atomic_size_t completed = 0;
     bool syntaxOk = lexicalOk;
@@ -5004,6 +5012,7 @@ bool ProjectCompilation::parseSyntaxUnits(
     {
         localDiagnostics.emplace_back(diagnostics_.errorLimit());
         if (!units_[index]->isLexicallyValid() || units_[index]->isSyntaxValid()) continue;
+        if (cppRangeCandidates) units_[index]->enableCppRangeCandidates();
         syntaxWorkers.submit([&, index](std::size_t)
         {
             units_[index]->parse(localDiagnostics[index], *knownTypesByProject.at(units_[index]->projectOrdinal()),

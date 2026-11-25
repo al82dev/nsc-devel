@@ -1965,7 +1965,9 @@ ast::AstNode* Parser::lowerForeachStatement(ForeachParseState&& state, ast::AstN
 
     ast::AstNode* patternCandidate = makeForeachPatternCandidate(state, body, range);
 
-    ast::AstNode* cppRangeCandidate = makeForeachCppRangeCandidate(state, body, range);
+    // X2: only when C++ records can be visible (enableCppRangeCandidates). / Solo si puede haber records C++.
+    ast::AstNode* cppRangeCandidate =
+        cppRangeCandidates_ ? makeForeachCppRangeCandidate(state, body, range) : nullptr;
 
     ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::ForeachStatement, range);
     node->setFirst(sourceDecl);
@@ -1978,8 +1980,8 @@ ast::AstNode* Parser::lowerForeachStatement(ForeachParseState&& state, ast::AstN
     // a second analysis pass over `collection` itself.
     node->addChild(collectionProbe);
     node->addChild(spanCandidate);
-    // X2: children()[2], the C++ range candidate. / El candidato de rango C++.
-    node->addChild(cppRangeCandidate);
+    // X2: children()[2], the C++ range candidate, when built. / El candidato de rango C++, si se construyo.
+    if (cppRangeCandidate != nullptr) node->addChild(cppRangeCandidate);
     node->setAuxiliaryText(elementByReference
         ? (elementMutableReference ? "foreach:ref-mut" : "foreach:ref")
         : "foreach:value");

@@ -56,6 +56,7 @@ bool ProjectSyntaxUnit::parse(
     // EN: T08-D03: a precompiled unit is a materialized public API; it may carry `T volatile*`.
     // ES: T08-D03: una unidad precompilada es una API publica materializada; puede llevar `T volatile*`.
     if (precompiled_) parser.allowMetadataSpellings();
+    if (buildsCppRangeCandidates()) parser.enableCppRangeCandidates();
     syntaxTree_ = parser.parseCompilationUnit();
     syntaxValid_ = syntaxTree_ != nullptr && diagnostics.errorCount() == errorsBefore;
     return syntaxValid_;
@@ -74,6 +75,7 @@ bool ProjectSyntaxUnit::parse(
     const std::size_t errorsBefore = diagnostics.errorCount();
     parser::Parser parser(tokens_, *arena_, diagnostics, sharedKnownTypeNames, scopedKnownTypeNames);
     if (precompiled_) parser.allowMetadataSpellings();
+    if (buildsCppRangeCandidates()) parser.enableCppRangeCandidates();
     syntaxTree_ = parser.parseCompilationUnit();
     syntaxValid_ = syntaxTree_ != nullptr && diagnostics.errorCount() == errorsBefore;
     return syntaxValid_;
@@ -88,6 +90,16 @@ bool ProjectSyntaxUnit::parse(
         return false;
     }
     return parse(diagnostics);
+}
+
+void ProjectSyntaxUnit::enableCppRangeCandidates() noexcept
+{
+    cppRangeCandidates_ = true;
+}
+
+bool ProjectSyntaxUnit::buildsCppRangeCandidates() const noexcept
+{
+    return cppRangeCandidates_ || precompiled_ || origin_ == SyntaxUnitOrigin::PrecompiledMetadata;
 }
 
 std::size_t ProjectSyntaxUnit::projectOrdinal() const noexcept

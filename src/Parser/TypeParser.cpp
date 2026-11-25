@@ -1240,6 +1240,11 @@ void Parser::allowMetadataSpellings() noexcept
     metadataSpellings_ = true;
 }
 
+void Parser::enableCppRangeCandidates() noexcept
+{
+    cppRangeCandidates_ = true;
+}
+
 void Parser::parsePointerProvenanceQualifier(ast::TypeModifierSyntax& pointer)
 {
     if (atContextualKeyword("none"))

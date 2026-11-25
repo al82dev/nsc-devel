@@ -314,6 +314,9 @@ bool verifyPrecompiledGenericTemplateSourceText(
     knownTypeNames.erase(std::unique(knownTypeNames.begin(), knownTypeNames.end()), knownTypeNames.end());
 
     frontend::ProjectSyntaxUnit unit(0, 0, metadata.moduleName, fileId, false);
+    // X2: the published syntax product is reused by consumers that may see C++ records. / Lo reusan consumidores
+    //     que pueden ver records C++.
+    unit.enableCppRangeCandidates();
     if (unit.lex(*file, diagnostics) && unit.parse(diagnostics, knownTypeNames))
     {
         if (syntaxProduct != nullptr)

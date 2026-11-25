@@ -160,29 +160,36 @@ void testDescendingRangeStep(TestContext& context)
         "TP-PAR-408 descending stepped range must preserve negative step and range-loop contract");
 }
 
-// TP-PAR-409: X2 (775b64c41) added the C++ range candidate as children()[2], so the node has 3 children.
-// TP-PAR-409: X2 (775b64c41) añadió el candidato de rango C++ en children()[2]; el nodo tiene 3 hijos.
+// TP-PAR-409: X2 (775b64c41) adds the C++ range candidate as children()[2] only when the parser enables it (a
+//     compilation that may see C++ records); by default the node keeps its 2 children. Both are checked.
+// TP-PAR-409: X2 (775b64c41) añade el candidato de rango C++ en children()[2] solo si el parser lo habilita (una
+//     compilación que puede ver records C++); por defecto el nodo conserva sus 2 hijos. Se comprueban ambos.
 void testProtocolCandidateOrder(TestContext& context)
 {
-    ParserFixture fixture("foreach (var item in values) {}");
-    AstNode* const node = parseStatement(fixture);
-    const AstNode* const arrayCandidate = node != nullptr ? node->second() : nullptr;
-    const AstNode* const protocolCandidate = node != nullptr ? node->third() : nullptr;
-    const AstNode* const spanCandidate = node != nullptr && node->children().size() == 3
-        ? node->children()[1] : nullptr;
-    const AstNode* const cppRangeCandidate = node != nullptr && node->children().size() == 3
-        ? node->children()[2] : nullptr;
-    context.expect(node != nullptr && arrayCandidate != nullptr && protocolCandidate != nullptr &&
-            spanCandidate != nullptr && arrayCandidate->children().size() == 1 &&
-            arrayCandidate->children()[0]->kind() == AstNodeKind::ForStatement &&
-            protocolCandidate->children().size() == 2 &&
-            protocolCandidate->children()[0]->auxiliaryText() == "local:foreach-enumerator" &&
-            protocolCandidate->children()[1]->kind() == AstNodeKind::WhileStatement &&
-            spanCandidate->children().size() == 1 &&
-            spanCandidate->children()[0]->kind() == AstNodeKind::ForStatement &&
-            cppRangeCandidate != nullptr && cppRangeCandidate->children().size() == 2 &&
-            cppRangeCandidate->children()[1]->kind() == AstNodeKind::ForStatement,
-        "TP-PAR-409 foreach must expose array, enumerator, span, and C++ range candidates in contractual slots");
+    for (const bool cppRange : {false, true})
+    {
+        ParserFixture fixture("foreach (var item in values) {}");
+        if (cppRange) fixture.parser().enableCppRangeCandidates();
+        AstNode* const node = parseStatement(fixture);
+        const std::size_t expectedChildren = cppRange ? 3U : 2U;
+        const AstNode* const arrayCandidate = node != nullptr ? node->second() : nullptr;
+        const AstNode* const protocolCandidate = node != nullptr ? node->third() : nullptr;
+        const AstNode* const spanCandidate = node != nullptr && node->children().size() == expectedChildren
+            ? node->children()[1] : nullptr;
+        const AstNode* const cppRangeCandidate = cppRange && spanCandidate != nullptr ? node->children()[2] : nullptr;
+        context.expect(node != nullptr && arrayCandidate != nullptr && protocolCandidate != nullptr &&
+                spanCandidate != nullptr && arrayCandidate->children().size() == 1 &&
+                arrayCandidate->children()[0]->kind() == AstNodeKind::ForStatement &&
+                protocolCandidate->children().size() == 2 &&
+                protocolCandidate->children()[0]->auxiliaryText() == "local:foreach-enumerator" &&
+                protocolCandidate->children()[1]->kind() == AstNodeKind::WhileStatement &&
+                spanCandidate->children().size() == 1 &&
+                spanCandidate->children()[0]->kind() == AstNodeKind::ForStatement &&
+                (!cppRange || (cppRangeCandidate != nullptr && cppRangeCandidate->children().size() == 2 &&
+                    cppRangeCandidate->children()[1]->kind() == AstNodeKind::ForStatement)),
+            std::string("TP-PAR-409 foreach must expose array, enumerator, span") +
+                (cppRange ? ", and C++ range" : "") + " candidates in contractual slots");
+    }
 }
 
 void testUnknownIterablePreserved(TestContext& context)

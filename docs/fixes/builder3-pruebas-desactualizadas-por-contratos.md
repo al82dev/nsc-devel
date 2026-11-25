@@ -36,6 +36,10 @@ No se cambia código de producto.
 - Causa: `775b64c41` (X2, foreach sobre rangos C++) añadió el candidato de rango C++ en `children()[2]`
   (bloque con la declaración de `end` y un `ForStatement`).
 - Cambio: el caso exige 3 hijos y comprueba también la forma de ese candidato.
+- Después: ese candidato costaba un candidato más por `foreach` aunque no hubiera C++ (TP-PAR-557 en Debug pasó
+  de ~24 s a ~37 s y agotaba su límite). El parser ahora lo construye solo con `enableCppRangeCandidates()`, que
+  activan las compilaciones que pueden ver records C++ y las unidades precompiladas o publicadas. TP-PAR-409
+  comprueba ambas variantes: por defecto 2 hijos; habilitado, 3 con la forma del candidato C++.
 
 ## TF-DRIVER-075 y TF-DRIVER-083 (CF-DRIVER-010/011): traza de tiempos JSON
 

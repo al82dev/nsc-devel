@@ -82,7 +82,8 @@ Parser::Parser(
       arena_(arena),
       diagnostics_(diagnostics),
       knownTypeNameParent_(&knownTypeNameParent),
-      metadataSpellings_(knownTypeNameParent.metadataSpellings_)
+      metadataSpellings_(knownTypeNameParent.metadataSpellings_),
+      cppRangeCandidates_(knownTypeNameParent.cppRangeCandidates_)
 {
     buildConditionalQuestionIndex();
     buildComprehensionDelimiterIndex();
