@@ -278,9 +278,9 @@ BODYO = r'''
     { var x = new X(); if (lib.use((lib.Owning*)x) != 37 || lib.use((lib.Owning*)x) != 37) return 1; }
     if (lib.dtors() != 1) return 2;
     { var x = new X(); }
-    if (lib.dtors() != 1) return 3;
+    if (lib.dtors() != 2) return 3;
     { var y = new Y(); if (lib.vuse((lib.VOwning*)y) != 42) return 4; }
-    return lib.dtors() == 11 ? 42 : 5;
+    return lib.dtors() == 12 ? 42 : 5;
 '''
 # X3-01: `base(args)` of a class derived from a C++ class constructs the C++ object with that base constructor (the
 # adapter inherits it and exposes an entry with its ABI); without a default constructor only `base(args)` builds it.
@@ -319,8 +319,18 @@ rechazo(Caso('x3-base-sin-defecto', HN, SN, **CPP), 'return 0;', 'must call base
 # NSMeta X4-06 (X3 in lib): the producer publishes its classes' C++ bases and a consumer without the header
 # converts to them with the producer's adapters. / El productor publica las bases C++ de sus clases y un
 # consumidor sin encabezado se convierte a ellas con los adaptadores del productor.
+# X3-01: as in C++, the C++ base of a class without constructors or field initializers is built (and destroyed)
+#     even if the object is never converted (it used to be built lazily by the first conversion: 1 and 11).
+#     / Como en C++, la base C++ de una clase sin constructores ni inicializadores se construye y destruye aunque el
+#     objeto nunca se convierta (antes la construia la primera conversion).
 positivo(Caso('x3-base-destructor', HO, SO, **CPP), BODYO,
          preludio='class X : lib.Owning { public int f() { return 32; } }\nclass Y : lib.VOwning { public int g() { return 33; } }\n',
+         modes=['directo', 'dll', 'lib'])
+# X3-01: with a field initializer the base is built once (not again by the conversion). / Con un inicializador de
+#     campo la base se construye una sola vez.
+positivo(Caso('x3-base-destructor-campo', HO, SO, **CPP), BODYO,
+         preludio='class X : lib.Owning { public int k = 3; public int f() { return 29 + k; } }\n'
+                  'class Y : lib.VOwning { public int k = 3; public int g() { return 30 + k; } }\n',
          modes=['directo', 'dll', 'lib'])
 # X3-07: a class implements several C++ interfaces (COM, both from one IUnknown): an adapter per interface, each in its
 # own hidden fields; QueryInterface hands out either pointer and both reach the same object.

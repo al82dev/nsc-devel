@@ -326,29 +326,10 @@ bool OopLlvmImplementation::lowerBlockStatement(
                     if (cppBasesBuilt || thisValue_ == nullptr) return true;
                     cppBasesBuilt = true;
                     // EN: NSMeta X4-06 (X3 in lib). The implicit constructor a library exports for a class without
-                    //     constructors builds its C++ bases as the inline construction does in directo: eagerly when it
-                    //     initializes something (a field initializer, as X3-01 requires: a later throw destroys them),
-                    //     and, with an empty body, not at all (the conversion binds the base, x3-base-destructor).
-                    // ES: NSMeta X4-06. El constructor implicito que exporta una biblioteca construye sus bases C++ como
-                    //     la construccion en linea en directo: de inmediato si inicializa algo y, con cuerpo vacio, no
-                    //     (la conversion enlaza la base).
-                    if (currentMirFunction_->memberOrdinal == std::numeric_limits<std::size_t>::max())
-                    {
-                        std::vector<std::size_t> initialized{currentMirFunction_->declaringTypeOrdinal};
-                        for (const auto& child : node->children)
-                            if (child != nullptr && child->stringValue == "constructor.implicit.base.completed" &&
-                                child->targetTypeOrdinal.has_value()) initialized.push_back(*child->targetTypeOrdinal);
-                        const bool initializesField = std::ranges::any_of(initialized, [&](const std::size_t type) {
-                            return std::ranges::any_of(memberModel_->membersOfType(type), [&](const std::size_t ordinal) {
-                                if (ordinal >= memberModel_->members().size()) return false;
-                                const auto& field = memberModel_->members()[ordinal];
-                                return field.kind == frontend::ClassMemberKind::Field && !field.isStatic &&
-                                    !field.name.starts_with("__nsc_") && field.syntax != nullptr &&
-                                    field.syntax->first() != nullptr;
-                            });
-                        });
-                        if (!initializesField) return true;
-                    }
+                    //     constructors builds its C++ bases by default as the inline construction does in directo
+                    //     (X3-01, as C++ does), even when nothing converts the object later.
+                    // ES: NSMeta X4-06. El constructor implicito que exporta una biblioteca construye sus bases C++ por
+                    //     defecto como la construccion en linea en directo, aunque nada convierta despues el objeto.
                     std::vector<std::string> skip;
                     for (const auto& item : completedBases)
                         if (item.second->stringValue == "constructor.cpp.base.cleanup")

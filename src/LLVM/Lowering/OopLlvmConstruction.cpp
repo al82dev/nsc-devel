@@ -1239,12 +1239,40 @@ bool OopLlvmImplementation::invokeConstructionInitializer(
         };
         // X3-01: an implicit construction builds the class's C++ bases by default first. / Una construccion
         //     implicita construye primero por defecto las bases C++ de la clase.
-        if (node->targetTypeOrdinal.has_value() && node->calleeName.empty())
+        // EN: X3-01. A class without constructors or field initializers is constructed by calling an ancestor's
+        //     constructor directly (`Object`'s); the classes below that ancestor are implicit too, so their C++ bases
+        //     are built by default here, as C++ does, and destroyed with the object even if never converted.
+        // ES: X3-01. Una clase sin constructores ni inicializadores se construye llamando directamente al
+        //     constructor de un ancestro; las clases por debajo de el son implicitas y sus bases C++ se construyen
+        //     aqui por defecto, como en C++, aunque nunca se conviertan.
+        std::optional<std::size_t> calledAncestor;
+        if (node->targetTypeOrdinal.has_value() && !node->calleeName.empty() && memberModel_ != nullptr &&
+            node->memberOrdinal.has_value() && *node->memberOrdinal < memberModel_->members().size())
+        {
+            const auto& member = memberModel_->members()[*node->memberOrdinal];
+            if (member.kind == frontend::ClassMemberKind::Constructor &&
+                member.declaringTypeOrdinal != *node->targetTypeOrdinal)
+                calledAncestor = member.declaringTypeOrdinal;
+        }
+        // X3-01: the base the construction called is complete; if a later initializer throws, it is destroyed as a
+        //     completed C++ base subobject is. / La base que llamo la construccion esta completa; si un inicializador
+        //     posterior lanza, se destruye como un subobjeto base C++ completo.
+        if (!node->calleeName.empty() && node->children.size() > node->argumentCount)
+            if (const auto* called = mirModel_.functionForMangledName(node->calleeName);
+                called != nullptr && called->constructor && node->targetTypeOrdinal.has_value() &&
+                called->declaringTypeOrdinal != *node->targetTypeOrdinal &&
+                objectDestructionFunctions_.contains(called->declaringTypeOrdinal))
+            {
+                openCleanup("construction.completed.base.cleanup", std::string(), nullptr);
+                syntheticCleanupNodes_.back()->targetTypeOrdinal = called->declaringTypeOrdinal;
+            }
+        if (node->targetTypeOrdinal.has_value() && (node->calleeName.empty() || calledAncestor.has_value()))
         {
             // The whole chain is implicit here: its classes' C++ bases, from the root. / Aqui toda la cadena es
             //     implicita: las bases C++ de sus clases, desde la raiz.
             std::vector<std::size_t> chain;
-            for (std::optional<std::size_t> type = *node->targetTypeOrdinal; type.has_value() && chain.size() < 64;)
+            for (std::optional<std::size_t> type = *node->targetTypeOrdinal;
+                 type.has_value() && type != calledAncestor && chain.size() < 64;)
             {
                 chain.push_back(*type);
                 const auto* layout = mirModel_.classLayoutForType(*type);
@@ -1259,18 +1287,6 @@ bool OopLlvmImplementation::invokeConstructionInitializer(
                 }
             for (std::string& destroy : built) openCleanup("construction.cpp.base.cleanup", std::move(destroy), nullptr);
         }
-        // X3-01: the base the construction called is complete; if a later initializer throws, it is destroyed as a
-        //     completed C++ base subobject is. / La base que llamo la construccion esta completa; si un inicializador
-        //     posterior lanza, se destruye como un subobjeto base C++ completo.
-        else if (!node->calleeName.empty() && node->children.size() > node->argumentCount)
-            if (const auto* called = mirModel_.functionForMangledName(node->calleeName);
-                called != nullptr && called->constructor && node->targetTypeOrdinal.has_value() &&
-                called->declaringTypeOrdinal != *node->targetTypeOrdinal &&
-                objectDestructionFunctions_.contains(called->declaringTypeOrdinal))
-            {
-                openCleanup("construction.completed.base.cleanup", std::string(), nullptr);
-                syntheticCleanupNodes_.back()->targetTypeOrdinal = called->declaringTypeOrdinal;
-            }
         for (std::size_t index = node->argumentCount; index < node->children.size(); ++index)
         {
             LLVMValueRef ignored = lowerExpression(node->children[index].get(), error);
