@@ -31,6 +31,7 @@ set(NSC_COMPILER_SUITE_COMPARISON_NSC_EXECUTABLE "" CACHE FILEPATH "Second expli
 set(NSC_COMPILER_SUITE_BUILD_ID_HEADER "" CACHE FILEPATH "Generated BuildId.h owned by the selected NSC")
 set(NSC_COMPILER_SUITE_ARCHIVE_EXECUTABLE "" CACHE FILEPATH "Explicit archive executable for Packaging cases")
 set(NSC_NSLINK_EXECUTABLE "" CACHE FILEPATH "Explicit NSLink executable for compiler-suite product cases")
+set(NSC_COMPILER_SUITE_CLANG_ROOT "" CACHE PATH "Clang root (--cpp-clang-root) for the interop limitation cases")
 set(NSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY
     "${CMAKE_INSTALL_PREFIX}/lib/nativesharp/runtime/NativeSharp.Runtime.Win32.lib"
     CACHE FILEPATH "Default Windows runtime library for compiler-suite product cases")
@@ -375,6 +376,7 @@ add_executable(
     host/modules/LanguageModuleSemanticsModule.cpp
     host/modules/LanguageNumericCoreModule.cpp
     host/modules/LanguageCoreLibraryE2eModule.cpp
+    host/modules/InteropLimitationsE2eModule.cpp
     host/modules/LanguageNumericAdvancedModule.cpp
     host/modules/LanguageOwnershipStateModule.cpp
     host/modules/LanguageOwnershipLifetimeModule.cpp
@@ -1025,7 +1027,8 @@ target_compile_definitions(
         "NSC_SUITE_REPOSITORY_ROOT=\"${CMAKE_CURRENT_LIST_DIR}/../..\""
         "NSC_SUITE_NSC_EXECUTABLE=\"${NSC_COMPILER_SUITE_NSC_EXECUTABLE}\""
         "NSC_SUITE_NSLINK_EXECUTABLE=\"${NSC_NSLINK_EXECUTABLE}\""
-        "NSC_SUITE_WINDOWS_RUNTIME_LIBRARY=\"${NSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY}\"")
+        "NSC_SUITE_WINDOWS_RUNTIME_LIBRARY=\"${NSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY}\""
+        "NSC_SUITE_CLANG_ROOT=\"${NSC_COMPILER_SUITE_CLANG_ROOT}\"")
 target_compile_features(nsc_component_tests PRIVATE cxx_std_20)
 # EN: The suite links only LLVM-C, so ThinLtoBackend uses its fallback without the LLVM C++ API, as in the dynamic
 #     host build. ES: El suite solo enlaza LLVM-C; ThinLtoBackend usa su respaldo sin la API C++ de LLVM, como el

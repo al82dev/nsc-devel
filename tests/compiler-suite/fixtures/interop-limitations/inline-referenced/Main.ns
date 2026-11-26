@@ -1,0 +1,9 @@
+// Compiler-suite fixture inline-referenced (L-020, L-026): only the C++ inline definitions the program references are emitted
+namespace Fixture
+{
+    // Exit code 42: answer() is the only referenced inline definition.
+    int Main()
+    {
+        return answer();
+    }
+}

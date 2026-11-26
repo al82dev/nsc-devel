@@ -373,6 +373,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerLanguageModuleSemanticsModule(registry);
         nsc::suite::registerLanguageNumericCoreModule(registry);
         nsc::suite::registerLanguageCoreLibraryE2eModule(registry);
+        nsc::suite::registerInteropLimitationsE2eModule(registry);
         nsc::suite::registerLanguageNumericAdvancedModule(registry);
         nsc::suite::registerLanguageOwnershipStateModule(registry);
         nsc::suite::registerLanguageOwnershipLifetimeModule(registry);

@@ -1,0 +1,10 @@
+// Compiler-suite fixture const-ref-place (L-020): a place of a transportable C++ record binds a const T& without in
+namespace Fixture
+{
+    // Exit code 42: `pair` is a local (a place) passed to `const Pair&` without `in`.
+    int Main()
+    {
+        Pair pair = makePair(40, 2);
+        return sum(pair);
+    }
+}

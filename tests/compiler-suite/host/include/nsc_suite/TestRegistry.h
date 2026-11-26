@@ -297,6 +297,7 @@ void registerLanguageMetaprogrammingModule(TestRegistry& registry);
 void registerLanguageModuleSemanticsModule(TestRegistry& registry);
 void registerLanguageNumericCoreModule(TestRegistry& registry);
 void registerLanguageCoreLibraryE2eModule(TestRegistry& registry);
+void registerInteropLimitationsE2eModule(TestRegistry& registry);
 void registerLanguageNumericAdvancedModule(TestRegistry& registry);
 void registerLanguageOwnershipStateModule(TestRegistry& registry);
 void registerLanguageOwnershipLifetimeModule(TestRegistry& registry);

@@ -1,0 +1,15 @@
+// Compiler-suite fixture static-fnptr (L-019): a C++ static member function with a function-pointer parameter imports and is called
+namespace Fixture
+{
+    // Doubles `x`; passed to S::call as its C function-pointer argument.
+    int Twice(int x)
+    {
+        return x * 2;
+    }
+
+    // Exit code 42: S::call(Twice, 21).
+    int Main()
+    {
+        return S.call(Twice, 21);
+    }
+}

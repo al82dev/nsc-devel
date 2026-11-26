@@ -1,0 +1,9 @@
+// Compiler-suite fixture c-fnptr-boundary (L-012, L-004, L-015, L-008): C conversions apply to a call through a C function pointer
+namespace Fixture
+{
+    // Exit code 33: "abcd" (4) + LIM_TWENTY (20) + true (1) + sizeof(long) (8), all without casts.
+    int Main()
+    {
+        return (int)lim_len("abcd", LIM_TWENTY, true, sizeof(long));
+    }
+}

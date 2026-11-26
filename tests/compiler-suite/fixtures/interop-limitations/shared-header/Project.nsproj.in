@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup><Name>InteropLimitation</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+    <CppLibraryReference Header="@FIXTURE@/a.hpp" Language="C++" Standard="c++17">
+      <IncludeDirectory Path="@FIXTURE@" Kind="User" />
+    </CppLibraryReference>
+    <CppLibraryReference Header="@FIXTURE@/b.hpp" Language="C++" Standard="c++17">
+      <IncludeDirectory Path="@FIXTURE@" Kind="User" />
+    </CppLibraryReference>
+  </ItemGroup>
+</Project>

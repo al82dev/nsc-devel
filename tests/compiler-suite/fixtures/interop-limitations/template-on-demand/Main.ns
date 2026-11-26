@@ -1,0 +1,9 @@
+// Compiler-suite fixture template-on-demand (L-020): a function template is instantiated on demand after the header was parsed
+namespace Fixture
+{
+    // Exit code 42: triple<int> is deduced and instantiated by the call.
+    int Main()
+    {
+        return triple(14);
+    }
+}

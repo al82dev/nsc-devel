@@ -599,6 +599,11 @@ def configure_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tupl
             f"-DNSC_NSLINK_EXECUTABLE={Path(config.nslink_executable).resolve().as_posix()}",
             f"-DNSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY="
             f"{runtime_library}",
+            # EN: The interop-limitation cases (TF-INTEROP-401..410) pass --cpp-clang-root; Clang is the root of the
+            #     same LLVM installation as LLVM_DIR (<root>/lib/cmake/llvm).
+            # ES: Los casos de limitaciones de interop pasan --cpp-clang-root; Clang es la raiz de la misma
+            #     instalacion LLVM que LLVM_DIR (<raiz>/lib/cmake/llvm).
+            f"-DNSC_COMPILER_SUITE_CLANG_ROOT={Path(tools['llvm_dir']).resolve().parents[2].as_posix()}",
         ]
         command.append(f"-DLLVM_DIR={Path(tools['llvm_dir']).as_posix()}")
         if config.archive_executable:

@@ -1,0 +1,10 @@
+// Compiler-suite fixture shared-header (L-018): one C++ header reached by two references of a project
+namespace Fixture
+{
+    // Exit code 42: the typedef, the anonymous union and the constructor come from both references.
+    int Main()
+    {
+        fvec2 v = makeVec(40.0f, 2.0f);
+        return total(v);
+    }
+}

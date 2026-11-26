@@ -1,0 +1,11 @@
+// Compiler-suite fixture c-single-file (L-016): a single-file C library compiled through Implementation=
+namespace Fixture
+{
+    // Exit code 42: two calls through the compiled implementation unit (tentative definitions, static inline
+    // helper of a system header).
+    int Main()
+    {
+        lim_bump();
+        return lim_bump();
+    }
+}

@@ -1,0 +1,10 @@
+// Compiler-suite fixture partial-ordering (L-020): C++ partial ordering chooses the more specialized function template
+namespace Fixture
+{
+    // Exit code 42: pick(const Wrap<T>&) is more specialized than pick(const T&).
+    int Main()
+    {
+        IntWrap value = makeWrap();
+        return pick(value);
+    }
+}

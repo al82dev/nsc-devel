@@ -1,0 +1,11 @@
+// Compiler-suite fixture using-diagnostic (L-009): the diagnostic names the using directive that no referenced project provides
+namespace Fixture
+{
+    using NativeSharp.Core;
+
+    // Never built: the project does not reference NativeSharpCore.
+    int Main()
+    {
+        return lim_value();
+    }
+}
