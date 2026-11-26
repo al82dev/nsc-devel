@@ -6218,11 +6218,40 @@ public:
         {
             // Only the library's own definitions: system headers and NSC's synthetic helpers stay out.
             // Solo las definiciones de la biblioteca: los encabezados de sistema y los auxiliares de NSC quedan fuera.
-            if (sources.isInSystemHeader(declaration->getLocation())) continue;
+            // EN: L-016. A system header's `static inline` function (the SSE intrinsics of <emmintrin.h> that stb_image
+            //     calls) is still handed over: the generator defers internal and inline definitions and emits only the
+            //     ones the library's bodies reach. External definitions of system headers stay out.
+            // ES: L-016. Una funcion `static inline` de un encabezado de sistema (los intrinsecos SSE de <emmintrin.h>
+            //     que llama stb_image) se entrega igual: el generador difiere las definiciones internas e inline y
+            //     emite solo las que alcanzan los cuerpos de la biblioteca. Las definiciones externas del sistema
+            //     quedan fuera.
+            if (sources.isInSystemHeader(declaration->getLocation()))
+            {
+                const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration);
+                if (!function || !function->doesThisDeclarationHaveABody() ||
+                    (function->isExternallyVisible() && !function->isInlined())) continue;
+            }
             if (const auto* named = llvm::dyn_cast<clang::NamedDecl>(declaration);
                 named && named->getIdentifier() && named->getName().starts_with("__nsc_")) continue;
             if (!generator->HandleTopLevelDecl(clang::DeclGroupRef(declaration))) return std::nullopt;
         }
+        // EN: L-016. A C tentative definition (a file-scope object without initializer, such as stb_image's
+        //     `static STBI_THREAD_LOCAL const char *stbi__g_failure_reason;`) is defined only when the translation
+        //     unit ends: Sema hands it to the code generator through CompleteTentativeDefinition. The declarations
+        //     here reach the generator directly, so that step is done here, once per acting definition; without it
+        //     the objects stayed undefined at link time.
+        // ES: L-016. Una definicion tentativa C (un objeto de ambito de archivo sin inicializador, como
+        //     `static STBI_THREAD_LOCAL const char *stbi__g_failure_reason;` de stb_image) solo se define al terminar
+        //     la unidad: Sema la entrega al generador con CompleteTentativeDefinition. Aqui las declaraciones llegan
+        //     directo al generador, asi que ese paso se hace aqui, una vez por definicion efectiva; sin el, los
+        //     objetos quedaban sin definir al enlazar.
+        std::set<const clang::VarDecl*> tentative;
+        for (auto* declaration : context.getTranslationUnitDecl()->decls())
+            if (auto* variable = llvm::dyn_cast<clang::VarDecl>(declaration);
+                variable && !sources.isInSystemHeader(variable->getLocation()) && variable->isFileVarDecl() &&
+                !variable->getDefinition())
+                if (auto* acting = variable->getActingDefinition(); acting && tentative.insert(acting).second)
+                    generator->CompleteTentativeDefinition(acting);
         generator->HandleTranslationUnit(context);
         auto module = generator->ReleaseModule();
         if (!module || llvm::verifyModule(*module, &llvm::errs())) return std::nullopt;
