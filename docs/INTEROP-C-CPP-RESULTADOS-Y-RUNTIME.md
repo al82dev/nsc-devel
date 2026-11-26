@@ -104,3 +104,19 @@ el tutorial todavía no compila.
   distinta de cero para convertir enteros y flotantes a bool; los punteros
   extranjeros se tratan en OopLlvmExpressionMachine.cpp. Esta lectura no
   sustituye comprobaciones funcionales de los casos ni de las enumeraciones.
+
+## Enumeraciones: dato de origen pendiente
+
+- ForeignCallResultConversion.h reconoce una enumeración C o una
+  enumeración C++ sin ámbito como origen numérico; su destino debe
+  ser un tipo numérico incorporado o bool. El clasificador no contempla
+  por esa vía un enum como destino.
+- La marca cppForeignCallResult de ExpressionResult registra si el resultado
+  viene de una llamada C/C++, pero no distingue el modo de lenguaje usado
+  para importar el encabezado. CppSessionOptions sí guarda ese modo;
+  CppLanguageLinkage describe el enlace de la función, que no es
+  equivalente al modo de lenguaje de la sesión.
+- **Pendiente:** determinar el contrato de conversión hacia enums C y C++
+  importados y cómo preservar el origen requerido hasta semántica y HIR.
+  Esta inspección no demuestra que todas las conversiones a enums fallen:
+  el clasificador ordinario también interviene antes de esta vía.
