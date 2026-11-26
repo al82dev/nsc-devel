@@ -1,0 +1,89 @@
+// Compiler-suite fixture constructed-default-arguments (L-021): default arguments that are expressions, as C++ allows (LearnOpenGL Camera:
+// `Camera(glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f),
+// float yaw = YAW, float pitch = PITCH)`). Each default is evaluated in the callee's context at every call that omits
+// it. Exit 42 when every check passes; otherwise the number of the first failed check.
+namespace Fixture
+{
+    public struct Vec3
+    {
+        public float x;
+        public float y;
+        public float z;
+
+        public Vec3(float a, float b, float c)
+        {
+            x = a;
+            y = b;
+            z = c;
+        }
+    }
+
+    public class Counter
+    {
+        public static int made = 0;
+
+        public static Vec3 Next()
+        {
+            made = made + 1;
+            return new Vec3((float)made, 0.0f, 0.0f);
+        }
+    }
+
+    const float YAW = -90.0f;
+
+    public class Camera
+    {
+        public Vec3 Position;
+        public Vec3 Up;
+        public float Yaw;
+        public float Pitch;
+
+        public Camera(Vec3 position = new Vec3(0.0f, 0.0f, 3.0f), Vec3 up = new Vec3(0.0f, 1.0f, 0.0f),
+                      float yaw = YAW, float pitch = 0.0f)
+        {
+            Position = position;
+            Up = up;
+            Yaw = yaw;
+            Pitch = pitch;
+        }
+
+        public float Total;
+
+        public void Add(float scale, Vec3 v = Counter.Next())
+        {
+            Total = Total + scale * v.x;
+        }
+
+        public static float Length(Vec3 v = new Vec3(3.0f, 4.0f, 0.0f), float factor = 1.0f)
+        {
+            return (v.x + v.y) * factor;
+        }
+    }
+
+    float Shift(int x, Vec3 by = new Vec3(2.0f, 0.0f, 0.0f))
+    {
+        return (float)x + by.x;
+    }
+
+    int Main()
+    {
+        Camera a = new Camera();
+        if (a.Position.z != 3.0f || a.Up.y != 1.0f || a.Yaw != -90.0f || a.Pitch != 0.0f) return 1;
+        Camera b = new Camera(new Vec3(1.0f, 2.0f, 3.0f));
+        if (b.Position.x != 1.0f || b.Up.y != 1.0f || b.Yaw != -90.0f) return 2;
+        Camera c = new Camera(new Vec3(0.0f, 0.0f, 0.0f), new Vec3(0.0f, 0.0f, 1.0f), 10.0f);
+        if (c.Up.z != 1.0f || c.Yaw != 10.0f || c.Pitch != 0.0f) return 3;
+        Camera d = new Camera(new Vec3(0.0f, 0.0f, 0.0f), new Vec3(0.0f, 0.0f, 1.0f), 10.0f, 5.0f);
+        if (d.Pitch != 5.0f) return 4;
+        // Evaluated at every call that omits it: Counter.Next() runs twice (1, then 2).
+        a.Add(1.0f);
+        a.Add(10.0f);
+        if (Counter.made != 2 || a.Total != 21.0f) return 5;
+        a.Add(1.0f, new Vec3(100.0f, 0.0f, 0.0f));
+        if (Counter.made != 2 || a.Total != 121.0f) return 6;
+        if (Camera.Length() != 7.0f || Camera.Length(new Vec3(1.0f, 1.0f, 0.0f)) != 2.0f) return 7;
+        if (Camera.Length(new Vec3(1.0f, 1.0f, 0.0f), 3.0f) != 6.0f) return 8;
+        if (Shift(5) != 7.0f || Shift(5, new Vec3(10.0f, 0.0f, 0.0f)) != 15.0f) return 9;
+        return 42;
+    }
+}

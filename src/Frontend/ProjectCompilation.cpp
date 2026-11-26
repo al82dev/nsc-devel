@@ -16,6 +16,9 @@
 #include "nativesharp/Basic/Version.h"
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
 #include "nativesharp/Driver/CompilationWorkerPool.h"
+#include "nativesharp/AST/AstArena.h"
+#include "nativesharp/AST/AstNode.h"
+#include "nativesharp/AST/TypeSyntax.h"
 #include "nativesharp/Lexer/TokenKind.h"
 #include "nativesharp/Source/SourceFile.h"
 #include "nativesharp/Source/SourcePosition.h"
@@ -4506,6 +4509,196 @@ void evaluateVariableTemplatesInTree(ast::AstNode& node, ast::AstArena& arena, c
         if (child) evaluateVariableTemplatesInTree(*child, arena, unit, sessions, visited);
 }
 
+// EN: L-021. The simple names of the constants declared in the project's sources: `const` namespace states and fields,
+//     and enum members. A default naming one of them stays a direct default (resolved to its literal by
+//     ProjectMemberModel::resolveNamedDefaultValue); any other name (a C macro such as `GL_TRUE`, a mutable field)
+//     is an expression evaluated by a forwarding overload.
+// ES: L-021. Los nombres simples de las constantes declaradas en las fuentes: estados y campos `const` y miembros de
+//     enum. Un default que nombra una de ellas sigue siendo directo; cualquier otro nombre (una macro C como
+//     `GL_TRUE`, un campo mutable) es una expresion que evalua una sobrecarga de reenvio.
+void collectDefaultConstantNames(const ast::AstNode& node, std::set<std::string, std::less<>>& names)
+{
+    const bool constant = (node.kind() == ast::AstNodeKind::GlobalVariableDeclaration && node.flag()) ||
+        (node.kind() == ast::AstNodeKind::FieldDeclaration && node.hasModifier(lexer::TokenKind::KwConst)) ||
+        node.kind() == ast::AstNodeKind::EnumMemberDeclaration;
+    if (constant) names.insert(node.text());
+    for (const ast::AstNode* child : node.children())
+        if (child) collectDefaultConstantNames(*child, names);
+}
+
+// EN: L-021. True for a default argument the member model takes as written: a literal, a signed numeric literal, or a
+//     name of a constant of `constants`.
+// ES: L-021. Verdadero para un argumento por defecto que el modelo de miembros toma tal cual: un literal, un literal
+//     numerico con signo, o el nombre de una constante de `constants`.
+bool isDirectDefaultArgument(const ast::AstNode& value, const std::set<std::string, std::less<>>& constants)
+{
+    switch (value.kind())
+    {
+        case ast::AstNodeKind::IntegerLiteralExpression:
+        case ast::AstNodeKind::FloatingLiteralExpression:
+        case ast::AstNodeKind::CharacterLiteralExpression:
+        case ast::AstNodeKind::StringLiteralExpression:
+        case ast::AstNodeKind::BooleanLiteralExpression:
+        case ast::AstNodeKind::NullLiteralExpression:
+            return true;
+        case ast::AstNodeKind::IdentifierExpression:
+            return constants.contains(value.text());
+        case ast::AstNodeKind::UnaryExpression:
+            return (value.tokenKind() == lexer::TokenKind::Plus || value.tokenKind() == lexer::TokenKind::Minus) &&
+                value.first() != nullptr && (value.first()->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
+                    value.first()->kind() == ast::AstNodeKind::FloatingLiteralExpression);
+        case ast::AstNodeKind::MemberExpression:
+        {
+            // A qualified constant (`Defaults.YAW`, `Mode.A`): a chain of names that ends in a constant's name.
+            const ast::AstNode* qualifier = value.first();
+            while (qualifier != nullptr && qualifier->kind() == ast::AstNodeKind::MemberExpression)
+                qualifier = qualifier->first();
+            return qualifier != nullptr && qualifier->kind() == ast::AstNodeKind::IdentifierExpression &&
+                constants.contains(value.text());
+        }
+        default:
+            return false;
+    }
+}
+
+// EN: L-021. C++ evaluates a default argument in the callee's context at every call that omits it, so it may be any
+//     expression (`glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f)`). A callable whose defaults include one that is
+//     not direct (isDirectDefaultArgument) is rewritten as C++ would generate the calls: the parameters from the first
+//     defaulted one up to the last non-direct one lose their defaults, and for each shorter arity a forwarding
+//     overload is added that passes the next default and calls the overload with one more argument (the last one calls
+//     the original), so every default expression is written exactly once and is analyzed where the callable is
+//     declared. A constructor forwards with `: this(...)`. Defaults after the last non-direct one stay on the original.
+//     Not rewritten (the member model keeps reporting the default): a callable without a body, with its own generic
+//     parameters, with a ref return, or with ref/out/in/params or other qualified parameters. Named arguments that
+//     skip a rewritten parameter are not supported. Complexity: O(parameters) per callable.
+// ES: L-021. C++ evalua un argumento por defecto en el contexto del llamado en cada llamada que lo omite, asi que puede
+//     ser cualquier expresion. Un invocable cuyos defaults incluyen uno no directo se reescribe como C++ generaria las
+//     llamadas: los parametros desde el primero con default hasta el ultimo no directo pierden su default, y por cada
+//     aridad menor se agrega una sobrecarga que pasa el siguiente default y llama a la sobrecarga con un argumento mas
+//     (la ultima llama al original); cada expresion se escribe una sola vez y se analiza donde se declara el
+//     invocable. Un constructor reenvia con `: this(...)`. No se reescribe un invocable sin cuerpo, con parametros
+//     genericos propios, con retorno ref o con parametros ref/out/in/params u otros calificados.
+void synthesizeDefaultArgumentOverloads(ast::AstNode& container, ast::AstArena& arena,
+    const std::set<std::string, std::less<>>& constants)
+{
+    for (std::size_t index = 0; index < container.children().size(); ++index)
+    {
+        ast::AstNode* callable = container.children()[index];
+        if (callable == nullptr) continue;
+        const ast::AstNodeKind kind = callable->kind();
+        if (kind == ast::AstNodeKind::NamespaceDeclaration || kind == ast::AstNodeKind::ClassDeclaration ||
+            kind == ast::AstNodeKind::StructDeclaration)
+        {
+            synthesizeDefaultArgumentOverloads(*callable, arena, constants);
+            continue;
+        }
+        if (kind != ast::AstNodeKind::MethodDeclaration && kind != ast::AstNodeKind::ConstructorDeclaration &&
+            kind != ast::AstNodeKind::FunctionDeclaration)
+            continue;
+        std::vector<ast::AstNode*> parameters;
+        for (ast::AstNode* child : callable->children())
+            if (child != nullptr && child->kind() == ast::AstNodeKind::ParameterDeclaration) parameters.push_back(child);
+        std::optional<std::size_t> firstDefault;
+        std::optional<std::size_t> lastIndirect;
+        for (std::size_t parameter = 0; parameter < parameters.size(); ++parameter)
+        {
+            const ast::AstNode* value = parameters[parameter]->first();
+            if (value == nullptr) continue;
+            if (!firstDefault) firstDefault = parameter;
+            if (!isDirectDefaultArgument(*value, constants)) lastIndirect = parameter;
+        }
+        if (!lastIndirect) continue;
+        const bool rewritable = callable->first() != nullptr &&
+            callable->first()->kind() == ast::AstNodeKind::BlockStatement && callable->genericParameters().empty() &&
+            !callable->isReference() &&
+            std::all_of(parameters.begin(), parameters.end(), [](const ast::AstNode* parameter) {
+                return parameter->auxiliaryText().empty();
+            }) &&
+            std::all_of(parameters.begin() + static_cast<std::ptrdiff_t>(*firstDefault),
+                parameters.begin() + static_cast<std::ptrdiff_t>(*lastIndirect) + 1,
+                [](const ast::AstNode* parameter) { return parameter->first() != nullptr; });
+        if (!rewritable) continue;
+        const bool isVoid = kind != ast::AstNodeKind::ConstructorDeclaration && callable->typeSyntax() != nullptr &&
+            callable->typeSyntax()->baseName() == "void" && callable->typeSyntax()->modifiers().empty();
+        std::vector<ast::AstNode*> defaults(parameters.size(), nullptr);
+        for (std::size_t parameter = *firstDefault; parameter <= *lastIndirect; ++parameter)
+        {
+            defaults[parameter] = parameters[parameter]->first();
+            parameters[parameter]->setFirst(nullptr);
+        }
+        // The overload with `arity` explicit arguments, for arity = lastIndirect .. firstDefault.
+        std::size_t insertAt = index + 1;
+        for (std::size_t arity = *firstDefault; arity <= *lastIndirect; ++arity)
+        {
+            const SourceRange range = defaults[arity]->range();
+            // Same header; parameters 0..arity-1 without defaults; no virtual dispatch of its own.
+            std::vector<ast::AstNode*> keptChildren;
+            std::size_t parameterOrdinal = 0;
+            for (ast::AstNode* child : callable->children())
+            {
+                if (child == nullptr || child->kind() != ast::AstNodeKind::ParameterDeclaration)
+                {
+                    keptChildren.push_back(child);
+                    continue;
+                }
+                if (parameterOrdinal++ >= arity) continue;
+                ast::AstNode* copy = arena.make<ast::AstNode>(*child);
+                copy->setFirst(nullptr);
+                keptChildren.push_back(copy);
+            }
+            ast::AstNode* overload = arena.make<ast::AstNode>(callable->kind(), callable->range());
+            overload->setText(callable->text());
+            overload->setTokenKind(callable->tokenKind());
+            for (const lexer::TokenKind modifier : callable->modifiers())
+                if (modifier != lexer::TokenKind::KwVirtual && modifier != lexer::TokenKind::KwOverride &&
+                    modifier != lexer::TokenKind::KwAbstract && modifier != lexer::TokenKind::KwSealed)
+                    overload->addModifier(modifier);
+            overload->setTypeSyntax(callable->typeSyntax());
+            overload->setThrowsTypeSyntax(callable->throwsTypeSyntax());
+            for (ast::TypeSyntax* type : callable->typeSyntaxes()) overload->addTypeSyntax(type);
+            overload->setAuxiliaryText(callable->auxiliaryText());
+            overload->setFlag(callable->flag());
+            overload->setUnsafe(callable->isUnsafe());
+            for (ast::AstNode* child : keptChildren)
+                if (child != nullptr && child->kind() == ast::AstNodeKind::ParameterDeclaration) overload->addChild(child);
+            // The forwarded arguments: the explicit parameters, then the default of parameter `arity`.
+            std::vector<ast::AstNode*> arguments;
+            for (std::size_t parameter = 0; parameter < arity; ++parameter)
+            {
+                ast::AstNode* name = arena.make<ast::AstNode>(ast::AstNodeKind::IdentifierExpression, range);
+                name->setText(parameters[parameter]->text());
+                name->setTokenKind(lexer::TokenKind::Identifier);
+                arguments.push_back(name);
+            }
+            arguments.push_back(defaults[arity]);
+            ast::AstNode* body = arena.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, range);
+            if (kind == ast::AstNodeKind::ConstructorDeclaration)
+            {
+                ast::AstNode* initializer =
+                    arena.make<ast::AstNode>(ast::AstNodeKind::ThisConstructorInitializer, range);
+                for (ast::AstNode* argument : arguments) initializer->addChild(argument);
+                overload->setSecond(initializer);
+            }
+            else
+            {
+                ast::AstNode* target = arena.make<ast::AstNode>(ast::AstNodeKind::IdentifierExpression, range);
+                target->setText(callable->text());
+                target->setTokenKind(lexer::TokenKind::Identifier);
+                ast::AstNode* call = arena.make<ast::AstNode>(ast::AstNodeKind::CallExpression, range);
+                call->setFirst(target);
+                for (ast::AstNode* argument : arguments) call->addChild(argument);
+                ast::AstNode* statement = arena.make<ast::AstNode>(
+                    isVoid ? ast::AstNodeKind::ExpressionStatement : ast::AstNodeKind::ReturnStatement, range);
+                statement->setFirst(call);
+                body->addChild(statement);
+            }
+            overload->setFirst(body);
+            container.insertChild(insertAt++, overload);
+        }
+        index = insertAt - 1;
+    }
+}
+
 void evaluateMacroArrayDimensionsInTree(ast::AstNode& node, ast::AstArena& arena,
     const std::set<std::string, std::less<>>& functionMacros,
     const std::vector<std::unique_ptr<interop::CppInteropSession>>& sessions, std::set<const ast::AstNode*>& visited)
@@ -5067,9 +5260,14 @@ bool ProjectCompilation::parseSyntaxUnits(
     // ES: C2-02. Un argumento de llamada que nombra una macro lista equivale a sus elementos, en orden, como los
     //     expande el preprocesador C. Una unidad que declara una variable, parametro, campo o miembro con el nombre de
     //     la macro conserva la busqueda de NativeSharp.
+    std::set<std::string, std::less<>> defaultConstantNames;
+    for (const auto& unit : units_)
+        if (unit && unit->syntaxTree()) collectDefaultConstantNames(*unit->syntaxTree(), defaultConstantNames);
     for (auto& unit : units_)
     {
         if (!unit || !unit->syntaxTree()) continue;
+        // L-021: defaults that are expressions become forwarding overloads. / Defaults expresion: sobrecargas.
+        synthesizeDefaultArgumentOverloads(*unit->syntaxTree(), unit->arena(), defaultConstantNames);
         // X4-04: C++ variable templates written as values. / Plantillas de variable C++ escritas como valores.
         for (const auto& group : cppProjectSessions_)
         {

@@ -194,8 +194,10 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
     addCase(registry, "TF-INTEROP-419", {"interop", "diagnostic", "c-enum", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-419", "enum-demand-member-diagnostic",
-                "Main.ns:10:57: error: default parameter value must be a literal constant");
+                "Main.ns:8:48: error: required parameter 'factor' cannot follow a parameter with a default value");
         });
+    addCase(registry, "TF-INTEROP-420", {"language", "default-argument", "l-021", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-420", "constructed-default-arguments", 42); });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",
