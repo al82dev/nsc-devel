@@ -86,7 +86,7 @@ struct Built
 
 // Copies the fixture, writes Project.nsproj and runs `nsc build`. / Copia el fixture, escribe Project.nsproj y
 // ejecuta `nsc build`.
-Built build(const IsolatedFixture& isolated, std::string_view fixtureName)
+Built build(const IsolatedFixture& isolated, std::string_view fixtureName, bool debugInformation = false)
 {
     Built built;
     const fs::path fixture = fs::path(NSC_SUITE_REPOSITORY_ROOT) /
@@ -107,7 +107,7 @@ Built build(const IsolatedFixture& isolated, std::string_view fixtureName)
         std::ofstream stream(projectFile, std::ios::binary | std::ios::trunc);
         stream << project;
     }
-    const std::vector<std::wstring> arguments = {L"build", projectFile.wstring(), L"-O0", L"-g0",
+    const std::vector<std::wstring> arguments = {L"build", projectFile.wstring(), L"-O0", debugInformation ? L"-g" : L"-g0",
         L"--linker", L"LLD", L"--cpp-clang-root=" + fs::path(NSC_SUITE_CLANG_ROOT).wstring()};
     const std::vector<std::pair<std::wstring, std::wstring>> environment = {
         {L"NSC_WINDOWS_RUNTIME_LIBRARY", fs::path(NSC_SUITE_WINDOWS_RUNTIME_LIBRARY).wstring()}};
@@ -119,10 +119,11 @@ Built build(const IsolatedFixture& isolated, std::string_view fixtureName)
 
 // The fixture builds and its executable ends with `expectedExit`. / El fixture compila y su ejecutable termina con
 // `expectedExit`.
-void expectExit(TestContext& context, std::string_view caseId, std::string_view fixtureName, DWORD expectedExit)
+void expectExit(TestContext& context, std::string_view caseId, std::string_view fixtureName, DWORD expectedExit,
+    bool debugInformation = false)
 {
     const IsolatedFixture isolated(caseId);
-    const Built built = build(isolated, fixtureName);
+    const Built built = build(isolated, fixtureName, debugInformation);
     std::error_code error;
     const bool ready = built.failure.empty() && built.compilation.started && built.compilation.exitCode == 0 &&
         fs::is_regular_file(built.executable, error) && !error;
@@ -250,6 +251,10 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         [](TestContext& context) { expectExit(context, "TF-INTEROP-440", "variadic-c-string-arguments", 42); });
     addCase(registry, "TF-INTEROP-441", {"interop", "c", "macro", "system-header", "l-047", "e2e"},
         [](TestContext& context) { expectExit(context, "TF-INTEROP-441", "system-header-call-macros", 42); });
+    addCase(registry, "TF-INTEROP-442", {"language", "namespace-state", "debug-info", "codeview", "l-052", "e2e"},
+        [](TestContext& context) {
+            expectExit(context, "TF-INTEROP-442", "large-namespace-array-debug-info", 42, true);
+        });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",

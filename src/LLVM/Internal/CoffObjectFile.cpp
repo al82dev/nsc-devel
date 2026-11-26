@@ -178,6 +178,15 @@ bool CoffObjectFile::loadSections(
             error = "section " + std::to_string(index + 1) + " has an invalid long name";
             return false;
         }
+        // EN: L-052. An uninitialized-data section (`.bss`, IMAGE_SCN_CNT_UNINITIALIZED_DATA) has a size but no bytes in
+        //     the file: PointerToRawData is 0, so a large one (a 5.6 MB namespace array) "lay outside the file". It has
+        //     no raw data to read. / Una seccion de datos sin inicializar tiene tamano pero ningun byte en el archivo.
+        constexpr std::uint32_t kUninitializedData = 0x00000080U;
+        if ((characteristics & kUninitializedData) != 0)
+        {
+            dataSize = 0;
+            dataOffset = 0;
+        }
         if (dataSize != 0 && data(dataOffset, dataSize) == nullptr)
         {
             error = "section '" + section.name + "' lies outside the file";

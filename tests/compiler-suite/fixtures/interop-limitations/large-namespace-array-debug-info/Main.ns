@@ -1,0 +1,20 @@
+// Compiler-suite fixture large-namespace-array-debug-info (L-052): a large namespace-scope array (100000 x 56 bytes = 5.6 MB of .bss) built with debug information,
+// whose CodeView procedure ranges read the object's sections. Exit 42.
+namespace Fixture
+{
+    public struct Item
+    {
+        public float a0; public float a1; public float a2; public float a3; public float a4; public float a5;
+        public float a6; public float a7; public float a8; public float a9; public float a10; public float a11;
+        public float a12; public float a13;
+    }
+
+    Item[100000] items;
+
+    int Main()
+    {
+        items[1].a0 = 1.0f;
+        items[99999].a13 = 41.0f;
+        return (int)(items[1].a0 + items[99999].a13);
+    }
+}
