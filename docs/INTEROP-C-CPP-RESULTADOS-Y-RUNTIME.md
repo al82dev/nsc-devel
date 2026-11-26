@@ -13,6 +13,9 @@ correcta de NSC no demuestra por sí sola la cobertura completa de C o C++.
 | `8d233f72f` | Uso de resultados importados como condiciones y en retornos de lambdas. |
 | `3ec868e49` | Conversión de resultados importados en inicializadores de arreglos y colecciones. |
 | `387225da4` | Enlace de bibliotecas de importación del UCRT y del runtime C++ encontradas a partir de los includes de sistema configurados. |
+| `9e93e820b`, `1d9afb924` | Diagnósticos del conflicto entre definiciones de registros C/C++. |
+| `b2d8aab66` | Comparación estricta de registros C++ simples sin hash ODR. |
+| `dba12c502` | Conservación de los inicializadores dinámicos de namespace durante la reconstrucción del modelo. |
 
 ## Comprobación y pendientes
 
@@ -25,7 +28,7 @@ correcta de NSC no demuestra por sí sola la cobertura completa de C o C++.
   enums y punteros locales todavía requieren comprobación funcional específica.
 - En la primera pasada compilaron los tutoriales 01 y 02. Otros proyectos
   registraron errores de código, un conflicto de tipos de GLM o terminaciones
-  internas del compilador; falta investigarlos y repetir las compilaciones.
+  internas del compilador; falta repetir las compilaciones afectadas.
 - El seguimiento de punteros locales es conservador cuando no puede demostrar
   el origen de todas sus posibles asignaciones.
 
@@ -46,8 +49,9 @@ hash ODR disponible.
 Se agregó una vía de comparación para registros C++ compuestos exclusivamente
 por datos cuando Clang no proporciona hash ODR: exige identidad y procedencia
 iguales, mismo destino, layout, rasgos y miembros capturados equivalentes, y
-excluye métodos, bases y campos estáticos. La recompilación del tutorial 17 con
-esta regla está pendiente.
+excluye métodos, bases y campos estáticos. El tutorial 17 superó ese conflicto
+con la nueva regla y después presentó una violación de acceso; su repetición
+con la corrección de duración de nodos está en curso.
 
 El script externo `Z:\nsc-tutorials\OpenGL-3\ogl\build_all.py` también se
 actualizó para copiar las DLL transitivas disponibles y los recursos a la
@@ -62,5 +66,7 @@ su propietario era el modelo temporal de namespaces, aunque el árbol de
 sintaxis conservaba el puntero.
 
 Los nodos de inicialización se crean ahora en la arena de la unidad que contiene
-`Main`, cuya duración abarca las reconstrucciones del modelo. La compilación
-de NSC y la repetición del tutorial con esta corrección están pendientes.
+`Main`, cuya duración abarca las reconstrucciones del modelo. NSC se compiló e
+instaló con esta corrección. Al repetir el tutorial 11 dejó de terminar por
+violación de acceso y mostró diagnósticos de tipos del código NativeSharp;
+el tutorial todavía no compila.
