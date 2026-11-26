@@ -1,0 +1,21 @@
+// Compiler-suite fixture integer-constant-narrowing: an integer constant whose value fits passed to a `byte` (C `unsigned char` typedef) parameter of a
+// NativeSharp method, as C++ converts it (`void ProcessMouseMovement(..., GLboolean constrainPitch = GL_TRUE)`).
+// Exit 42.
+namespace Fixture
+{
+    const int ONE = 1;
+
+    int Take(LIMboolean flag)
+    {
+        return (int)flag;
+    }
+
+    int Main()
+    {
+        int a = Take(1);
+        int b = Take(ONE);
+        int c = Take(LIM_TRUE);
+        int d = Take(LIM_FALSE);
+        return 39 + a + b + c + d;
+    }
+}

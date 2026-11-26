@@ -1252,6 +1252,38 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     result.cppAtomicRecordStorage = state.isCppExternal && state.cppAtomicStorage &&
         state.declaredTypeKey.starts_with("type:") && !state.declaredTypeKey.ends_with('*');
     result.readonlyReceiver = state.isConst || state.isCppReadonly;
+    // EN: An integer constant (a `const` namespace state, a C macro such as `GL_TRUE`) is a constant expression, as an
+    //     integer literal is: it converts implicitly to a narrower integer type when its value fits (C# constant
+    //     expression conversion; C++ converts it too), so `Take(ONE)` and `Take(GL_TRUE)` reach a `byte` parameter
+    //     like `Take(1)`. The stored value is the bit pattern of the declared type; the constant carries a magnitude.
+    // ES: Una constante entera (estado `const` de namespace, macro C como `GL_TRUE`) es una expresion constante, como un
+    //     literal entero: se convierte implicitamente a un entero mas estrecho cuando su valor cabe, asi `Take(ONE)` y
+    //     `Take(GL_TRUE)` llegan a un parametro `byte` como `Take(1)`. Se guarda el patron de bits del tipo declarado;
+    //     la constante lleva una magnitud.
+    if ((state.isConst || state.cppMacroValue) && !result.assignable &&
+        state.initializerKind == NamespaceStateInitializerKind::Integer &&
+        ProjectTypeConversion::isIntegral(state.declaredTypeKey) && state.declaredTypeKey != "builtin:bool")
+    {
+        struct Width { std::string_view key; unsigned bits; bool isSigned; };
+        static constexpr Width widths[] = {
+            {"builtin:sbyte", 8, true}, {"builtin:byte", 8, false}, {"builtin:char", 8, false},
+            {"builtin:short", 16, true}, {"builtin:ushort", 16, false}, {"builtin:int", 32, true},
+            {"builtin:uint", 32, false}, {"builtin:long", 64, true}, {"builtin:ulong", 64, false},
+            {"builtin:nint", 64, true}, {"builtin:nuint", 64, false}};
+        for (const Width& width : widths)
+        {
+            if (width.key != state.declaredTypeKey) continue;
+            const std::uint64_t mask = width.bits == 64 ? ~std::uint64_t{0} : (std::uint64_t{1} << width.bits) - 1U;
+            const std::uint64_t bits = state.integerValue & mask;
+            const bool negative = width.isSigned && ((bits >> (width.bits - 1U)) & 1U) != 0;
+            ProjectIntegerConstant constant;
+            constant.isUnsigned = !width.isSigned;
+            constant.isNegative = negative;
+            constant.value = negative ? ((~bits + 1U) & mask) : bits;
+            result.integerConstant = constant;
+            break;
+        }
+    }
     result.volatileStorage = state.isCppExternal && state.isVolatile;
     result.pointerPointeeReadonly = state.cppPointerPointeeReadonly;
     result.pointerPointeeVolatile = pointeeVolatile;

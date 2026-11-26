@@ -200,6 +200,8 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         [](TestContext& context) { expectExit(context, "TF-INTEROP-420", "constructed-default-arguments", 42); });
     addCase(registry, "TF-INTEROP-421", {"language", "enum", "operator", "cpp", "e2e"},
         [](TestContext& context) { expectExit(context, "TF-INTEROP-421", "enum-equality-with-cpp-operators", 42); });
+    addCase(registry, "TF-INTEROP-422", {"language", "conversion", "constant", "c-macro", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-422", "integer-constant-narrowing", 42); });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",
