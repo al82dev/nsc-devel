@@ -257,7 +257,8 @@ static bool appendCppInlineObjects(frontend::ProjectCompilation &compilation,
                                    const frontend::ProjectOopMirModel &mir,
                                    llvm_backend::ProjectOopObjectBundle &bundle,
                                    llvm_backend::LlvmOptimizationLevel level,
-                                   llvm_backend::DebugInformationKind debugInformation, std::string &error)
+                                   llvm_backend::DebugInformationKind debugInformation, std::string &error,
+                                   bool referencedOnly)
 {
 #ifdef NSC_ENABLE_CPP_INTEROP
     error.clear();
@@ -320,6 +321,13 @@ static bool appendCppInlineObjects(frontend::ProjectCompilation &compilation,
     //     objeto generado deja indefinida; pedir todas a Clang instancia declaraciones que ningun programa alcanza
     //     y hacia fallar al compilador con un Main vacio. Si los objetos no se pueden inspeccionar se conserva la
     //     lista completa, como antes.
+    // EN: T10-012. Only an executable filters. A library (static or DLL) keeps the complete list: a consumer
+    //     instantiates the library's precompiled templates, whose calls to these inline functions are in no object of
+    //     the library, and a consumer without the header can take the definitions only from the library.
+    // ES: T10-012. Solo un ejecutable filtra. Una biblioteca (estatica o DLL) conserva la lista completa: un
+    //     consumidor instancia sus plantillas precompiladas, cuyas llamadas a estas funciones inline no estan en ningun
+    //     objeto de la biblioteca, y un consumidor sin el encabezado solo puede tomar las definiciones de ella.
+    if (referencedOnly)
     {
         std::vector<std::string> undefined;
         std::string inspectionError;
@@ -449,7 +457,7 @@ static bool appendCppInlineObjects(frontend::ProjectCompilation &compilation,
             return true;
         }, error);
 #else
-    (void)compilation; (void)mir; (void)bundle; (void)level; (void)debugInformation;
+    (void)compilation; (void)mir; (void)bundle; (void)level; (void)debugInformation; (void)referencedOnly;
     error.clear(); return true;
 #endif
 }
@@ -614,7 +622,8 @@ std::unique_ptr<llvm_backend::ProjectOopObjectBundle> generateProjectObjects(
     const std::vector<llvm_backend::DebugPrefixMap> &debugPrefixMaps,
     llvm_backend::LinkTimeOptimizationMode linkTimeOptimization, std::string &error,
     bool captureThinLtoUnits = false, std::vector<llvm_backend::ThinLtoLibraryUnits> thinLtoLibraries = {},
-    std::optional<std::vector<std::string>> thinLtoPreservedSymbols = std::nullopt)
+    std::optional<std::vector<std::string>> thinLtoPreservedSymbols = std::nullopt,
+    bool referencedCppInlineOnly = false)
 {
     llvm_backend::ProjectOopObjectGenerator objectGenerator;
     configureObjectGeneratorProgress(objectGenerator);
@@ -647,7 +656,7 @@ std::unique_ptr<llvm_backend::ProjectOopObjectBundle> generateProjectObjects(
     if (!appendCImplementationObjects(compilation, *objectBundle, optimizationLevel, error))
         return nullptr;
     if (!appendCppInlineObjects(compilation, *compilation.oopMirModel(), *objectBundle, optimizationLevel,
-                                debugInformation, error))
+                                debugInformation, error, referencedCppInlineOnly))
         return nullptr;
     if (!compilation.completeCodeGeneration(error))
         return nullptr;
@@ -1153,7 +1162,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
         thinLtoLibraries.preservedSymbols(linkLibraries, entrySymbols);
     std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle = generateProjectObjects(
         compilation, debugInformation, optimizationLevel, debugPrefixMaps, linkTimeOptimization, codeGenerationError,
-        false, thinLtoLibraries.takeLibraries(), std::move(preservedSymbols));
+        false, thinLtoLibraries.takeLibraries(), std::move(preservedSymbols), true);
     if (objectBundle == nullptr)
     {
         error << "nsc: error: " << codeGenerationError << '\n';
