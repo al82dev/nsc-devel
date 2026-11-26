@@ -1,0 +1,40 @@
+// Compiler-suite fixture static-local-owned-string (L-014): a function-local static owns a dynamically built value
+// (`static std::string root = ...; return root;`), is initialized once and is returned as a borrow. Exit 42.
+namespace Fixture
+{
+    public class Root
+    {
+        public int value;
+
+        public Root(int start)
+        {
+            value = start;
+        }
+    }
+
+    public class FileSystem
+    {
+        public static int built = 0;
+
+        private static owned Root Build()
+        {
+            built = built + 1;
+            return new Root(40 + built);
+        }
+
+        public static Root GetRoot()
+        {
+            static owned Root root = Build();
+            return root;
+        }
+    }
+
+    int Main()
+    {
+        Root first = FileSystem.GetRoot();
+        Root second = FileSystem.GetRoot();
+        if (first != second) return 1;
+        if (FileSystem.built != 1) return 2;
+        return first.value + FileSystem.built;
+    }
+}

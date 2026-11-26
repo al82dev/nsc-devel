@@ -7417,6 +7417,16 @@ bool ProjectMethodBodyModel::reportDirectOwnerReturnWithoutMove(
     if (returned.moveOnlyOwner && returned.local && *returned.local < locals_.size() &&
         cppNonTrivialTemporary([&] { ExpressionResult probe; probe.typeKey = locals_[*returned.local].typeKey; probe.valid = true; return probe; }()))
         return false;
+    // EN: L-014. A function-local static owner lives until process exit (its destructor runs from the module
+    //     destructor table), so `return root;` from a method whose result does not own is a borrow of storage
+    //     that outlives every caller, as `static std::string root; return root;` returning `std::string const&`.
+    //     An owned result still requires the explicit transfer, which a static never gives.
+    // ES: L-014. Un owner static local vive hasta el fin del proceso, asi que `return root;` desde un metodo cuyo
+    //     resultado no es owner es un prestamo de un almacenamiento que sobrevive a todo llamador. Un resultado
+    //     owned sigue exigiendo la transferencia explicita.
+    if ((returned.raiiOwner || returned.moveOnlyOwner) && returned.local && *returned.local < locals_.size() &&
+        locals_[*returned.local].isStatic && method.declaredOwnership != sema::OwnershipKind::Owned)
+        return false;
     if (returned.raiiOwner || returned.moveOnlyOwner)
     {
         const MethodLocalSymbol& local = locals_[*returned.local];
