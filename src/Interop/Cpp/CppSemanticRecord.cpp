@@ -5416,6 +5416,20 @@ bool selectExperimentalCppRecordTypesForCompilation(
                         status == CppRecordGroupStatus::Conflict ? "record definitions conflict" :
                         "multiple record definitions have not been verified";
                     error = "C field record dependency " + identity->key() + ": " + reason;
+                    for (const auto recordIndex : observation.groups.groups[groupIndex].inventoryIndices)
+                    {
+                        const auto& declaration = observation.inventory[recordIndex].declaration;
+                        if (!declaration.complete) continue;
+                        error += "\n  " + std::string(declaration.isCxx ? "C++" : "C") +
+                            " usr=" + declaration.clangUsr.value_or("<unknown>") +
+                            " size=" + (declaration.sizeBits ? std::to_string(*declaration.sizeBits) : "?") +
+                            " align=" + (declaration.alignmentBits ? std::to_string(*declaration.alignmentBits) : "?") +
+                            " odr=" + (declaration.odrHash ? std::to_string(*declaration.odrHash) : "?") +
+                            " fields=" + std::to_string(declaration.fields.size());
+                        if (declaration.sourceProvenance)
+                            error += " source=" + declaration.sourceProvenance->sourcePath.string() +
+                                ":" + std::to_string(declaration.sourceProvenance->byteOffset);
+                    }
                     return false;
                 }
                 selectedIdentities.insert(identity->key());

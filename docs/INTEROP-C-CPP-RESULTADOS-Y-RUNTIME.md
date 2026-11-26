@@ -37,6 +37,11 @@ Esto permite identificar la causa que corresponda al tutorial 17; no cambia
 las reglas de aceptación ni da por resuelto el conflicto. Está pendiente
 recompilar NSC y repetir el tutorial con el diagnóstico actualizado.
 
+La primera repetición del tutorial 17 informó definiciones múltiples no
+verificadas. El diagnóstico incorpora los datos disponibles de cada definición
+completa para comparar su identidad, ubicación y layout; la nueva salida aún
+requiere recompilarse y verificarse.
+
 El script externo `Z:\nsc-tutorials\OpenGL-3\ogl\build_all.py` también se
 actualizó para copiar las DLL transitivas disponibles y los recursos a la
 carpeta de cada ejecutable. No forma parte de este repositorio.
