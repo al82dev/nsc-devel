@@ -6534,6 +6534,25 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
         }
         ProjectImplicitConversion conversion = classifyImplicit(
             arguments[index].typeKey, parameterTypes[index], arguments[index].integerConstant);
+        // EN: L-012, L-004. A call through a C function pointer (every OpenGL entry point of GLAD is a function-pointer
+        //     variable) is a C boundary like a direct C call: a string literal reaches a `const char*` parameter and
+        //     C's arithmetic conversions apply (`GL_ARRAY_BUFFER`, an `int` macro, to a `GLenum` parameter). Before,
+        //     only NativeSharp's conversions applied and both needed casts or CString.
+        // ES: L-012, L-004. Una llamada por un puntero a funcion C (cada entrada OpenGL de GLAD es una variable puntero
+        //     a funcion) es una frontera C como una llamada C directa: un literal llega a un parametro `const char*` y
+        //     aplican las conversiones aritmeticas de C (`GL_ARRAY_BUFFER`, una macro `int`, a un parametro `GLenum`).
+        //     Antes solo aplicaban las conversiones NativeSharp y ambos casos necesitaban casts o CString.
+        if (!conversion.exists() && structuralFunction.has_value() &&
+            structuralFunction->callingConvention == language::CallingConvention::C &&
+            arguments[index].argumentPassKind == ParameterPassKind::Value)
+        {
+            MethodParameterSymbol cParameter;
+            cParameter.typeKey = parameterTypes[index];
+            cParameter.passKind = ParameterPassKind::Value;
+            cParameter.pointerPointeeReadonly = ProjectTypeConversion::isPointer(parameterTypes[index]) &&
+                language::functionParameterPointeeReadonly(*structuralFunction, index);
+            conversion = classifyCFrontierConversion(arguments[index], cParameter, parameterTypes[index], true);
+        }
         if (!conversion.exists())
         {
             diagnostics.report(
