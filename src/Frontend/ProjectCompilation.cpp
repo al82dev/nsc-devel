@@ -1207,8 +1207,26 @@ bool prepareCppScopedParserNames(
         auto names = cppScopedTypeNames(scopes, inventory.namespaces, inventory.cppTypes);
         if (!names)
         {
+            // EN: L-009. The message names the using directives of the file and the usual cause: a `using` of a
+            //     namespace no referenced project provides (an explicit .nsproj references NativeSharpCore only when
+            //     it lists it), so the failure no longer looks like an internal error without a location.
+            // ES: L-009. El mensaje nombra las directivas using del archivo y la causa habitual: un `using` de un
+            //     namespace que ningun proyecto referido provee (un .nsproj explicito referencia NativeSharpCore solo
+            //     si lo enumera), asi la falla ya no parece un error interno sin ubicacion.
+            std::string directives;
+            for (const auto& scope : scopes)
+                for (const auto& directive : scope.directives)
+                {
+                    std::string target;
+                    for (const auto& segment : directive.target) target += (target.empty() ? "" : ".") + segment;
+                    if (!directive.alias.empty()) target = directive.alias + " = " + target;
+                    directives += (directives.empty() ? "" : ", ") + target;
+                }
             error = "cannot prepare scoped C/C++ type names for source unit " + std::to_string(i) +
-                ": namespace or alias requires unsupported resolution";
+                ": namespace or alias requires unsupported resolution (using directives of the file: " +
+                (directives.empty() ? std::string("none") : directives) +
+                "); each `using` must name a namespace of this project or of a referenced library, and an explicit "
+                ".nsproj references NativeSharpCore only when it lists NativeSharpCore.lib";
             return false;
         }
         output[i] = std::move(*names);
