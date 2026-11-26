@@ -310,6 +310,32 @@ static bool appendCppInlineObjects(frontend::ProjectCompilation &compilation,
             if (member.isCppExternal && !member.cppExternalSymbol.empty()) remaining.push_back(member.cppExternalSymbol);
     std::sort(remaining.begin(), remaining.end());
     remaining.erase(std::unique(remaining.begin(), remaining.end()), remaining.end());
+    // EN: L-020/L-026. The imported model lists every C++ function and member of the referenced headers (thousands
+    //     with the standard library behind GLM or Assimp), used or not. Only a definition some generated object
+    //     leaves undefined has to be emitted; asking Clang for all of them instantiates declarations no program
+    //     reaches and crashed the compiler on an empty Main. When the objects cannot be inspected the complete list
+    //     is kept, as before.
+    // ES: L-020/L-026. El modelo importado lista cada funcion y miembro C++ de los encabezados referidos (miles con
+    //     la biblioteca estandar detras de GLM o Assimp), se usen o no. Solo hay que emitir una definicion que algun
+    //     objeto generado deja indefinida; pedir todas a Clang instancia declaraciones que ningun programa alcanza
+    //     y hacia fallar al compilador con un Main vacio. Si los objetos no se pueden inspeccionar se conserva la
+    //     lista completa, como antes.
+    {
+        std::vector<std::string> undefined;
+        std::string inspectionError;
+        bool inspected = true;
+        for (const auto& object : bundle.objectFiles())
+            if (!llvm_backend::ProjectOopObjectGenerator::collectUndefinedSymbols(object, undefined, inspectionError))
+            {
+                inspected = false;
+                break;
+            }
+        if (inspected)
+        {
+            const std::set<std::string> referenced(undefined.begin(), undefined.end());
+            std::erase_if(remaining, [&](const std::string& symbol) { return !referenced.contains(symbol); });
+        }
+    }
     std::vector<std::string> modules;
     const interop::CppDebugInformation cppDebugInformation =
         debugInformation == llvm_backend::DebugInformationKind::Full ? interop::CppDebugInformation::Full :
