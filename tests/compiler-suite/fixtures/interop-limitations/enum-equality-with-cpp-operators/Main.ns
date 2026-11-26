@@ -1,0 +1,18 @@
+// Compiler-suite fixture enum-equality-with-cpp-operators: two values of a NativeSharp enum compared with == and !=
+// in a project whose C++ header declares operator templates (GLM's operator== over vec/mat). Exit 42.
+namespace Fixture
+{
+    public enum Movement
+    {
+        Forward,
+        Backward
+    }
+
+    int Main()
+    {
+        Movement direction = Movement.Backward;
+        if (direction == Movement.Forward) return 1;
+        if (direction != Movement.Backward) return 2;
+        return 42 + lim.base();
+    }
+}

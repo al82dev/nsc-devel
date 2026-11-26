@@ -392,9 +392,17 @@ bool ProjectMethodBodyModel::analyzeOverloadedBinary(
         return cppImportedCEnumUnderlying(nameLookup_, operand.typeKey).has_value() ||
             (ProjectTypeConversion::isIntegral(operand.typeKey) && operand.typeKey != "builtin:bool");
     };
-    if ((cppImportedCEnumUnderlying(nameLookup_, left.typeKey) ||
-         cppImportedCEnumUnderlying(nameLookup_, right.typeKey)) &&
-        builtinOperand(left) && builtinOperand(right))
+    // EN: Two operands of the same NativeSharp enum have the built-in operation too: an imported C++ operator
+    //     (GLM's `operator==` templates over vec/mat) that does not take them does not hide it
+    //     (`direction == CameraMovement.Forward` in a project that includes glm/glm.hpp).
+    // ES: Dos operandos del mismo enum NativeSharp tambien tienen la operacion incorporada: un operador C++
+    //     importado que no los acepta no la oculta.
+    const bool sameNativeEnum = left.typeKey == right.typeKey && isEnumTypeKey(left.typeKey) &&
+        !cppImportedCEnumUnderlying(nameLookup_, left.typeKey).has_value();
+    if (sameNativeEnum ||
+        ((cppImportedCEnumUnderlying(nameLookup_, left.typeKey) ||
+          cppImportedCEnumUnderlying(nameLookup_, right.typeKey)) &&
+         builtinOperand(left) && builtinOperand(right)))
     {
         diagnostics::DiagnosticEngine probe;
         ExpressionResult tried = resolveSyntheticCall(
