@@ -1,0 +1,50 @@
+// Compiler-suite fixture switch-named-constant-labels (L-048, L-070): case labels that are named constants: a namespace `const uint` (DDS FOURCC codes), a class
+// `const int` on a `byte` switch (`case Keys.KEY_UP:` with an unsigned char key) and a negative namespace constant.
+// Exit 42.
+namespace Fixture
+{
+    const uint FOURCC_DXT1 = 0x31545844;
+    const uint FOURCC_DXT5 = 0x35545844;
+    const int MINUS_ONE = -1;
+
+    public class Keys
+    {
+        public const int KEY_UP = 0x0065;
+        public const int KEY_DOWN = 0x0067;
+    }
+
+    int Format(uint fourCC)
+    {
+        switch (fourCC)
+        {
+        case FOURCC_DXT1: return 10;
+        case FOURCC_DXT5: return 20;
+        default: return 0;
+        }
+    }
+
+    int Key(byte key)
+    {
+        switch (key)
+        {
+        case Keys.KEY_UP: return 1;
+        case Keys.KEY_DOWN: return 2;
+        }
+        return 0;
+    }
+
+    int Sign(int value)
+    {
+        switch (value)
+        {
+        case MINUS_ONE: return 9;
+        default: return 0;
+        }
+    }
+
+    int Main()
+    {
+        // 20 + 1 + 2 + 9 + 10 = 42
+        return Format(0x35545844) + Key((byte)0x65) + Key((byte)0x67) + Sign(-1) + Format(0x31545844);
+    }
+}

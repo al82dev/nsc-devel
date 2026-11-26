@@ -8517,12 +8517,33 @@ void ProjectMethodBodyModel::analyzeSwitchSectionLabels(
             sectionBinding.hasDefault = true;
             continue;
         }
-        const ExpressionResult value = analyzeExpression(
+        ExpressionResult value = analyzeExpression(
             label->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        // EN: L-048, L-070. A label is a constant expression: a class constant folds through the constant resolver
+        //     even when the analysis did not carry its value, so `case Keys.KEY_UP:` (an `int` constant 0x65)
+        //     converts to a `byte` governing type when the value fits, as C# does.
+        // ES: L-048, L-070. Una etiqueta es una expresion constante: una constante de clase se pliega con el
+        //     resolvedor aunque el analisis no lleve su valor, asi `case Keys.KEY_UP:` se convierte a un gobernante
+        //     `byte` si el valor cabe, como en C#.
+        if (value.valid && !value.integerConstant.has_value())
+            if (const std::optional<ProjectIntegerValue> folded =
+                    foldIntegerConstant(label->first(), std::nullopt, methodMemberOrdinal);
+                folded.has_value() && ProjectIntegerEvaluator::isIntegerType(folded->typeKey))
+            {
+                const bool isSigned = ProjectIntegerEvaluator::normalize(~std::uint64_t{0}, folded->typeKey) ==
+                    ~std::uint64_t{0} && folded->typeKey != "builtin:ulong" && folded->typeKey != "builtin:nuint";
+                const bool negative = isSigned && static_cast<std::int64_t>(folded->bits) < 0;
+                ProjectIntegerConstant constant;
+                constant.isUnsigned = !isSigned;
+                constant.isNegative = negative;
+                constant.value = negative ? static_cast<std::uint64_t>(-static_cast<std::int64_t>(folded->bits))
+                                          : folded->bits;
+                value.integerConstant = constant;
+            }
         if (!value.valid || !validateSwitchLabelConversion(label, governing, value, diagnostics))
             continue;
         const std::optional<std::int64_t> canonical =
-            foldSwitchLabel(label, governing, methodMemberOrdinal, diagnostics);
+            foldSwitchLabel(label, governing, value, methodMemberOrdinal, diagnostics);
         if (canonical.has_value())
             recordSwitchLabel(label, *canonical, seenValues, sectionBinding, diagnostics);
     }
@@ -8550,11 +8571,22 @@ bool ProjectMethodBodyModel::validateSwitchLabelConversion(
 std::optional<std::int64_t> ProjectMethodBodyModel::foldSwitchLabel(
     const ast::AstNode* label,
     const ExpressionResult& governing,
+    const ExpressionResult& value,
     std::size_t methodMemberOrdinal,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
-    const std::optional<ProjectIntegerValue> folded =
+    std::optional<ProjectIntegerValue> folded =
         foldIntegerConstant(label->first(), std::nullopt, methodMemberOrdinal);
+    // EN: L-048. A namespace constant (`case FOURCC_DXT1:`) carries its value from the analysis (an integer constant
+    //     expression), which the member constant resolver does not see.
+    // ES: L-048. Una constante de namespace lleva su valor desde el analisis, que el resolvedor de miembros no ve.
+    if (!folded.has_value() && value.integerConstant.has_value() && ProjectIntegerEvaluator::isIntegerType(value.typeKey))
+    {
+        const std::uint64_t bits = value.integerConstant->isNegative
+            ? static_cast<std::uint64_t>(-static_cast<std::int64_t>(value.integerConstant->value))
+            : value.integerConstant->value;
+        folded = ProjectIntegerValue{ProjectIntegerEvaluator::normalize(bits, value.typeKey), value.typeKey};
+    }
     if (!folded.has_value())
     {
         diagnostics.report(

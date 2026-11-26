@@ -1554,6 +1554,7 @@ private:
     std::optional<std::int64_t> foldSwitchLabel(
         const ast::AstNode* label,
         const ExpressionResult& governing,
+        const ExpressionResult& value,
         std::size_t methodMemberOrdinal,
         diagnostics::DiagnosticEngine& diagnostics) const;
     bool recordSwitchLabel(
