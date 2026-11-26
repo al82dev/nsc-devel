@@ -259,6 +259,8 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         [](TestContext& context) { expectExit(context, "TF-INTEROP-443", "c-function-two-references", 42); });
     addCase(registry, "TF-INTEROP-444", {"language", "string", "comparison", "l-046", "e2e"},
         [](TestContext& context) { expectExit(context, "TF-INTEROP-444", "string-ordinal-comparison", 42); });
+    addCase(registry, "TF-INTEROP-445", {"interop", "c", "builtin", "msvc", "l-057", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-445", "c-builtin-declared", 42); });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",

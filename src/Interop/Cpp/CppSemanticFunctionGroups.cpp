@@ -130,8 +130,12 @@ CppSemanticFunctionGroupsResult groupCppSemanticFunctions(
         //     nombra la definicion, asi que es la clave del grupo; se llama a la copia de la primera referencia.
         const bool cInlineDefinition = declaration.isCStaticInlineDefinition && !declaration.externalLinkage &&
             declaration.clangUsr && !declaration.clangUsr->empty();
+        // L-057: a builtin's wrapper is written in each reference's own unit, so it is one function by its name. / El
+        //     envoltorio de un builtin se escribe en la unidad de cada referencia: es una funcion por su nombre.
+        const bool builtinWrapper = cInlineDefinition && declaration.cMacroWrapper.starts_with("__nsc_builtin__");
         Key key{symbol->projectOrdinal, declaration.qualifiedName,
-                cInlineDefinition ? "c-inline:" + *declaration.clangUsr : *declaration.externalSymbol};
+                builtinWrapper ? "c-builtin:" + declaration.cMacroWrapper
+                : cInlineDefinition ? "c-inline:" + *declaration.clangUsr : *declaration.externalSymbol};
         auto [it, inserted] = groupByKey.emplace(std::move(key), result.groups.size());
         if (!inserted && cInlineDefinition)
         {

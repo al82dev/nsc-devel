@@ -1,0 +1,12 @@
+// Compiler-suite fixture c-builtin-declared (L-057): a Clang builtin that a header declares without a definition
+// (`void __debugbreak(void);` as MSVC intrin.h does, `__lzcnt`) is called through a C wrapper Clang compiles, so it
+// links; two references that declare it give one function. Exit 42.
+namespace Fixture
+{
+    int Main()
+    {
+        int x = 0;
+        if (x != 0) __debugbreak();
+        return (int)__lzcnt(1u) + 11 + bi2_one();
+    }
+}

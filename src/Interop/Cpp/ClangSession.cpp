@@ -20,6 +20,7 @@
 #include <clang/AST/RecordLayout.h>
 #include <clang/AST/Expr.h>
 #include <clang/AST/ExprCXX.h>
+#include <clang/Basic/Builtins.h>
 #include <clang/Basic/Diagnostic.h>
 #include <clang/Basic/DiagnosticSema.h>
 #include <clang/Basic/SourceManager.h>
@@ -3446,6 +3447,21 @@ public:
                         break;
                     }
             }
+        // L-057: a builtin is imported as its wrapper, under its own name. / Un builtin se importa como su
+        //     envoltorio, con su propio nombre.
+        if (!builtinWrapped_.empty())
+        {
+            std::erase_if(result, [&](const CppFunctionDeclaration& value) {
+                return value.cMacroWrapper.empty() && builtinWrapped_.contains(value.name);
+            });
+            for (auto& value : result)
+                if (value.name.starts_with("__nsc_builtin__") && value.cMacroWrapper.empty())
+                {
+                    value.cMacroWrapper = value.name;
+                    value.name = value.name.substr(15);
+                    value.qualifiedName = value.name;
+                }
+        }
         // T19-003: a macro wrapper is imported under the macro's name. / Un envoltorio se importa con el nombre de
         //     la macro.
         for (auto& value : result)
@@ -6745,6 +6761,8 @@ public:
         macroConstantsLocked();
         // T19-039: the C operators of the `_Complex` carriers. / Los operadores C de los portadores `_Complex`.
         declareCComplexOperators();
+        // L-057: the Clang builtins the header declares without a definition. / Los builtins de Clang sin definicion.
+        declareCBuiltinWrappers();
         state_ = CppSessionState::Ready;
         return {};
     }
@@ -7371,6 +7389,74 @@ private:
         source_ = code;
         synthesizeComplexCarriers(ast_->getASTContext());
     }
+
+    // EN: L-057. A C function the header declares without a definition that Clang knows as a builtin which is not a
+    //     library function (`void __debugbreak(void);` of MSVC intrin.h, `__fastfail`, `_ReturnAddress`) has no
+    //     symbol to link: C code calling it gets the instruction Clang generates. Each one gets a C `static inline`
+    //     wrapper `__nsc_builtin__<name>` that calls it, so Clang generates that code; NativeSharp imports the wrapper
+    //     under the builtin's name and links it by its own C name, as a macro wrapper (cMacroWrapper). A variadic
+    //     builtin, or a set of wrappers that Clang rejects, keeps the session as it was.
+    // ES: L-057. Una funcion C que el encabezado declara sin definicion y que Clang conoce como builtin que no es
+    //     funcion de biblioteca no tiene simbolo que enlazar. Cada una recibe un envoltorio C `static inline`
+    //     `__nsc_builtin__<nombre>` que la llama; NativeSharp lo importa con el nombre del builtin.
+    void declareCBuiltinWrappers()
+    {
+        if (!ast_ || ast_->getASTContext().getLangOpts().CPlusPlus) return;
+        auto& context = ast_->getASTContext();
+        clang::PrintingPolicy policy(context.getLangOpts());
+        policy.SuppressTagKeyword = false;
+        std::string declaredCode, implicitCode;
+        std::set<std::string> declared, implicit;
+        // One wrapper: `static inline R __nsc_builtin__<name>(P0 __nsc_a0, ...) { return <name>(__nsc_a0, ...); }`.
+        const auto wrapper = [&](const std::string& name, const clang::FunctionProtoType& type) {
+            std::string parameters, arguments;
+            for (unsigned index = 0; index < type.getNumParams(); ++index)
+            {
+                const std::string parameter = "__nsc_a" + std::to_string(index);
+                std::string spelled;
+                llvm::raw_string_ostream stream(spelled);
+                type.getParamType(index).print(stream, policy, parameter);
+                parameters += (index ? ", " : "") + spelled;
+                arguments += (index ? ", " : "") + parameter;
+            }
+            if (parameters.empty()) parameters = "void";
+            std::string head;
+            llvm::raw_string_ostream headStream(head);
+            type.getReturnType().print(headStream, policy, "__nsc_builtin__" + name + "(" + parameters + ")");
+            return "static inline " + head + " { " + (type.getReturnType()->isVoidType() ? "" : "return ") + name +
+                "(" + arguments + "); }\n";
+        };
+        const auto plainBuiltin = [&](unsigned builtin, const std::string& name) {
+            return builtin != 0 && !context.BuiltinInfo.isLibFunction(builtin) &&
+                !context.BuiltinInfo.isPredefinedLibFunction(builtin) && !name.starts_with("__builtin");
+        };
+        for (const auto* declaration : context.getTranslationUnitDecl()->decls())
+        {
+            const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration);
+            if (!function || !function->getIdentifier()) continue;
+            const std::string name = function->getName().str();
+            const auto* type = function->getType()->getAs<clang::FunctionProtoType>();
+            if (!type || type->isVariadic() || function->isDefined() || !plainBuiltin(function->getBuiltinID(), name) ||
+                !declared.insert(name).second) continue;
+            declaredCode += wrapper(name, *type);
+        }
+        if (declaredCode.empty()) return;
+        const std::string code = source_ + "\n" + declaredCode;
+        llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(llvm::vfs::createPhysicalFileSystem().release());
+        if (filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory))) return;
+        macroWrapperDiagnostics_.clear();
+        auto unit = detail::runClangSessionAction(code, detail::buildClangInvocationArguments(options_), inputPath_,
+            utf8(options_.driverReferencePath), &macroWrapperConsumer_, std::move(filesystem), CppCancellationToken{});
+        if (!unit || !unit->hasSema() || unit->getDiagnostics().hasErrorOccurred()) return;
+        unit->getDiagnostics().setClient(&consumer_, false);
+        ast_ = std::move(unit);
+        source_ = code;
+        synthesizeComplexCarriers(ast_->getASTContext());
+        builtinWrapped_ = std::move(declared);
+    }
+
+    // L-057: the builtins that have a wrapper. / Los builtins que tienen envoltorio.
+    std::set<std::string> builtinWrapped_;
 
     // T19-003: whether a C macro has a declared value or type. / Si una macro C tiene un valor o tipo declarado.
     bool macroDeclaredValueOrType(std::string_view name) const
