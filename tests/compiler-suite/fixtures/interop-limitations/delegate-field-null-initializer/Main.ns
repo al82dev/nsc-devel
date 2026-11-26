@@ -1,0 +1,24 @@
+// Compiler-suite fixture delegate-field-null-initializer (L-067): delegate fields with a `= null` initializer, read before and after an assignment. Exit 42.
+namespace Fixture
+{
+    public delegate int ValueFn();
+
+    public class State
+    {
+        public ValueFn Quit = null;
+        public ValueFn Value = null;
+    }
+
+    public class Values
+    {
+        public static int FortyOne() { return 41; }
+    }
+
+    int Main()
+    {
+        raii State s = new State();
+        if (s.Quit != null || s.Value != null) return 1;
+        s.Value = Values.FortyOne;
+        return s.Quit == null ? s.Value() + 1 : 2;
+    }
+}

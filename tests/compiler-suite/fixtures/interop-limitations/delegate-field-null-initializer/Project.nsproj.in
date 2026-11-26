@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup><Name>InteropLimitation</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+  </ItemGroup>
+</Project>

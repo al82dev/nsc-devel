@@ -430,6 +430,11 @@ bool ProjectOopHirModel::acceptOrdinaryConstructionFieldInitializer(
     }
     const MethodExpressionTypeBinding* sourceType =
         expressionType(field.syntax->first());
+    // EN: L-067. `null` for a delegate field (`public QuitFn Quit = null;`) was validated by the semantic analysis,
+    //     but the delegate types are not part of the numeric conversion table re-read here: the literal is the
+    //     field's null value. / `null` para un campo delegado ya lo valido el analisis: el literal es el nulo del campo.
+    if (field.syntax->first()->kind() == ast::AstNodeKind::NullLiteralExpression)
+        child->typeKey = field.declaredTypeKey;
     const ProjectImplicitConversion conversion = classifyImplicit(
         child->typeKey,
         field.declaredTypeKey,
