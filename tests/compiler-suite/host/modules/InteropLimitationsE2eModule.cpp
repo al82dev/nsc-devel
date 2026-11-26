@@ -257,6 +257,8 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         });
     addCase(registry, "TF-INTEROP-443", {"interop", "c", "inline", "sessions", "l-035", "e2e"},
         [](TestContext& context) { expectExit(context, "TF-INTEROP-443", "c-function-two-references", 42); });
+    addCase(registry, "TF-INTEROP-444", {"language", "string", "comparison", "l-046", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-444", "string-ordinal-comparison", 42); });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",

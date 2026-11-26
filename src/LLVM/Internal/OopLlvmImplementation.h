@@ -2253,6 +2253,8 @@ private:
         const frontend::ProjectOopMirNode* node,
         std::string& error);
 
+    // L-046: ordinal `<`, `<=`, `>`, `>=` between strings. / Comparacion ordinal entre strings.
+    LLVMValueRef lowerStringOrdinalComparison(lexer::TokenKind operation, LLVMValueRef left, LLVMValueRef right);
     LLVMValueRef lowerStringEquals(
         const frontend::ProjectOopMirNode* node,
         std::string& error);

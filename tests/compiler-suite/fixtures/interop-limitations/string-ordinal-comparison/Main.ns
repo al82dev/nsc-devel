@@ -1,0 +1,20 @@
+// Compiler-suite fixture string-ordinal-comparison (L-046): `<`, `<=`, `>`, `>=` between strings compare their contents
+// in ordinal order (String.CompareOrdinal), not their addresses: a literal and an equal string built at run time are
+// equal, a prefix is less, and null is less than any string. Exit 42.
+namespace Fixture
+{
+    int Main()
+    {
+        string bone = "bone";
+        raii string built = bone + "";
+        raii string arm = "ar" + "m";
+        string none = null;
+        int failures = 0;
+        if (built < bone || bone < built || !(built <= bone) || !(built >= bone)) failures = failures + 1;
+        if (!(arm < bone) || bone < arm || !(bone > arm)) failures = failures + 2;
+        if (!("bon" < bone) || "bonex" < bone) failures = failures + 4;
+        if (!(none < bone) || bone < none || !(none <= none)) failures = failures + 8;
+        if (!("\x01" < "\xFF")) failures = failures + 16;
+        return 42 + failures;
+    }
+}

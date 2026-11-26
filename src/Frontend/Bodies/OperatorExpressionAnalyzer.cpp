@@ -278,7 +278,14 @@ bool ProjectMethodBodyModel::analyzeStringBinary(
             std::nullopt, std::nullopt});
         return true;
     }
-    if (operation != TokenKind::EqualEqual && operation != TokenKind::BangEqual) return false;
+    // EN: L-046. `<`, `<=`, `>`, `>=` between strings compare their contents in ordinal (byte) order, as
+    //     String.CompareOrdinal does; before they compared the addresses, so `SortedList<string, T>` (which orders
+    //     its keys with `<`) lost a key built at run time. The same core operation as `==` carries the operator.
+    // ES: L-046. `<`, `<=`, `>`, `>=` entre strings comparan su contenido en orden ordinal (bytes), como
+    //     String.CompareOrdinal; antes comparaban direcciones y `SortedList<string, T>` perdia claves.
+    const bool relational = operation == TokenKind::Less || operation == TokenKind::LessEqual ||
+        operation == TokenKind::Greater || operation == TokenKind::GreaterEqual;
+    if (operation != TokenKind::EqualEqual && operation != TokenKind::BangEqual && !relational) return false;
     result.typeKey = "builtin:bool";
     result.valid = true;
     coreBindings_.push_back(MethodCoreBinding{

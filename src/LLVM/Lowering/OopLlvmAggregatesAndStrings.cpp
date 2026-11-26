@@ -580,6 +580,9 @@ LLVMValueRef OopLlvmImplementation::lowerStringEquals(
         LLVMValueRef left = lowerExpression(node->children[0].get(), error);
         LLVMValueRef right = lowerExpression(node->children[1].get(), error);
         if (left == nullptr || right == nullptr) return nullptr;
+        if (node->operation == lexer::TokenKind::Less || node->operation == lexer::TokenKind::LessEqual ||
+            node->operation == lexer::TokenKind::Greater || node->operation == lexer::TokenKind::GreaterEqual)
+            return lowerStringOrdinalComparison(node->operation, left, right);
         LLVMValueRef samePointer = LLVMBuildICmp(builder_, LLVMIntEQ, left, right, "string.eq.sameptr");
         LLVMBasicBlockRef sameBlock = appendBlock("string.eq.same");
         LLVMBasicBlockRef distinctBlock = appendBlock("string.eq.distinct");
@@ -626,6 +629,102 @@ LLVMValueRef OopLlvmImplementation::lowerStringEquals(
             return LLVMBuildNot(builder_, result, "string.ne.result");
         return result;
     }
+
+// EN: L-046. The ordinal comparison of two strings (String.CompareOrdinal): the first differing byte, compared
+//     unsigned, decides; when one is a prefix of the other the shorter is less; null is less than any string and
+//     equal to null. The three-way result (-1, 0, 1) is then compared with 0 as `operation` says.
+//     Complexity: O(min(length)).
+// ES: L-046. La comparacion ordinal de dos strings: decide el primer byte distinto, sin signo; si uno es prefijo del
+//     otro el mas corto es menor; null es menor que todo string e igual a null.
+LLVMValueRef OopLlvmImplementation::lowerStringOrdinalComparison(
+        lexer::TokenKind operation, LLVMValueRef left, LLVMValueRef right)
+{
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
+        LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
+        LLVMValueRef minusOne = LLVMConstInt(i32, static_cast<unsigned long long>(-1), 1);
+        LLVMValueRef zero32 = LLVMConstInt(i32, 0, 0);
+        LLVMValueRef one32 = LLVMConstInt(i32, 1, 0);
+        LLVMBasicBlockRef doneBlock = appendBlock("string.cmp.done");
+        std::vector<LLVMValueRef> results;
+        std::vector<LLVMBasicBlockRef> incoming;
+
+        // Null operands. / Operandos nulos.
+        LLVMValueRef leftNull = LLVMBuildICmp(builder_, LLVMIntEQ, left, LLVMConstNull(ptr), "string.cmp.leftnull");
+        LLVMValueRef rightNull = LLVMBuildICmp(builder_, LLVMIntEQ, right, LLVMConstNull(ptr), "string.cmp.rightnull");
+        LLVMValueRef anyNull = LLVMBuildOr(builder_, leftNull, rightNull, "string.cmp.anynull");
+        LLVMBasicBlockRef nullBlock = appendBlock("string.cmp.null");
+        LLVMBasicBlockRef valuesBlock = appendBlock("string.cmp.values");
+        LLVMBuildCondBr(builder_, anyNull, nullBlock, valuesBlock);
+        enterBlock(nullBlock);
+        // both null: 0; left null: -1; right null: 1. / ambos nulos 0; izquierdo -1; derecho 1.
+        LLVMValueRef bothNull = LLVMBuildAnd(builder_, leftNull, rightNull, "string.cmp.bothnull");
+        LLVMValueRef nullResult = LLVMBuildSelect(builder_, bothNull, zero32,
+            LLVMBuildSelect(builder_, leftNull, minusOne, one32, "string.cmp.null.side"), "string.cmp.null.result");
+        LLVMBuildBr(builder_, doneBlock);
+        results.push_back(nullResult);
+        incoming.push_back(LLVMGetInsertBlock(builder_));
+
+        enterBlock(valuesBlock);
+        LLVMValueRef leftLength = LLVMBuildLoad2(builder_, i64, left, "string.cmp.left.length");
+        LLVMValueRef rightLength = LLVMBuildLoad2(builder_, i64, right, "string.cmp.right.length");
+        LLVMValueRef leftShorter = LLVMBuildICmp(builder_, LLVMIntULT, leftLength, rightLength, "string.cmp.leftshorter");
+        LLVMValueRef common = LLVMBuildSelect(builder_, leftShorter, leftLength, rightLength, "string.cmp.common");
+        LLVMValueRef leftData = byteOffset(left, 8, "string.cmp.left.data");
+        LLVMValueRef rightData = byteOffset(right, 8, "string.cmp.right.data");
+        LLVMBasicBlockRef entryBlock = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef loopBlock = appendBlock("string.cmp.loop");
+        LLVMBasicBlockRef compareBlock = appendBlock("string.cmp.compare");
+        LLVMBasicBlockRef nextBlock = appendBlock("string.cmp.next");
+        LLVMBasicBlockRef differBlock = appendBlock("string.cmp.differ");
+        LLVMBasicBlockRef prefixBlock = appendBlock("string.cmp.prefix");
+        LLVMBuildBr(builder_, loopBlock);
+
+        enterBlock(loopBlock);
+        LLVMValueRef index = LLVMBuildPhi(builder_, i64, "string.cmp.index");
+        LLVMValueRef zero64 = LLVMConstInt(i64, 0, 0);
+        LLVMAddIncoming(index, &zero64, &entryBlock, 1);
+        LLVMValueRef finished = LLVMBuildICmp(builder_, LLVMIntEQ, index, common, "string.cmp.finished");
+        LLVMBuildCondBr(builder_, finished, prefixBlock, compareBlock);
+
+        enterBlock(compareBlock);
+        LLVMValueRef leftByte = LLVMBuildLoad2(builder_, i8, dynamicByteOffset(leftData, index, "string.cmp.left.addr"),
+            "string.cmp.left.byte");
+        LLVMValueRef rightByte = LLVMBuildLoad2(builder_, i8,
+            dynamicByteOffset(rightData, index, "string.cmp.right.addr"), "string.cmp.right.byte");
+        LLVMValueRef sameByte = LLVMBuildICmp(builder_, LLVMIntEQ, leftByte, rightByte, "string.cmp.samebyte");
+        LLVMBuildCondBr(builder_, sameByte, nextBlock, differBlock);
+
+        enterBlock(nextBlock);
+        LLVMValueRef following = LLVMBuildAdd(builder_, index, LLVMConstInt(i64, 1, 0), "string.cmp.following");
+        LLVMBasicBlockRef nextIncoming = LLVMGetInsertBlock(builder_);
+        LLVMAddIncoming(index, &following, &nextIncoming, 1);
+        LLVMBuildBr(builder_, loopBlock);
+
+        enterBlock(differBlock);
+        LLVMValueRef byteLess = LLVMBuildICmp(builder_, LLVMIntULT, leftByte, rightByte, "string.cmp.byteless");
+        LLVMValueRef differResult = LLVMBuildSelect(builder_, byteLess, minusOne, one32, "string.cmp.differ.result");
+        LLVMBuildBr(builder_, doneBlock);
+        results.push_back(differResult);
+        incoming.push_back(LLVMGetInsertBlock(builder_));
+
+        enterBlock(prefixBlock);
+        LLVMValueRef sameLength = LLVMBuildICmp(builder_, LLVMIntEQ, leftLength, rightLength, "string.cmp.samelength");
+        LLVMValueRef prefixResult = LLVMBuildSelect(builder_, sameLength, zero32,
+            LLVMBuildSelect(builder_, leftShorter, minusOne, one32, "string.cmp.prefix.side"), "string.cmp.prefix.result");
+        LLVMBuildBr(builder_, doneBlock);
+        results.push_back(prefixResult);
+        incoming.push_back(LLVMGetInsertBlock(builder_));
+
+        enterBlock(doneBlock);
+        LLVMValueRef order = LLVMBuildPhi(builder_, i32, "string.cmp.order");
+        LLVMAddIncoming(order, results.data(), incoming.data(), static_cast<unsigned>(results.size()));
+        const LLVMIntPredicate predicate = operation == lexer::TokenKind::Less ? LLVMIntSLT
+            : operation == lexer::TokenKind::LessEqual ? LLVMIntSLE
+            : operation == lexer::TokenKind::Greater ? LLVMIntSGT : LLVMIntSGE;
+        return LLVMBuildICmp(builder_, predicate, order, zero32, "string.cmp.result");
+}
 
 LLVMValueRef OopLlvmImplementation::lowerStringSubstring(
         const frontend::ProjectOopMirNode* node,
