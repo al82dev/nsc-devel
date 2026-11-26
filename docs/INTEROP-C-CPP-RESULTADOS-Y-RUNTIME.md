@@ -134,3 +134,12 @@ el tutorial todavía no compila.
 - **Validación:** revisión estática del clasificador y del descenso.
   Pendientes la compilación y la comprobación funcional de esta tanda.
   El seguimiento de punteros locales todavía tiene el límite anterior.
+
+### Construcción e instalación de la tanda de enum C
+
+NSC compiló con la corrección del commit 2031f69ff y se instaló en
+C:/native-sharp/bin/nsc.exe. El ejecutable construido y el instalado tienen
+SHA-256 ed68451c480d1387ff7423035c400350bb81cb64ea6678e90888305085986a4a;
+el compilador informa build hash 6cb479b3ad7b28dd. La compilación de los
+ejemplos O3 está en curso. No se ejecutó la batería de pruebas de NSC
+ni se ha verificado funcionalmente la nueva conversión a enum C.
