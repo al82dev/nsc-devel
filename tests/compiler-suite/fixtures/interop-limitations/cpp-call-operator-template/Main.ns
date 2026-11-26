@@ -1,0 +1,16 @@
+// Compiler-suite fixture cpp-call-operator-template (L-034): `dist(engine)` calls a C++ `operator()` that is a member
+// function template taking the engine by reference (std::uniform_real_distribution<float> of <random>); Clang deduces
+// it, and the engine is passed by address, so its state advances. Exit 42.
+namespace Fixture
+{
+    int Main()
+    {
+        LimDistribution dist = new LimDistribution(1u);
+        LimEngine engine = new LimEngine();
+        uint a = dist(engine);
+        uint b = dist(engine);
+        uint c = dist(engine);
+        if (engine.state != 27u) return 1;
+        return (int)(a + b + c);
+    }
+}

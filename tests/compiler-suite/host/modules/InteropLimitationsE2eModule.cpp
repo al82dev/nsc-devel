@@ -269,6 +269,8 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         [](TestContext& context) { expectExit(context, "TF-INTEROP-448", "borrowed-repoint-from-call", 42); });
     addCase(registry, "TF-INTEROP-449", {"interop", "cpp", "function-pointer", "l-034", "l-053", "e2e"},
         [](TestContext& context) { expectExit(context, "TF-INTEROP-449", "cpp-member-function-pointer", 42); });
+    addCase(registry, "TF-INTEROP-450", {"interop", "cpp", "operator", "member-template", "l-034", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-450", "cpp-call-operator-template", 42); });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",

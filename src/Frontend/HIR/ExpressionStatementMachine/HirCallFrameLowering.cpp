@@ -682,6 +682,28 @@ bool ProjectOopHirModel::nextNamespaceCallChild(
     }
     syntax = call.node->syntax->children()[call.nextArgument];
     addressContext = false;
+    // EN: L-034. An argument the analysis bound by its address to a C++ `T&` / `const T&` parameter without a written
+    //     `ref` (`dist(engine)`, conversion `T*`) is lowered as its place, so the callee sees the caller's object.
+    // ES: L-034. Un argumento que el analisis enlazo por su direccion a un parametro C++ `T&` / `const T&` sin `ref`
+    //     escrito se baja como su lugar, asi el llamado ve el objeto de quien llama.
+    const auto& tokens = call.binding->cppMacroTokenArguments;
+    const std::size_t selectedIndex = call.nextArgument + call.argumentOffset -
+        static_cast<std::size_t>(std::count_if(tokens.begin(), tokens.end(),
+                                               [&](std::size_t token) { return token < call.nextArgument; }));
+    if (selectedIndex < call.binding->selectedArgumentParameterOrdinals.size() &&
+        selectedIndex < call.binding->selectedConversions.size() && syntax != nullptr &&
+        !syntax->auxiliaryText().starts_with("pass:"))
+    {
+        const std::size_t parameterOrdinal = call.binding->selectedArgumentParameterOrdinals[selectedIndex];
+        const auto& conversion = call.binding->selectedConversions[selectedIndex];
+        if (parameterOrdinal < call.target->parameters.size())
+        {
+            const auto& parameter = call.target->parameters[parameterOrdinal];
+            addressContext = parameter.passKind != ParameterPassKind::Value && !parameter.pointeeTypeKey.empty() &&
+                conversion.kind == ProjectConversionKind::Identity &&
+                conversion.sourceTypeKey == parameter.pointeeTypeKey + "*";
+        }
+    }
     return true;
 }
 

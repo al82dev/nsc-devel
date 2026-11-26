@@ -1754,6 +1754,18 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
             const auto& parameter = function.parameters[index + 1];
             const bool byValue = parameter.passKind == ParameterPassKind::Value;
             const bool materialized = parameter.cppConstReference && !cppRecordTypeKey(parameter.pointeeTypeKey);
+            // EN: L-034. A `T&` / `const T&` parameter binds an addressable argument of type T by its address
+            //     (`dist(engine)` of <random>: `operator()(_Engine&)`), as the receiver is bound.
+            // ES: L-034. Un parametro `T&` / `const T&` enlaza por su direccion un argumento direccionable de tipo T.
+            if ((parameter.passKind == ParameterPassKind::Ref || parameter.passKind == ParameterPassKind::In) &&
+                arguments[index].addressable && arguments[index].typeKey == parameter.pointeeTypeKey &&
+                (parameter.passKind == ParameterPassKind::In || arguments[index].assignable) &&
+                arguments[index].argumentPassKind == ParameterPassKind::Value)
+            {
+                conversions.push_back(ProjectImplicitConversion{ProjectConversionKind::Identity, 0,
+                    arguments[index].typeKey + "*", parameter.typeKey, std::nullopt});
+                continue;
+            }
             if ((!byValue && !materialized) || arguments[index].argumentPassKind != ParameterPassKind::Value)
             {
                 ok = false;
@@ -1766,7 +1778,33 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         }
         if (ok) viable.emplace_back(ordinal, std::move(conversions));
     }
-    if (!anyOperator) return std::nullopt;
+    // EN: L-034. An `operator()` that is a member function template (`template<class _Engine> result_type
+    //     operator()(_Engine&)` of std::uniform_real_distribution) exists only once Clang deduces it: when none fits,
+    //     ask Clang for the specialization with the argument types, as a compound operator does; the bodies are
+    //     analyzed again with it.
+    // ES: L-034. Un `operator()` plantilla de funcion miembro existe solo cuando Clang lo deduce: si ninguno encaja, se
+    //     pide a Clang la especializacion con los tipos de los argumentos; los cuerpos se analizan otra vez con ella.
+    bool deductionRequested = false;
+    if (viable.empty() && nameLookup_ != nullptr)
+    {
+        const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(callee.typeKey).substr(5));
+        const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+        bool typed = true;
+        for (const auto& argument : arguments) typed = typed && argument.valid && !argument.typeKey.empty();
+        if (imported != nullptr && imported->origin == CppImportedTypeOrigin::CppRecord && imported->clangUsr && typed)
+        {
+            CppTemplateDeductionRequest request;
+            request.syntax = expression;
+            request.projectOrdinal = nameLookup_->namedTypes()[*ordinal].projectOrdinal;
+            request.qualifiedNames = {"@member:" + *imported->clangUsr + "::operator()"};
+            request.range = expression->range();
+            for (const auto& argument : arguments)
+                request.argumentTypeKeys.push_back((argument.addressable ? "lvalue:" : "") + argument.typeKey);
+            namespaceFunctionModel_->recordCppTemplateDeduction(std::move(request));
+            deductionRequested = true;
+        }
+    }
+    if (!anyOperator && !deductionRequested) return std::nullopt;
     const std::string owner = callee.typeKey.substr(5);
     if (viable.size() != 1)
     {
