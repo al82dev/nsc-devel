@@ -5134,8 +5134,19 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
         frontend::ProjectNamespaceFunctionModel demands;
         demands.setCaptureCppFunctionDemands(true);
         demands.setPrecompiledSnapshots(finalSnapshots);
-        if (!demands.build(lookup, members, units, demandDiagnostics, compilation.genericModel()))
-            return CppRecordObservationFailure{"cannot observe C enum function demands"};
+        diagnostics::DiagnosticEngine functionDemandDiagnostics;
+        if (!demands.build(lookup, members, units, functionDemandDiagnostics, compilation.genericModel()))
+        {
+            std::string failure = "cannot observe C enum function demands";
+            if (!functionDemandDiagnostics.diagnostics().empty())
+            {
+                std::ostringstream rendered;
+                diagnostics::DiagnosticRenderer(compilation.sourceManager())
+                    .render(functionDemandDiagnostics.diagnostics().front(), rendered);
+                failure += ": " + rendered.str();
+            }
+            return CppRecordObservationFailure{std::move(failure)};
+        }
         if (hasCppEnums)
         {
             std::vector<frontend::NamespaceStateSymbol> enumValues;
