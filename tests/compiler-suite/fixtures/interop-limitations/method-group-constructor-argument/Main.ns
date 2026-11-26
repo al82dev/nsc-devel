@@ -1,0 +1,23 @@
+// Compiler-suite fixture method-group-constructor-argument: a static method group passed directly to a constructor's
+// delegate parameter (`new Thread(FileSystem.Worker)`) binds to that delegate, as a call argument does. Exit 42.
+namespace Fixture
+{
+    public delegate int Work();
+
+    public class Runner
+    {
+        public int result;
+        public Runner(Work work) { result = work(); }
+    }
+
+    public class Jobs
+    {
+        public static int FortyTwo() { return 42; }
+    }
+
+    int Main()
+    {
+        Runner r = new Runner(Jobs.FortyTwo);
+        return r.result;
+    }
+}

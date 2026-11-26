@@ -1309,8 +1309,8 @@ bool ProjectMethodBodyModel::analyzeMethodGroupMember(
             diagnostics::DiagnosticId::InvalidOperand,
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
-            "instance method group '" + expression->text() +
-                "' can only be used as a call target");
+            std::string(typeReceiver ? "static" : "instance") + " method group '" + expression->text() +
+                "' can only be used as a call target or converted to a delegate");
     }
     return true;
 }

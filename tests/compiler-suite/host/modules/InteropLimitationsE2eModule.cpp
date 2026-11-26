@@ -218,6 +218,8 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         [](TestContext& context) { expectExit(context, "TF-INTEROP-424", "cpp-trivial-record-temporary-argument", 42); });
     addCase(registry, "TF-INTEROP-425", {"interop", "cpp", "record", "library", "nsmeta", "e2e"},
         [](TestContext& context) { expectBuilds(context, "TF-INTEROP-425", "cpp-record-two-sessions-library"); });
+    addCase(registry, "TF-INTEROP-426", {"language", "delegate", "method-group", "constructor", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-426", "method-group-constructor-argument", 42); });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",

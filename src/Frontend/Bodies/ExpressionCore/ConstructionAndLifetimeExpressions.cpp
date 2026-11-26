@@ -345,9 +345,45 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     // argumento se rechazaba ANTES de llegar a la resolucion, y el lowering de HIR
                     // habria muerto despues en «move expression has no semantic move binding»,
                     // porque el binding se crea aqui o no se crea.
-                    const ExpressionResult argumentResult = analyzeExpression(
+                    ExpressionResult argumentResult = analyzeExpression(
                         argument, methodMemberOrdinal, scopeOrdinal, diagnostics,
-                        /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
+                        /*allowMethodGroup=*/true, /*allowEvent=*/false, /*allowMove=*/true);
+                    // EN: A method group passed to a constructor's delegate parameter (`new Thread(Worker.Run)`)
+                    //     binds to that delegate, as a call argument does: the target is the one delegate type the
+                    //     constructors with this arity take at this position.
+                    // ES: Un grupo de metodos pasado al parametro delegado de un constructor se liga a ese
+                    //     delegado, como un argumento de llamada: el destino es el unico tipo delegado que toman en
+                    //     esta posicion los constructores con esta aridad.
+                    if (argumentResult.methodGroup)
+                    {
+                        const std::size_t position = static_cast<std::size_t>(
+                            std::find(expression->children().begin(), expression->children().end(), argument) -
+                            expression->children().begin());
+                        std::vector<std::string> targets;
+                        if (objectOrdinal)
+                            for (const ClassMemberSymbol& candidate : memberModel_->members())
+                            {
+                                if (candidate.kind != ClassMemberKind::Constructor ||
+                                    candidate.declaringTypeOrdinal != *objectOrdinal ||
+                                    candidate.parameters.size() != expression->children().size()) continue;
+                                const std::string& target = candidate.parameters[position].typeKey;
+                                if (methodGroupExactlyMatchesDelegate(argumentResult, target) &&
+                                    std::ranges::find(targets, target) == targets.end())
+                                    targets.push_back(target);
+                            }
+                        if (targets.size() == 1)
+                            argumentResult = bindMethodGroupToDelegate(argument, argumentResult, targets.front(),
+                                methodMemberOrdinal, scopeOrdinal, diagnostics);
+                        else
+                            diagnostics.report(targets.empty() ? diagnostics::DiagnosticId::InvalidConversion
+                                                               : diagnostics::DiagnosticId::InvalidCall,
+                                diagnostics::DiagnosticSeverity::Error, argument->range(),
+                                targets.empty()
+                                    ? "method group does not match any delegate parameter of a constructor of '" +
+                                        objectType + "'"
+                                    : "method group argument has more than one compatible delegate target in the "
+                                      "constructors of '" + objectType + "'");
+                    }
                     if (argumentResult.readonlyBorrowedObject)
                         diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
                             diagnostics::DiagnosticSeverity::Error, argument->range(),
