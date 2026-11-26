@@ -405,10 +405,55 @@ ProjectMethodBodyModel::analyzeExpressionKindCastExpression(
     [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
-    const ExpressionResult operand = analyzeExpression(
-        expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+    // EN: L-006. `(GLADloadproc)glfwGetProcAddress`: a function group cast to a function-pointer type. A single
+    //     candidate is first bound to its own natural function type, as `var` infers it, and the explicit cast then
+    //     reinterprets that function pointer as the target type (the existing explicit reinterpretation between
+    //     function types). Before, the group was rejected as a cast operand.
+    // ES: L-006. Un grupo de funciones convertido explicitamente a un tipo puntero a funcion. Una candidata unica se
+    //     enlaza primero a su tipo de funcion natural, como lo infiere `var`, y el cast explicito reinterpreta ese
+    //     puntero como el tipo destino. Antes, el grupo se rechazaba como operando de un cast.
+    const std::string castTarget = memberModel_ != nullptr && nameLookup_ != nullptr
+        ? memberModel_->canonicalTypeKey(expression->typeSyntax(), *nameLookup_) : std::string{};
+    const bool functionCast = isDelegateTypeKey(castTarget);
+    ExpressionResult operand = analyzeExpression(
+        expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics, functionCast);
+    if (functionCast && operand.methodGroup)
+    {
+        const ClassMemberSymbol* candidate = operand.methodCandidates.size() == 1U
+            ? methodSymbol(operand.methodCandidates[0]) : nullptr;
+        if (candidate == nullptr || candidate->kind != ClassMemberKind::Method)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidType, diagnostics::DiagnosticSeverity::Error,
+                expression->range(), "a function group cast to a function-pointer type needs exactly one overload");
+            return result;
+        }
+        language::FunctionType signature;
+        if (candidate->hasImplicitThis) signature.parameters.emplace_back("abi:this");
+        for (const MethodParameterSymbol& parameter : candidate->parameters)
+            signature.parameters.push_back(parameter.typeKey);
+        signature.result = candidate->declaredTypeKey;
+        // The pointee qualifiers of the natural `fn*`, as T08-002 copies them for `var`. / Los calificadores.
+        if (candidate->hasImplicitThis) signature.parameterPointeeVolatile.push_back(false);
+        for (const MethodParameterSymbol& parameter : candidate->parameters)
+            signature.parameterPointeeVolatile.push_back(parameter.pointerPointeeVolatile);
+        signature.resultPointeeVolatile = candidate->declaredPointerPointeeVolatile;
+        if (candidate->hasImplicitThis) signature.parameterPointeeReadonly.push_back(false);
+        for (const MethodParameterSymbol& parameter : candidate->parameters)
+            signature.parameterPointeeReadonly.push_back(parameter.pointerPointeeReadonly);
+        signature.resultPointeeReadonly = candidate->declaredPointerPointeeReadonly;
+        signature.carrier = language::FunctionCarrier::Pointer;
+        signature.callingConvention = candidate->isExternC
+            ? language::CallingConvention::C : language::CallingConvention::NativeSharp;
+        signature.errorType = candidate->declaredErrorTypeKey;
+        signature.lifetime = candidate->returnLifetimeName;
+        signature.variadic = candidate->isVariadic;
+        signature.isUnsafe = candidate->isUnsafe;
+        signature.isNoHeap = candidate->isNoHeap;
+        operand = bindMethodGroupToDelegate(expression->first(), operand, language::functionTypeIdentity(signature),
+            methodMemberOrdinal, scopeOrdinal, diagnostics);
+    }
     if (memberModel_ == nullptr || nameLookup_ == nullptr) return result;
-    result.typeKey = memberModel_->canonicalTypeKey(expression->typeSyntax(), *nameLookup_);
+    result.typeKey = castTarget;
     result.valid = operand.valid && !isErrorType(result.typeKey);
     // EN: C2-06. A `void` expression has no value to convert (a C function or macro that returns nothing); before,
     //     the cast reached the backend and failed there.
