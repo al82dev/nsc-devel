@@ -2021,8 +2021,52 @@ ast::AstNode* Parser::makeTokenPrimaryExpression(
     return node;
 }
 
+// EN: L-032. The C and C++ floating forms that the lexer keeps as separate tokens (CL-LEX-007: a fraction needs a
+//     following digit): `.5f` (Dot, `5f`), `0.f` (`0`, Dot, `f`) and `2.` followed by no member name. In an
+//     expression's primary position a Dot cannot start anything else, and an integer literal has no member `f`, so
+//     the adjacent tokens are one literal. `1.ToString()` and `1..5` keep their meaning.
+// ES: L-032. Las formas flotantes de C y C++ que el lexer deja como tokens separados: `.5f`, `0.f` y `2.` sin nombre
+//     de miembro despues. En posicion primaria un Dot no puede empezar otra cosa y un literal entero no tiene miembro
+//     `f`, asi que los tokens contiguos son un literal.
+ast::AstNode* Parser::tryParseCStyleFloatingLiteral()
+{
+    const auto adjacent = [](const lexer::Token& left, const lexer::Token& right) {
+        return left.range().end().offset() == right.range().begin().offset();
+    };
+    const auto make = [&](std::size_t count, std::string spelling) -> ast::AstNode* {
+        const SourceRange range(current().range().begin(), peek(static_cast<std::size_t>(count - 1)).range().end());
+        for (std::size_t index = 0; index < count; ++index) consume();
+        std::string number = spelling;
+        if (!number.empty() && (number.back() == 'f' || number.back() == 'F')) number.pop_back();
+        ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::FloatingLiteralExpression, range);
+        node->setTokenKind(TokenKind::FloatingLiteral);
+        node->setFloatingValue(std::strtod(number.c_str(), nullptr));
+        node->setText(std::move(spelling));
+        return node;
+    };
+    if (at(TokenKind::Dot) && (peek().kind() == TokenKind::IntegerLiteral ||
+                               peek().kind() == TokenKind::FloatingLiteral) &&
+        adjacent(current(), peek()) && peek().lexeme().find('.') == std::string_view::npos &&
+        !peek().lexeme().starts_with("0x") && !peek().lexeme().starts_with("0b"))
+        return make(2, "." + std::string(peek().lexeme()));
+    if (at(TokenKind::IntegerLiteral) && peek().kind() == TokenKind::Dot && adjacent(current(), peek()) &&
+        !current().lexeme().starts_with("0x") && !current().lexeme().starts_with("0b"))
+    {
+        const lexer::Token& after = peek(2);
+        if (after.kind() == TokenKind::Identifier && (after.lexeme() == "f" || after.lexeme() == "F") &&
+            adjacent(peek(), after) && peek(3).kind() != TokenKind::LeftParen)
+            return make(3, std::string(current().lexeme()) + "." + std::string(after.lexeme()));
+        if (after.kind() != TokenKind::Identifier && after.kind() != TokenKind::IntegerLiteral &&
+            after.kind() != TokenKind::FloatingLiteral && after.kind() != TokenKind::Dot &&
+            after.kind() != TokenKind::EndOfFile)
+            return make(2, std::string(current().lexeme()) + ".");
+    }
+    return nullptr;
+}
+
 ast::AstNode* Parser::parsePrimaryExpression()
 {
+    if (ast::AstNode* literal = tryParseCStyleFloatingLiteral()) return literal;
     if (startsParenthesizedBlock("match")) return parseMatchExpression();
     if (atContextualKeyword("loop") &&
         (peek().kind() == TokenKind::LeftBrace ||

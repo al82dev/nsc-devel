@@ -1117,6 +1117,8 @@ void Parser::PostfixIterationMachine::startPrimary(Work work)
 {
     if (startReservedPrimary(work) || startKeywordPrimary(work) || startAggregatePrimary(work))
         return;
+    if (ast::AstNode* literal = parser_.tryParseCStyleFloatingLiteral())
+        { complete(work.resultSlot, literal); return; }
     const lexer::Token& token = parser_.current();
     const auto kind = parser_.classifyPrimaryToken(token.kind());
     if (kind == ast::AstNodeKind::InterpolatedStringExpression)

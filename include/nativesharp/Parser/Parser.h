@@ -1696,6 +1696,8 @@ private:
         const lexer::Token& token,
         ast::AstNodeKind kind);
     ast::AstNode* parsePrimaryExpression();
+    // L-032: `.5f`, `0.f`, `2.` (C floating forms, written without whitespace). / Formas flotantes de C.
+    ast::AstNode* tryParseCStyleFloatingLiteral();
     ast::AstNode* parseDeconstructionPattern();
     ast::AstNode* parseWithExpression(ast::AstNode* source);
     ast::AstNode* makeErrorExpression();

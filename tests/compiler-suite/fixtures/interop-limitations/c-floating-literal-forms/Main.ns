@@ -1,0 +1,21 @@
+// Compiler-suite fixture c-floating-literal-forms (L-032): C-style floating literals `.5f`, `-.8f`, `0.f`, `2.` next to forms that must keep their meaning
+// (member access after a parenthesized literal). Exit 42.
+namespace Fixture
+{
+    int Main()
+    {
+        float a = .5f;
+        float b = -.8f;
+        float c = 0.f;
+        double d = 2.;
+        float e = 1.f + .25f;
+        if (a != 0.5f || b != -0.8f || c != 0.0f || d != 2.0 || e != 1.25f) return 1;
+        int[] values = new int[4];
+        values[0] = 10; values[1] = 20; values[2] = 30; values[3] = 40;
+        int sum = 0;
+        for (int i = 1; i < 3; i = i + 1) { sum = sum + values[i]; }
+        delete[] values;
+        // 20 + 30 = 50; 50 - 8 = 42
+        return sum - (int)(10.0f * -b);
+    }
+}
