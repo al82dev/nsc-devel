@@ -6552,6 +6552,8 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
             cParameter.pointerPointeeReadonly = ProjectTypeConversion::isPointer(parameterTypes[index]) &&
                 language::functionParameterPointeeReadonly(*structuralFunction, index);
             conversion = classifyCFrontierConversion(arguments[index], cParameter, parameterTypes[index], true);
+            // L-003: the stack copy of a runtime string is made by a direct call only. / Solo una llamada directa.
+            if (conversion.exists() && conversion.kind == ProjectConversionKind::StringToCharPointer) conversion = {};
         }
         if (!conversion.exists())
         {

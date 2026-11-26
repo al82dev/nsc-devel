@@ -1157,6 +1157,9 @@ bool OopLlvmImplementation::lowerExpressionFrame018DirectInstanceCall(
     }
     if (frame.phase == 0)
     {
+        for (std::size_t child = 1; child < current->children.size(); ++child)
+            if (isCStringArgument(current->children[child].get()))
+                claimedCStringArguments_.push_back(current->children[child].get());
         frames.push_back({current, 1, nullptr, 0});
         frames.push_back({current->children.front().get(), 0, nullptr});
         return true;
@@ -1196,12 +1199,14 @@ bool OopLlvmImplementation::lowerExpressionFrame018DirectInstanceCall(
         argumentOverrides[i - 1] = values.back();
         values.pop_back();
     }
+    LLVMValueRef cStringSave = materializeCStringArguments(current, 1, argumentOverrides);
     if (current->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall)
         values.push_back(completeDelegatedConstructorCall(current, lowerCall(current, error, frame.lhs, &argumentOverrides), error));
     else if (current->kind == frontend::ProjectOopMirNodeKind::VirtualInstanceCall)
         values.push_back(lowerVirtualCall(current, error, frame.lhs, &argumentOverrides));
     else
         values.push_back(lowerInterfaceCall(current, error, frame.lhs, &argumentOverrides));
+    releaseCStringArguments(cStringSave);
     return true;
 }
 
@@ -1294,6 +1299,9 @@ bool OopLlvmImplementation::lowerExpressionFrame020DirectStaticCall(
         values.push_back(lowerDirectClosureCall(current, error));
         return true;
     }
+    if (frame.phase == 0)
+        for (const auto& child : current->children)
+            if (isCStringArgument(child.get())) claimedCStringArguments_.push_back(child.get());
     if (frame.phase < current->children.size())
     {
         const std::size_t index = frame.phase;
@@ -1312,7 +1320,9 @@ bool OopLlvmImplementation::lowerExpressionFrame020DirectStaticCall(
         values.push_back(nullptr);
         return true;
     }
+    LLVMValueRef cStringSave = materializeCStringArguments(current, 0, argumentOverrides);
     values.push_back(lowerStaticCall(current, error, &argumentOverrides));
+    releaseCStringArguments(cStringSave);
     return true;
 }
 
@@ -2297,6 +2307,21 @@ bool OopLlvmImplementation::lowerExpressionFrame041Convert(
     values.pop_back();
     if (value == nullptr) { values.push_back(nullptr); return true; }
     if (terminated()) { values.push_back(value); return true; }
+    // EN: L-003. The string itself passes through; the enclosing direct call makes its NUL-terminated copy
+    //     (materializeCStringArguments). Anywhere else the conversion has no storage to live in.
+    // ES: L-003. La cadena pasa tal cual; la llamada directa que la contiene hace su copia con NUL.
+    if (isCStringArgument(current))
+    {
+        if (std::find(claimedCStringArguments_.begin(), claimedCStringArguments_.end(), current) ==
+            claimedCStringArguments_.end())
+        {
+            values.push_back(failValue(error,
+                "L-003 a string converts to a C 'const char*' only as an argument of a direct call"));
+            return true;
+        }
+        values.push_back(value);
+        return true;
+    }
     // EN: X3-04. A class converted to the abstract C++ interface it implements binds the C++ adapter object in its
     //     hidden fields (vtable pointer, NativeSharp object) and yields its address.
     // ES: X3-04. Una clase convertida a la interfaz C++ que implementa enlaza el objeto adaptador C++ en sus campos
@@ -5370,4 +5395,85 @@ void OopLlvmImplementation::finishFixedArraySpanFrame(
 }
 
 
+}
+
+namespace nativesharp::llvm_backend
+{
+// EN: L-003. True for the conversion of a runtime string to a C `const char*` argument.
+// ES: L-003. Verdadero para la conversion de una cadena en tiempo de ejecucion a un argumento `const char*` C.
+bool OopLlvmImplementation::isCStringArgument(const frontend::ProjectOopMirNode* node) const noexcept
+{
+    return node != nullptr && node->kind == frontend::ProjectOopMirNodeKind::Convert && node->conversionKind &&
+        *node->conversionKind == frontend::ProjectConversionKind::StringToCharPointer;
+}
+
+// EN: L-003. Replaces every runtime-string argument of `call` by a NUL-terminated copy of its bytes in a dynamic
+//     stack allocation, after saving the stack pointer; a null string passes null. Returns the saved stack pointer
+//     (nullptr when the call has no such argument). releaseCStringArguments restores it right after the call, so a
+//     call inside a loop does not grow the stack. Complexity: O(length) per argument.
+// ES: L-003. Reemplaza cada argumento cadena de `call` por una copia con NUL de sus bytes en una reserva dinamica de
+//     la pila, tras guardar el puntero de pila; una cadena nula pasa nulo. Devuelve el puntero guardado.
+LLVMValueRef OopLlvmImplementation::materializeCStringArguments(const frontend::ProjectOopMirNode* call,
+    std::size_t firstArgumentChild, std::vector<LLVMValueRef>& arguments)
+{
+    LLVMValueRef save = nullptr;
+    if (terminated()) return nullptr;
+    LLVMTypeRef pointer = LLVMPointerTypeInContext(context_, 0);
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+    LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
+    for (std::size_t child = firstArgumentChild; child < call->children.size(); ++child)
+    {
+        const frontend::ProjectOopMirNode* argument = call->children[child].get();
+        if (!isCStringArgument(argument)) continue;
+        std::erase(claimedCStringArguments_, argument);
+        const std::size_t index = child - firstArgumentChild;
+        if (index >= arguments.size() || arguments[index] == nullptr) continue;
+        if (save == nullptr)
+        {
+            const unsigned id = LLVMLookupIntrinsicID("llvm.stacksave", 14);
+            LLVMValueRef intrinsic = LLVMGetIntrinsicDeclaration(module_, id, &pointer, 1);
+            save = LLVMBuildCall2(builder_, LLVMGlobalGetValueType(intrinsic), intrinsic, nullptr, 0, "cstr.save");
+        }
+        LLVMValueRef string = arguments[index];
+        LLVMValueRef function = LLVMGetBasicBlockParent(LLVMGetInsertBlock(builder_));
+        LLVMBasicBlockRef copyBlock = LLVMAppendBasicBlockInContext(context_, function, "cstr.copy");
+        LLVMBasicBlockRef doneBlock = LLVMAppendBasicBlockInContext(context_, function, "cstr.done");
+        LLVMBasicBlockRef entryBlock = LLVMGetInsertBlock(builder_);
+        LLVMValueRef isNull = LLVMBuildICmp(builder_, LLVMIntEQ, string, LLVMConstNull(pointer), "cstr.null");
+        LLVMBuildCondBr(builder_, isNull, doneBlock, copyBlock);
+        LLVMPositionBuilderAtEnd(builder_, copyBlock);
+        LLVMValueRef length = LLVMBuildLoad2(builder_, i64, string, "cstr.length");
+        LLVMValueRef dataOffset = LLVMConstInt(i64, 8, 0);
+        LLVMValueRef data = LLVMBuildGEP2(builder_, i8, string, &dataOffset, 1, "cstr.data");
+        LLVMValueRef size = LLVMBuildAdd(builder_, length, LLVMConstInt(i64, 1, 0), "cstr.size");
+        LLVMValueRef buffer = LLVMBuildArrayAlloca(builder_, i8, size, "cstr.buffer");
+        LLVMTypeRef memcpyTypes[] = {pointer, pointer, i64};
+        LLVMValueRef memcpyIntrinsic = LLVMGetIntrinsicDeclaration(
+            module_, LLVMLookupIntrinsicID("llvm.memcpy", 11), memcpyTypes, 3);
+        LLVMValueRef memcpyArguments[] = {buffer, data, length, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+        LLVMBuildCall2(builder_, LLVMGlobalGetValueType(memcpyIntrinsic), memcpyIntrinsic, memcpyArguments, 4, "");
+        LLVMValueRef terminator = LLVMBuildGEP2(builder_, i8, buffer, &length, 1, "cstr.end");
+        LLVMBuildStore(builder_, LLVMConstInt(i8, 0, 0), terminator);
+        LLVMBasicBlockRef copyEnd = LLVMGetInsertBlock(builder_);
+        LLVMBuildBr(builder_, doneBlock);
+        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        LLVMValueRef result = LLVMBuildPhi(builder_, pointer, "cstr");
+        LLVMValueRef incoming[] = {LLVMConstNull(pointer), buffer};
+        LLVMBasicBlockRef blocks[] = {entryBlock, copyEnd};
+        LLVMAddIncoming(result, incoming, blocks, 2);
+        arguments[index] = result;
+    }
+    return save;
+}
+
+// EN: L-003. Restores the stack pointer saved before the copies, so they live exactly for the call.
+// ES: L-003. Restaura el puntero de pila guardado antes de las copias; viven exactamente durante la llamada.
+void OopLlvmImplementation::releaseCStringArguments(LLVMValueRef stackSave)
+{
+    if (stackSave == nullptr || terminated()) return;
+    LLVMTypeRef pointer = LLVMPointerTypeInContext(context_, 0);
+    const unsigned id = LLVMLookupIntrinsicID("llvm.stackrestore", 17);
+    LLVMValueRef intrinsic = LLVMGetIntrinsicDeclaration(module_, id, &pointer, 1);
+    LLVMBuildCall2(builder_, LLVMGlobalGetValueType(intrinsic), intrinsic, &stackSave, 1, "");
+}
 }

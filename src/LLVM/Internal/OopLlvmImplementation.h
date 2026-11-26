@@ -1673,6 +1673,12 @@ private:
     bool lowerExpressionFrame040NullConditionalArrayStore(
         const LlvmExpressionFrame& frame, std::vector<LlvmExpressionFrame>& frames,
         std::vector<LLVMValueRef>& values, std::string& error);
+    // L-003: NUL-terminated stack copies of runtime strings passed to a C `const char*`. / Copias con NUL.
+    bool isCStringArgument(const frontend::ProjectOopMirNode* node) const noexcept;
+    LLVMValueRef materializeCStringArguments(const frontend::ProjectOopMirNode* call, std::size_t firstArgumentChild,
+        std::vector<LLVMValueRef>& arguments);
+    void releaseCStringArguments(LLVMValueRef stackSave);
+    std::vector<const frontend::ProjectOopMirNode*> claimedCStringArguments_;
     bool lowerExpressionFrame041Convert(
         const LlvmExpressionFrame& frame, std::vector<LlvmExpressionFrame>& frames,
         std::vector<LLVMValueRef>& values, std::string& error);

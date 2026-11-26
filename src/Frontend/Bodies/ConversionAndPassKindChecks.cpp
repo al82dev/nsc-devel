@@ -81,6 +81,15 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyCFrontierConversion(
         (target == "builtin:sbyte*" || target == "builtin:byte*" || target == "builtin:char*") &&
         parameter.passKind == ParameterPassKind::Value && parameter.pointerPointeeReadonly)
         return {ProjectConversionKind::StringLiteralToCharPointer, 4, source.typeKey, target, std::nullopt};
+    // EN: L-003. A runtime `string` reaches a C `const char*` the same way, through a NUL-terminated copy that the
+    //     call lowering makes on the stack and releases after the call (a NativeSharp string has no terminator). The
+    //     pointer is valid for the call only, as `c_str()` of a temporary in C++.
+    // ES: L-003. Un `string` en tiempo de ejecucion llega igual a un `const char*` C, mediante una copia con NUL que
+    //     el lowering de la llamada hace en la pila y libera despues de la llamada. El puntero vale solo durante ella.
+    if (source.typeKey == "builtin:string" &&
+        (target == "builtin:sbyte*" || target == "builtin:byte*" || target == "builtin:char*") &&
+        parameter.passKind == ParameterPassKind::Value && parameter.pointerPointeeReadonly)
+        return {ProjectConversionKind::StringToCharPointer, 4, source.typeKey, target, std::nullopt};
     // EN: Item 3.3 (D3). Between integer and floating types C converts implicitly to the parameter type
     //     (`double` to `float`, `int` to `unsigned int`); only at this boundary, never between NativeSharp values.
     //     `bool` and `char` keep NativeSharp's rules: a C `_Bool` takes any nonzero value as true only through an

@@ -816,6 +816,7 @@ const char* projectConversionKindName(ProjectConversionKind kind) noexcept
         case ProjectConversionKind::CComplexValue: return "c-complex-value";
         case ProjectConversionKind::CFlexibleArrayToPointer: return "c-flexible-array-to-pointer";
         case ProjectConversionKind::StringLiteralToCharPointer: return "string-literal-to-char-pointer";
+        case ProjectConversionKind::StringToCharPointer: return "string-to-char-pointer";
         case ProjectConversionKind::StringLiteralToNativeString: return "string-literal-to-native-string";
         case ProjectConversionKind::View: return "view";
         case ProjectConversionKind::UserDefinedImplicit: return "user-defined-implicit";

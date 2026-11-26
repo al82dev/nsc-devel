@@ -26,6 +26,9 @@ enum class ProjectConversionKind
     ReferenceInterface,
     PointerToVoid,
     StringLiteralToCharPointer,
+    // L-003: a runtime `string` passed to a C `const char*` parameter of a direct call: a NUL-terminated copy on
+    // the stack that lives for the call. / Un `string` en tiempo de ejecucion pasado a un `const char*` C.
+    StringToCharPointer,
     StringLiteralToNativeString,
     // NS304-T11-F01: a mutable view (Span<T>) becomes an immutable view (ReadOnlySpan<T>). Identity
     // element, one-way (immutable never gains mutability). Structural (pointer const + length).
