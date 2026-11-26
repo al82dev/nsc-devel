@@ -2409,6 +2409,8 @@ bool ProjectCompilation::compileProjectOopHir(
                         if (parameter.passKind != ParameterPassKind::Value) return false;
                         std::string_view type = parameter.typeKey;
                         if (type.ends_with('*') || type.starts_with("builtin:")) return type != "builtin:void";
+                        // L-034, L-053: a C function pointer is a scalar. / Un puntero a funcion C es un escalar.
+                        if (type.starts_with("fn:ptr:")) return true;
                         const auto ordinal = type.starts_with("type:")
                             ? nameLookup_->typeOrdinalForIdentity(type.substr(5)) : std::nullopt;
                         const auto* value = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;

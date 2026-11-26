@@ -267,6 +267,8 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         [](TestContext& context) { expectDiagnostic(context, "TF-INTEROP-447", "borrowed-return-freezes-owner", "Main.ns:22:9: error: cannot call a method of owner 'owner' while a borrowed result of one of its calls is alive; end that borrow first (a block)"); });
     addCase(registry, "TF-INTEROP-448", {"language", "borrow", "reassignment", "l-038", "e2e"},
         [](TestContext& context) { expectExit(context, "TF-INTEROP-448", "borrowed-repoint-from-call", 42); });
+    addCase(registry, "TF-INTEROP-449", {"interop", "cpp", "function-pointer", "l-034", "l-053", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-449", "cpp-member-function-pointer", 42); });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",

@@ -1,0 +1,21 @@
+// Compiler-suite fixture cpp-member-function-pointer (L-034, L-053): a C++ constructor and instance method take C
+// function pointers (ImDrawList::AddCallback, std::ios_base::register_callback), so the header imports and a
+// NativeSharp function is passed to them. Exit 42.
+namespace Fixture
+{
+    int Seed(int value)
+    {
+        return value * 2;
+    }
+
+    int Twice(LimList const* list, int value)
+    {
+        return value * 2 + list->base;
+    }
+
+    int Main()
+    {
+        LimList list = new LimList(Seed);
+        return list.Apply(Twice, 1);
+    }
+}

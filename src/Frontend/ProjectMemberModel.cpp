@@ -60,6 +60,10 @@ bool experimentalCppCallableType(std::string_view key, bool allowVoid, bool allo
     while (key.ends_with('*')) { key.remove_suffix(1); ++depth; }
     if (depth > 64) return false;
     if ((depth != 0 || allowValueType) && key.starts_with("type:") && key.size() > 5) return true;
+    // EN: L-034, L-053. A C function pointer (`ImDrawCallback`, `void (*)(event, ios_base&, int)`) is a scalar, as for
+    //     a C function parameter.
+    // ES: L-034, L-053. Un puntero a funcion C es un escalar, como para un parametro de funcion C.
+    if (key.starts_with("fn:ptr:") && key.size() > 7) return true;
     constexpr std::string_view types[] = {"builtin:bool", "builtin:sbyte", "builtin:byte", "builtin:short",
         "builtin:ushort", "builtin:int", "builtin:uint", "builtin:long", "builtin:ulong",
         "builtin:float", "builtin:double"};
