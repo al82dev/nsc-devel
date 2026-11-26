@@ -1065,7 +1065,8 @@ void ProjectMemberModel::initializeMethodParameter(
     parameter.fileId = part.fileId;
     parameter.range = parameterNode->range();
     parameter.syntax = parameterNode;
-    parameter.defaultValueSyntax = parameterNode->first();
+    // L-021: a named constant default is its literal. / Un predeterminado con nombre es su literal.
+    parameter.defaultValueSyntax = resolveNamedDefaultValue(parameterNode->first());
     parameter.isParameterPack = parameterNode->auxiliaryText().starts_with("params");
 }
 

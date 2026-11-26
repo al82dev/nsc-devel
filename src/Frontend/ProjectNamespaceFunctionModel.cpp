@@ -750,7 +750,8 @@ MethodParameterSymbol ProjectNamespaceFunctionModel::initializeNamespaceFunction
     parameter.fileId = declaration.fileId;
     parameter.range = parameterNode.range();
     parameter.syntax = &parameterNode;
-    parameter.defaultValueSyntax = parameterNode.first();
+    // L-021: a named constant default is its literal. / Un predeterminado con nombre es su literal.
+    parameter.defaultValueSyntax = ProjectMemberModel::resolveNamedDefaultValue(parameterNode.first());
     parameter.isParameterPack = parameterNode.auxiliaryText() == "params";
     if (parameter.passKind != ParameterPassKind::Value)
     {

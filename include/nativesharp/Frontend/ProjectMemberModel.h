@@ -178,6 +178,11 @@ public:
     // ProjectObjectLayoutModel delegates to this so there is exactly one definition of "what
     // counts as a constant array count" in the compiler.
     static std::optional<std::uint64_t> evaluateConstantArrayCount(const ast::AstNode* expression) noexcept;
+    // L-027: the named integer constants (namespace and class `const`) an array count may use; build() installs
+    //     them before computing type keys. / Las constantes enteras con nombre que puede usar un tamano de arreglo.
+    static void installConstantArrayCountNames(const ProjectNameLookup& nameLookup);
+    // L-021: a default argument naming a constant with a literal initializer resolves to that literal.
+    static const ast::AstNode* resolveNamedDefaultValue(const ast::AstNode* syntax);
 
     // C2.1: the element type key of a fixed-array key ("builtin:float[4]" -> "builtin:float"),
     // and its count. Both return nullopt for anything that is not a fixed array -- a dynamic

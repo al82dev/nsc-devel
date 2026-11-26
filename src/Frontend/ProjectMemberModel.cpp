@@ -429,6 +429,8 @@ bool ProjectMemberModel::build(
     }
 
     initializeBuildState(nameLookup, genericModel);
+    // L-027: named constants for array counts. / Constantes con nombre para tamanos de arreglo.
+    installConstantArrayCountNames(nameLookup);
 
     collectDeclaredTypeMembers(nameLookup, diagnostics);
     collectExternalTraitImplMembers(nameLookup, diagnostics);

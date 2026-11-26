@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectMemberModel.h"
+#include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "../Internal/EnumInitializerResolver.h"
 #include "../Internal/AnonymousMemberPromotionVisitState.h"
 #include "../Internal/EnumValue.h"
@@ -24,6 +25,9 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
+#include <atomic>
+#include <map>
+#include <set>
 #include <cctype>
 #include <deque>
 #include <filesystem>
@@ -484,10 +488,176 @@ std::string ProjectMemberModel::canonicalGenericArgumentKey(
 // compiler has ONE definition of what counts as a constant array count -- the canonical type key
 // and the object layout must agree about it, or a field's key and its size would describe
 // different arrays.
+namespace
+{
+// EN: L-027. The named integer constants an array count may use (`int[MAX_BONE_INFLUENCE]`,
+//     `int[Defines.MAX_BONE_INFLUENCE]`), already evaluated to their values so no syntax pointer outlives its
+//     compilation. Installed by ProjectMemberModel::build; a name declared with different values in several places
+//     stays unresolved unqualified (`ambiguous`).
+// ES: L-027. Las constantes enteras con nombre que puede usar el tamano de un arreglo, ya evaluadas a sus valores
+//     para que ningun puntero de sintaxis sobreviva a su compilacion. Las instala ProjectMemberModel::build; un
+//     nombre declarado con valores distintos en varios lugares queda sin resolver sin calificar (`ambiguous`).
+struct ArrayCountNames
+{
+    std::map<std::string, std::uint64_t, std::less<>> simple;
+    std::set<std::string, std::less<>> ambiguous;
+    std::map<std::string, std::uint64_t, std::less<>> qualified;
+    // L-021: the literal initializer of each named constant, for default arguments (`float yaw = YAW`); valid
+    //     while the compilation that installed it owns the syntax. / El inicializador literal de cada constante.
+    std::map<std::string, const ast::AstNode*, std::less<>> literalSimple;
+    std::set<std::string, std::less<>> literalAmbiguous;
+    std::map<std::string, const ast::AstNode*, std::less<>> literalQualified;
+};
+
+bool literalDefaultSyntax(const ast::AstNode* node)
+{
+    if (node == nullptr) return false;
+    const auto kind = node->kind();
+    if (kind == ast::AstNodeKind::IntegerLiteralExpression || kind == ast::AstNodeKind::FloatingLiteralExpression ||
+        kind == ast::AstNodeKind::CharacterLiteralExpression || kind == ast::AstNodeKind::StringLiteralExpression ||
+        kind == ast::AstNodeKind::BooleanLiteralExpression || kind == ast::AstNodeKind::NullLiteralExpression)
+        return true;
+    return kind == ast::AstNodeKind::UnaryExpression &&
+        (node->tokenKind() == lexer::TokenKind::Plus || node->tokenKind() == lexer::TokenKind::Minus) &&
+        node->first() != nullptr &&
+        (node->first()->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
+         node->first()->kind() == ast::AstNodeKind::FloatingLiteralExpression);
+}
+
+std::atomic<const ArrayCountNames*> installedArrayCountNames{nullptr};
+
+std::string arrayCountQualifier(const ast::AstNode* expression)
+{
+    if (expression == nullptr) return {};
+    if (expression->kind() == ast::AstNodeKind::IdentifierExpression) return expression->text();
+    if (expression->kind() != ast::AstNodeKind::MemberExpression) return {};
+    const std::string left = arrayCountQualifier(expression->first());
+    return left.empty() ? std::string{} : left + "." + expression->text();
+}
+
+std::optional<std::uint64_t> namedArrayCount(const ast::AstNode* expression)
+{
+    const ArrayCountNames* names = installedArrayCountNames.load(std::memory_order_acquire);
+    if (names == nullptr) return std::nullopt;
+    if (expression->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        if (names->ambiguous.contains(expression->text())) return std::nullopt;
+        const auto found = names->simple.find(expression->text());
+        return found == names->simple.end() ? std::nullopt : std::optional<std::uint64_t>(found->second);
+    }
+    const std::string qualified = arrayCountQualifier(expression);
+    if (qualified.empty()) return std::nullopt;
+    const auto found = names->qualified.find(qualified);
+    return found == names->qualified.end() ? std::nullopt : std::optional<std::uint64_t>(found->second);
+}
+}
+
+void ProjectMemberModel::installConstantArrayCountNames(const ProjectNameLookup& nameLookup)
+{
+    struct Entry
+    {
+        std::vector<std::string> keys;
+        std::string simpleName;
+        const ast::AstNode* initializer = nullptr;
+        std::optional<std::uint64_t> value;
+    };
+    std::vector<Entry> entries;
+    for (const auto& state : nameLookup.namespaceStates())
+    {
+        if (!state.isConst || state.syntax == nullptr || state.syntax->first() == nullptr) continue;
+        Entry entry;
+        entry.simpleName = state.name;
+        entry.initializer = state.syntax->first();
+        if (!state.namespaceName.empty())
+        {
+            entry.keys.push_back(state.namespaceName + "." + state.name);
+            const auto dot = state.namespaceName.rfind('.');
+            if (dot != std::string::npos) entry.keys.push_back(state.namespaceName.substr(dot + 1) + "." + state.name);
+        }
+        entries.push_back(std::move(entry));
+    }
+    for (const auto& type : nameLookup.namedTypes())
+    {
+        if (type.syntax == nullptr) continue;
+        for (const ast::AstNode* member : type.syntax->children())
+        {
+            if (member == nullptr || member->kind() != ast::AstNodeKind::FieldDeclaration ||
+                !member->hasModifier(lexer::TokenKind::KwConst) || member->first() == nullptr) continue;
+            Entry entry;
+            entry.simpleName = member->text();
+            entry.initializer = member->first();
+            entry.keys.push_back(type.identity.name() + "." + member->text());
+            entry.keys.push_back(type.identity.fullyQualifiedName() + "." + member->text());
+            entries.push_back(std::move(entry));
+        }
+    }
+    // A constant may use another (`const int B = A + 1;`): evaluate in passes until nothing new resolves.
+    // Una constante puede usar otra: se evalua por pasadas hasta que nada nuevo se resuelve.
+    auto* names = new ArrayCountNames();
+    for (bool progress = true; progress;)
+    {
+        progress = false;
+        installedArrayCountNames.store(names, std::memory_order_release);
+        auto* next = new ArrayCountNames();
+        for (auto& entry : entries)
+        {
+            if (!entry.value) entry.value = evaluateConstantArrayCount(entry.initializer);
+            if (!entry.value) continue;
+            for (const auto& key : entry.keys) next->qualified.emplace(key, *entry.value);
+            if (next->ambiguous.contains(entry.simpleName)) continue;
+            const auto [where, inserted] = next->simple.emplace(entry.simpleName, *entry.value);
+            if (!inserted && where->second != *entry.value)
+            {
+                next->simple.erase(where);
+                next->ambiguous.insert(entry.simpleName);
+            }
+        }
+        for (const auto& entry : entries)
+        {
+            if (!literalDefaultSyntax(entry.initializer)) continue;
+            for (const auto& key : entry.keys) next->literalQualified.emplace(key, entry.initializer);
+            if (next->literalAmbiguous.contains(entry.simpleName)) continue;
+            const auto [where, inserted] = next->literalSimple.emplace(entry.simpleName, entry.initializer);
+            if (!inserted && where->second != entry.initializer)
+            {
+                next->literalSimple.erase(where);
+                next->literalAmbiguous.insert(entry.simpleName);
+            }
+        }
+        progress = next->simple.size() + next->qualified.size() > names->simple.size() + names->qualified.size();
+        // The previous table may still be read by a concurrent evaluation; it is intentionally kept.
+        // La tabla anterior aun puede leerla una evaluacion concurrente; se conserva a proposito.
+        names = next;
+    }
+    installedArrayCountNames.store(names, std::memory_order_release);
+}
+
+const ast::AstNode* ProjectMemberModel::resolveNamedDefaultValue(const ast::AstNode* syntax)
+{
+    // EN: L-021. A default argument that names a constant whose initializer is a literal (`float yaw = YAW` with
+    //     `const float YAW = -90.0f;`) is that literal, so validation, lowering and NSMETA keep handling literals.
+    // ES: L-021. Un argumento predeterminado que nombra una constante cuyo inicializador es un literal es ese
+    //     literal, asi la validacion, la bajada y NSMETA siguen manejando literales.
+    const ArrayCountNames* names = installedArrayCountNames.load(std::memory_order_acquire);
+    if (syntax == nullptr || names == nullptr) return syntax;
+    if (syntax->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        if (names->literalAmbiguous.contains(syntax->text())) return syntax;
+        const auto found = names->literalSimple.find(syntax->text());
+        return found == names->literalSimple.end() ? syntax : found->second;
+    }
+    if (syntax->kind() != ast::AstNodeKind::MemberExpression) return syntax;
+    const auto found = names->literalQualified.find(arrayCountQualifier(syntax));
+    return found == names->literalQualified.end() ? syntax : found->second;
+}
+
 std::optional<std::uint64_t> ProjectMemberModel::evaluateConstantArrayCount(
     const ast::AstNode* expression) noexcept
 {
     if (expression == nullptr) return std::nullopt;
+    if (expression->kind() == ast::AstNodeKind::IdentifierExpression ||
+        expression->kind() == ast::AstNodeKind::MemberExpression)
+        return namedArrayCount(expression);
     if (expression->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
         expression->kind() == ast::AstNodeKind::CharacterLiteralExpression)
     {
