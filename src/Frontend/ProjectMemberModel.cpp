@@ -267,12 +267,29 @@ bool ProjectMemberModel::setExperimentalCppStaticMethods(
         {
             const auto& parameter = method.parameterTypeKeys[index];
             // T10-005: a static method can take an imported enum by value; build() checks that the type is one.
-            if (!experimentalCppCallableType(parameter, false, true)) { error = "invalid C++ static parameter type"; return false; }
             // T19-007: a ref or in parameter carries its referent's address. / Lleva la direccion del referente.
             const auto passKind = method.parameterPassKinds.empty() ? ParameterPassKind::Value
                                                                      : method.parameterPassKinds[index];
+            // EN: L-019. A C function pointer parameter (`R (*fn)(T)`, key `fn:ptr:c:...`) is passed by value like
+            //     the same parameter of a free C++ function (GLM's `detail::functor1<...>::call`); before, it made the
+            //     whole header import fail. The message names the member and the rejected type key.
+            // ES: L-019. Un parametro puntero a funcion C (`R (*fn)(T)`, clave `fn:ptr:c:...`) se pasa por valor como
+            //     el mismo parametro de una funcion C++ libre (`detail::functor1<...>::call` de GLM); antes hacia
+            //     fallar la importacion del encabezado completo. El mensaje nombra el miembro y la clave rechazada.
+            const bool functionPointer = passKind == ParameterPassKind::Value &&
+                language::isFunctionTypeIdentity(parameter);
+            if (!functionPointer && !experimentalCppCallableType(parameter, false, true))
+            {
+                error = "invalid C++ static parameter type '" + parameter + "' of '" + method.ownerIdentityKey +
+                    "::" + method.name + "'";
+                return false;
+            }
             if (passKind != ParameterPassKind::Value && !parameter.ends_with('*'))
-            { error = "invalid C++ static parameter type"; return false; }
+            {
+                error = "invalid C++ static parameter type '" + parameter + "' of '" + method.ownerIdentityKey +
+                    "::" + method.name + "'";
+                return false;
+            }
             if (passKind == ParameterPassKind::Ref) signature += "ref:";
             else if (passKind == ParameterPassKind::In) signature += "in:";
             if (!method.objectSizeModes.empty() &&
