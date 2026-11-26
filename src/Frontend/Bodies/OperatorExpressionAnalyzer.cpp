@@ -1047,11 +1047,25 @@ bool ProjectMethodBodyModel::analyzeArithmeticBinary(
     if (!isArithmetic(operation)) return false;
     const auto leftEnum = cppImportedCEnumUnderlying(nameLookup_, left.typeKey);
     const auto rightEnum = cppImportedCEnumUnderlying(nameLookup_, right.typeKey);
-    const std::optional<std::string> common = cppCEnumMixedUintInt(leftEnum, left.typeKey, rightEnum, right.typeKey)
+    std::optional<std::string> common = cppCEnumMixedUintInt(leftEnum, left.typeKey, rightEnum, right.typeKey)
         ? std::optional<std::string>{"builtin:uint"}
         : ProjectTypeConversion::commonNumericType(
             leftEnum.value_or(left.typeKey), rightEnum.value_or(right.typeKey),
             left.integerConstant, right.integerConstant);
+    // EN: L-059. As in C#, a user-defined implicit conversion of one operand to the other operand's numeric type
+    //     makes the built-in operator applicable (`speed * ts` with `implicit operator float(Timestep)`); the HIR
+    //     converts the operand through the same conversion.
+    // ES: L-059. Como en C#, una conversion implicita de usuario de un operando al tipo numerico del otro hace
+    //     aplicable el operador incorporado; la HIR convierte el operando con esa misma conversion.
+    if (!common.has_value())
+        for (const auto& [operand, other] : {std::pair{&left, &right}, std::pair{&right, &left}})
+            if (ProjectTypeConversion::isNumeric(other->typeKey) && !ProjectTypeConversion::isNumeric(operand->typeKey))
+                if (const ProjectImplicitConversion conversion = classifyImplicit(operand->typeKey, other->typeKey);
+                    conversion.exists() && conversion.userDefinedMemberOrdinal.has_value())
+                {
+                    common = other->typeKey;
+                    break;
+                }
     if (!common.has_value())
     {
         diagnostics.report(

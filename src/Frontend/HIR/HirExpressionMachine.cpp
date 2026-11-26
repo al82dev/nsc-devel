@@ -617,10 +617,16 @@ void ProjectOopHirModel::convertNumericBinaryOperands(
         right->typeKey,
         numericOperandType,
         rightType != nullptr ? rightType->integerConstant : std::nullopt);
-    if (leftConversion.exists() && leftConversion.kind != ProjectConversionKind::Identity)
-        left = wrapImplicitConversion(std::move(left), leftConversion, expression->first());
-    if (rightConversion.exists() && rightConversion.kind != ProjectConversionKind::Identity)
-        right = wrapImplicitConversion(std::move(right), rightConversion, expression->second());
+    // L-059: an operand with a user-defined implicit conversion to the operand type converts through it. / Un
+    //     operando con conversion implicita de usuario al tipo del operando se convierte con ella.
+    const ProjectImplicitConversion leftUser = leftConversion.exists() ? leftConversion
+        : classifyImplicit(left->typeKey, numericOperandType, std::nullopt);
+    const ProjectImplicitConversion rightUser = rightConversion.exists() ? rightConversion
+        : classifyImplicit(right->typeKey, numericOperandType, std::nullopt);
+    if (leftUser.exists() && leftUser.kind != ProjectConversionKind::Identity)
+        left = wrapImplicitConversion(std::move(left), leftUser, expression->first());
+    if (rightUser.exists() && rightUser.kind != ProjectConversionKind::Identity)
+        right = wrapImplicitConversion(std::move(right), rightUser, expression->second());
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::buildBuiltinBinaryExpression(

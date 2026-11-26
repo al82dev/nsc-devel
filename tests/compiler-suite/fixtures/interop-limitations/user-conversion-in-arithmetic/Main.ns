@@ -1,0 +1,32 @@
+// Compiler-suite fixture user-conversion-in-arithmetic (L-059): a user-defined implicit conversion applies to an operand of an arithmetic operator, on either side
+// and inside a compound assignment (Hazel `x -= speed * ts` with `implicit operator float(Timestep)`). Two operands
+// that are both user types (`ts + ts`) are not covered. Exit 42.
+namespace Fixture
+{
+    public struct Timestep
+    {
+        private float m_Time;
+
+        public Timestep(float time)
+        {
+            m_Time = time;
+        }
+
+        public static implicit operator float(Timestep timestep)
+        {
+            return timestep.m_Time;
+        }
+    }
+
+    int Main()
+    {
+        Timestep ts = new Timestep(0.5f);
+        float speed = 4.0f;
+        float x = 10.0f;
+        x -= speed * ts;
+        float y = ts * 20.0f + 1.0f;
+        float z = 0.5f + ts;
+        // x 8, y 11, z 1: 8 + 11 + 1 = 20; + 22 = 42
+        return (int)(x + y + z) + 22;
+    }
+}
