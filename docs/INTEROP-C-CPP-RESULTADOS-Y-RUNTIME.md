@@ -51,7 +51,7 @@ por datos cuando Clang no proporciona hash ODR: exige identidad y procedencia
 iguales, mismo destino, layout, rasgos y miembros capturados equivalentes, y
 excluye métodos, bases y campos estáticos. El tutorial 17 superó ese conflicto
 con la nueva regla y después presentó una violación de acceso; su repetición
-con la corrección de duración de nodos está en curso.
+con la corrección de duración de nodos terminó sin esa violación de acceso.
 
 El script externo `Z:\nsc-tutorials\OpenGL-3\ogl\build_all.py` también se
 actualizó para copiar las DLL transitivas disponibles y los recursos a la
@@ -70,3 +70,16 @@ Los nodos de inicialización se crean ahora en la arena de la unidad que contien
 instaló con esta corrección. Al repetir el tutorial 11 dejó de terminar por
 violación de acceso y mostró diagnósticos de tipos del código NativeSharp;
 el tutorial todavía no compila.
+
+## Repeticiones posteriores de los tutoriales
+
+- **Tutorial 15:** con el compilador corregido ya no termina con violación de
+  acceso. La compilación falla por inicializaciones de uint y operaciones
+  numéricas en el código NativeSharp. Registro:
+  Z:/nsc-tutorials/OpenGL-3/ogl/results/tutorial15_lightmaps-O3.log.
+- **Tutorial 17:** superó el conflicto de GLM y ya no termina con violación
+  de acceso. La compilación sigue fallando: hay errores de tipos y usos de
+  AntTweakBar que no se pueden resolver; no se encontró AntTweakBar.h en
+  Z:/sdk. Esto no demuestra que la aplicación funcione.
+- Las repeticiones de los tutoriales 09 AssImp y 18 billboards siguen
+  pendientes de resultado. No se ejecutó la batería de pruebas de NSC.
