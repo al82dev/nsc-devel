@@ -1,0 +1,29 @@
+// Compiler-suite fixture user-conversion-both-operands (L-059 residual): with `implicit operator float(Timestep)`,
+// `ts + ts` and `ts * other` use the built-in float operator, as C# picks it (float before double). Exit 42.
+namespace Fixture
+{
+    public struct Timestep
+    {
+        private float m_Time;
+
+        public Timestep(float time)
+        {
+            m_Time = time;
+        }
+
+        public static implicit operator float(Timestep timestep)
+        {
+            return timestep.m_Time;
+        }
+    }
+
+    int Main()
+    {
+        Timestep ts = new Timestep(0.5f);
+        Timestep other = new Timestep(4.0f);
+        float sum = ts + ts;
+        float product = ts * other;
+        float mixed = ts + other * ts;
+        return (int)(sum + product + mixed) + 37;
+    }
+}

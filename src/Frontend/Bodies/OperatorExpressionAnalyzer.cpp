@@ -1073,6 +1073,27 @@ bool ProjectMethodBodyModel::analyzeArithmeticBinary(
                     common = other->typeKey;
                     break;
                 }
+    // EN: L-059 residual. Two operands of user types (`ts + ts`) take the first predefined operator, in C#'s order
+    //     int, uint, long, ulong, float, double, to whose type both convert implicitly with at least one user-defined
+    //     conversion; that is the most specific one C# overload resolution picks (`float` before `double` for
+    //     `implicit operator float`). The HIR converts both operands to it.
+    // ES: L-059 residual. Dos operandos de tipos de usuario toman el primer operador predefinido, en el orden de C#,
+    //     a cuyo tipo ambos se convierten implicitamente con al menos una conversion de usuario.
+    if (!common.has_value() && !ProjectTypeConversion::isNumeric(left.typeKey) &&
+        !ProjectTypeConversion::isNumeric(right.typeKey))
+        for (const std::string_view candidate : {"builtin:int", "builtin:uint", "builtin:long", "builtin:ulong",
+                                                 "builtin:float", "builtin:double"})
+        {
+            const ProjectImplicitConversion leftConversion = classifyImplicit(left.typeKey, std::string(candidate));
+            const ProjectImplicitConversion rightConversion = classifyImplicit(right.typeKey, std::string(candidate));
+            if (leftConversion.exists() && rightConversion.exists() &&
+                (leftConversion.userDefinedMemberOrdinal.has_value() ||
+                 rightConversion.userDefinedMemberOrdinal.has_value()))
+            {
+                common = std::string(candidate);
+                break;
+            }
+        }
     if (!common.has_value())
     {
         diagnostics.report(
