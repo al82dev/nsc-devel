@@ -199,6 +199,20 @@ LLVMValueRef OopLlvmImplementation::staticFieldInitializer(
         }
         if (field.typeKey == "builtin:string")
             return internStringLiteral(field.constantStringValue, error);
+        // EN: L-002. A C string pointer initialized with a literal points at the literal's bytes: the interned global
+        //     is {i64 length, [N+1 x i8] NUL-terminated UTF-8 bytes}, so the bytes begin at offset 8, as the
+        //     StringLiteralToCharPointer conversion of a call argument already uses.
+        // ES: L-002. Un puntero de cadena C inicializado con un literal apunta a los bytes del literal: el global
+        //     interno es {i64 longitud, [N+1 x i8] bytes UTF-8 con NUL}, asi que los bytes empiezan en el
+        //     desplazamiento 8, como ya usa la conversion StringLiteralToCharPointer de un argumento.
+        if (field.constantStringPointer && frontend::ProjectTypeConversion::isPointer(field.typeKey))
+        {
+            LLVMValueRef global = internStringLiteral(field.constantStringValue, error);
+            if (global == nullptr) return nullptr;
+            LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
+            LLVMValueRef offset = LLVMConstInt(LLVMInt64TypeInContext(context_), 8, 0);
+            return LLVMConstInBoundsGEP2(i8, global, &offset, 1);
+        }
         if (frontend::ProjectTypeConversion::isPointer(field.typeKey) ||
             frontend::ProjectTypeConversion::isNativeArray(field.typeKey))
             return LLVMConstNull(type);

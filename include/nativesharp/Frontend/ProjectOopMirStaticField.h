@@ -48,6 +48,10 @@ struct ProjectOopMirStaticField final
     bool constantBooleanValue = false;
     // String constant bytes, or the exact decimal literal spelling for a decimal constant.
     std::string constantStringValue = {};
+    // L-002: a C string pointer (`sbyte const*`, `byte const*`) initialized with a string literal points at the
+    //     literal's NUL-terminated UTF-8 bytes (constantStringValue); false keeps a pointer constant null.
+    //     / Un puntero de cadena C inicializado con un literal apunta a sus bytes UTF-8 con NUL.
+    bool constantStringPointer = false;
     // Stage 51.x: an enum member's declared type is its own enum type (so it type-checks and
     // compares correctly against other enum-typed expressions), not its int-sized underlying
     // representation -- so `ProjectTypeConversion::isIntegral(typeKey)` returns false for it.

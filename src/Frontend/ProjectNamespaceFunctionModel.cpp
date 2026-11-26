@@ -269,6 +269,38 @@ bool initializeNamespaceStateConstant(NamespaceStateSymbol& symbol)
             return true;
         }
 
+    // EN: L-001, L-002. A string state may be a concatenation of string literals with `+` (the shader sources of
+    //     hello_triangle.cpp, one literal per line), folded to one literal; a C string pointer state (`sbyte const*`,
+    //     `byte const*`) may be initialized with a literal and then points at its NUL-terminated UTF-8 bytes.
+    // ES: L-001, L-002. Un estado cadena puede ser una concatenacion de literales con `+` (los shaders de
+    //     hello_triangle.cpp, un literal por linea), plegada en un literal; un estado puntero de cadena C (`sbyte
+    //     const*`, `byte const*`) puede inicializarse con un literal y apunta a sus bytes UTF-8 con NUL.
+    const bool stringState = symbol.declaredTypeKey == "builtin:string" ||
+        symbol.declaredTypeKey == "builtin:char*" || symbol.declaredTypeKey == "builtin:sbyte*" ||
+        symbol.declaredTypeKey == "builtin:byte*";
+    if (stringState && (initializer->kind() == ast::AstNodeKind::StringLiteralExpression ||
+                        (initializer->kind() == ast::AstNodeKind::BinaryExpression &&
+                         initializer->tokenKind() == lexer::TokenKind::Plus)))
+    {
+        std::string folded;
+        std::vector<const ast::AstNode*> pending{initializer};
+        while (!pending.empty())
+        {
+            const ast::AstNode* node = pending.back();
+            pending.pop_back();
+            if (node == nullptr) return false;
+            if (node->kind() == ast::AstNodeKind::StringLiteralExpression) { folded += node->text(); continue; }
+            if (node->kind() != ast::AstNodeKind::BinaryExpression || node->tokenKind() != lexer::TokenKind::Plus)
+                return false;
+            // Left operand first: pushed last. / Primero el operando izquierdo: se apila al final.
+            pending.push_back(node->second());
+            pending.push_back(node->first());
+        }
+        symbol.initializerKind = NamespaceStateInitializerKind::String;
+        symbol.stringValue = std::move(folded);
+        return true;
+    }
+
     switch (initializer->kind())
     {
         case ast::AstNodeKind::FloatingLiteralExpression:

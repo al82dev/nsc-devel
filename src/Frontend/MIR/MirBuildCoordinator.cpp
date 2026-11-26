@@ -818,6 +818,9 @@ void ProjectOopMirModel::buildNamespaceStateFields(
             case NamespaceStateInitializerKind::String:
                 staticField.hasConstantInitializer = true;
                 staticField.constantStringValue = state.stringValue;
+                // L-002: a C string pointer state points at the literal's bytes. / Apunta a los bytes del literal.
+                staticField.constantStringPointer = state.declaredTypeKey == "builtin:sbyte*" ||
+                    state.declaredTypeKey == "builtin:byte*";
                 break;
             case NamespaceStateInitializerKind::Null:
                 staticField.hasConstantInitializer = true;
