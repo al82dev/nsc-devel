@@ -2364,8 +2364,11 @@ bool ProjectCompilation::compileProjectOopHir(
                     !nameLookup_->cppImportedType(*node->targetTypeOrdinal)) continue;
                 // X1-05: a trivial C++ record materialized as a temporary needs no destructor; its bytes are its value.
                 //     / Un record C++ trivial materializado como temporal no necesita destructor.
-                if (parent && parent->kind == ProjectOopHirNodeKind::TemporaryAddress &&
-                    nameLookup_->cppTrivialValueEligible(*node->targetTypeOrdinal)) continue;
+                // EN: The same holds for any other position (a call argument, `: this(new glm.vec3(...))`): a trivial
+                //     record is passed, copied and stored as bytes (Item 10.1), so the temporary needs no lifetime.
+                // ES: Igual en cualquier otra posicion (argumento de llamada, `: this(new glm.vec3(...))`): un record
+                //     trivial se pasa, copia y guarda como bytes (Item 10.1), asi que el temporal no necesita vida.
+                if (nameLookup_->cppTrivialValueEligible(*node->targetTypeOrdinal)) continue;
                 const bool discarded = experimentalCppDiscardedLifetimeLoweringForTests_ && parent &&
                     parent->kind == ProjectOopHirNodeKind::ExpressionStatement && parent->children.size() == 1;
                 // X2-05: `return construction;` builds the result in the caller's storage. / Construye el resultado en

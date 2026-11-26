@@ -1,0 +1,35 @@
+// Compiler-suite fixture cpp-trivial-record-temporary-argument: a trivial C++ record built as a temporary argument of
+// a NativeSharp method, constructor and `: this(...)` initializer. Exit 42.
+namespace Fixture
+{
+    public class Camera
+    {
+        public lim.vec3 Position;
+        public lim.vec3 Up;
+
+        public Camera(lim.vec3 position, lim.vec3 up)
+        {
+            Position = position;
+            Up = up;
+        }
+
+        public Camera(lim.vec3 position) : this(position, new lim.vec3(0.0f, 1.0f, 0.0f))
+        {
+        }
+
+        public static float SumOf(lim.vec3 v)
+        {
+            return v.x + v.y + v.z;
+        }
+    }
+
+    int Main()
+    {
+        Camera a = new Camera(new lim.vec3(1.0f, 2.0f, 3.0f));
+        if (a.Up.y != 1.0f || a.Position.z != 3.0f) return 1;
+        if (Camera.SumOf(new lim.vec3(10.0f, 20.0f, 6.0f)) != 36.0f) return 2;
+        Camera b = new Camera(new lim.vec3(4.0f, 0.0f, 0.0f), new lim.vec3(0.0f, 0.0f, 2.0f));
+        // 4 + 2 + (1 + 2 + 3) = 12
+        return 30 + (int)(b.Position.x + b.Up.z + Camera.SumOf(a.Position));
+    }
+}
