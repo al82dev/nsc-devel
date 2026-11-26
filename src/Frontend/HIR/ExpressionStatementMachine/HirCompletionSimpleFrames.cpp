@@ -275,6 +275,8 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledBuiltinUnaryFrame(
         auto unary = makeNode(
             ProjectOopHirNodeKind::Unary, frame.syntax, resultType);
         unary->operation = frame.syntax->tokenKind();
+        if (unary->operation == lexer::TokenKind::Bang)
+            convertForeignCondition(lowered, frame.syntax->first());
         if (lowered && cppImportedCEnumUnderlying(nameLookup_, lowered->typeKey) &&
             lowered->typeKey != resultType && ProjectTypeConversion::isIntegral(resultType))
         {

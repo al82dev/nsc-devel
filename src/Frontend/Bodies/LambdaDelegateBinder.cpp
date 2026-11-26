@@ -1371,7 +1371,7 @@ bool ProjectMethodBodyModel::analyzeLambdaSyntaxBody(
         binding.returnTypeKey = returnType;
     }
     else if (body.valid && inferAnonymous &&
-        !classifyImplicit(body.typeKey, returnType, body.integerConstant).exists())
+        !classifyImportedFlexibleConversion(body, returnType).exists())
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidConversion,
@@ -1392,7 +1392,7 @@ bool ProjectMethodBodyModel::analyzeLambdaSyntaxBody(
         bodyValid = false;
     }
     if (body.valid && !inferAnonymous && returnType != "builtin:void" &&
-        !classifyImplicit(body.typeKey, returnType, body.integerConstant).exists())
+        !classifyImportedFlexibleConversion(body, returnType).exists())
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidConversion,

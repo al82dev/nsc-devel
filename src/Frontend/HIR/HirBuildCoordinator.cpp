@@ -2830,7 +2830,6 @@ bool ProjectOopHirModel::lowerExpressionLambdaBody(
     auto value = lowerExpression(lambda.syntax->first(), lambda.ownerMemberOrdinal, false, error);
     if (value != nullptr)
     {
-        const MethodExpressionTypeBinding* sourceType = expressionType(lambda.syntax->first());
         if (lambda.returnTypeKey == "builtin:void")
         {
             auto statement = makeNode(
@@ -2842,10 +2841,8 @@ bool ProjectOopHirModel::lowerExpressionLambdaBody(
         }
         else
         {
-            const ProjectImplicitConversion conversion = classifyImplicit(
-                value->typeKey,
-                lambda.returnTypeKey,
-                sourceType != nullptr ? sourceType->integerConstant : std::nullopt);
+            const ProjectImplicitConversion conversion = classifyExpressionConversion(
+                lambda.syntax->first(), value->typeKey, lambda.returnTypeKey);
             if (!conversion.exists())
             {
                 error = "Stage 43 lambda body lost its validated return conversion";

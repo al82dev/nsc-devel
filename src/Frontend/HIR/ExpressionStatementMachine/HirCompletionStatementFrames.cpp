@@ -397,6 +397,7 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledIfStatementFrame(
             frames, rootCleanupDepth, rootExceptionHandlerDepth);
                 return LoopBlockAdvance::Error;
             }
+            convertForeignCondition(lowered, frame.syntax->first());
             frame.first = std::move(lowered);
             frame.stage = 1U;
             current = frame.syntax->second();
@@ -675,6 +676,7 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledLoopStatementFrame(
             frames, rootCleanupDepth, rootExceptionHandlerDepth);
                 return LoopBlockAdvance::Error;
             }
+            convertForeignCondition(lowered, frame.syntax->first());
             frame.first = std::move(lowered);
             frame.stage = 1U;
             current = frame.syntax->second();
@@ -820,6 +822,7 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledForStatementFrame(
         }
         if (frame.stage == 1U)
             activateDirectStatementCleanup(lowered);
+        if (frame.stage == 2U) convertForeignCondition(lowered, childSyntax);
         frame.forStatement->node->children.push_back(std::move(lowered));
         if (frame.stage == 4U)
         {

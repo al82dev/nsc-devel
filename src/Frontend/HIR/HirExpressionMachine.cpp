@@ -458,6 +458,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::buildConditionalExpressio
     const std::string resultType = typeBinding != nullptr ? typeBinding->typeKey :
         stage42Delegate != nullptr ? stage42Delegate->resultTypeKey : "<error>";
     auto node = makeNode(ProjectOopHirNodeKind::Conditional, expression, resultType);
+    convertForeignCondition(condition, expression->first());
     convertConditionalBranch(whenTrue, expression->second(), resultType);
     convertConditionalBranch(whenFalse, expression->third(), resultType);
     node->children.push_back(std::move(condition));
@@ -473,18 +474,16 @@ void ProjectOopHirModel::convertConditionalBranch(
 {
     if (branch->typeKey == resultType) return;
     const MethodExpressionTypeBinding* binding = expressionType(syntax);
-    // EN: T08-015-11. A C flexible member (or `extern T a[]`) decays in the branch, as in C.
-    // ES: T08-015-11. Un miembro flexible C (o `extern T a[]`) decae en la rama, como en C.
     const auto element = ProjectMemberModel::flexibleArrayElementTypeKey(branch->typeKey);
     const ProjectImplicitConversion conversion =
         binding != nullptr && binding->cppFlexibleArrayMember && binding->cppFlexibleArrayDecaySafe && element &&
             resultType == *element + "*"
         ? ProjectImplicitConversion{ProjectConversionKind::CFlexibleArrayToPointer, 1, branch->typeKey, resultType,
                                     std::nullopt}
+        : binding != nullptr && binding->cppForeignCallResult
+        ? classifyExpressionConversion(syntax, branch->typeKey, resultType)
         : ProjectTypeConversion::classifyImplicit(
-            branch->typeKey,
-            resultType,
-            binding != nullptr ? binding->integerConstant : std::nullopt);
+            branch->typeKey, resultType, binding != nullptr ? binding->integerConstant : std::nullopt);
     if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
         branch = wrapImplicitConversion(std::move(branch), conversion, syntax);
 }
@@ -641,6 +640,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::buildBuiltinBinaryExpress
     auto node = makeNode(ProjectOopHirNodeKind::Binary, expression, resultType);
     node->operation = expression->tokenKind();
     node->booleanValue = typeBinding != nullptr && typeBinding->flowRuntimeCheckElided;
+    if (node->operation == lexer::TokenKind::AmpAmp || node->operation == lexer::TokenKind::PipePipe)
+    {
+        convertForeignCondition(left, expression->first());
+        convertForeignCondition(right, expression->second());
+    }
     convertBinaryEnumZeroOperands(expression, left, right);
     const std::optional<std::string> numericOperandType =
         numericBinaryOperandType(expression, *left, *right, resultType);
@@ -2560,11 +2564,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerSimpleAssignmentExpr
     {
         return nullptr;
     }
-    const MethodExpressionTypeBinding* rhsType = expressionType(expression->second());
-    const ProjectImplicitConversion conversion = classifyImplicit(
-        value->typeKey,
-        target->typeKey,
-        rhsType != nullptr ? rhsType->integerConstant : std::nullopt);
+    const ProjectImplicitConversion conversion = classifyExpressionConversion(
+        expression->second(), value->typeKey, target->typeKey);
     if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
     {
         value = wrapImplicitConversion(std::move(value), conversion, expression->second());

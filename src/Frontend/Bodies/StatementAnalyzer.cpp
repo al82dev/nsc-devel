@@ -406,7 +406,9 @@ void ProjectMethodBodyModel::processIfFrame(
         const ExpressionResult condition = analyzeExpression(
             frame.statement->first(), methodMemberOrdinal, frame.scopeOrdinal, diagnostics);
         if (condition.valid && condition.typeKey != "builtin:bool" &&
-            condition.typeKey != "builtin:never")
+            condition.typeKey != "builtin:never" &&
+            !(condition.cppForeignCallResult &&
+              classifyImportedFlexibleConversion(condition, "builtin:bool").exists()))
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidCondition,
                 diagnostics::DiagnosticSeverity::Error,
@@ -1942,7 +1944,9 @@ void ProjectMethodBodyModel::analyzeIfStatement(
         const ExpressionResult condition = analyzeExpression(
             currentIf->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
         if (condition.valid && condition.typeKey != "builtin:bool" &&
-            condition.typeKey != "builtin:never")
+            condition.typeKey != "builtin:never" &&
+            !(condition.cppForeignCallResult &&
+              classifyImportedFlexibleConversion(condition, "builtin:bool").exists()))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidCondition,
@@ -1997,7 +2001,9 @@ void ProjectMethodBodyModel::analyzeWhileCondition(
     const ExpressionResult condition = analyzeExpression(
         statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
     if (condition.valid && condition.typeKey != "builtin:bool" &&
-        condition.typeKey != "builtin:never")
+        condition.typeKey != "builtin:never" &&
+            !(condition.cppForeignCallResult &&
+              classifyImportedFlexibleConversion(condition, "builtin:bool").exists()))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidCondition,
@@ -6585,7 +6591,9 @@ bool ProjectMethodBodyModel::analyzeForCondition(
         statement->second(), methodMemberOrdinal, forScope, diagnostics);
     if (condition.valid &&
         condition.typeKey != "builtin:bool" &&
-        condition.typeKey != "builtin:never")
+        condition.typeKey != "builtin:never" &&
+            !(condition.cppForeignCallResult &&
+              classifyImportedFlexibleConversion(condition, "builtin:bool").exists()))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidCondition,
@@ -7184,7 +7192,7 @@ bool ProjectMethodBodyModel::analyzeLambdaReturn(
         value = bindMethodGroupToDelegate(
             statement->first(), value, expected,
             methodMemberOrdinal, scopeOrdinal, diagnostics);
-    if (value.valid && !classifyImplicit(value.typeKey, expected, value.integerConstant).exists())
+    if (value.valid && !classifyImportedFlexibleConversion(value, expected).exists())
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidConversion,
