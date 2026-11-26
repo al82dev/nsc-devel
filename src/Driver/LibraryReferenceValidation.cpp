@@ -566,6 +566,33 @@ bool validateProjectLibraryReferences(
             for (const auto& additional : reference.additionalLibraryPaths)
                 if (linkedLibraries.insert(foldedPathKey(additional)).second) libraries.push_back(additional);
         }
+    // System include directories also identify the matching Windows SDK and MSVC
+    // toolset. Link their dynamic runtime import libraries for code instantiated
+    // from C/C++ headers, rather than guessing individual runtime symbols.
+    for (const compilation::Project &project : compilation.projectGraph()->projects())
+        for (const compilation::CppLibraryReference &reference : project.cppLibraryReferences())
+            for (const auto &include : reference.includePaths)
+            {
+                if (include.kind != interop::CppIncludeKind::System) continue;
+                const auto addRuntime = [&](const std::filesystem::path &path)
+                {
+                    std::error_code ec;
+                    if (std::filesystem::is_regular_file(path, ec) &&
+                        linkedLibraries.insert(foldedPathKey(path)).second)
+                        libraries.push_back(path);
+                };
+                std::error_code ec;
+                if (std::filesystem::is_regular_file(include.path / "corecrt.h", ec))
+                    addRuntime(include.path.parent_path().parent_path() / "lib" / "ucrt" / "x64" / "ucrt.lib");
+                ec.clear();
+                if (reference.language == interop::CppLanguageMode::Cpp &&
+                    std::filesystem::is_regular_file(include.path / "vcruntime.h", ec))
+                {
+                    const auto runtime = include.path.parent_path() / "lib" / "x64";
+                    addRuntime(runtime / "msvcprt.lib");
+                    addRuntime(runtime / "vcruntime.lib");
+                }
+            }
     if (!validateCppImportRuntimes(cppRuntimeReferences, error)) return false;
     return true;
 }
