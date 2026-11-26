@@ -222,7 +222,84 @@ bool isReferenceLikeStateType(std::string_view typeKey) noexcept
         ProjectTypeConversion::isNativeArray(typeKey);
 }
 
-bool initializeNamespaceStateConstant(NamespaceStateSymbol& symbol)
+// EN: L-058. Resolves the names inside a namespace constant's initializer: a `const` integer state already
+//     initialized (`HZ_MOUSE_BUTTON_LAST = HZ_MOUSE_BUTTON_8`), by simple name in the same namespace or qualified
+//     with its namespace, and an enumerator (`Level.High`). Casts resolve their target type key.
+// ES: L-058. Resuelve los nombres del inicializador de una constante de namespace: un estado `const` entero ya
+//     inicializado (por nombre simple en el mismo namespace o calificado con su namespace) y un enumerador.
+class NamespaceStateConstantResolver final : public ProjectConstantMemberResolver
+{
+public:
+    NamespaceStateConstantResolver(const std::vector<NamespaceStateSymbol>& states, std::string namespaceName,
+        const ProjectNameLookup& nameLookup, const ProjectMemberModel& memberModel)
+        : states_(states), namespaceName_(std::move(namespaceName)), nameLookup_(nameLookup),
+          memberModel_(memberModel) {}
+
+    std::optional<ProjectIntegerValue> resolveDirectInteger(const ast::AstNode* syntax) const override
+    {
+        if (syntax == nullptr) return std::nullopt;
+        if (syntax->kind() == ast::AstNodeKind::IdentifierExpression)
+            return state(namespaceName_, syntax->text());
+        if (syntax->kind() != ast::AstNodeKind::MemberExpression || syntax->first() == nullptr) return std::nullopt;
+        std::string qualifier;
+        for (const ast::AstNode* part = syntax->first(); part != nullptr; part = part->first())
+        {
+            if (part->kind() != ast::AstNodeKind::IdentifierExpression &&
+                part->kind() != ast::AstNodeKind::MemberExpression) return std::nullopt;
+            qualifier = qualifier.empty() ? part->text() : part->text() + "." + qualifier;
+            if (part->kind() == ast::AstNodeKind::IdentifierExpression) break;
+        }
+        if (auto value = state(qualifier, syntax->text())) return value;
+        // An enumerator: the qualifier names an enum type. / El calificador nombra un tipo enum.
+        const std::size_t dot = qualifier.rfind('.');
+        const std::string simple = dot == std::string::npos ? qualifier : qualifier.substr(dot + 1);
+        for (std::size_t ordinal = 0; ordinal < nameLookup_.namedTypes().size(); ++ordinal)
+        {
+            const auto& type = nameLookup_.namedTypes()[ordinal];
+            if (type.kind != NamedTypeDeclarationKind::Enum || type.identity.name() != simple) continue;
+            for (const std::size_t member : memberModel_.findMembers(ordinal, syntax->text()))
+            {
+                const ClassMemberSymbol& symbol = memberModel_.members()[member];
+                return ProjectIntegerValue{static_cast<std::uint64_t>(symbol.enumConstantValue), "builtin:int"};
+            }
+        }
+        return std::nullopt;
+    }
+
+    std::optional<std::size_t> resolveConstantMember(const ast::AstNode*, std::optional<std::size_t>) const override
+    {
+        return std::nullopt;
+    }
+
+    bool describeConstantMember(std::size_t, bool&, std::int64_t&, std::string&, const ast::AstNode*&, std::string&,
+        std::optional<std::size_t>&) const override
+    {
+        return false;
+    }
+
+    std::string resolveTypeKey(const ast::TypeSyntax* typeSyntax) const override
+    {
+        return typeSyntax != nullptr ? memberModel_.canonicalTypeKey(typeSyntax, nameLookup_) : std::string{};
+    }
+
+private:
+    std::optional<ProjectIntegerValue> state(std::string_view namespaceName, std::string_view name) const
+    {
+        for (const NamespaceStateSymbol& candidate : states_)
+            if (candidate.isConst && candidate.initializerKind == NamespaceStateInitializerKind::Integer &&
+                candidate.name == name && candidate.namespaceName == namespaceName)
+                return ProjectIntegerValue{candidate.integerValue, candidate.declaredTypeKey};
+        return std::nullopt;
+    }
+
+    const std::vector<NamespaceStateSymbol>& states_;
+    std::string namespaceName_;
+    const ProjectNameLookup& nameLookup_;
+    const ProjectMemberModel& memberModel_;
+};
+
+bool initializeNamespaceStateConstant(NamespaceStateSymbol& symbol,
+    const ProjectConstantMemberResolver* resolver = nullptr)
 {
     const ast::AstNode* initializer = symbol.initializerSyntax;
     if (initializer == nullptr)
@@ -231,7 +308,7 @@ bool initializeNamespaceStateConstant(NamespaceStateSymbol& symbol)
         return !symbol.isConst;
     }
 
-    ProjectIntegerEvaluator integerEvaluator(nullptr);
+    ProjectIntegerEvaluator integerEvaluator(resolver);
     // EN: L-039. A fixed array of numbers or booleans with a brace initializer of constants (`const float[4] LTC1 =
     //     { 1, 0, 0, (float)2e-05 };`, ltc_matrix.hpp) is constant data. Each element is a literal, a signed literal,
     //     a cast of one, or an integer constant expression; more elements than the array holds is an error, fewer
@@ -1290,9 +1367,16 @@ void ProjectNamespaceFunctionModel::collectNamespaceState(
     {
         // L-023: a non-constant initializer of a mutable state runs at the start of Main (see
         //     injectDynamicNamespaceInitializers). / Un inicializador no constante se ejecuta al inicio de Main.
-        if (!state.isConst && !state.isPrecompiled && state.initializerSyntax != nullptr)
-            dynamicStateOrdinals_.push_back(states_.size());
-        else
+        // L-058: an initializer that names other constants is retried once every state is collected
+        //     (resolvePendingNamespaceConstants). / Se reintenta cuando todos los estados estan recolectados.
+        if (!state.isPrecompiled && state.initializerSyntax != nullptr)
+        {
+            pendingConstantStates_.emplace_back(states_.size(), &declaration);
+            stateByName_.emplace(lookupKey, states_.size());
+            statesByNamespaceName_[state.namespaceName][state.name].push_back(states_.size());
+            states_.push_back(std::move(state));
+            return;
+        }
         diagnostics.report(
             state.isConst
                 ? diagnostics::DiagnosticId::ConstRequiresConstant
@@ -1341,9 +1425,57 @@ void ProjectNamespaceFunctionModel::collectNamespaceStates(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     dynamicStateOrdinals_.clear();
+    pendingConstantStates_.clear();
     for (const NamespaceStateDeclaration& declaration : nameLookup.namespaceStates())
         collectNamespaceState(declaration, nameLookup, memberModel, diagnostics);
+    resolvePendingNamespaceConstants(nameLookup, memberModel, diagnostics);
     injectDynamicNamespaceInitializers(nameLookup, diagnostics);
+}
+
+// EN: L-058. A namespace constant whose initializer names other constants or enumerators (`const int LAST =
+//     BUTTON_8;`) is evaluated once every state is collected, repeating until no state resolves, so the declaration
+//     order does not matter. What still does not resolve keeps its rule: a mutable state is initialized at the start
+//     of Main (L-023), a `const` one is rejected. Complexity: O(pending^2 * states).
+// ES: L-058. Una constante de namespace cuyo inicializador nombra otras constantes o enumeradores se evalua cuando
+//     todos los estados estan recolectados, repitiendo hasta que ninguno se resuelva, asi el orden no importa. Lo que
+//     no se resuelve conserva su regla: un estado mutable se inicializa al inicio de Main, uno `const` se rechaza.
+void ProjectNamespaceFunctionModel::resolvePendingNamespaceConstants(
+    const ProjectNameLookup& nameLookup, const ProjectMemberModel& memberModel,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    bool progress = true;
+    while (progress && !pendingConstantStates_.empty())
+    {
+        progress = false;
+        for (auto pending = pendingConstantStates_.begin(); pending != pendingConstantStates_.end();)
+        {
+            NamespaceStateSymbol& state = states_[pending->first];
+            const NamespaceStateConstantResolver resolver(states_, state.namespaceName, nameLookup, memberModel);
+            if (initializeNamespaceStateConstant(state, &resolver))
+            {
+                captureSnapshotState(*pending->second, state);
+                pending = pendingConstantStates_.erase(pending);
+                progress = true;
+            }
+            else ++pending;
+        }
+    }
+    for (const auto& [ordinal, declaration] : pendingConstantStates_)
+    {
+        NamespaceStateSymbol& state = states_[ordinal];
+        if (!state.isConst)
+        {
+            dynamicStateOrdinals_.push_back(ordinal);
+            captureSnapshotState(*declaration, state);
+            continue;
+        }
+        diagnostics.report(diagnostics::DiagnosticId::ConstRequiresConstant, diagnostics::DiagnosticSeverity::Error,
+            state.initializerSyntax != nullptr ? state.initializerSyntax->range() : state.range,
+            "namespace state '" + state.namespaceName + "." + state.name +
+                "' requires a constant initializer; dynamic initialization is not supported");
+        captureSnapshotState(*declaration, state);
+    }
+    pendingConstantStates_.clear();
 }
 
 // EN: L-023. C++ runs the dynamic initializers of namespace-scope variables before `main`, in declaration order

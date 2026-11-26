@@ -461,6 +461,10 @@ private:
     // L-023: states whose initializer is not constant, and the statements synthesized to run them at the start of
     //     Main. / Estados con inicializador no constante y las sentencias sintetizadas que los ejecutan.
     std::vector<std::size_t> dynamicStateOrdinals_;
+    // L-058: states whose initializer names other constants, retried once all are collected. / Reintentados.
+    std::vector<std::pair<std::size_t, const NamespaceStateDeclaration*>> pendingConstantStates_;
+    void resolvePendingNamespaceConstants(const ProjectNameLookup& nameLookup, const ProjectMemberModel& memberModel,
+        diagnostics::DiagnosticEngine& diagnostics);
     std::vector<std::shared_ptr<ast::AstNode>> synthesizedSyntax_;
     void injectDynamicNamespaceInitializers(
         const ProjectNameLookup& nameLookup, diagnostics::DiagnosticEngine& diagnostics);

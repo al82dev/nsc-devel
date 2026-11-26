@@ -1,0 +1,19 @@
+// Compiler-suite fixture namespace-const-from-const (L-058): namespace constants initialized from other constants, in any declaration order, qualified, with a
+// cast, and from an enumerator (Hazel KeyCodes / MouseCodes). Exit 42.
+namespace Fixture
+{
+    public enum Level { None = 0, Low = 1, High = 2 }
+
+    const int LAST = BUTTON_8;
+    const int BUTTON_8 = 7;
+    const int DOUBLED = LAST * 2 + Fixture.BUTTON_8;
+    const uint WIDE = (uint)BUTTON_8;
+    const int FROM_ENUM = (int)Level.High;
+    Level current = Level.High;
+
+    int Main()
+    {
+        // LAST 7, DOUBLED 21, WIDE 7, FROM_ENUM 2, current 2: 7 + 21 + 7 + 2 + 2 + 3 = 42
+        return LAST + DOUBLED + (int)WIDE + FROM_ENUM + (int)current + 3;
+    }
+}
