@@ -643,6 +643,19 @@ bool ProjectMemberModel::build(
                              (value->origin == CppImportedTypeOrigin::CppRecord &&
                               nameLookup.cppTrivialValueEligible(*type)));
         };
+        // EN: L-034. A static method whose owner is imported but that passes or returns by value a record that is not
+        //     a trivial value (`_Locinfo::_Locinfo_Addcats` of MSVC <xlocinfo>) is left out, as an unsupported field
+        //     is: the rest of the header stays usable, and a call to it finds no member.
+        // ES: L-034. Un metodo estatico cuyo dueno esta importado pero que pasa o devuelve por valor un record que no
+        //     es un valor trivial se omite, como un campo no soportado: el resto del encabezado sigue usable.
+        const bool unsupportedValue = owner && owner->projectOrdinal == imported.projectOrdinal &&
+            cppCallableRecordIsVisible(imported.returnTypeKey, imported.projectOrdinal, nameLookup) &&
+            std::all_of(imported.parameterTypeKeys.begin(), imported.parameterTypeKeys.end(), [&](const auto& key) {
+                return cppCallableRecordIsVisible(key, imported.projectOrdinal, nameLookup);
+            }) &&
+            ((!imported.constructedResult && !valueTypeIsEnum(imported.returnTypeKey)) ||
+             !std::all_of(imported.parameterTypeKeys.begin(), imported.parameterTypeKeys.end(), valueTypeIsEnum));
+        if (unsupportedValue) continue;
         if (!owner || owner->projectOrdinal != imported.projectOrdinal ||
             !cppCallableRecordIsVisible(imported.returnTypeKey, imported.projectOrdinal, nameLookup) ||
             (!imported.constructedResult && !valueTypeIsEnum(imported.returnTypeKey)) || // X2-05
