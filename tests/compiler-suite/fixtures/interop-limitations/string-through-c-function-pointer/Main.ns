@@ -1,0 +1,27 @@
+// Compiler-suite fixture string-through-c-function-pointer (L-003, through a C function pointer): a runtime string reaches the `const char*`
+// parameter of a GLAD-style function-pointer variable (`glGetUniformLocation(ID, name)`). Exit 42.
+namespace Fixture
+{
+
+
+    int Length(string name)
+    {
+        return limLength(name);
+    }
+
+    int Main()
+    {
+        string a = "abcd";
+        raii string b = a + "efgh";
+        int total = 0;
+        int i = 0;
+        while (i < 1000)
+        {
+            total = total + Length(b);
+            i = i + 1;
+        }
+        // 8 per call, 1000 calls; the loop must not grow the stack.
+        if (total != 8000) return 1;
+        return Length(a) * 10 + 2;
+    }
+}

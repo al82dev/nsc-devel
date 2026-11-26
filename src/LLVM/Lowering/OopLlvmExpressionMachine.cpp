@@ -1224,6 +1224,10 @@ bool OopLlvmImplementation::lowerExpressionFrame019DelegateInvoke(
     }
     if (frame.phase == 0)
     {
+        // L-003: a runtime string passed through a C function pointer (GLAD). / Por un puntero a funcion C.
+        for (std::size_t child = 1; child < current->children.size(); ++child)
+            if (isCStringArgument(current->children[child].get()))
+                claimedCStringArguments_.push_back(current->children[child].get());
         frames.push_back({current, 1, nullptr, 0});
         frames.push_back({current->children.front().get(), 0, nullptr});
         return true;
@@ -1260,9 +1264,11 @@ bool OopLlvmImplementation::lowerExpressionFrame019DelegateInvoke(
         argumentOverrides[i - 1] = values.back();
         values.pop_back();
     }
+    LLVMValueRef cStringSave = materializeCStringArguments(current, 1, argumentOverrides);
     values.push_back(current->kind == frontend::ProjectOopMirNodeKind::DelegateInvoke
         ? lowerDelegateInvoke(current, error, frame.lhs, &argumentOverrides)
         : lowerEventInvoke(current, error, frame.lhs, &argumentOverrides));
+    releaseCStringArguments(cStringSave);
     return true;
 }
 

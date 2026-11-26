@@ -189,6 +189,8 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         [](TestContext& context) { expectExit(context, "TF-INTEROP-416", "namespace-dynamic-initializer", 42); });
     addCase(registry, "TF-INTEROP-417", {"language", "static-local", "ownership", "l-014", "e2e"},
         [](TestContext& context) { expectExit(context, "TF-INTEROP-417", "static-local-owned-string", 42); });
+    addCase(registry, "TF-INTEROP-418", {"interop", "c", "string", "function-pointer", "l-003", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-418", "string-through-c-function-pointer", 42); });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",

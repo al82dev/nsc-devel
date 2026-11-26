@@ -6551,9 +6551,9 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
             cParameter.passKind = ParameterPassKind::Value;
             cParameter.pointerPointeeReadonly = ProjectTypeConversion::isPointer(parameterTypes[index]) &&
                 language::functionParameterPointeeReadonly(*structuralFunction, index);
+            // L-003: a runtime string reaches a `const char*` parameter of a C function pointer too; the invocation
+            //     makes the NUL-terminated stack copy (lowerExpressionFrame019DelegateInvoke).
             conversion = classifyCFrontierConversion(arguments[index], cParameter, parameterTypes[index], true);
-            // L-003: the stack copy of a runtime string is made by a direct call only. / Solo una llamada directa.
-            if (conversion.exists() && conversion.kind == ProjectConversionKind::StringToCharPointer) conversion = {};
         }
         if (!conversion.exists())
         {
