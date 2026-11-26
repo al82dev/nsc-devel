@@ -1230,6 +1230,11 @@ void ProjectNamespaceFunctionModel::collectNamespaceState(
     }
     if (!installed && !initializeNamespaceStateConstant(state))
     {
+        // L-023: a non-constant initializer of a mutable state runs at the start of Main (see
+        //     injectDynamicNamespaceInitializers). / Un inicializador no constante se ejecuta al inicio de Main.
+        if (!state.isConst && !state.isPrecompiled && state.initializerSyntax != nullptr)
+            dynamicStateOrdinals_.push_back(states_.size());
+        else
         diagnostics.report(
             state.isConst
                 ? diagnostics::DiagnosticId::ConstRequiresConstant
@@ -1277,8 +1282,93 @@ void ProjectNamespaceFunctionModel::collectNamespaceStates(
     const ProjectMemberModel& memberModel,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    dynamicStateOrdinals_.clear();
     for (const NamespaceStateDeclaration& declaration : nameLookup.namespaceStates())
         collectNamespaceState(declaration, nameLookup, memberModel, diagnostics);
+    injectDynamicNamespaceInitializers(nameLookup, diagnostics);
+}
+
+// EN: L-023. C++ runs the dynamic initializers of namespace-scope variables before `main`, in declaration order
+//     (`Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));`, `float lastX = SCR_WIDTH / 2.0f;`). A mutable namespace
+//     state whose initializer is not a constant is declared zero-initialized and its initializer becomes an
+//     assignment inserted at the start of the program's namespace-level `Main`, in declaration order (sources in
+//     project order), so it is analyzed and lowered as ordinary code. Without exactly one such `Main` in the
+//     state's project (a library), the initializer is still rejected.
+// ES: L-023. C++ ejecuta los inicializadores dinamicos de las variables de namespace antes de `main`, en orden de
+//     declaracion. Un estado mutable con inicializador no constante se declara en cero y su inicializador se
+//     vuelve una asignacion insertada al inicio del `Main` de namespace del programa, en orden de declaracion. Sin
+//     exactamente un `Main` asi en el proyecto del estado (una biblioteca), el inicializador se sigue rechazando.
+void ProjectNamespaceFunctionModel::injectDynamicNamespaceInitializers(
+    const ProjectNameLookup& nameLookup, diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (dynamicStateOrdinals_.empty()) return;
+    const NamespaceFunctionDeclaration* entry = nullptr;
+    std::size_t entries = 0;
+    for (const NamespaceFunctionDeclaration& function : nameLookup.namespaceFunctions())
+        if (function.name == "Main" && function.syntax != nullptr && function.syntax->first() != nullptr &&
+            function.syntax->first()->kind() == ast::AstNodeKind::BlockStatement)
+        {
+            entry = &function;
+            ++entries;
+        }
+    // Declaration order: by source, then by position (the lookup lists states by name). / Orden de declaracion.
+    std::stable_sort(dynamicStateOrdinals_.begin(), dynamicStateOrdinals_.end(), [&](std::size_t a, std::size_t b) {
+        return std::pair(states_[a].sourceOrdinal, states_[a].range.begin().offset()) <
+            std::pair(states_[b].sourceOrdinal, states_[b].range.begin().offset());
+    });
+    std::size_t insertAt = 0;
+    for (const std::size_t ordinal : dynamicStateOrdinals_)
+    {
+        NamespaceStateSymbol& state = states_[ordinal];
+        if (entries != 1 || entry->projectOrdinal != state.projectOrdinal)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::GlobalRequiresConstant,
+                diagnostics::DiagnosticSeverity::Error, state.initializerSyntax->range(),
+                "namespace state '" + state.namespaceName + "." + state.name +
+                    "' requires a constant initializer; a dynamic initializer runs at the start of Main and needs "
+                    "exactly one namespace-level Main in the same project");
+            continue;
+        }
+        ast::AstNode* initializer = const_cast<ast::AstNode*>(state.initializerSyntax);
+        const SourceRange range = initializer->range();
+        const auto make = [&](ast::AstNodeKind kind) {
+            synthesizedSyntax_.push_back(std::make_shared<ast::AstNode>(kind, range));
+            return synthesizedSyntax_.back().get();
+        };
+        ast::AstNode* target = nullptr;
+        if (entry->namespaceName == state.namespaceName)
+        {
+            target = make(ast::AstNodeKind::IdentifierExpression);
+            target->setText(state.name);
+        }
+        else
+        {
+            for (const std::string& segment : splitName(state.namespaceName + "." + state.name))
+            {
+                if (target == nullptr)
+                {
+                    target = make(ast::AstNodeKind::IdentifierExpression);
+                    target->setText(segment);
+                    continue;
+                }
+                ast::AstNode* member = make(ast::AstNodeKind::MemberExpression);
+                member->setFirst(target);
+                member->setText(segment);
+                target = member;
+            }
+        }
+        ast::AstNode* assignment = make(ast::AstNodeKind::AssignmentExpression);
+        assignment->setTokenKind(lexer::TokenKind::Equal);
+        assignment->setFirst(target);
+        assignment->setSecond(initializer);
+        ast::AstNode* statement = make(ast::AstNodeKind::ExpressionStatement);
+        statement->setFirst(assignment);
+        const_cast<ast::AstNode*>(entry->syntax->first())->insertChild(insertAt++, statement);
+        // The declaration no longer owns the initializer: the state starts zeroed. / El estado empieza en cero.
+        if (state.declarationSyntax != nullptr) const_cast<ast::AstNode*>(state.declarationSyntax)->setFirst(nullptr);
+        state.initializerSyntax = nullptr;
+    }
+    dynamicStateOrdinals_.clear();
 }
 
 std::span<const std::size_t> ProjectNamespaceFunctionModel::visibleProjects(

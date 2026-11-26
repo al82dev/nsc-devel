@@ -458,6 +458,12 @@ private:
     // Compartido para que el modelo siga siendo copiable; el analisis de cuerpos lo escribe desde sus hilos.
     std::shared_ptr<CppTemplateDeductionSink> cppTemplateDeductions_ = std::make_shared<CppTemplateDeductionSink>();
     std::vector<NamespaceStateSymbol> states_;
+    // L-023: states whose initializer is not constant, and the statements synthesized to run them at the start of
+    //     Main. / Estados con inicializador no constante y las sentencias sintetizadas que los ejecutan.
+    std::vector<std::size_t> dynamicStateOrdinals_;
+    std::vector<std::shared_ptr<ast::AstNode>> synthesizedSyntax_;
+    void injectDynamicNamespaceInitializers(
+        const ProjectNameLookup& nameLookup, diagnostics::DiagnosticEngine& diagnostics);
     std::unordered_map<std::string, std::size_t> stateByName_;
     std::unordered_map<std::string, std::vector<std::size_t>> functionsByName_;
     OrdinalsByNamespaceName functionsByNamespaceName_;
