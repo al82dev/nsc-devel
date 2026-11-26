@@ -1422,6 +1422,7 @@ void ProjectNamespaceFunctionModel::initializeNamespaceState(
 void ProjectNamespaceFunctionModel::collectNamespaceStates(
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
+    std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
     diagnostics::DiagnosticEngine& diagnostics)
 {
     dynamicStateOrdinals_.clear();
@@ -1429,7 +1430,7 @@ void ProjectNamespaceFunctionModel::collectNamespaceStates(
     for (const NamespaceStateDeclaration& declaration : nameLookup.namespaceStates())
         collectNamespaceState(declaration, nameLookup, memberModel, diagnostics);
     resolvePendingNamespaceConstants(nameLookup, memberModel, diagnostics);
-    injectDynamicNamespaceInitializers(nameLookup, diagnostics);
+    injectDynamicNamespaceInitializers(nameLookup, units, diagnostics);
 }
 
 // EN: L-058. A namespace constant whose initializer names other constants or enumerators (`const int LAST =
@@ -1489,7 +1490,9 @@ void ProjectNamespaceFunctionModel::resolvePendingNamespaceConstants(
 //     vuelve una asignacion insertada al inicio del `Main` de namespace del programa, en orden de declaracion. Sin
 //     exactamente un `Main` asi en el proyecto del estado (una biblioteca), el inicializador se sigue rechazando.
 void ProjectNamespaceFunctionModel::injectDynamicNamespaceInitializers(
-    const ProjectNameLookup& nameLookup, diagnostics::DiagnosticEngine& diagnostics)
+    const ProjectNameLookup& nameLookup,
+    std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+    diagnostics::DiagnosticEngine& diagnostics)
 {
     if (dynamicStateOrdinals_.empty()) return;
     const NamespaceFunctionDeclaration* entry = nullptr;
@@ -1501,6 +1504,16 @@ void ProjectNamespaceFunctionModel::injectDynamicNamespaceInitializers(
             entry = &function;
             ++entries;
         }
+    ProjectSyntaxUnit* entryUnit = nullptr;
+    if (entries == 1)
+        for (const auto& unit : units)
+            if (unit && unit->fileId() == entry->fileId &&
+                unit->projectOrdinal() == entry->projectOrdinal &&
+                unit->sourceOrdinal() == entry->sourceOrdinal)
+            {
+                entryUnit = unit.get();
+                break;
+            }
     // Declaration order: by source, then by position (the lookup lists states by name). / Orden de declaracion.
     std::stable_sort(dynamicStateOrdinals_.begin(), dynamicStateOrdinals_.end(), [&](std::size_t a, std::size_t b) {
         return std::pair(states_[a].sourceOrdinal, states_[a].range.begin().offset()) <
@@ -1519,11 +1532,18 @@ void ProjectNamespaceFunctionModel::injectDynamicNamespaceInitializers(
                     "exactly one namespace-level Main in the same project");
             continue;
         }
+        if (entryUnit == nullptr)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::GlobalRequiresConstant,
+                diagnostics::DiagnosticSeverity::Error, state.initializerSyntax->range(),
+                "cannot initialize namespace state '" + state.namespaceName + "." + state.name +
+                    "': the syntax unit for Main is unavailable");
+            continue;
+        }
         ast::AstNode* initializer = const_cast<ast::AstNode*>(state.initializerSyntax);
         const SourceRange range = initializer->range();
         const auto make = [&](ast::AstNodeKind kind) {
-            synthesizedSyntax_.push_back(std::make_shared<ast::AstNode>(kind, range));
-            return synthesizedSyntax_.back().get();
+            return entryUnit->arena().make<ast::AstNode>(kind, range);
         };
         ast::AstNode* target = nullptr;
         if (entry->namespaceName == state.namespaceName)
@@ -2430,7 +2450,7 @@ bool ProjectNamespaceFunctionModel::build(
             containsNamespaceGeneratorYield(function.definitionSyntax->first()))
             function.effects = function.effects.with(sema::Effect::Generator).with(sema::Effect::Async);
     buildExtensionFunctionIndex();
-    collectNamespaceStates(nameLookup, memberModel, diagnostics);
+    collectNamespaceStates(nameLookup, memberModel, units, diagnostics);
     for (const auto& state : cppImportedStates_)
     {
         const auto modules = nameLookup.modules();

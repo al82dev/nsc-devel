@@ -303,6 +303,7 @@ private:
     void collectNamespaceStates(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
         diagnostics::DiagnosticEngine& diagnostics);
     void collectNamespaceState(
         const NamespaceStateDeclaration& declaration,
@@ -465,9 +466,10 @@ private:
     std::vector<std::pair<std::size_t, const NamespaceStateDeclaration*>> pendingConstantStates_;
     void resolvePendingNamespaceConstants(const ProjectNameLookup& nameLookup, const ProjectMemberModel& memberModel,
         diagnostics::DiagnosticEngine& diagnostics);
-    std::vector<std::shared_ptr<ast::AstNode>> synthesizedSyntax_;
     void injectDynamicNamespaceInitializers(
-        const ProjectNameLookup& nameLookup, diagnostics::DiagnosticEngine& diagnostics);
+        const ProjectNameLookup& nameLookup,
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+        diagnostics::DiagnosticEngine& diagnostics);
     std::unordered_map<std::string, std::size_t> stateByName_;
     std::unordered_map<std::string, std::vector<std::size_t>> functionsByName_;
     OrdinalsByNamespaceName functionsByNamespaceName_;

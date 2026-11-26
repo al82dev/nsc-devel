@@ -52,3 +52,15 @@ esta regla está pendiente.
 El script externo `Z:\nsc-tutorials\OpenGL-3\ogl\build_all.py` también se
 actualizó para copiar las DLL transitivas disponibles y los recursos a la
 carpeta de cada ejecutable. No forma parte de este repositorio.
+
+## Duración de inicializadores dinámicos
+
+El tutorial 11 terminaba con una violación de acceso al reconstruir el modelo
+de namespaces después de deducir plantillas C++. La pila y la inspección de
+memoria mostraron que el primer nodo insertado en `Main` ya había sido liberado:
+su propietario era el modelo temporal de namespaces, aunque el árbol de
+sintaxis conservaba el puntero.
+
+Los nodos de inicialización se crean ahora en la arena de la unidad que contiene
+`Main`, cuya duración abarca las reconstrucciones del modelo. La compilación
+de NSC y la repetición del tutorial con esta corrección están pendientes.
