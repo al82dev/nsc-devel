@@ -108,8 +108,13 @@ Built build(const IsolatedFixture& isolated, std::string_view fixtureName, bool 
         stream << project;
     }
     const std::vector<std::wstring> arguments = {L"build", projectFile.wstring(), L"-O0", debugInformation ? L"-g" : L"-g0",
-        L"--linker", L"LLD", L"--cpp-clang-root=" + fs::path(NSC_SUITE_CLANG_ROOT).wstring()};
+        L"--linker", L"NSLink", L"--cpp-clang-root=" + fs::path(NSC_SUITE_CLANG_ROOT).wstring()};
+    // EN: NativeSharp links only with nslink: the suite's nslink is configured explicitly (as
+    //     LanguageCoreLibraryE2eModule does), so the cases do not depend on the caller's NSC_LINKER.
+    // ES: NativeSharp enlaza solo con nslink: se configura explicitamente el nslink de la suite (como
+    //     LanguageCoreLibraryE2eModule), asi los casos no dependen del NSC_LINKER de quien los corre.
     const std::vector<std::pair<std::wstring, std::wstring>> environment = {
+        {L"NSC_LINKER", fs::path(NSC_SUITE_NSLINK_EXECUTABLE).wstring()},
         {L"NSC_WINDOWS_RUNTIME_LIBRARY", fs::path(NSC_SUITE_WINDOWS_RUNTIME_LIBRARY).wstring()}};
     built.compilation = external_program_support::run(
         fs::path(NSC_SUITE_NSC_EXECUTABLE), arguments, {}, isolated.path(), environment);
