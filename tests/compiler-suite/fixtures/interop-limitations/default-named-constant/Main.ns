@@ -1,0 +1,40 @@
+// Compiler-suite fixture default-named-constant (L-021): default arguments that name constants, as LearnOpenGL camera.h writes
+// `Camera(glm::vec3 position = ..., float yaw = YAW, float pitch = PITCH)` with `const float YAW = -90.0f;`.
+namespace Fixture
+{
+    const int FACTOR = 2;
+
+    // Holds the camera defaults as class constants.
+    public class Defaults
+    {
+        public const float YAW = -90.0f;
+        public const float PITCH = 0.0f;
+    }
+
+    // Camera-like class whose constructor defaults name the class constants.
+    public class Camera
+    {
+        public float Yaw;
+        public float Pitch;
+
+        // Stores the angles; both defaults are named constants.
+        public Camera(float yaw = Defaults.YAW, float pitch = Defaults.PITCH)
+        {
+            Yaw = yaw;
+            Pitch = pitch;
+        }
+    }
+
+    // Multiplies `value` by `factor`, whose default is a namespace constant.
+    int Scale(int value, int factor = FACTOR)
+    {
+        return value * factor;
+    }
+
+    // Entry point of the probe: 21 * 2 = 42 when Yaw is -90.
+    int Main()
+    {
+        Camera camera = new Camera();
+        return camera.Yaw == -90.0f ? Scale(21) : 0;
+    }
+}

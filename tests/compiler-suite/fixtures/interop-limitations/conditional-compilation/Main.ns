@@ -1,0 +1,28 @@
+#define WINDOWS_PORT
+// Compiler-suite fixture conditional-compilation (L-011): the `#ifdef __APPLE__` block of the LearnOpenGL demos, plus #define, #elif,
+// #else, nesting and operators. Exit code 42 when every region is chosen as C# chooses it.
+namespace Fixture
+{
+    // Entry point of the probe.
+    int Main()
+    {
+        int value = 0;
+#if __APPLE__
+        value = 1000; // never compiled: __APPLE__ is not defined
+        this line would not even lex @@@
+#endif
+#if WINDOWS_PORT && !__APPLE__
+        value += 40;
+    #if (WINDOWS_PORT || OTHER) == true
+        value += 2;
+    #elif WINDOWS_PORT
+        value += 100;
+    #else
+        value += 200;
+    #endif
+#else
+        value += 300;
+#endif
+        return value;
+    }
+}

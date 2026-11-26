@@ -1,0 +1,26 @@
+// Compiler-suite fixture array-count-constant (L-027): fixed array fields sized by named constants.
+namespace Fixture
+{
+    const int COUNT = 4;
+
+    // Holds the bone influence count as a class constant, as mesh.h's MAX_BONE_INFLUENCE.
+    public class Defines
+    {
+        public const int MAX_BONE_INFLUENCE = 5;
+    }
+
+    // Vertex-like struct whose arrays are sized by named constants.
+    public struct Vertex
+    {
+        public int[Defines.MAX_BONE_INFLUENCE] m_BoneIDs;
+        public float[COUNT] m_Weights;
+    }
+
+    // Exit code 42: sizeof(Vertex) = 5 * 4 + 4 * 4 = 36, plus the last bone index written (6).
+    int Main()
+    {
+        Vertex vertex;
+        vertex.m_BoneIDs[Defines.MAX_BONE_INFLUENCE - 1] = 6;
+        return (int)sizeof(Vertex) + vertex.m_BoneIDs[4];
+    }
+}

@@ -1,0 +1,11 @@
+// Compiler-suite fixture function-pointer-cast (L-006): (GLADloadproc)glfwGetProcAddress -- a C function cast to another C
+// function-pointer type. Two-step form: the function first converted to its own exact type.
+namespace Fixture
+{
+    // Entry point of the probe.
+    int Main()
+    {
+        
+        return load((loadproc)getproc);
+    }
+}

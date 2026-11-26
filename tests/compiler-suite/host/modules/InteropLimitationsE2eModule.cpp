@@ -175,6 +175,14 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         [](TestContext& context) { expectExit(context, "TF-INTEROP-408", "c-fnptr-boundary", 33); });
     addCase(registry, "TF-INTEROP-409", {"interop", "c", "namespace-state", "l-022", "l-001", "l-002", "e2e"},
         [](TestContext& context) { expectExit(context, "TF-INTEROP-409", "namespace-constants", 42); });
+    addCase(registry, "TF-INTEROP-411", {"interop", "language", "array", "l-027", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-411", "array-count-constant", 42); });
+    addCase(registry, "TF-INTEROP-412", {"interop", "language", "default-argument", "l-021", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-412", "default-named-constant", 42); });
+    addCase(registry, "TF-INTEROP-413", {"interop", "c", "function-pointer", "cast", "l-006", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-413", "function-pointer-cast", 42); });
+    addCase(registry, "TF-INTEROP-414", {"interop", "lexer", "conditional-compilation", "l-011", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-414", "conditional-compilation", 42); });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",
