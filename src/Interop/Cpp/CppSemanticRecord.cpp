@@ -5406,10 +5406,18 @@ bool selectExperimentalCppRecordTypesForCompilation(
                 const auto index = static_cast<std::size_t>(target - candidates.types.begin());
                 const auto groupIndex = candidates.groupByImportedType[index];
                 const auto status = observation.groups.groups[groupIndex].status;
-                if (std::find(observation.collidingGroups.begin(), observation.collidingGroups.end(), groupIndex) != observation.collidingGroups.end() ||
+                const bool colliding = std::find(observation.collidingGroups.begin(),
+                    observation.collidingGroups.end(), groupIndex) != observation.collidingGroups.end();
+                if (colliding ||
                     (status != CppRecordGroupStatus::ForwardOnly && status != CppRecordGroupStatus::OneDefinition &&
                      status != CppRecordGroupStatus::MultipleDefinitionsPointerCompatible))
-                { error = "C field record dependency conflicts or is unverified: " + identity->key(); return false; }
+                {
+                    const char* reason = colliding ? "identity collides with another declaration" :
+                        status == CppRecordGroupStatus::Conflict ? "record definitions conflict" :
+                        "multiple record definitions have not been verified";
+                    error = "C field record dependency " + identity->key() + ": " + reason;
+                    return false;
+                }
                 selectedIdentities.insert(identity->key());
                 output.push_back(*target);
                 changed = true;

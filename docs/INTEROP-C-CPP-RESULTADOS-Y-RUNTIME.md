@@ -29,6 +29,14 @@ correcta de NSC no demuestra por sí sola la cobertura completa de C o C++.
 - El seguimiento de punteros locales es conservador cuando no puede demostrar
   el origen de todas sus posibles asignaciones.
 
+## Diagnóstico del conflicto de GLM
+
+El diagnóstico de dependencias de registros distingue ahora una colisión de
+identidad, definiciones incompatibles y definiciones múltiples no verificadas.
+Esto permite identificar la causa que corresponda al tutorial 17; no cambia
+las reglas de aceptación ni da por resuelto el conflicto. Está pendiente
+recompilar NSC y repetir el tutorial con el diagnóstico actualizado.
+
 El script externo `Z:\nsc-tutorials\OpenGL-3\ogl\build_all.py` también se
 actualizó para copiar las DLL transitivas disponibles y los recursos a la
 carpeta de cada ejecutable. No forma parte de este repositorio.
