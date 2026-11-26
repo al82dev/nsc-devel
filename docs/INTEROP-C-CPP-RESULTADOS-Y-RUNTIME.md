@@ -19,6 +19,8 @@ correcta de NSC no demuestra por sí sola la cobertura completa de C o C++.
 - NSC compiló con Clang y se instaló en `C:\native-sharp\bin\nsc.exe`.
 - El tutorial 03 superó el error original de conversión de `int` a `uint`.
   Tras corregir el enlace del runtime, los tutoriales 03 y 04 compilaron.
+- El tutorial 03 abrió su ventana desde su carpeta de salida y permaneció
+  ejecutándose hasta solicitar su cierre. La equivalencia visual no se evaluó.
 - No se ejecutó la batería de pruebas de NSC. Las conversiones de `bool`,
   enums y punteros locales todavía requieren comprobación funcional específica.
 - En la primera pasada compilaron los tutoriales 01 y 02. Otros proyectos
