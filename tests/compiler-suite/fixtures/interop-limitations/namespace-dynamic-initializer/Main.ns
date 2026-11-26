@@ -1,0 +1,41 @@
+// Compiler-suite fixture namespace-dynamic-initializer (L-023): C++ globals with dynamic initializers (camera_class.cpp: `Camera camera(...)`,
+// `float lastX = SCR_WIDTH / 2.0f;`) declared at namespace scope. Exit 42.
+namespace Fixture
+{
+    const uint SCR_WIDTH = 800;
+
+    // Value type built by a constructor, as glm::vec3.
+    public struct Vec3
+    {
+        public float x;
+        public float y;
+        public float z;
+
+        // Builds the vector from its three components.
+        public Vec3(float x, float y, float z)
+        {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
+    }
+
+    Vec3 cameraPos = new Vec3(0.0f, 0.0f, 3.0f);
+    float lastX = SCR_WIDTH / 2.0f;
+    float doubled = lastX * 2.0f;
+    int counter = Next();
+    int ordered = counter + 1;
+
+    // Returns a value computed at run time.
+    int Next()
+    {
+        return 4;
+    }
+
+    // Entry point of the probe.
+    int Main()
+    {
+        // 3 + 400 / 100 + 800 / 100 + 4 + 5 + 18 = 42
+        return (int)cameraPos.z + (int)(lastX / 100.0f) + (int)(doubled / 100.0f) + counter + ordered + 18;
+    }
+}

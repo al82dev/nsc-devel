@@ -1,0 +1,32 @@
+// Compiler-suite fixture string-to-c-string (L-003): `string` values (constant, local, parameter, concatenation, null) passed where C
+// takes `const char*`, as `glGetUniformLocation(ID, name.c_str())` in shader_s.h. Exit 42.
+namespace Fixture
+{
+    const string NamespaceText = "0123456789";
+
+    // Holds a class constant and a method that forwards its parameter.
+    public class Texts
+    {
+        public const string ClassText = "abcdefghijkl";
+
+        // Passes a parameter string to C.
+        public static int Length(string name)
+        {
+            return text_length(name);
+        }
+    }
+
+    // Entry point of the probe.
+    int Main()
+    {
+        string local = "ABCDE";
+        int total = 0;
+        for (int i = 0; i < 100000; i++)
+            total = text_length(local) + text_length(NamespaceText);
+        raii string joined = local + "xyz";
+        string nothing = null;
+        // 15 + 12 + 8 + (8 - 3 + 6) - 5 + 1 (null) = 42
+        return total + Texts.Length(Texts.ClassText) + text_length(joined) + text_length_pair(joined, "abc") -
+            text_length("abcde") + text_is_null(nothing);
+    }
+}

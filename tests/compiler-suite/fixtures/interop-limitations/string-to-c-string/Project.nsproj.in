@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup><Name>InteropLimitation</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+    <CppLibraryReference Header="@FIXTURE@/lim_cstr.h" Language="C" Standard="c17" Implementation="LIM_CSTR_IMPLEMENTATION">
+      <IncludeDirectory Path="@FIXTURE@" Kind="User" />
+    </CppLibraryReference>
+  </ItemGroup>
+</Project>
