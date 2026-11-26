@@ -70,10 +70,28 @@ private:
         std::string message,
         diagnostics::DiagnosticId id = diagnostics::DiagnosticId::UnexpectedCharacter);
 
+    // L-011: conditional compilation directives (`#define`, `#undef`, `#if`, `#elif`, `#else`, `#endif`), as in C#.
+    //     / Directivas de compilacion condicional, como en C#.
+    bool atLineStart() const noexcept;
+    void processDirectiveLine();
+    std::optional<bool> evaluateDirectiveCondition(std::string_view expression) const;
+    bool conditionActive() const noexcept;
+    struct ConditionFrame
+    {
+        bool parentActive = true;
+        bool active = true;
+        bool taken = false;
+        bool sawElse = false;
+        std::uint32_t begin = 0;
+    };
+
     const source::SourceFile& sourceFile_;
     diagnostics::DiagnosticEngine& diagnostics_;
     std::string_view buffer_;
     std::uint32_t offset_ = 0;
+    std::vector<std::string> defines_;
+    std::vector<ConditionFrame> conditions_;
+    bool reportedUnterminatedCondition_ = false;
     bool awaitingAssemblyBrace_ = false;
     std::uint32_t assemblyHeaderParenthesisDepth_ = 0;
     bool insideAssemblyBody_ = false;

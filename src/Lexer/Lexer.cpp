@@ -213,6 +213,12 @@ Token Lexer::nextToken()
     }
 
     skipTrivia();
+    // L-011: a conditional region still open at the end of the file. / Una region condicional abierta al final.
+    if (isAtEnd() && !conditions_.empty() && !reportedUnterminatedCondition_)
+    {
+        reportedUnterminatedCondition_ = true;
+        reportInvalid(conditions_.back().begin, conditions_.back().begin + 1, "#if without a matching #endif");
+    }
 
     const std::uint32_t begin = offset_;
     if (isAtEnd())
@@ -389,11 +395,209 @@ std::string_view Lexer::text(std::uint32_t begin, std::uint32_t end) const noexc
     return buffer_.substr(begin, end - begin);
 }
 
+// EN: L-011. True when only spaces or tabs precede the current offset on its line: a directive must start a line.
+// ES: L-011. Verdadero si solo espacios o tabuladores preceden al desplazamiento actual en su linea.
+bool Lexer::atLineStart() const noexcept
+{
+    for (std::uint32_t index = offset_; index > 0; --index)
+    {
+        const char previous = buffer_[index - 1];
+        if (previous == '\n') return true;
+        if (previous != ' ' && previous != '\t') return false;
+    }
+    return true;
+}
+
+bool Lexer::conditionActive() const noexcept
+{
+    return conditions_.empty() || conditions_.back().active;
+}
+
+// EN: L-011. Evaluates a C#-style condition: symbols (true when #define'd), `true`, `false`, `!`, `&&`, `||`, `==`,
+//     `!=` and parentheses, with C#'s precedence (! > ==/!= > && > ||). An explicit operand stack keeps it
+//     iterative. nullopt for a malformed condition.
+// ES: L-011. Evalua una condicion al estilo C#: simbolos (verdaderos si se definieron), `true`, `false`, `!`, `&&`,
+//     `||`, `==`, `!=` y parentesis, con la precedencia de C#. nullopt si la condicion esta mal formada.
+std::optional<bool> Lexer::evaluateDirectiveCondition(std::string_view expression) const
+{
+    // Shunting-yard over tokens: operands are booleans, operators !, ==, !=, &&, ||, parentheses.
+    std::vector<std::string> output;
+    std::vector<std::string> operators;
+    const auto precedence = [](const std::string& op) {
+        if (op == "!") return 4;
+        if (op == "==" || op == "!=") return 3;
+        if (op == "&&") return 2;
+        if (op == "||") return 1;
+        return 0;
+    };
+    bool expectOperand = true;
+    std::size_t index = 0;
+    while (index < expression.size())
+    {
+        const char c = expression[index];
+        if (c == ' ' || c == '\t' || c == '\r') { ++index; continue; }
+        if (std::isalpha(static_cast<unsigned char>(c)) || c == '_')
+        {
+            std::size_t end = index;
+            while (end < expression.size() &&
+                   (std::isalnum(static_cast<unsigned char>(expression[end])) || expression[end] == '_')) ++end;
+            const std::string name(expression.substr(index, end - index));
+            if (!expectOperand) return std::nullopt;
+            const bool value = name == "true" ||
+                (name != "false" && std::find(defines_.begin(), defines_.end(), name) != defines_.end());
+            output.push_back(value ? "1" : "0");
+            expectOperand = false;
+            index = end;
+            continue;
+        }
+        std::string op;
+        if (c == '(' || c == ')' || c == '!') op = std::string(1, c);
+        if (index + 1 < expression.size())
+        {
+            const std::string two(expression.substr(index, 2));
+            if (two == "&&" || two == "||" || two == "==" || two == "!=") op = two;
+        }
+        if (op.empty()) return std::nullopt;
+        index += op.size();
+        if (op == "(") { if (!expectOperand) return std::nullopt; operators.push_back(op); continue; }
+        if (op == "!") { if (!expectOperand) return std::nullopt; operators.push_back(op); continue; }
+        if (op == ")")
+        {
+            if (expectOperand) return std::nullopt;
+            while (!operators.empty() && operators.back() != "(") { output.push_back(operators.back()); operators.pop_back(); }
+            if (operators.empty()) return std::nullopt;
+            operators.pop_back();
+            continue;
+        }
+        if (expectOperand) return std::nullopt;
+        while (!operators.empty() && operators.back() != "(" && precedence(operators.back()) >= precedence(op))
+        {
+            output.push_back(operators.back());
+            operators.pop_back();
+        }
+        operators.push_back(op);
+        expectOperand = true;
+    }
+    if (expectOperand) return std::nullopt;
+    while (!operators.empty())
+    {
+        if (operators.back() == "(") return std::nullopt;
+        output.push_back(operators.back());
+        operators.pop_back();
+    }
+    std::vector<bool> stack;
+    for (const auto& item : output)
+    {
+        if (item == "1" || item == "0") { stack.push_back(item == "1"); continue; }
+        if (item == "!") { if (stack.empty()) return std::nullopt; stack.back() = !stack.back(); continue; }
+        if (stack.size() < 2) return std::nullopt;
+        const bool right = stack.back();
+        stack.pop_back();
+        const bool left = stack.back();
+        stack.back() = item == "&&" ? (left && right) : item == "||" ? (left || right) :
+            item == "==" ? (left == right) : (left != right);
+    }
+    if (stack.size() != 1) return std::nullopt;
+    return stack.back();
+}
+
+// EN: L-011. Processes the directive that starts at offset_ (`#` at the start of a line) and, while the current
+//     region is inactive, skips whole lines until the next directive. Lines of an inactive region are not lexed.
+// ES: L-011. Procesa la directiva que empieza en offset_ y, mientras la region actual esta inactiva, salta lineas
+//     completas hasta la siguiente directiva. Las lineas de una region inactiva no se analizan lexicamente.
+void Lexer::processDirectiveLine()
+{
+    while (true)
+    {
+        const std::uint32_t begin = offset_;
+        std::uint32_t end = offset_;
+        while (end < buffer_.size() && buffer_[end] != '\n') ++end;
+        std::string_view line = buffer_.substr(begin + 1, end - begin - 1);
+        if (const auto comment = line.find("//"); comment != std::string_view::npos) line = line.substr(0, comment);
+        while (!line.empty() && (line.front() == ' ' || line.front() == '\t')) line.remove_prefix(1);
+        while (!line.empty() && (line.back() == ' ' || line.back() == '\t' || line.back() == '\r'))
+            line.remove_suffix(1);
+        std::size_t nameEnd = 0;
+        while (nameEnd < line.size() && std::isalpha(static_cast<unsigned char>(line[nameEnd]))) ++nameEnd;
+        const std::string_view name = line.substr(0, nameEnd);
+        std::string_view argument = line.substr(nameEnd);
+        while (!argument.empty() && (argument.front() == ' ' || argument.front() == '\t')) argument.remove_prefix(1);
+        offset_ = end;
+        const auto condition = [&]() -> bool {
+            const auto value = evaluateDirectiveCondition(argument);
+            if (!value)
+                reportInvalid(begin, end, "malformed preprocessing condition '" + std::string(argument) + "'");
+            return value.value_or(false);
+        };
+        if (name == "if")
+        {
+            const bool parent = conditionActive();
+            const bool value = parent && condition();
+            conditions_.push_back(ConditionFrame{parent, value, value, false, begin});
+        }
+        else if (name == "elif" || name == "else")
+        {
+            if (conditions_.empty() || conditions_.back().sawElse)
+                reportInvalid(begin, end, "#" + std::string(name) + " without a matching #if");
+            else
+            {
+                auto& frame = conditions_.back();
+                const bool value = name == "else" ? true : (frame.parentActive && !frame.taken && condition());
+                frame.active = frame.parentActive && !frame.taken && value;
+                frame.taken = frame.taken || frame.active;
+                frame.sawElse = name == "else";
+            }
+        }
+        else if (name == "endif")
+        {
+            if (conditions_.empty()) reportInvalid(begin, end, "#endif without a matching #if");
+            else conditions_.pop_back();
+        }
+        else if (name == "define" || name == "undef")
+        {
+            if (conditionActive())
+            {
+                const std::string symbol(argument);
+                if (symbol.empty() || !(std::isalpha(static_cast<unsigned char>(symbol.front())) || symbol.front() == '_'))
+                    reportInvalid(begin, end, "#" + std::string(name) + " requires a symbol");
+                else if (name == "define")
+                {
+                    if (std::find(defines_.begin(), defines_.end(), symbol) == defines_.end()) defines_.push_back(symbol);
+                }
+                else std::erase(defines_, symbol);
+            }
+        }
+        else if (conditionActive())
+            reportInvalid(begin, end, "unknown preprocessing directive '#" + std::string(name) + "'");
+        if (conditionActive()) return;
+        // Inactive region: skip lines until one that starts with `#`. / Region inactiva: salta lineas.
+        while (offset_ < buffer_.size())
+        {
+            ++offset_;
+            std::uint32_t first = offset_;
+            while (first < buffer_.size() && (buffer_[first] == ' ' || buffer_[first] == '\t')) ++first;
+            if (first < buffer_.size() && buffer_[first] == '#')
+            {
+                offset_ = first;
+                break;
+            }
+            while (offset_ < buffer_.size() && buffer_[offset_] != '\n') ++offset_;
+        }
+        if (offset_ >= buffer_.size()) return;
+    }
+}
+
 void Lexer::skipTrivia()
 {
     while (!isAtEnd())
     {
         const char value = current();
+        // L-011: a `#` that starts a line is a conditional-compilation directive. / Una directiva.
+        if (value == '#' && atLineStart())
+        {
+            processDirectiveLine();
+            continue;
+        }
         if (value == ' ' || value == '\t' || value == '\v' || value == '\f' || value == '\n' || value == '\r')
         {
             advance();
