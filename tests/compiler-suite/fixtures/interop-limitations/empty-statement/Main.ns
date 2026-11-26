@@ -1,0 +1,13 @@
+// Compiler-suite fixture empty-statement (L-030): the empty statement `;` in a block, as a loop body and as an if branch. Exit 42.
+namespace Fixture
+{
+    int Main()
+    {
+        int value = 40;;
+        int i = 0;
+        for (; i < 2; i = i + 1) ;
+        if (value > 0) ; else value = 0;
+        ;
+        return value + i;
+    }
+}

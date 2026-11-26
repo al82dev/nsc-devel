@@ -160,6 +160,17 @@ Parser::ParseContinuationCoordinator::classifyStatement() const
 // Schedules one simple statement or delegates an untouched C-F family atomically.
 void Parser::ParseContinuationCoordinator::startStatement(const Work& work)
 {
+    // EN: L-030. The empty statement `;` (C#, C and C++: `int value = 1;;`, `for (;;) ;`) does nothing: it is an
+    //     empty declaration list, which opens no scope.
+    // ES: L-030. La sentencia vacia `;` no hace nada: es una lista de declaraciones vacia, que no abre ambito.
+    if (parser_.at(TokenKind::Semicolon))
+    {
+        const lexer::Token& semicolon = parser_.consume();
+        ast::AstNode* empty = parser_.arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, semicolon.range());
+        empty->setAuxiliaryText("declaration-list");
+        complete(work.resultSlot, empty);
+        return;
+    }
     switch (classifyStatement())
     {
     case StatementKind::Block: work_.push_back({WorkKind::Block, work.resultSlot}); return;
