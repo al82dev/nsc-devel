@@ -1,0 +1,10 @@
+// Compiler-suite fixture c-function-two-references (L-035): a C function of a system header that two
+// references both reach (snprintf through stb_image.h and stdio.h) is one function, not an ambiguous
+// pair. Exit 42.
+namespace Fixture
+{
+    int Main()
+    {
+        return lim_twice(20) + lim_a() + 1;
+    }
+}

@@ -121,8 +121,30 @@ CppSemanticFunctionGroupsResult groupCppSemanticFunctions(
             declaration.callingConvention.empty() || !declaration.externalSymbol ||
             symbol->projectOrdinal != entry.projectOrdinal)
             return CppSemanticFunctionGroupFailure{index, index, "function identity is incomplete"};
-        Key key{symbol->projectOrdinal, declaration.qualifiedName, *declaration.externalSymbol};
+        // EN: L-035. A C `inline`/`static inline` definition gets a private link symbol per reference
+        //     (cppCInlineLinkSymbol), so the same header reached by two references (UCRT's inline `snprintf` through
+        //     stb_image.h and stdio.h) gave two functions and an ambiguous call. Its Clang USR names the definition
+        //     (a `static` one is qualified by its file), so it is the group key; the first reference's copy is called.
+        // ES: L-035. Una definicion C `inline`/`static inline` recibe un simbolo privado por referencia, asi el mismo
+        //     encabezado alcanzado por dos referencias daba dos funciones y una llamada ambigua. Su USR de Clang
+        //     nombra la definicion, asi que es la clave del grupo; se llama a la copia de la primera referencia.
+        const bool cInlineDefinition = declaration.isCStaticInlineDefinition && !declaration.externalLinkage &&
+            declaration.clangUsr && !declaration.clangUsr->empty();
+        Key key{symbol->projectOrdinal, declaration.qualifiedName,
+                cInlineDefinition ? "c-inline:" + *declaration.clangUsr : *declaration.externalSymbol};
         auto [it, inserted] = groupByKey.emplace(std::move(key), result.groups.size());
+        if (!inserted && cInlineDefinition)
+        {
+            const auto& original = entries[result.groups[it->second].inventoryIndices.front()];
+            if (entry.targetTriple == original.targetTriple &&
+                declaration.canonicalFunctionType == original.declaration.canonicalFunctionType &&
+                declaration.callingConvention == original.declaration.callingConvention &&
+                symbol->moduleName == result.groups[it->second].symbol.moduleName)
+            {
+                result.groups[it->second].inventoryIndices.push_back(index);
+                continue;
+            }
+        }
         if (inserted)
         {
             result.groups.push_back({*symbol, {index}});

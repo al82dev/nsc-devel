@@ -255,6 +255,8 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         [](TestContext& context) {
             expectExit(context, "TF-INTEROP-442", "large-namespace-array-debug-info", 42, true);
         });
+    addCase(registry, "TF-INTEROP-443", {"interop", "c", "inline", "sessions", "l-035", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-443", "c-function-two-references", 42); });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",
