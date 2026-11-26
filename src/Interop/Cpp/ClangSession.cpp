@@ -32,6 +32,7 @@
 #include <clang/Sema/Sema.h>
 #include <clang/Sema/Initialization.h>
 #include <clang/Sema/TemplateDeduction.h>
+#include <clang/Sema/Template.h>
 #include <clang/Tooling/Tooling.h>
 #include <clang/UnifiedSymbolResolution/USRGeneration.h>
 #include <llvm/ADT/SmallString.h>
@@ -5713,6 +5714,35 @@ public:
             result.diagnostics.push_back(std::move(message));
             collectDiagnostics();
             return result;
+        }
+        // EN: L-020. When several function templates of one name deduce from the call, C++ keeps only the most
+        //     specialized ones ([temp.func.order]): `glm::value_ptr(mat<4, 4, T, Q> const&)` is chosen over the
+        //     generic `glm::value_ptr(genType const&)`. Without this partial ordering both specializations reached
+        //     NativeSharp's overload resolution and the call was reported ambiguous. Only free function templates
+        //     are ordered here; member and rewritten-operator lookups keep every specialization, as before.
+        // ES: L-020. Si varias plantillas de funcion de un nombre deducen de la llamada, C++ conserva solo las mas
+        //     especializadas ([temp.func.order]): se elige `glm::value_ptr(mat<4, 4, T, Q> const&)` sobre la
+        //     generica `glm::value_ptr(genType const&)`. Sin este orden parcial ambas especializaciones llegaban a la
+        //     resolucion de sobrecargas de NativeSharp y la llamada se informaba ambigua. Solo se ordenan plantillas
+        //     de funciones libres; las busquedas de miembros y de operadores reescritos conservan todas, como antes.
+        if (found.size() > 1 && !qualifiedName.starts_with("@"))
+        {
+            std::vector<clang::FunctionDecl*> mostSpecialized;
+            for (auto* candidate : found)
+            {
+                bool dominated = false;
+                for (auto* other : found)
+                {
+                    if (other == candidate || !candidate->getPrimaryTemplate() || !other->getPrimaryTemplate())
+                        continue;
+                    auto* better = sema.getMoreSpecializedTemplate(candidate->getPrimaryTemplate(),
+                        other->getPrimaryTemplate(), location, clang::TPOC_Call,
+                        static_cast<unsigned>(arguments.size()));
+                    if (better == other->getPrimaryTemplate()) { dominated = true; break; }
+                }
+                if (!dominated) mostSpecialized.push_back(candidate);
+            }
+            if (!mostSpecialized.empty()) found = std::move(mostSpecialized);
         }
         bool instantiated = false;
         for (auto* specialization : found)

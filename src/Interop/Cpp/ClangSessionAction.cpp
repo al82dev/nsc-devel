@@ -113,6 +113,18 @@ public:
                        std::shared_ptr<clang::PCHContainerOperations> pch,
                        clang::DiagnosticConsumer* consumer) override
     {
+        // EN: L-020. For a *-windows-msvc target before C++20 the Clang driver enables delayed template parsing, so
+        //     the bodies of function templates stay unparsed tokens. This ASTUnit outlives its Parser and NSC
+        //     instantiates templates on demand later (`glm::rotate`, `glm::scale`); Sema then asked the missing
+        //     Parser for the late-parsed body and crashed in Parser::ParseLateTemplatedFuncDef. The session parses
+        //     template bodies up front, as clang-cl does in C++20 mode.
+        // ES: L-020. Para un destino *-windows-msvc antes de C++20 el driver de Clang activa el analisis diferido de
+        //     plantillas, asi que los cuerpos de las plantillas de funcion quedan como tokens sin analizar. Este
+        //     ASTUnit sobrevive a su Parser y NSC instancia plantillas a demanda despues (`glm::rotate`,
+        //     `glm::scale`); Sema pedia entonces el cuerpo diferido al Parser inexistente y fallaba en
+        //     Parser::ParseLateTemplatedFuncDef. La sesion analiza los cuerpos de las plantillas desde el principio,
+        //     como clang-cl en modo C++20.
+        if (invocation->getLangOpts().CPlusPlus) invocation->getLangOpts().DelayedTemplateParsing = false;
         auto diagnostics = clang::CompilerInstance::createDiagnostics(
             files->getVirtualFileSystem(), invocation->getDiagnosticOpts(), consumer, false);
         auto unit = clang::ASTUnit::create(invocation, nullptr, diagnostics,

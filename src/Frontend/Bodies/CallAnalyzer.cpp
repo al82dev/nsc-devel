@@ -1201,9 +1201,23 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
     // X2-05: a C++ record prvalue (a construction or a constructed result, not a place) binds a `const T&` as in
     //     C++, materialized for the call with no copy; a place still binds with `in`. / Un prvalue record C++ enlaza
     //     un `const T&` como en C++, materializado sin copia; un lugar sigue enlazandose con `in`.
+    // EN: L-020. A place of a C++ record NativeSharp may copy (Item 10.1, trivially copyable and destructible:
+    //     `glm::mat4`, `glm::vec3`) also binds a `const T&` without `in`, as C++ binds the lvalue: the callee only
+    //     reads it, so the bitwise copy materialized for the call is observably the same object. A record with a
+    //     non-trivial copy keeps X2-04's rule and binds with `in`.
+    // ES: L-020. Un lugar de un record C++ que NativeSharp puede copiar (Item 10.1, copiable y destruible de forma
+    //     trivial: `glm::mat4`, `glm::vec3`) tambien enlaza un `const T&` sin `in`, como C++ enlaza el lvalue: el
+    //     llamado solo lo lee, asi que la copia de bytes materializada para la llamada es observablemente el mismo
+    //     objeto. Un record con copia no trivial conserva la regla de X2-04 y se enlaza con `in`.
+    const auto transportableCppRecord = [&](std::string_view typeKey) {
+        if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
+        const auto ordinal = nameLookup_->typeOrdinalForIdentity(typeKey.substr(5));
+        return ordinal.has_value() && nameLookup_->cppTransportValueEligible(*ordinal);
+    };
     const bool rvalueArgument = (parameter.cppRvalueReference ||
         (parameter.cppConstReference && (!cppRecordTypeKey(parameter.pointeeTypeKey) ||
-                                         !arguments[argumentOrdinal].addressable)) ||
+                                         !arguments[argumentOrdinal].addressable ||
+                                         transportableCppRecord(parameter.pointeeTypeKey))) ||
         (parameter.cppByValueRecord && !arguments[argumentOrdinal].addressable)) &&
         arguments[argumentOrdinal].argumentPassKind == ParameterPassKind::Value;
     std::string conversionTarget = (hasForwardedReceiver && argumentOrdinal == 0 &&
@@ -1614,6 +1628,25 @@ std::optional<std::size_t> ProjectMethodBodyModel::selectNamespaceFunctionCandid
             if (!specialization) nonTemplates.push_back(index);
         }
         if (anyTemplate && nonTemplates.size() == 1) return nonTemplates.front();
+        // EN: L-020. Redeclarations of one C++ function (GLM declares `value_ptr` in type_ptr.hpp and defines it in
+        //     type_ptr.inl) can reach the call as several candidates; when every tied candidate names the same
+        //     external symbol they are one function, not an ambiguity.
+        // ES: L-020. Las redeclaraciones de una funcion C++ (GLM declara `value_ptr` en type_ptr.hpp y la define en
+        //     type_ptr.inl) pueden llegar a la llamada como varios candidatos; si todos los empatados nombran el
+        //     mismo simbolo externo son una sola funcion, no una ambiguedad.
+        const auto symbolOf = [&](std::size_t index) -> const std::string* {
+            const std::size_t ordinal = call.evaluatedCandidates[index].memberOrdinal;
+            if (ordinal >= namespaceFunctionModel_->functions().size()) return nullptr;
+            const auto& function = namespaceFunctionModel_->functions()[ordinal];
+            return function.cppCanonicalIdentity.empty() || function.mangledName.empty() ? nullptr
+                                                                                        : &function.mangledName;
+        };
+        const std::string* first = symbolOf(nonDominated.front());
+        if (first != nullptr && std::all_of(nonDominated.begin(), nonDominated.end(), [&](std::size_t index) {
+                const std::string* symbol = symbolOf(index);
+                return symbol != nullptr && *symbol == *first;
+            }))
+            return nonDominated.front();
     }
     std::vector<std::size_t> tied;
     for (const std::size_t index : nonDominated) tied.push_back(call.evaluatedCandidates[index].memberOrdinal);
