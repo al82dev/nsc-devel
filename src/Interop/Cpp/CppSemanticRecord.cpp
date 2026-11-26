@@ -1851,10 +1851,20 @@ static CppCRecordSnapshotResult captureRecordSnapshot(
     // EN: X1 in lib. A C++ record only declared (`struct Fwd;`, defined in a source) is an opaque type, as a C one:
     //     its pointer travels by its identity.
     // ES: X1 en lib. Un record C++ solo declarado es un tipo opaco, como uno de C: su puntero viaja por su identidad.
-    if (isCpp == true && ((group.status != CppRecordGroupStatus::OneDefinition &&
+    // EN: The same C++ header reached by several references (glm/glm.hpp and glm/gtc/matrix_transform.hpp, two
+    //     Clang sessions) defines the record once per session; observations that agree on the Clang identity (checked
+    //     above) are one definition by the C++ one-definition rule.
+    // ES: El mismo encabezado C++ alcanzado por varias referencias (dos sesiones de Clang) define el record una vez
+    //     por sesion; observaciones que coinciden en la identidad de Clang son una definicion por la regla ODR de C++.
+    const bool sameCppDefinition = isCpp == true && knownUsr && !knownUsr->empty() && completeCount >= 1 &&
+        (group.status == CppRecordGroupStatus::MultipleDefinitionsUnverified ||
+         group.status == CppRecordGroupStatus::MultipleDefinitionsPointerCompatible);
+    if (isCpp == true && !sameCppDefinition && ((group.status != CppRecordGroupStatus::OneDefinition &&
                            group.status != CppRecordGroupStatus::ForwardOnly) ||
                           !knownUsr || knownUsr->empty()))
-        return fail("C++ record requires one definition and a known identity");
+        return fail("C++ record '" + group.identity.fullyQualifiedName() + "' requires one definition and a known "
+            "identity (" + std::to_string(completeCount) + " definition(s), " +
+            (knownUsr && !knownUsr->empty() ? "known" : "no") + " Clang identity)");
     CppCRecordSnapshot snapshot;
     snapshot.identityKey = group.identity.key();
     if (group.identity.arity() != 0) return fail("C record identity has generic arity");

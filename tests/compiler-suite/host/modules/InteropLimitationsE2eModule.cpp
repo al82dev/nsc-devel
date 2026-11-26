@@ -135,6 +135,16 @@ void expectExit(TestContext& context, std::string_view caseId, std::string_view 
             describe("execute", execution) + ")");
 }
 
+// The fixture (a library) builds. / El fixture (una biblioteca) compila.
+void expectBuilds(TestContext& context, std::string_view caseId, std::string_view fixtureName)
+{
+    const IsolatedFixture isolated(caseId);
+    const Built built = build(isolated, fixtureName);
+    context.expect(built.failure.empty() && built.compilation.started && built.compilation.exitCode == 0,
+        std::string(caseId) + " fixture must build (" + built.failure + " " + describe("compile", built.compilation) +
+            ")");
+}
+
 // The fixture is rejected with a diagnostic that contains `expected`. / El fixture se rechaza con un diagnostico
 // que contiene `expected`.
 void expectDiagnostic(TestContext& context, std::string_view caseId, std::string_view fixtureName,
@@ -206,6 +216,8 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         [](TestContext& context) { expectExit(context, "TF-INTEROP-423", "cpp-member-template-compound", 42); });
     addCase(registry, "TF-INTEROP-424", {"interop", "cpp", "record", "temporary", "e2e"},
         [](TestContext& context) { expectExit(context, "TF-INTEROP-424", "cpp-trivial-record-temporary-argument", 42); });
+    addCase(registry, "TF-INTEROP-425", {"interop", "cpp", "record", "library", "nsmeta", "e2e"},
+        [](TestContext& context) { expectBuilds(context, "TF-INTEROP-425", "cpp-record-two-sessions-library"); });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",

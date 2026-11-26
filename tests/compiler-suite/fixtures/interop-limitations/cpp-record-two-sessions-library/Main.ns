@@ -1,0 +1,20 @@
+// Compiler-suite fixture cpp-record-two-sessions-library: a static library whose class stores a C++ record reached
+// through two C++ references (two Clang sessions define it once each, as glm/glm.hpp and glm/gtc/matrix_transform.hpp
+// do); the library metadata treats them as one definition. The build must succeed.
+namespace Fixture
+{
+    public class Holder
+    {
+        public lim.vec3 Position;
+
+        public Holder()
+        {
+            Position = new lim.vec3(1.0f, 2.0f, 2.0f);
+        }
+
+        public float Length2()
+        {
+            return lim.length2(Position);
+        }
+    }
+}
