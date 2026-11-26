@@ -98,6 +98,16 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyCFrontierConversion(
     if (cLinkage && parameter.passKind == ParameterPassKind::Value && isArithmetic(source.typeKey) &&
         isArithmetic(target))
         return {ProjectConversionKind::Numeric, 5, source.typeKey, target, std::nullopt};
+    // EN: L-015. A NativeSharp `bool` reaches a C integer parameter as 0 or 1, C's integer promotion of `_Bool`
+    //     (`stbi_set_flip_vertically_on_load(true)`, `glfwSetWindowShouldClose(window, true)`). Only this
+    //     direction: an integer still reaches a `bool` only through an explicit cast.
+    // ES: L-015. Un `bool` NativeSharp llega a un parametro entero C como 0 o 1, la promocion entera de `_Bool` en C.
+    //     Solo esta direccion: un entero sigue llegando a un `bool` solo con un cast explicito.
+    static constexpr std::string_view integers[] = {"builtin:sbyte", "builtin:byte", "builtin:short",
+        "builtin:ushort", "builtin:int", "builtin:uint", "builtin:long", "builtin:ulong"};
+    if (cLinkage && parameter.passKind == ParameterPassKind::Value && source.typeKey == "builtin:bool" &&
+        std::find(std::begin(integers), std::end(integers), target) != std::end(integers))
+        return {ProjectConversionKind::Numeric, 5, source.typeKey, target, std::nullopt};
     // EN: Item 7.1. A non-capturing lambda written as the argument of an imported C/C++ function reaches a C
     //     function pointer of a Win64-equivalent convention through its generated thunk. Only at this boundary:
     //     between NativeSharp values the lambda keeps the exact convention match (T08-F02).
