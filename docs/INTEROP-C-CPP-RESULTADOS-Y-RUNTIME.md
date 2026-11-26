@@ -39,8 +39,15 @@ recompilar NSC y repetir el tutorial con el diagnóstico actualizado.
 
 La primera repetición del tutorial 17 informó definiciones múltiples no
 verificadas. El diagnóstico incorpora los datos disponibles de cada definición
-completa para comparar su identidad, ubicación y layout; la nueva salida aún
-requiere recompilarse y verificarse.
+completa para comparar su identidad, ubicación y layout. La salida mostró el
+mismo USR, tamaño, alineación y posición de origen en tres observaciones, sin
+hash ODR disponible.
+
+Se agregó una vía de comparación para registros C++ compuestos exclusivamente
+por datos cuando Clang no proporciona hash ODR: exige identidad y procedencia
+iguales, mismo destino, layout, rasgos y miembros capturados equivalentes, y
+excluye métodos, bases y campos estáticos. La recompilación del tutorial 17 con
+esta regla está pendiente.
 
 El script externo `Z:\nsc-tutorials\OpenGL-3\ogl\build_all.py` también se
 actualizó para copiar las DLL transitivas disponibles y los recursos a la

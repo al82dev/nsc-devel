@@ -4207,6 +4207,41 @@ CppRecordRefinementResult refineCppRecordGroupsForPointerTransport(
         }
         if (consistent && first) group.status = CppRecordGroupStatus::MultipleDefinitionsPointerCompatible;
     }
+    // Some instantiated C++ records have no Clang ODR hash or lookupable
+    // specialization name. A plain data-only record can still be reconciled
+    // when its complete captured layout and provenance agree in every session.
+    for (auto& group : result.groups)
+    {
+        if (group.status != CppRecordGroupStatus::MultipleDefinitionsUnverified) continue;
+        const CppSemanticRecordEntry* first = nullptr;
+        bool matching = true;
+        for (const auto index : group.inventoryIndices)
+        {
+            const auto& entry = inventory[index];
+            const auto& record = entry.declaration;
+            if (!record.complete) continue;
+            if (!record.isCxx || !record.clangUsr || record.clangUsr->empty() ||
+                !record.sourceProvenance || record.sourceProvenance->bufferSha256.empty() ||
+                !record.sizeBits || !record.alignmentBits || !record.valueTraits ||
+                !record.bases.empty() || record.hasVirtualBases || !record.upcasts.empty() ||
+                !record.methods.empty() || !record.staticFields.empty() || !record.anonymousCRecords.empty())
+            { matching = false; break; }
+            if (!first) { first = &entry; continue; }
+            const auto& previous = first->declaration;
+            std::error_code ec;
+            const bool sameFile = std::filesystem::equivalent(previous.sourceProvenance->sourcePath,
+                record.sourceProvenance->sourcePath, ec);
+            if (ec || !sameFile || first->targetTriple != entry.targetTriple ||
+                previous.clangUsr != record.clangUsr ||
+                previous.sourceProvenance->bufferSha256 != record.sourceProvenance->bufferSha256 ||
+                previous.sourceProvenance->byteOffset != record.sourceProvenance->byteOffset ||
+                previous.sizeBits != record.sizeBits || previous.alignmentBits != record.alignmentBits ||
+                previous.valueTraits != record.valueTraits || previous.indirectReturn != record.indirectReturn ||
+                !sameCapturedMembers(previous, record))
+            { matching = false; break; }
+        }
+        if (matching && first) group.status = CppRecordGroupStatus::MultipleDefinitionsPointerCompatible;
+    }
     // Clang cannot look up the internal names we synthesize for C anonymous
     // aggregates. Compare the captured contract only when every observation
     // has the same known Clang identity and comes from the same parsed file.
