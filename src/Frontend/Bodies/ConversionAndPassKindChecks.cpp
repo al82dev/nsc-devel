@@ -89,9 +89,11 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyCFrontierConversion(
     //     a `float`, `int` a `unsigned int`); solo en esta frontera, nunca entre valores NativeSharp. `bool` y `char`
     //     conservan las reglas NativeSharp: un `_Bool` C toma todo valor distinto de cero como verdadero solo con un
     //     cast explicito.
+    // L-008: `nint`/`nuint` (the type of `sizeof`) take part too, so `sizeof(T)` reaches a C `size_t` or
+    //     `ptrdiff_t` (`GLsizeiptr`) parameter as in C. / `nint`/`nuint` (el tipo de `sizeof`) tambien participan.
     static constexpr std::string_view arithmetic[] = {"builtin:sbyte", "builtin:byte", "builtin:short",
-        "builtin:ushort", "builtin:int", "builtin:uint", "builtin:long", "builtin:ulong", "builtin:float",
-        "builtin:double"};
+        "builtin:ushort", "builtin:int", "builtin:uint", "builtin:long", "builtin:ulong", "builtin:nint",
+        "builtin:nuint", "builtin:float", "builtin:double"};
     const auto isArithmetic = [](std::string_view key)
     { return std::find(std::begin(arithmetic), std::end(arithmetic), key) != std::end(arithmetic); };
     // Only with C linkage: a C++ function keeps NativeSharp's conversions. / Solo con enlace C.
