@@ -1771,8 +1771,8 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                 ok = false;
                 break;
             }
-            auto conversion = classifyImplicit(arguments[index].typeKey,
-                byValue ? parameter.typeKey : parameter.pointeeTypeKey, arguments[index].integerConstant);
+            auto conversion = classifyImportedFlexibleConversion(arguments[index],
+                byValue ? parameter.typeKey : parameter.pointeeTypeKey);
             ok = conversion.exists();
             conversions.push_back(std::move(conversion));
         }
@@ -1840,6 +1840,7 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
     result.assignable = functions[selected].isReferenceReturn &&
         !isReadonlyReferenceReturn(namespaceCallableAdapters()[selected]);
     result.cppCOrigin = true;
+    result.cppForeignCallResult = true;
     return result;
 }
 
@@ -2750,6 +2751,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
         const NamespaceFunctionSymbol& function = namespaceFunctionModel_->functions()[functionOrdinal];
         const bool cFunction = !function.cppCanonicalIdentity.empty() && function.definitionSyntax == nullptr;
         result.cppCOrigin = cFunction;
+        result.cppForeignCallResult = cFunction;
         if (cFunction && callable.declaredPointerPointeeVolatile)
             if (const std::size_t width = method_body_detail::cVolatilePointeeScalarWidth(callable.declaredTypeKey))
             {
@@ -5933,8 +5935,8 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                     "move-only argument cannot be copied into a by-value generic-lambda parameter; use move(argument)");
                 return result;
             }
-            ProjectImplicitConversion conversion = classifyImplicit(
-                arguments[index].typeKey, parameterTypes[index], arguments[index].integerConstant);
+            ProjectImplicitConversion conversion = classifyImportedFlexibleConversion(
+                arguments[index], parameterTypes[index]);
             if (!conversion.exists())
             {
                 diagnostics.report(
@@ -6079,8 +6081,8 @@ bool ProjectMethodBodyModel::bindEventInvocationArguments(
                 "move-only event argument cannot be copied into a by-value delegate parameter; use move(argument)");
             return false;
         }
-        ProjectImplicitConversion conversion = classifyImplicit(
-            arguments[index].typeKey, parameterTypes[index], arguments[index].integerConstant);
+        ProjectImplicitConversion conversion = classifyImportedFlexibleConversion(
+            arguments[index], parameterTypes[index]);
         if (!conversion.exists())
         {
             diagnostics.report(
@@ -6393,6 +6395,127 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
             methodMemberOrdinal, diagnostics);
         delegateBindings_.push_back(std::move(binding));
         result.typeKey = returnType;
+        result.cppForeignCallResult = callee.cppCOrigin;
+        // A local function pointer is foreign only if every recorded possible source is foreign.
+        // This includes its initializer and later assignments; mixed native targets stay native.
+        if (!result.cppForeignCallResult && expression->first() != nullptr &&
+            expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const auto localName = lookupScopeName(scopeOrdinal, expression->first()->text());
+            if (localName && localName->kind == ScopeNameKind::Local &&
+                localName->semanticOrdinal < locals_.size())
+            {
+                std::vector<std::size_t> pendingLocals{localName->semanticOrdinal};
+                std::unordered_set<std::size_t> visitedLocals;
+                bool foreign = true;
+                bool foundSource = false;
+                while (!pendingLocals.empty() && foreign)
+                {
+                    const std::size_t ordinal = pendingLocals.back();
+                    pendingLocals.pop_back();
+                    if (ordinal >= locals_.size())
+                    {
+                        foreign = false;
+                        break;
+                    }
+                    if (!visitedLocals.insert(ordinal).second) continue;
+                    const MethodLocalSymbol& local = locals_[ordinal];
+                    // Inspect the entire callable, including statements not analyzed yet and
+                    // loop back-edges. Never infer foreign provenance from only the assignments
+                    // already visited when a later write could introduce a NativeSharp target.
+                    const ast::AstNode* callableSyntax = nullptr;
+                    if (memberModel_ && methodMemberOrdinal < memberModel_->members().size())
+                        callableSyntax = memberModel_->members()[methodMemberOrdinal].syntax;
+                    else if (namespaceFunctionModel_ && methodMemberOrdinal >= namespaceCallableBase_)
+                    {
+                        const std::size_t functionOrdinal = methodMemberOrdinal - namespaceCallableBase_;
+                        if (functionOrdinal < namespaceFunctionModel_->functions().size())
+                            callableSyntax = namespaceFunctionModel_->functions()[functionOrdinal].definitionSyntax;
+                    }
+                    if (!callableSyntax) { foreign = false; break; }
+                    std::vector<std::pair<const ast::AstNode*, const ast::AstNode*>> pendingSyntax{
+                        {callableSyntax, nullptr}};
+                    while (!pendingSyntax.empty() && foreign)
+                    {
+                        const auto [node, parent] = pendingSyntax.back();
+                        pendingSyntax.pop_back();
+                        if (node->kind() == ast::AstNodeKind::IdentifierExpression && node->text() == local.name)
+                        {
+                            const bool directCall = parent && parent->kind() == ast::AstNodeKind::CallExpression &&
+                                parent->first() == node;
+                            const bool valueCopy = parent &&
+                                parent->kind() == ast::AstNodeKind::VariableDeclarationStatement &&
+                                parent->first() == node;
+                            const bool recordedWrite = parent && parent->kind() == ast::AstNodeKind::AssignmentExpression &&
+                                parent->first() == node && parent->second() &&
+                                std::find(local.possibleDelegateSources.begin(), local.possibleDelegateSources.end(),
+                                          parent->second()) != local.possibleDelegateSources.end();
+                            if (!directCall && !valueCopy && !recordedWrite)
+                            {
+                                foreign = false;
+                                break;
+                            }
+                        }
+                        if (node->first()) pendingSyntax.emplace_back(node->first(), node);
+                        if (node->second()) pendingSyntax.emplace_back(node->second(), node);
+                        if (node->third()) pendingSyntax.emplace_back(node->third(), node);
+                        for (const ast::AstNode* child : node->children())
+                            if (child) pendingSyntax.emplace_back(child, node);
+                    }
+                    if (!foreign) break;
+                    std::vector<const ast::AstNode*> sources = local.possibleDelegateSources;
+                    if (local.syntax && local.syntax->first()) sources.push_back(local.syntax->first());
+                    if (sources.empty()) { foreign = false; break; }
+                    while (!sources.empty() && foreign)
+                    {
+                        const ast::AstNode* source = sources.back();
+                        sources.pop_back();
+                        if (!source) { foreign = false; break; }
+                        if (source->kind() == ast::AstNodeKind::ConditionalExpression)
+                        {
+                            sources.push_back(source->second());
+                            sources.push_back(source->third());
+                            continue;
+                        }
+                        const MethodExpressionTypeBinding* type = expressionTypeBinding(source, methodMemberOrdinal);
+                        if (type && type->cppCOrigin) { foundSource = true; continue; }
+                        bool foreignAddress = false;
+                        for (const MethodDelegateBinding& created : delegateBindings_)
+                        {
+                            if (created.kind != MethodDelegateOperationKind::Create ||
+                                created.methodMemberOrdinal != methodMemberOrdinal ||
+                                created.syntax != source || !created.selectedMemberOrdinal) continue;
+                            const std::size_t selected = *created.selectedMemberOrdinal;
+                            if (selected >= namespaceCallableBase_ && namespaceFunctionModel_)
+                            {
+                                const std::size_t ordinal = selected - namespaceCallableBase_;
+                                if (ordinal < namespaceFunctionModel_->functions().size())
+                                {
+                                    const auto& function = namespaceFunctionModel_->functions()[ordinal];
+                                    foreignAddress = !function.cppCanonicalIdentity.empty() &&
+                                        function.definitionSyntax == nullptr;
+                                }
+                            }
+                            else if (memberModel_ && selected < memberModel_->members().size())
+                            {
+                                const auto& member = memberModel_->members()[selected];
+                                foreignAddress = member.isCppExternal || member.isImportedC;
+                            }
+                            break;
+                        }
+                        if (foreignAddress) { foundSource = true; continue; }
+                        const MethodNameBinding* name = nameBinding(source, methodMemberOrdinal);
+                        if (name && name->kind == MethodNameBindingKind::Local && name->localOrdinal)
+                        {
+                            pendingLocals.push_back(*name->localOrdinal);
+                            continue;
+                        }
+                        foreign = false;
+                    }
+                }
+                result.cppForeignCallResult = foreign && foundSource;
+            }
+        }
         // EN: T08-002: a C callback declared to return `volatile T*` keeps that qualification on the
         //     result, exactly like a direct call to a C function with the same return type.
         // ES: T08-002: un callback C declarado con retorno `volatile T*` conserva esa calificación en el
@@ -6632,8 +6755,8 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
                 "move-only argument cannot be copied into a by-value delegate parameter; use move(argument)");
             return false;
         }
-        ProjectImplicitConversion conversion = classifyImplicit(
-            arguments[index].typeKey, parameterTypes[index], arguments[index].integerConstant);
+        ProjectImplicitConversion conversion = classifyImportedFlexibleConversion(
+            arguments[index], parameterTypes[index]);
         // EN: L-012, L-004. A call through a C function pointer (every OpenGL entry point of GLAD is a function-pointer
         //     variable) is a C boundary like a direct C call: a string literal reaches a `const char*` parameter and
         //     C's arithmetic conversions apply (`GL_ARRAY_BUFFER`, an `int` macro, to a `GLenum` parameter). Before,
@@ -7764,6 +7887,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
     if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
     {
         const ClassMemberSymbol& selectedCallable = memberModel_->members()[selected.memberOrdinal];
+        result.cppForeignCallResult = selectedCallable.isCppExternal || selectedCallable.isImportedC;
         markCallTemporaryBorrow(
             result, callee.receiverBorrowsOwnedTemporary, resolvedArguments,
             ownedArgumentParameters(selected.argumentParameterOrdinals, selectedCallable));
@@ -9530,10 +9654,8 @@ bool ProjectMethodBodyModel::evaluateSyntheticCandidates(
             const std::string_view conversionTarget = implicitOperatorReference
                 ? std::string_view(parameter.pointeeTypeKey)
                 : std::string_view(parameter.typeKey);
-            ProjectImplicitConversion conversion = classifyImplicit(
-                arguments[argumentOrdinal].typeKey,
-                conversionTarget,
-                arguments[argumentOrdinal].integerConstant);
+            ProjectImplicitConversion conversion = classifyImportedFlexibleConversion(
+                arguments[argumentOrdinal], conversionTarget);
             // X2: a literal reaches a C++ operator's `const char*` (`s += "text"`), as a C/C++ function's (Item 3.2).
             //     / Un literal llega al `const char*` de un operador C++, como al de una funcion C/C++.
             if (!conversion.exists() && arguments[argumentOrdinal].typeKey == "string-literal" &&
@@ -9800,6 +9922,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishSynthetic
     }
     result.typeKey = call.resultTypeKey;
     result.valid = !isErrorType(result.typeKey);
+    result.cppForeignCallResult = memberPtr != nullptr && (memberPtr->isCppExternal || memberPtr->isImportedC);
     recordCallBinding(std::move(call));
     return result;
 }
