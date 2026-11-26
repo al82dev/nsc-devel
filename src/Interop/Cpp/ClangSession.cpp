@@ -1907,6 +1907,22 @@ void collectMemberOperators(const clang::DeclContext& context, clang::ASTContext
                 pushBases(*bases[index]);
             }
         }
+        // EN: X2. The instantiated specializations of the record's public operator member function templates (GLM's
+        //     `template<typename U> vec& operator+=(vec<3, U, Q> const&)`, deduced for `a += b`) are operators of the
+        //     record like the declared ones, published through the same adapter.
+        // ES: X2. Las especializaciones instanciadas de las plantillas de funcion miembro operador publicas del
+        //     record son operadores del record como los declarados, publicados por el mismo adaptador.
+        for (const auto* member : record->decls())
+            if (const auto* memberTemplate = llvm::dyn_cast<clang::FunctionTemplateDecl>(member);
+                memberTemplate && memberTemplate->getAccess() == clang::AS_public)
+                for (const auto* specialization : memberTemplate->specializations())
+                    if (const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(specialization);
+                        method && method->isOverloadedOperator() && !method->isStatic() && !method->isInvalidDecl() &&
+                        // Only an instantiated one: a deduction that lost the partial ordering leaves a
+                        // declaration without a body. / Solo una instanciada.
+                        method->isDefined() &&
+                        std::find(operatorMethods.begin(), operatorMethods.end(), method) == operatorMethods.end())
+                        operatorMethods.push_back(method);
         // EN: X2. In C++20 `a != b` is rewritten as `!(a == b)` when no `!=` is declared (std iterators declare
         //     only `==`); such an `==` also publishes a `!=` whose adapter negates it.
         // ES: X2. En C++20 `a != b` se reescribe como `!(a == b)` si no se declara `!=`; ese `==` tambien publica un
@@ -5767,7 +5783,12 @@ public:
         //     generica `glm::value_ptr(genType const&)`. Sin este orden parcial ambas especializaciones llegaban a la
         //     resolucion de sobrecargas de NativeSharp y la llamada se informaba ambigua. Solo se ordenan plantillas
         //     de funciones libres; las busquedas de miembros y de operadores reescritos conservan todas, como antes.
-        if (found.size() > 1 && !qualifiedName.starts_with("@"))
+        // EN: Member function templates are ordered as well ([temp.func.order] applies to them, the implicit object
+        //     parameter aside): for `v += w` with GLM's `operator+=(U)` and `operator+=(vec<3, U, Q> const&)`, C++ calls
+        //     the second and never instantiates the first, whose body does not compile for a vector.
+        // ES: Las plantillas de funcion miembro tambien se ordenan: para `v += w` C++ llama a
+        //     `operator+=(vec<3, U, Q> const&)` y nunca instancia `operator+=(U)`, cuyo cuerpo no compila con un vector.
+        if (found.size() > 1 && (!qualifiedName.starts_with("@") || qualifiedName.starts_with("@member:")))
         {
             std::vector<clang::FunctionDecl*> mostSpecialized;
             for (auto* candidate : found)
@@ -5777,9 +5798,20 @@ public:
                 {
                     if (other == candidate || !candidate->getPrimaryTemplate() || !other->getPrimaryTemplate())
                         continue;
+                    // A non-static member template is ordered with its object type, as Clang's overload resolution
+                    // does. / Una plantilla miembro no estatica se ordena con el tipo de su objeto.
+                    clang::QualType candidateObject;
+                    clang::QualType otherObject;
+                    const auto* candidateMethod = llvm::dyn_cast<clang::CXXMethodDecl>(candidate);
+                    const auto* otherMethod = llvm::dyn_cast<clang::CXXMethodDecl>(other);
+                    if (candidateMethod && otherMethod && !candidateMethod->isStatic() && !otherMethod->isStatic())
+                    {
+                        candidateObject = context.getCanonicalTagType(candidateMethod->getParent());
+                        otherObject = context.getCanonicalTagType(otherMethod->getParent());
+                    }
                     auto* better = sema.getMoreSpecializedTemplate(candidate->getPrimaryTemplate(),
                         other->getPrimaryTemplate(), location, clang::TPOC_Call,
-                        static_cast<unsigned>(arguments.size()));
+                        static_cast<unsigned>(arguments.size()), candidateObject, otherObject);
                     if (better == other->getPrimaryTemplate()) { dominated = true; break; }
                 }
                 if (!dominated) mostSpecialized.push_back(candidate);

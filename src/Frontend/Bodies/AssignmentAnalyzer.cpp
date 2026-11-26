@@ -4425,8 +4425,53 @@ bool ProjectMethodBodyModel::tryCppCompoundAssignment(
                      (source.passKind == ParameterPassKind::In || !right.readonlyReceiver))
                 conversion = ProjectImplicitConversion{ProjectConversionKind::Identity, 0, right.typeKey + "*",
                                                        source.typeKey, std::nullopt};
+            // T19-007: a `const T&` operand binds a temporary (`v += w * s`), materialized for the call as for a
+            //     binary operator. / Un operando `const T&` enlaza un temporal, materializado para la llamada.
+            else if (!right.addressable && source.passKind == ParameterPassKind::In &&
+                     right.typeKey == source.pointeeTypeKey)
+                conversion = ProjectImplicitConversion{ProjectConversionKind::Identity, 0, right.typeKey,
+                                                       source.pointeeTypeKey, std::nullopt};
             if (conversion.exists()) matches.emplace_back(ordinal, conversion);
         }
+        // EN: A compound operator that is a member function template of the record (GLM's
+        //     `template<typename U> vec& operator+=(vec<3, U, Q> const&)`) exists only once Clang deduces it: when no
+        //     operator matches, ask Clang for the specialization with the right-hand side's type, as a member template
+        //     call does (X2); the bodies are analyzed again with it.
+        // ES: Un operador compuesto que es plantilla de funcion miembro del record existe solo cuando Clang lo deduce:
+        //     si ningun operador encaja, se pide a Clang la especializacion con el tipo del lado derecho, como en una
+        //     llamada a plantilla miembro (X2); los cuerpos se analizan otra vez con ella.
+        if (matches.empty() && !spelling.empty() && nameLookup_ != nullptr && right.valid && !right.typeKey.empty())
+        {
+            const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(left.typeKey).substr(5));
+            const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+            if (imported != nullptr && imported->origin == CppImportedTypeOrigin::CppRecord && imported->clangUsr)
+            {
+                CppTemplateDeductionRequest request;
+                request.syntax = expression;
+                request.projectOrdinal = nameLookup_->namedTypes()[*ordinal].projectOrdinal;
+                request.qualifiedNames = {"@member:" + *imported->clangUsr + "::operator" + std::string(spelling)};
+                request.range = expression->range();
+                request.argumentTypeKeys = {(right.addressable ? "lvalue:" : "") + right.typeKey};
+                namespaceFunctionModel_->recordCppTemplateDeduction(std::move(request));
+            }
+        }
+        // EN: Several specializations of the record's operator templates fit (GLM's `operator+=(U)` with U = vec and
+        //     `operator+=(vec<3, U, Q> const&)`): the one Clang chose for this expression by partial ordering is the
+        //     call, as in C++.
+        // ES: Si encajan varias especializaciones de las plantillas operador del record, la llamada es la que Clang
+        //     eligio para esta expresion por ordenamiento parcial, como en C++.
+        if (matches.size() > 1)
+            if (const std::string* selection = namespaceFunctionModel_->cppMemberTemplateSelection(expression->first()))
+            {
+                std::string_view chosen = *selection;
+                if (chosen.ends_with("#member-template")) chosen.remove_suffix(std::string_view("#member-template").size());
+                std::vector<std::pair<std::size_t, ProjectImplicitConversion>> chosenMatches;
+                for (const auto& match : matches)
+                    if (functions[match.first].cppClangUsr &&
+                        std::string_view(*functions[match.first].cppClangUsr).starts_with(chosen))
+                        chosenMatches.push_back(match);
+                if (chosenMatches.size() == 1) matches = std::move(chosenMatches);
+            }
         if (matches.size() == 1)
         {
             const auto& [selected, conversion] = matches.front();

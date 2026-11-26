@@ -1,0 +1,36 @@
+// Compiler-suite fixture cpp-member-template-compound: C++ compound operators that are member function templates
+// (GLM's `template<typename U> vec& operator+=(vec<3, U, Q> const&)`) on a field and on a local, with a temporary
+// and with an lvalue right-hand side (LearnOpenGL Camera: `Position += Front * velocity;`). Exit 42.
+namespace Fixture
+{
+    public class Camera
+    {
+        public lim.vec3 Position;
+        public lim.vec3 Front;
+
+        public Camera()
+        {
+            Position = new lim.vec3(1.0f, 2.0f, 3.0f);
+            Front = new lim.vec3(0.0f, 0.0f, -1.0f);
+        }
+
+        public void Move(float velocity)
+        {
+            Position += Front * velocity;
+            Position -= Front;
+        }
+    }
+
+    int Main()
+    {
+        Camera camera = new Camera();
+        camera.Move(3.0f);
+        lim.vec3 local = new lim.vec3(1.0f, 1.0f, 1.0f);
+        local += camera.Position;
+        if (camera.Position.z != 1.0f) return 1;
+        if (local.x != 2.0f || local.y != 3.0f || local.z != 2.0f) return 2;
+        camera.Position += local;
+        if (camera.Position.x != 3.0f) return 3;
+        return 42;
+    }
+}

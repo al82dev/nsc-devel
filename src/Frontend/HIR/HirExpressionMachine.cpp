@@ -2639,9 +2639,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAssignmentExpression
         // Item 11.4: a `const P&` / `P&` right-hand side passes its address. / Un lado derecho por referencia pasa
         //     su direccion.
         const bool rightByAddress = target.parameters[1].passKind != ParameterPassKind::Value;
-        auto value = lowerExpression(expression->second(), memberOrdinal, rightByAddress, error);
+        // T19-007: a temporary bound to a `const P&` right-hand side (`v += w * s`) is materialized for the call.
+        //     / Un temporal enlazado a un lado derecho `const P&` se materializa para la llamada.
+        const bool rightTemporary = rightByAddress && target.parameters[1].passKind == ParameterPassKind::In &&
+            !isNaturallyAddressable(expression->second());
+        auto value = lowerExpression(expression->second(), memberOrdinal, rightByAddress && !rightTemporary, error);
         if (value == nullptr) return nullptr;
-        if (rightByAddress)
+        if (rightTemporary)
+        {
+            auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress, expression->second(),
+                                      target.parameters[1].pointeeTypeKey);
+            temporary->elementTypeKey = target.parameters[1].pointeeTypeKey;
+            temporary->children.push_back(std::move(value));
+            value = std::move(temporary);
+        }
+        else if (rightByAddress)
         {
             auto rightPointer = makeNode(ProjectOopHirNodeKind::AddressValue, expression->second(),
                                          target.parameters[1].typeKey);

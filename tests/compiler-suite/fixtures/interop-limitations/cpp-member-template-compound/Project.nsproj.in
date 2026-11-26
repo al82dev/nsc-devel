@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>InteropLimitation</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+    <CppLibraryReference Header="@FIXTURE@/lim_vec.hpp" Language="C++" Standard="c++17">
+      <IncludeDirectory Path="@FIXTURE@" Kind="User" />
+    </CppLibraryReference>  </ItemGroup>
+</Project>
