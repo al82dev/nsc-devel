@@ -310,6 +310,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             result.receiverTypeKey = result.typeKey;
             result.receiverTypeOrdinal = referenceTypeOrdinalForTypeKey(result.typeKey);
             result.readonlyReceiver = contextHasReadonlyReceiver(methodMemberOrdinal);
+            // EN: L-066. In a struct's non-readonly instance method `this` is the receiver's storage and may be
+            //     assigned as a whole (`this = other;`, C++ `*this = other`), as C# allows. It stays non-addressable,
+            //     so `ref this` cannot escape (L-061).
+            // ES: L-066. En un metodo de instancia no readonly de un struct, `this` es el almacenamiento del receptor y
+            //     puede asignarse entero, como en C#. Sigue sin ser direccionable, asi `ref this` no escapa.
+            if (!result.readonlyReceiver && nameLookup_ != nullptr)
+                if (const auto ordinal = namedTypeOrdinalForTypeKey(result.typeKey);
+                    ordinal && *ordinal < nameLookup_->namedTypes().size() &&
+                    nameLookup_->namedTypes()[*ordinal].kind == NamedTypeDeclarationKind::Struct)
+                    result.assignable = true;
             recordNameBinding(MethodNameBinding{
                 MethodNameBindingKind::ThisReference,
                 expression,

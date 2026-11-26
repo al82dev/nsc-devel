@@ -1,0 +1,43 @@
+// Compiler-suite fixture assign-this-in-struct-method (L-066): `this = other;` in a struct's instance method replaces the receiver (C++ `*this = other`), for a
+// local and for a field of a class. Exit 42.
+namespace Fixture
+{
+    public struct Pair
+    {
+        public float a;
+        public float b;
+
+        public Pair(float x, float y)
+        {
+            a = x;
+            b = y;
+        }
+
+        public void Reset(Pair other)
+        {
+            this = other;
+        }
+
+        public void Swap()
+        {
+            this = new Pair(b, a);
+        }
+    }
+
+    public class Holder
+    {
+        public Pair value;
+    }
+
+    int Main()
+    {
+        Pair p = new Pair(1.0f, 2.0f);
+        p.Reset(new Pair(30.0f, 2.0f));
+        p.Swap();
+        if (p.a != 2.0f || p.b != 30.0f) return 1;
+        Holder h = new Holder();
+        h.value.Reset(new Pair(5.0f, 5.0f));
+        // 2 + 30 + 5 + 5 = 42
+        return (int)(p.a + p.b + h.value.a + h.value.b);
+    }
+}
