@@ -5391,6 +5391,60 @@ void ProjectMethodBodyModel::analyzeBorrowedVariableInitializer(
             return;
         }
     }
+    // EN: L-044, L-038. A borrowed result of an instance call (`borrowed Item found = holder.Find(0);`,
+    //     `holder.items.RefAt(0)`) borrows from the owner at the root of its receiver chain: the RAII local, or the
+    //     borrowed local and the owners it borrows from. The borrow lives while that owner is in scope, as any
+    //     borrow of that owner does.
+    // ES: L-044, L-038. Un resultado borrowed de una llamada de instancia toma prestado del dueno en la raiz de la
+    //     cadena de su receptor: el local RAII, o el local borrowed y los duenos de los que toma prestado.
+    if (initializer.valid && initializer.ownership == sema::OwnershipKind::Borrowed &&
+        variable->first()->kind() == ast::AstNodeKind::CallExpression)
+    {
+        const ast::AstNode* root = variable->first()->first();
+        while (root != nullptr && (root->kind() == ast::AstNodeKind::MemberExpression ||
+                                   root->kind() == ast::AstNodeKind::CallExpression))
+            root = root->first();
+        const auto source = root != nullptr && root->kind() == ast::AstNodeKind::IdentifierExpression &&
+                variable->first()->first() != nullptr &&
+                variable->first()->first()->kind() == ast::AstNodeKind::MemberExpression
+            ? lookupScopeName(scopeOrdinal, root->text()) : std::nullopt;
+        if (source.has_value() && source->kind == ScopeNameKind::Local && source->semanticOrdinal < locals_.size() &&
+            scopeContains(locals_[source->semanticOrdinal].scopeOrdinal, scopeOrdinal))
+        {
+            const MethodLocalSymbol& sourceLocal = locals_[source->semanticOrdinal];
+            const MethodLocalBorrowBinding* sourceBorrow = sourceLocal.localBorrowBindingOrdinal.has_value() &&
+                    *sourceLocal.localBorrowBindingOrdinal < localBorrowBindings_.size()
+                ? &localBorrowBindings_[*sourceLocal.localBorrowBindingOrdinal] : nullptr;
+            if (sourceLocal.isRaii || sourceBorrow != nullptr)
+            {
+                MethodLocalBorrowBinding borrow;
+                borrow.syntax = variable;
+                borrow.methodMemberOrdinal = methodMemberOrdinal;
+                borrow.creationScopeOrdinal = scopeOrdinal;
+                borrow.typeKey = typeKey;
+                borrow.sourceLocalOrdinal = source->semanticOrdinal;
+                if (sourceLocal.isRaii)
+                {
+                    borrow.sourceKind = MethodLocalBorrowSourceKind::OwnerLocal;
+                    borrow.sourceOwnerLocalOrdinal = source->semanticOrdinal;
+                    borrow.possibleSourceOwnerLocalOrdinals.push_back(source->semanticOrdinal);
+                }
+                else
+                {
+                    borrow.sourceKind = sourceBorrow->sourceKind;
+                    borrow.sourceOwnerLocalOrdinal = sourceBorrow->sourceOwnerLocalOrdinal;
+                    borrow.sourceParameterOrdinal = sourceBorrow->sourceParameterOrdinal;
+                    borrow.sourceOwnerParameterOrdinal = sourceBorrow->sourceOwnerParameterOrdinal;
+                    borrow.possibleSourceOwnerLocalOrdinals = sourceBorrow->possibleSourceOwnerLocalOrdinals;
+                    borrow.possibleSourceOwnerParameterOrdinals = sourceBorrow->possibleSourceOwnerParameterOrdinals;
+                }
+                borrow.maximumValidScopeOrdinal = sourceLocal.scopeOrdinal;
+                borrow.fromInstanceCall = true;
+                pendingLocalBorrow = std::move(borrow);
+                return;
+            }
+        }
+    }
     if (variable->first()->kind() != ast::AstNodeKind::IdentifierExpression)
     {
         diagnostics.report(
@@ -7827,7 +7881,25 @@ bool ProjectMethodBodyModel::validateBorrowedReturnValue(
             field.declaredOwnership == sema::OwnershipKind::Borrowed && field.declaredTypeSyntax != nullptr &&
             !resultLifetime.empty() && field.declaredTypeSyntax->lifetimeName() == resultLifetime;
     }
-    if (!nullBorrow && !matchingBorrowedField &&
+    // EN: L-044. An owned instance field of `this` (`return m_Root;`, `return this.m_Root;`) outlives the call: the
+    //     receiver keeps it, and the caller's borrow of the result freezes that receiver while it is alive
+    //     (rejectUseOfCallBorrowedOwner).
+    // ES: L-044. Un campo owned de instancia de `this` sobrevive a la llamada: el receptor lo conserva, y el prestamo
+    //     del resultado en quien llama congela ese receptor mientras vive.
+    bool ownedThisField = false;
+    if (!method.isStatic && value.assignmentMemberOrdinal.has_value() && memberModel_ != nullptr &&
+        *value.assignmentMemberOrdinal < memberModel_->members().size() &&
+        (statement->first()->kind() == ast::AstNodeKind::IdentifierExpression ||
+         (statement->first()->kind() == ast::AstNodeKind::MemberExpression && statement->first()->first() != nullptr &&
+          statement->first()->first()->kind() == ast::AstNodeKind::ThisExpression)))
+    {
+        const ClassMemberSymbol& field = memberModel_->members()[*value.assignmentMemberOrdinal];
+        ownedThisField = field.kind == ClassMemberKind::Field && !field.isStatic &&
+            field.declaringTypeOrdinal == method.declaringTypeOrdinal &&
+            field.declaredOwnership == sema::OwnershipKind::Owned && !value.ownershipSourceLocalOrdinal.has_value() &&
+            !value.ownershipSourceParameterOrdinal.has_value();
+    }
+    if (!nullBorrow && !matchingBorrowedField && !ownedThisField &&
         value.ownership != sema::OwnershipKind::Borrowed && returnTypeOwnable)
     {
         std::string message =

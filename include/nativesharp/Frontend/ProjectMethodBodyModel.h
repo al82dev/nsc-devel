@@ -811,6 +811,11 @@ private:
     MethodBorrowState localBorrowFlowState(std::size_t borrowOrdinal) const noexcept;
     void invalidateHistoricalBorrowsOfOwnerLocal(std::size_t localOrdinal);
     void invalidateHistoricalBorrowsOfOwnedParameter(std::size_t parameterOrdinal);
+    // L-044: reports a use of `place` (a call receiver or a field write target) rooted at an owner local that a live
+    //     borrowed call result borrows from. / Informa un uso rooteado en un dueno prestado por un resultado borrowed.
+    bool rejectUseOfCallBorrowedOwner(
+        const ast::AstNode* place, std::string_view use, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     bool hasActiveBorrowOfOwnerLocal(
         std::size_t localOrdinal,
         std::size_t scopeOrdinal,

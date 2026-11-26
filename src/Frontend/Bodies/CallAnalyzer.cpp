@@ -9041,6 +9041,12 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
 
     callee = analyzeExpression(
         expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics, true, true);
+    // L-044: no call through an owner while a borrowed result of one of its calls is alive. / Ninguna llamada a
+    //     traves de un dueno mientras vive un resultado borrowed de una de sus llamadas.
+    if (callee.valid && callee.receiverSyntax != nullptr &&
+        rejectUseOfCallBorrowedOwner(callee.receiverSyntax, "call a method of", methodMemberOrdinal, scopeOrdinal,
+                                     diagnostics))
+        callee.valid = false;
     call.implicitThis = callee.methodGroup && callee.receiverSyntax == nullptr;
     call.baseReceiver = callee.baseReceiver;
     call.receiverSyntax = callee.receiverSyntax;

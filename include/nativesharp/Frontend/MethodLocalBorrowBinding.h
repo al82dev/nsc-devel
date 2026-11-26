@@ -59,5 +59,8 @@ struct MethodLocalBorrowBinding final
     std::vector<std::size_t> possibleSourceOwnerLocalOrdinals;
     std::vector<std::size_t> possibleSourceOwnerParameterOrdinals;
     std::string typeKey;
+    // L-044: the borrowed result of an instance call; while it is alive, its owner takes no other call or field
+    //     write. / El resultado borrowed de una llamada de instancia; mientras vive, su dueno no recibe otra llamada.
+    bool fromInstanceCall = false;
 };
 }

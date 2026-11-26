@@ -1346,6 +1346,42 @@ void ProjectMethodBodyModel::invalidateHistoricalBorrowsOfOwnedParameter(std::si
     }
 }
 
+// EN: L-044. A borrowed result of an instance call (`borrowed Item found = holder.Find(0);`) may point into storage
+//     the owner holds (a list element). While it is alive, a call through that owner, or a write to one of its
+//     fields, could free that storage, so both are rejected; a block that ends the borrow first makes them valid.
+//     Complexity: O(chain + borrow bindings).
+// ES: L-044. Un resultado borrowed de una llamada de instancia puede apuntar a almacenamiento del dueno. Mientras vive,
+//     una llamada a traves de ese dueno o la escritura de uno de sus campos podria liberarlo: ambas se rechazan.
+bool ProjectMethodBodyModel::rejectUseOfCallBorrowedOwner(
+    const ast::AstNode* place, std::string_view use, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const ast::AstNode* root = place;
+    while (root != nullptr && (root->kind() == ast::AstNodeKind::MemberExpression ||
+                               root->kind() == ast::AstNodeKind::CallExpression ||
+                               root->kind() == ast::AstNodeKind::IndexExpression))
+        root = root->first();
+    if (root == nullptr || root->kind() != ast::AstNodeKind::IdentifierExpression) return false;
+    const auto name = lookupScopeName(scopeOrdinal, root->text());
+    if (!name.has_value() || name->kind != ScopeNameKind::Local) return false;
+    const std::size_t owner = name->semanticOrdinal;
+    for (std::size_t ordinal = 0; ordinal < localBorrowBindings_.size(); ++ordinal)
+    {
+        const MethodLocalBorrowBinding& borrow = localBorrowBindings_[ordinal];
+        if (!borrow.fromInstanceCall || borrow.methodMemberOrdinal != methodMemberOrdinal) continue;
+        const bool rooted = borrow.sourceOwnerLocalOrdinal == owner ||
+            std::ranges::find(borrow.possibleSourceOwnerLocalOrdinals, owner) !=
+                borrow.possibleSourceOwnerLocalOrdinals.end();
+        if (!rooted || !scopeContains(borrow.creationScopeOrdinal, scopeOrdinal) ||
+            localBorrowFlowState(ordinal) == MethodBorrowState::Invalidated) continue;
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand, diagnostics::DiagnosticSeverity::Error,
+            place->range(), "cannot " + std::string(use) + " owner '" + std::string(root->text()) +
+                "' while a borrowed result of one of its calls is alive; end that borrow first (a block)");
+        return true;
+    }
+    return false;
+}
+
 bool ProjectMethodBodyModel::hasActiveBorrowOfOwnerLocal(
     std::size_t localOrdinal,
     std::size_t scopeOrdinal,

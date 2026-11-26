@@ -1,0 +1,25 @@
+// Compiler-suite fixture borrowed-return-freezes-owner (L-044): while a borrowed result of an instance call is alive,
+// a call through its owner could free what it points to, so it is rejected.
+namespace Fixture
+{
+    public class Node
+    {
+        public int value = 0;
+    }
+
+    public class Owner
+    {
+        public owned Node root = new Node();
+
+        public borrowed Node GetRoot() { return root; }
+        public void Reset() { root = new Node(); }
+    }
+
+    int Main()
+    {
+        raii Owner owner = new Owner();
+        borrowed Node root = owner.GetRoot();
+        owner.Reset();
+        return root.value;
+    }
+}

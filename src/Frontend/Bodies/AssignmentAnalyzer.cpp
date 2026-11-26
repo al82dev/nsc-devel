@@ -3149,6 +3149,11 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
 {
     if (rejectUnavailableAssignmentOwner(
             expression, raiiTargetLocal, scopeOrdinal, diagnostics)) return false;
+    // L-044: a field write through an owner that a live borrowed call result borrows from. / Escritura de campo a
+    //     traves de un dueno prestado por un resultado borrowed vivo.
+    if (expression->first() != nullptr && expression->first()->kind() == ast::AstNodeKind::MemberExpression &&
+        rejectUseOfCallBorrowedOwner(expression->first(), "write a field of", methodMemberOrdinal, scopeOrdinal,
+                                     diagnostics)) return false;
     if (!raiiTargetLocal.has_value() && rejectUnavailableAssignmentOwner(
             expression, moveOnlyTargetLocal, scopeOrdinal, diagnostics)) return false;
     if (moveOnlyTargetParameter.has_value() &&

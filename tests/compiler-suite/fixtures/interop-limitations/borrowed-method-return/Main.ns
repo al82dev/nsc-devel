@@ -1,0 +1,63 @@
+// Compiler-suite fixture borrowed-method-return (L-044): a borrowed result of an instance call binds a borrowed
+// local that borrows from the receiver's owner (`borrowed Node root = owner.GetRoot();`), as a receiver
+// (`owner.Find(2).value++`), and through a chain (`owner.GetRoot().GetChild()`); a borrowed method returns an owned
+// field of `this` or null. While such a borrow is alive, the owner takes no other call (a block ends it). Exit 42.
+namespace Fixture
+{
+    public class Node
+    {
+        public int value = 0;
+        private owned Node child = null;
+
+        public void Grow() { child = new Node(); }
+
+        public borrowed Node GetChild()
+        {
+            return child;
+        }
+    }
+
+    public class Owner
+    {
+        private owned Node m_Root = new Node();
+        private owned Node m_Other = new Node();
+
+        public borrowed Node GetRoot()
+        {
+            return m_Root;
+        }
+
+        public borrowed Node Find(int key)
+        {
+            if (key == 1) return m_Root;
+            if (key == 2) return this.m_Other;
+            return null;
+        }
+    }
+
+    int Main()
+    {
+        raii Owner owner = new Owner();
+        {
+            borrowed Node root = owner.GetRoot();
+            root.value = 30;
+            root.Grow();
+        }
+        owner.Find(2).value++;
+        {
+            borrowed Node missing = owner.Find(3);
+            if (missing != null) return 1;
+        }
+        {
+            borrowed Node child = owner.GetRoot().GetChild();
+            child.value = 10;
+        }
+        int total = 0;
+        {
+            borrowed Node root = owner.Find(1);
+            borrowed Node child = root.GetChild();
+            total = root.value + child.value;
+        }
+        return total + owner.Find(2).value + 1;
+    }
+}

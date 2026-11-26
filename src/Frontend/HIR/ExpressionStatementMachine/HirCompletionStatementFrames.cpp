@@ -954,7 +954,11 @@ LoopBlockAdvance ProjectOopHirModel::completeReturnExitValue(
         if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
             lowered = wrapImplicitConversion(
                 std::move(lowered), conversion, valueSyntax);
-        if (state.declaredOwnership == sema::OwnershipKind::Borrowed)
+        // EN: L-044. `return null;` from a borrowed method lends nothing: the null value is returned as it is.
+        // ES: L-044. `return null;` desde un metodo borrowed no presta nada: el valor nulo se devuelve tal cual.
+        const bool nullReturn = valueSyntax != nullptr &&
+            valueSyntax->kind() == ast::AstNodeKind::NullLiteralExpression && borrowBinding(valueSyntax) == nullptr;
+        if (state.declaredOwnership == sema::OwnershipKind::Borrowed && !nullReturn)
         {
             const MethodBorrowBinding* borrow = borrowBinding(valueSyntax);
             if (borrow == nullptr)

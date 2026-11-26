@@ -261,6 +261,10 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         [](TestContext& context) { expectExit(context, "TF-INTEROP-444", "string-ordinal-comparison", 42); });
     addCase(registry, "TF-INTEROP-445", {"interop", "c", "builtin", "msvc", "l-057", "e2e"},
         [](TestContext& context) { expectExit(context, "TF-INTEROP-445", "c-builtin-declared", 42); });
+    addCase(registry, "TF-INTEROP-446", {"language", "borrow", "borrowed-return", "l-044", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-446", "borrowed-method-return", 42); });
+    addCase(registry, "TF-INTEROP-447", {"language", "borrow", "borrowed-return", "diagnostic", "l-044", "e2e"},
+        [](TestContext& context) { expectDiagnostic(context, "TF-INTEROP-447", "borrowed-return-freezes-owner", "Main.ns:22:9: error: cannot call a method of owner 'owner' while a borrowed result of one of its calls is alive; end that borrow first (a block)"); });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",
