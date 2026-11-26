@@ -1,0 +1,10 @@
+// Compiler-suite fixture cpp-anonymous-union-derived (L-051): a C++ class derived from another record has an
+// anonymous union member (Bullet's btTypedConstraint), so the header imports and the class is used. Exit 42.
+namespace Fixture
+{
+    int Main()
+    {
+        LimConstraint constraint = new LimConstraint(38);
+        return constraint.GetUserId() + constraint.GetType();
+    }
+}

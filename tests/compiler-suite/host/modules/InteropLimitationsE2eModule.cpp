@@ -271,6 +271,8 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         [](TestContext& context) { expectExit(context, "TF-INTEROP-449", "cpp-member-function-pointer", 42); });
     addCase(registry, "TF-INTEROP-450", {"interop", "cpp", "operator", "member-template", "l-034", "e2e"},
         [](TestContext& context) { expectExit(context, "TF-INTEROP-450", "cpp-call-operator-template", 42); });
+    addCase(registry, "TF-INTEROP-451", {"interop", "cpp", "anonymous-union", "inheritance", "l-051", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-451", "cpp-anonymous-union-derived", 42); });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",

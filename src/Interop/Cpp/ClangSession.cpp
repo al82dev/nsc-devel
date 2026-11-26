@@ -2610,6 +2610,9 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
         value.isCxx = astContext.getLangOpts().CPlusPlus;
         const bool cppUnnamedTrivial = value.isCxx && record->getDefinition() &&
             cppUnnamedRecordsAreTrivial(*record->getDefinition(), astContext);
+        // L-051: the position in value.fields of each field the record declares, in Clang order, once base fields
+        //     are promoted and sorted. / La posicion en value.fields de cada campo propio, en el orden de Clang.
+        std::vector<std::size_t> ownFieldPosition;
         value.name = anonymousAlias ? anonymousAlias->getNameAsString() : record->getNameAsString();
         value.qualifiedName = anonymousAlias ? anonymousAlias->getQualifiedNameAsString()
                                              : record->getQualifiedNameAsString();
@@ -3005,6 +3008,8 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                 //     campo de la base, y un nombre que dos bases alcanzan a la misma profundidad es ambiguo,
                 //     como en C++, asi que no se promueve ninguno. Una base virtual no tiene offset fijo.
                 std::set<std::string> declared;
+                // L-051: the declared fields come first, before the promoted ones. / Los campos propios van primero.
+                const std::size_t ownFieldCount = value.fields.size();
                 for (const auto& field : value.fields) declared.insert(field.name);
                 for (const auto& method : value.methods) declared.insert(method.name);
                 std::vector<std::pair<const clang::CXXRecordDecl*, std::uint64_t>> level{{cppRecord, 0}};
@@ -3094,9 +3099,28 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                         return a.baseClangUsr < b.baseClangUsr; });
                 }
                 // The object layout reads fields in address order; base subobjects precede the derived fields.
-                std::stable_sort(value.fields.begin(), value.fields.end(), [](const auto& a, const auto& b) {
-                    return a.offsetBits.value_or(0) < b.offsetBits.value_or(0);
-                });
+                // EN: L-051. The sort is done over positions, so each declared field's new position is known: the
+                //     carrier paths of anonymous records (collectAnonymousCRecords) count only declared fields.
+                // ES: L-051. El orden se hace sobre posiciones, asi se conoce la nueva posicion de cada campo propio:
+                //     las rutas de los portadores de records anonimos cuentan solo los campos propios.
+                {
+                    std::vector<std::size_t> order(value.fields.size());
+                    for (std::size_t index = 0; index < order.size(); ++index) order[index] = index;
+                    std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+                        return value.fields[a].offsetBits.value_or(0) < value.fields[b].offsetBits.value_or(0);
+                    });
+                    std::vector<CppRecordField> sorted;
+                    sorted.reserve(order.size());
+                    std::vector<std::size_t> position(order.size());
+                    for (std::size_t index = 0; index < order.size(); ++index)
+                    {
+                        position[order[index]] = index;
+                        sorted.push_back(std::move(value.fields[order[index]]));
+                    }
+                    value.fields = std::move(sorted);
+                    ownFieldPosition.assign(position.begin(),
+                        position.begin() + static_cast<std::ptrdiff_t>(std::min(ownFieldCount, position.size())));
+                }
                 // EN: T12-004. The instance methods of public bases, virtual or not, are methods of the derived
                 //     record called through the Clang adapter, which adjusts this. The same hiding and ambiguity
                 //     rules as for fields apply, by name over every member a base declares.
@@ -3175,7 +3199,20 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
             }
         }
         if ((!value.isCxx || cppUnnamedTrivial) && value.complete)
+        {
             collectAnonymousCRecords(*record, astContext, value.anonymousCRecords);
+            // L-051: a path into the record itself names a field by its position in value.fields. / Una ruta en el
+            //     propio record nombra un campo por su posicion en value.fields.
+            if (!ownFieldPosition.empty())
+                for (auto& anonymous : value.anonymousCRecords)
+                {
+                    if (!anonymous.carrierPath.empty() && anonymous.carrierPath.front() < ownFieldPosition.size())
+                        anonymous.carrierPath.front() = ownFieldPosition[anonymous.carrierPath.front()];
+                    if (anonymous.carrierPath.size() == 1)
+                        for (auto& sibling : anonymous.siblingMemberIndices)
+                            if (sibling < ownFieldPosition.size()) sibling = ownFieldPosition[sibling];
+                }
+        }
         if (observed) observed->push_back(record);
         result.push_back(std::move(value));
         if (record->isCompleteDefinition())
