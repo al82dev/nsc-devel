@@ -23,10 +23,20 @@ inline ProjectImplicitConversion classifyForeignCallNumericResult(
     // Scoped C++ enums do not implicitly convert to arithmetic types.
     const auto enumBase = cppImportedCEnumUnderlying(lookup, source);
     const bool sourceNumeric = numeric(source) || (enumBase.has_value() && numeric(*enumBase));
+    // C enum destinations accept arithmetic values through the enum's compatible integer type.
+    // C++ enums (including unscoped enums) do not have this implicit conversion.
+    bool cEnumTarget = false;
+    if (lookup && target.starts_with("type:"))
+    {
+        const auto ordinal = lookup->typeOrdinalForIdentity(target.substr(5));
+        const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+        cEnumTarget = imported && imported->origin == CppImportedTypeOrigin::CEnum &&
+            cppImportedCEnumUnderlying(lookup, target).has_value();
+    }
     const bool pointerToBool = (source.ends_with('*') || ProjectTypeConversion::isFunctionPointer(source)) &&
         target == "builtin:bool";
-    return {(sourceNumeric && numeric(target)) || pointerToBool ? ProjectConversionKind::ForeignNumeric
-                                                                 : ProjectConversionKind::None,
+    return {(sourceNumeric && (numeric(target) || cEnumTarget)) || pointerToBool
+                ? ProjectConversionKind::ForeignNumeric : ProjectConversionKind::None,
             5, std::string(source), std::string(target), std::nullopt};
 }
 }

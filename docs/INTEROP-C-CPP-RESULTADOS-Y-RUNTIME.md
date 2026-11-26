@@ -110,7 +110,7 @@ el tutorial todavía no compila.
 - ForeignCallResultConversion.h reconoce una enumeración C o una
   enumeración C++ sin ámbito como origen numérico; su destino debe
   ser un tipo numérico incorporado o bool. El clasificador no contempla
-  por esa vía un enum como destino.
+  por esa vía un enum como destino en la revisión anterior.
 - La marca cppForeignCallResult de ExpressionResult registra si el resultado
   viene de una llamada C/C++, pero no distingue el modo de lenguaje usado
   para importar el encabezado. CppSessionOptions sí guarda ese modo;
@@ -120,3 +120,17 @@ el tutorial todavía no compila.
   importados y cómo preservar el origen requerido hasta semántica y HIR.
   Esta inspección no demuestra que todas las conversiones a enums fallen:
   el clasificador ordinario también interviene antes de esta vía.
+
+## Conversión de resultados importados a enum C
+
+- **Causa:** el clasificador ForeignNumeric rechazaba un destino enum C
+  incluso cuando Clang ya había acreditado su tipo entero y layout.
+- **Cambio:** classifyForeignCallNumericResult acepta valores aritméticos
+  procedentes de una llamada importada para un enum C completo y válido.
+  El descenso existente convierte al entero subyacente del enum. Los enums
+  C++ y las conversiones ordinarias de NativeSharp quedan fuera del cambio.
+- **Alcance:** src/Frontend/ForeignCallResultConversion.h; el clasificador
+  solo se invoca como alternativa para resultados de llamadas C/C++.
+- **Validación:** revisión estática del clasificador y del descenso.
+  Pendientes la compilación y la comprobación funcional de esta tanda.
+  El seguimiento de punteros locales todavía tiene el límite anterior.
