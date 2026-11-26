@@ -1,0 +1,21 @@
+// Compiler-suite fixture function-to-c-callback-through-pointer (L-036): a NativeSharp function passed directly as the callback argument of a C function-pointer entry point
+// (`glDebugMessageCallback(glDebugOutput, nullptr)` through GLAD). The C side calls it twice. Exit 42.
+namespace Fixture
+{
+    public class Log
+    {
+        public static int total = 0;
+    }
+
+    void DebugOutput(uint source, uint type, int length, sbyte const* message, void const* userParam)
+    {
+        Log.total = Log.total + (int)source + (int)type + length;
+    }
+
+    int Main()
+    {
+        int result = limSetCallback(DebugOutput, null);
+        // calls: 1 + 2 + 3 = 6 and 10 + 20 + 4 = 34; 6 + 34 = 40; result 7; 40 + 7 - 5 = 42
+        return Log.total + result - 5;
+    }
+}

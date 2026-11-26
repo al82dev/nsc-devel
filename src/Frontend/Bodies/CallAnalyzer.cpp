@@ -5608,6 +5608,20 @@ void ProjectMethodBodyModel::analyzeCallArguments(
         {
             argumentResult = analyzeExpression(
                 argument, methodMemberOrdinal, scopeOrdinal, diagnostics, true, false, true);
+            // EN: L-036. A method group passed through a delegate or C function pointer
+            //     (`glDebugMessageCallback(DebugOutput, null)`, a GLAD entry point taking a GLDEBUGPROC) binds to
+            //     the parameter type at its position, as for a direct call.
+            // ES: L-036. Un grupo de metodos pasado por un delegate o un puntero a funcion C se liga al tipo del
+            //     parametro en su posicion, como en una llamada directa.
+            std::string invokedReturn;
+            std::vector<std::string> invokedParameters;
+            std::size_t invokedDelegate = 0;
+            if (argumentResult.methodGroup && !callee.methodGroup && isDelegateTypeKey(callee.typeKey) &&
+                delegateSignature(callee.typeKey, invokedReturn, invokedParameters, invokedDelegate) &&
+                argumentOrdinal < invokedParameters.size() &&
+                methodGroupExactlyMatchesDelegate(argumentResult, invokedParameters[argumentOrdinal]))
+                argumentResult = bindMethodGroupToDelegate(argument, argumentResult, invokedParameters[argumentOrdinal],
+                    methodMemberOrdinal, scopeOrdinal, diagnostics);
             if (argumentResult.methodGroup && callee.methodGroup)
             {
                 std::vector<std::string> targets;
