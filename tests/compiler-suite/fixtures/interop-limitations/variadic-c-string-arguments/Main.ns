@@ -1,0 +1,22 @@
+// Compiler-suite fixture variadic-c-string-arguments (L-064): string literals and runtime strings passed through a C
+// `...`, and a pointer variable of unknown nullness passed to a `_Nonnull` parameter, as C allows. Exit 42.
+namespace Fixture
+{
+    int Total(sbyte const* first)
+    {
+        // `first` may be null for NativeSharp; `_Nonnull` is the callee's annotation, as in C.
+        return lim_total_length(first, "abc", null);
+    }
+
+    int Main()
+    {
+        string name = "name";
+        raii string joined = name + "-x";
+        // "hello" 5 + "abc" 3 + "name-x" 6 = 14
+        int literal = lim_total_length("hello", "abc", joined, null);
+        // "1234567" 7 + "abc" 3 = 10
+        int variable = Total("1234567");
+        // 14 + 10 = 24; + 18 = 42
+        return literal + variable + 18;
+    }
+}

@@ -226,6 +226,17 @@ std::vector<std::string> namespaceFunctionCandidateNotes(
                                  ? std::string(" (a string literal is read-only and this C/C++ parameter may write "
                                                "through the pointer; pass a writable buffer)")
                                  : std::string{});
+                // EN: L-064. Say why: a pointer that may be null for a `_Nonnull` parameter (check it first), or an
+                //     argument that cannot travel through `...`.
+                // ES: L-064. Decir por que: un puntero que puede ser nulo para un parametro `_Nonnull`, o un argumento
+                //     que no puede pasar por `...`.
+                else if (candidate->nullablePointerArgumentOrdinal.has_value())
+                    note += ": argument " + std::to_string(*candidate->nullablePointerArgumentOrdinal + 1) +
+                            " may be null and the parameter is declared non-null (_Nonnull)";
+                else if (candidate->invalidVariadicArgumentOrdinal.has_value())
+                    note += ": argument " + std::to_string(*candidate->invalidVariadicArgumentOrdinal + 1) +
+                            " cannot be passed through '...' (C variadic arguments are by-value scalars, raw "
+                            "pointers, enums, C records or strings)";
                 else
                     note += " does not accept these arguments";
             }
@@ -1123,6 +1134,18 @@ ProjectMethodBodyModel::evaluateNamespaceVariadicCandidateArgument(
                  *imported->cppValueTraits, *imported->cppValueOperations))))
             conversion = ProjectImplicitConversion{ProjectConversionKind::Identity, 10, key, key, std::nullopt};
     }
+    // EN: L-064. In `...` C passes a string literal as its `const char*` (`printf("%s", "abc")`), and L-003's
+    //     NUL-terminated stack copy carries a runtime string the same way (`printf("%s", name)`).
+    // ES: L-064. En `...` C pasa un literal como su `const char*`, y la copia con NUL de L-003 lleva igual un string.
+    if (!conversion.exists() && key == "string-literal")
+        conversion = ProjectImplicitConversion{ProjectConversionKind::StringLiteralToCharPointer, 4, key,
+                                               "builtin:sbyte*", std::nullopt};
+    if (!conversion.exists() && key == "builtin:string")
+        conversion = ProjectImplicitConversion{ProjectConversionKind::StringToCharPointer, 4, key, "builtin:sbyte*",
+                                               std::nullopt};
+    // L-064: `NULL` in `...` (a sentinel, `lim_total(a, b, NULL)`) is a null pointer. / Un puntero nulo.
+    if (!conversion.exists() && key == "builtin:null")
+        conversion = classifyImplicit(key, "builtin:void*");
     // EN: C3-01. C promotes `_Float16` to double in `...` (as float); a Half reaches a C variadic call as that double.
     // ES: C3-01. C promueve `_Float16` a double en `...` (como float); un Half llega asi a una llamada variadica C.
     if (!conversion.exists() && key == interop::kCppHalfTypeKey && namespaceFunctionModel_ &&
@@ -1131,10 +1154,12 @@ ProjectMethodBodyModel::evaluateNamespaceVariadicCandidateArgument(
          namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppCallingConvention == "sysv_abi") &&
         !namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppCanonicalIdentity.empty())
         conversion = ProjectImplicitConversion{ProjectConversionKind::Numeric, 1, key, "builtin:double", std::nullopt};
+    // L-064: an owned string is only lent to `...` for the call (its stack copy). / Un string dueno solo se presta.
+    const bool lentString = conversion.exists() && conversion.kind == ProjectConversionKind::StringToCharPointer;
     if (!conversion.exists() || arguments[argumentOrdinal].pointerPointeeVolatile ||
         arguments[argumentOrdinal].cppPointerPointeeAtomic ||
         arguments[argumentOrdinal].argumentPassKind != ParameterPassKind::Value ||
-        arguments[argumentOrdinal].ownership != sema::OwnershipKind::None)
+        (arguments[argumentOrdinal].ownership != sema::OwnershipKind::None && !lentString))
     {
         evaluated.viable = false;
         evaluated.invalidVariadicArgumentOrdinal = argumentOrdinal;
@@ -1292,12 +1317,19 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
             arguments[argumentOrdinal].pointerLevelQualifiers, arguments[argumentOrdinal].pointerPointeeReadonly,
             arguments[argumentOrdinal].pointerPointeeVolatile, parameter.typeKey, parameter.pointerLevelQualifiers,
             parameterPointeeReadonly, parameter.pointerPointeeVolatile);
+    // EN: L-064. At a C/C++ boundary `_Nonnull` is the callee's annotation, which Clang only warns about: a pointer
+    //     whose nullness is not known (`format` of `snprintf(buffer, n, format, value)`) is the caller's
+    //     responsibility, as in C. Only the null literal is rejected for such a parameter.
+    // ES: L-064. En una frontera C/C++ `_Nonnull` es una anotacion del llamado, que Clang solo advierte: un puntero de
+    //     nulidad desconocida es responsabilidad de quien llama, como en C. Solo se rechaza el literal nulo.
+    const bool cNullabilityAnnotation = candidate.isImportedC || candidate.isCppExternal || importedFunction;
     const bool violatesPointerContract = !packElement &&
         ProjectTypeConversion::isPointer(parameter.typeKey) &&
         !language::pointerContractImplicitlyAssignable(
             pointerContract(
                 // Item 8.3: a string literal is never null. / Un literal de cadena nunca es nulo.
-                arguments[argumentOrdinal].pointerNullable && arguments[argumentOrdinal].typeKey != "string-literal",
+                arguments[argumentOrdinal].pointerNullable && arguments[argumentOrdinal].typeKey != "string-literal" &&
+                    (!cNullabilityAnnotation || arguments[argumentOrdinal].typeKey == "builtin:null"),
                 arguments[argumentOrdinal].pointerPointeeReadonly,
                 arguments[argumentOrdinal].pointerHasProvenance,
                 arguments[argumentOrdinal].pointerKnownAlignment,
@@ -1308,6 +1340,10 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
                 parameter.pointerHasProvenance,
                 parameter.pointerKnownAlignment,
                 parameter.pointerAddressSpace));
+    if (violatesPointerContract && arguments[argumentOrdinal].pointerNullable &&
+        arguments[argumentOrdinal].typeKey != "string-literal" && !parameter.pointerNullable &&
+        !evaluated.nullablePointerArgumentOrdinal.has_value())
+        evaluated.nullablePointerArgumentOrdinal = argumentOrdinal;
     const bool implicitExtensionReceiverPass = hasForwardedReceiver && argumentOrdinal == 0;
     // EN: STL. A builtin local or field written without `ref`/`in` for a `T&&` of a C++ function template
     //     specialization deduced from this call (`make<Box>(j, s.v)`): the deduction passed it as a value (a prvalue

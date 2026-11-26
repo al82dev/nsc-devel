@@ -60,6 +60,9 @@ struct MethodCallCandidate final
     std::size_t defaultedParameterCount = 0;
     bool isVariadicCandidate = false;
     std::optional<std::size_t> invalidVariadicArgumentOrdinal;
+    // L-064: an argument that may be null for a parameter declared non-null (Clang `_Nonnull`). / Un argumento que
+    //     puede ser nulo para un parametro declarado no nulo.
+    std::optional<std::size_t> nullablePointerArgumentOrdinal;
     std::optional<std::size_t> invalidMoveOnlyArgumentOrdinal;
     // EN: An owner or move expanded into a temporary params span, which cannot own it (LKF-282).
     // ES: Un dueño o un move expandido en un span params temporal, que no puede poseerlo (LKF-282).
