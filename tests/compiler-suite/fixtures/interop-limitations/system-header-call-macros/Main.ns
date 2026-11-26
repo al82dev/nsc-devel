@@ -1,0 +1,12 @@
+// Compiler-suite fixture system-header-call-macros (L-047): object-like macros of a system header whose expansion is
+// a call (`stderr` = `(__acrt_iob_func(2))`, `errno` = `(*_errno())`) are imported as accessors. Exit 42.
+namespace Fixture
+{
+    int Main()
+    {
+        LimFile* stream = lim_stderr;
+        lim_errno = lim_errno + 0;
+        // handle 12 + errno 30 = 42
+        return lim_handle(stream) + lim_errno;
+    }
+}

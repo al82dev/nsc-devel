@@ -6955,7 +6955,31 @@ private:
             const auto* info = identifier ? preprocessor.getMacroInfo(identifier) : nullptr;
             if (!info || info->isBuiltinMacro() || info->getNumTokens() == 0) continue;
             const auto location = info->getDefinitionLoc();
-            if (location.isInvalid() || sources.isInSystemHeader(location) || sources.isWrittenInBuiltinFile(location) ||
+            // EN: L-047. The system headers stay out (thousands of macros), except an object-like macro whose whole
+            //     expansion is a call, `(f(...))` or `(*f(...))`: the C runtime's `stdin`, `stdout`, `stderr`
+            //     (`(__acrt_iob_func(2))`) and `errno` (`(*_errno())`). They become accessors like any other macro
+            //     that is not a constant (T19-041).
+            // ES: L-047. Los encabezados del sistema quedan fuera, salvo una macro de objeto cuya expansion entera es
+            //     una llamada, `(f(...))` o `(*f(...))`: `stdin`, `stdout`, `stderr` y `errno` del runtime de C.
+            const auto systemCallMacro = [&] {
+                if (info->isFunctionLike() || info->getNumTokens() < 5) return false;
+                const auto& tokens = info->tokens();
+                std::size_t index = 0;
+                if (!tokens[index++].is(clang::tok::l_paren)) return false;
+                if (tokens[index].is(clang::tok::star)) ++index;
+                if (index + 2 >= tokens.size() || !tokens[index].is(clang::tok::identifier) ||
+                    !tokens[index + 1].is(clang::tok::l_paren)) return false;
+                int depth = 0;
+                for (std::size_t position = index + 1; position + 1 < tokens.size(); ++position)
+                {
+                    if (tokens[position].is(clang::tok::l_paren)) ++depth;
+                    else if (tokens[position].is(clang::tok::r_paren) && --depth == 0)
+                        return position + 2 == tokens.size() && tokens.back().is(clang::tok::r_paren);
+                }
+                return false;
+            };
+            if (location.isInvalid() || (sources.isInSystemHeader(location) && !systemCallMacro()) ||
+                sources.isWrittenInBuiltinFile(location) ||
                 sources.isWrittenInCommandLineFile(location) || sources.isWrittenInScratchSpace(location)) continue;
             const std::string name = identifier->getName().str();
             if (name.starts_with("__nsc_")) continue;

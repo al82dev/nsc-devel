@@ -248,6 +248,8 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         [](TestContext& context) { expectExit(context, "TF-INTEROP-439", "function-to-c-callback-through-pointer", 42); });
     addCase(registry, "TF-INTEROP-440", {"interop", "c", "variadic", "string", "nullability", "l-064", "e2e"},
         [](TestContext& context) { expectExit(context, "TF-INTEROP-440", "variadic-c-string-arguments", 42); });
+    addCase(registry, "TF-INTEROP-441", {"interop", "c", "macro", "system-header", "l-047", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-441", "system-header-call-macros", 42); });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",
