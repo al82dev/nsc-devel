@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup><Name>InteropLimitation</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+    <CppLibraryReference Header="@FIXTURE@/lim_app.h" Language="C" Standard="c17" Implementation="LIM_APP_IMPLEMENTATION">
+      <IncludeDirectory Path="@FIXTURE@" Kind="User" />
+    </CppLibraryReference>
+  </ItemGroup>
+</Project>

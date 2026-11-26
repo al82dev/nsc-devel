@@ -242,6 +242,8 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         [](TestContext& context) { expectExit(context, "TF-INTEROP-436", "assign-this-in-struct-method", 42); });
     addCase(registry, "TF-INTEROP-437", {"language", "conversion", "operator", "l-059", "e2e"},
         [](TestContext& context) { expectExit(context, "TF-INTEROP-437", "user-conversion-in-arithmetic", 42); });
+    addCase(registry, "TF-INTEROP-438", {"interop", "c", "string", "literal", "l-078", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-438", "literal-to-const-char-place", 42); });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",

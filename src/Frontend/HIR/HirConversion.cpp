@@ -276,6 +276,14 @@ ProjectImplicitConversion ProjectOopHirModel::classifyImplicit(
             if (auto complex = classifyCComplexConversion(inheritanceModel_, memberModel_, namespaceFunctionModel_,
                                                           sourceTypeKey, targetTypeKey, integerConstant))
                 conversion = std::move(*complex);
+        // EN: L-078. A literal stored in a `const char*` place (the body model checked the readonly pointee) points at
+        //     its static NUL-terminated bytes, as for an argument.
+        // ES: L-078. Un literal guardado en un lugar `const char*` (el modelo de cuerpos comprobo el pointee readonly)
+        //     apunta a sus bytes estaticos con NUL, como un argumento.
+        if (!conversion.exists() && sourceTypeKey == "string-literal" &&
+            (targetTypeKey == "builtin:sbyte*" || targetTypeKey == "builtin:byte*"))
+            conversion = ProjectImplicitConversion{ProjectConversionKind::StringLiteralToCharPointer, 5,
+                std::string(sourceTypeKey), std::string(targetTypeKey), std::nullopt};
         return conversion;
     }
     return ProjectTypeConversion::classifyImplicit(

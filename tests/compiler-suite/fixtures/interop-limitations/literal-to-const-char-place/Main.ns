@@ -1,0 +1,16 @@
+// Compiler-suite fixture literal-to-const-char-place (L-078): string literals stored in `const char*` places: fields of an imported C struct
+// (`appInfo.pApplicationName = "Hello Triangle";`), a local initializer and a local assignment. Exit 42.
+namespace Fixture
+{
+    int Main()
+    {
+        LimAppInfo appInfo = default(LimAppInfo);
+        appInfo.pApplicationName = "Hello Triangle";
+        appInfo.pEngineName = "No Engine";
+        sbyte const* title = "abc";
+        sbyte const* other;
+        other = "de";
+        // 14 + 9 = 23; 'a' 97 + 'e' 101 = 198; 23 + 198 - 179 = 42
+        return lim_name_length(&appInfo) + (int)title[0] + (int)other[1] - 179;
+    }
+}

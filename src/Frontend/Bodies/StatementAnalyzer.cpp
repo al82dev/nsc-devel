@@ -4469,6 +4469,10 @@ void ProjectMethodBodyModel::validateVariableInitializerConversion(
             "readonly borrowed object cannot invoke an unchecked implicit conversion");
         return;
     }
+    // L-078: `sbyte const* p = "text";` points at the literal's static bytes. / Apunta a los bytes del literal.
+    if (!conversion.exists() && initializer.typeKey == "string-literal" && declaredPointerPointeeReadonly &&
+        (typeKey == "builtin:sbyte*" || typeKey == "builtin:byte*" || typeKey == "builtin:char*"))
+        return;
     if (!conversion.exists() && !reportTupleConversionFailure(
             initializer.typeKey, typeKey, variable->first()->range(), diagnostics))
         diagnostics.report(

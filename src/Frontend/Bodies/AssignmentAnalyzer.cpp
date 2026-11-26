@@ -2149,6 +2149,14 @@ bool ProjectMethodBodyModel::validatePlainAssignmentConversion(
             "readonly borrowed object cannot invoke an unchecked implicit conversion");
         return false;
     }
+    // EN: L-078. A string literal assigned to a `const char*` place (`appInfo.pApplicationName = "Hello Triangle";`
+    //     with VkApplicationInfo's `const char* pApplicationName`) points at its static NUL-terminated bytes, as an
+    //     argument does (L-063); a place that may write through the pointer does not receive it.
+    // ES: L-078. Un literal asignado a un lugar `const char*` apunta a sus bytes estaticos con NUL, como un
+    //     argumento; un lugar que puede escribir por el puntero no lo recibe.
+    if (!conversion.exists() && right.typeKey == "string-literal" && left.pointerPointeeReadonly &&
+        (left.typeKey == "builtin:sbyte*" || left.typeKey == "builtin:byte*" || left.typeKey == "builtin:char*"))
+        return true;
     if (!conversion.exists())
     {
         diagnostics.report(
