@@ -143,7 +143,7 @@ bool ProjectMemberModel::setExperimentalCppInstanceMethods(
                                                                      : method.parameterPassKinds[index];
             if (!experimentalCppCallableType(parameter, false, true) ||
                 (passKind != ParameterPassKind::Value && !parameter.ends_with('*')))
-            { error = "invalid C++ instance parameter type"; return false; }
+            { error = "invalid C++ instance parameter type '" + parameter + "' of " + method.ownerIdentityKey + "::" + method.name; return false; }
             if (passKind == ParameterPassKind::Ref) signature += "ref:";
             else if (passKind == ParameterPassKind::In) signature += "in:";
             if (!method.objectSizeModes.empty() &&
@@ -235,7 +235,7 @@ bool ProjectMemberModel::setExperimentalCppLifetimeMethods(
                                                                      : method.parameterPassKinds[index];
             if (!experimentalCppCallableType(parameter, false, true) ||
                 (passKind != ParameterPassKind::Value && !parameter.ends_with('*')))
-            { error = "invalid C++ lifetime parameter type"; return false; }
+            { error = "invalid C++ lifetime parameter type '" + parameter + "' of " + method.ownerIdentityKey; return false; }
         }
         auto signatureTypes = method.parameterTypeKeys;
         if (signatureTypes.size() == 1 && !method.parameterPointeeReadonly.empty() &&
@@ -646,8 +646,11 @@ bool ProjectMemberModel::build(
                 return !cppCallableRecordIsVisible(key, imported.projectOrdinal, nameLookup) || !valueTypeIsEnum(key);
             }))
         {
+            std::string types = imported.returnTypeKey;
+            for (const auto& key : imported.parameterTypeKeys) types += ", " + key;
             diagnostics.report(diagnostics::DiagnosticId::InvalidType, diagnostics::DiagnosticSeverity::Error,
-                SourceRange{}, "C++ static method owner or parameter type is not imported in its project");
+                SourceRange{}, "C++ static method owner or parameter type is not imported in its project: " +
+                    imported.ownerIdentityKey + "::" + imported.name + " (" + types + ")");
             return false;
         }
         ClassMemberSymbol member;

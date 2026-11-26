@@ -1270,7 +1270,9 @@ std::variant<std::vector<CppRecordDeclaration>, std::string> materializeCppAnony
                            containing.fields[index].name != nested->memberName
                          : !containing.fields[index].isAnonymousCarrier || !nested->siblingMemberIndices.empty()) ||
             !nested->sizeBits || !nested->alignmentBits)
-            return std::string("anonymous C record carrier or dimensions are invalid");
+            return std::string("anonymous C record carrier or dimensions are invalid in '") + containing.name +
+                "' (field " + std::to_string(index) + (namedMember ? ", member '" + nested->memberName + "'" : "") +
+                ")";
         const auto name = namedMember ? "__nsc_c_member_" + nested->memberName
                                       : "__nsc_c_anonymous_" + std::to_string(index);
         if (std::any_of(containing.fields.begin(), containing.fields.end(), [&](const auto& field) {
