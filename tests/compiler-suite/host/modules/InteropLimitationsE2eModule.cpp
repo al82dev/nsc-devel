@@ -234,6 +234,8 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         [](TestContext& context) { expectExit(context, "TF-INTEROP-432", "literal-to-ns-c-string-param", 42); });
     addCase(registry, "TF-INTEROP-433", {"language", "delegate", "field", "l-067", "e2e"},
         [](TestContext& context) { expectExit(context, "TF-INTEROP-433", "delegate-field-null-initializer", 42); });
+    addCase(registry, "TF-INTEROP-434", {"language", "foreach", "array", "l-065", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-434", "foreach-over-fixed-array", 42); });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",

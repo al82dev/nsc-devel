@@ -296,9 +296,11 @@ bool ProjectOopHirModel::initializeForeachStatementFrame(
         error = "Stage 34 foreach source local is missing its Stage 27 semantic binding";
         return false;
     }
-    const bool isArray = sourceLocal->typeKey.size() > 2U &&
+    // L-065: a fixed-size array iterates by index, as analysis chose. / Un arreglo fijo itera por indice.
+    const bool isArray = (sourceLocal->typeKey.size() > 2U &&
         sourceLocal->typeKey.compare(
-            sourceLocal->typeKey.size() - 2U, 2U, "[]") == 0;
+            sourceLocal->typeKey.size() - 2U, 2U, "[]") == 0) ||
+        ProjectMemberModel::fixedArrayElementTypeKey(sourceLocal->typeKey).has_value();
     const bool isSpan =
         sourceLocal->typeKey.starts_with("type:NativeSharp.Core.Span<") ||
         sourceLocal->typeKey.starts_with("type:NativeSharp.Core.Span__g") ||

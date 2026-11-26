@@ -1,0 +1,29 @@
+// Compiler-suite fixture foreach-over-fixed-array (L-065): `foreach` over a fixed-size array (Hazel's frustum corners `glm::vec4 Corners[8]`), local and
+// namespace-scope. Exit 42.
+namespace Fixture
+{
+    int[4] WEIGHTS = { 1, 2, 3, 4 };
+
+    int Main()
+    {
+        float[8] corners;
+        int index = 0;
+        while (index < 8)
+        {
+            corners[index] = (float)index;
+            index = index + 1;
+        }
+        float sum = 0.0f;
+        foreach (float corner in corners)
+        {
+            sum += corner;
+        }
+        int weights = 0;
+        foreach (int weight in WEIGHTS)
+        {
+            weights = weights + weight;
+        }
+        // 0 + 1 + ... + 7 = 28; 1 + 2 + 3 + 4 = 10; 28 + 10 + 4 = 42
+        return (int)sum + weights + 4;
+    }
+}

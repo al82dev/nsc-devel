@@ -6855,8 +6855,11 @@ ast::AstNode* ProjectMethodBodyModel::chooseForeachCandidate(
     std::string_view sourceTypeKey,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
-    const bool isArray = sourceTypeKey.size() > 2 &&
-        sourceTypeKey.compare(sourceTypeKey.size() - 2, 2, "[]") == 0;
+    // L-065: a fixed-size array (`float[8] Corners`) iterates by index as a heap array does. / Un arreglo fijo
+    //     itera por indice como uno de heap.
+    const bool isArray = (sourceTypeKey.size() > 2 &&
+        sourceTypeKey.compare(sourceTypeKey.size() - 2, 2, "[]") == 0) ||
+        ProjectMemberModel::fixedArrayElementTypeKey(sourceTypeKey).has_value();
     const bool isWritableSpan =
         sourceTypeKey.starts_with("type:NativeSharp.Core.Span<") ||
         sourceTypeKey.starts_with("type:NativeSharp.Core.Span__g") ||
