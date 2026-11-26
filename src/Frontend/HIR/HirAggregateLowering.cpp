@@ -417,10 +417,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishCollectionBuilderEx
             const auto& addMember = memberModel_->members()[core.builderMemberOrdinals[1]];
             if (addMember.parameters.size() == 1U)
             {
-                const auto* source = expressionType(child);
-                const ProjectImplicitConversion conversion = classifyImplicit(
-                    elements[index]->typeKey, addMember.parameters[0].typeKey,
-                    source != nullptr ? source->integerConstant : std::nullopt);
+                const ProjectImplicitConversion conversion = classifyExpressionConversion(
+                    child, elements[index]->typeKey, addMember.parameters[0].typeKey);
                 if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
                     elements[index] = wrapImplicitConversion(std::move(elements[index]), conversion, child);
             }

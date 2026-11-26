@@ -510,8 +510,8 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledArrayConstructionFrame(
                         lastErrorRange_ = initializer->range();
                     lowered.reset(); frames.clear(); break;
                 }
-                const ProjectImplicitConversion conversion = classifyImplicit(
-                    valueType->typeKey, frame.core->elementTypeKey, valueType->integerConstant);
+                const ProjectImplicitConversion conversion = classifyExpressionConversion(
+                    initializer, valueType->typeKey, frame.core->elementTypeKey);
                 if (!conversion.exists())
                 {
                     error = frame.arraySegmented

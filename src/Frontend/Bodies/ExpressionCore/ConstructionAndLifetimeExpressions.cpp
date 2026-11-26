@@ -817,8 +817,7 @@ void ProjectMethodBodyModel::analyzeNativeArrayAllocation(
                 elementsValid = false;
                 continue;
             }
-            if (!value.valid || !classifyImplicit(
-                    value.typeKey, element, value.integerConstant).exists())
+            if (!value.valid || !classifyImportedFlexibleConversion(value, element).exists())
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidConversion,

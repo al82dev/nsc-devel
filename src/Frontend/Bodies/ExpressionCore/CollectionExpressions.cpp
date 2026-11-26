@@ -303,7 +303,7 @@ bool ProjectMethodBodyModel::bindCollectionBuilder(
             for (const auto& [child, value] : elements)
             {
                 if (!value.valid ||
-                    !classifyImplicit(value.typeKey, parameterType, value.integerConstant).exists())
+                    !classifyImportedFlexibleConversion(value, parameterType).exists())
                 {
                     accepts = false;
                     break;
@@ -342,7 +342,7 @@ bool ProjectMethodBodyModel::bindCollectionBuilder(
             const std::string& parameterType = memberModel_->members()[addCandidates.front()].parameters[0].typeKey;
             for (const auto& [child, value] : elements)
             {
-                if (value.valid && classifyImplicit(value.typeKey, parameterType, value.integerConstant).exists())
+                if (value.valid && classifyImportedFlexibleConversion(value, parameterType).exists())
                     continue;
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidConversion,
@@ -465,8 +465,7 @@ bool ProjectMethodBodyModel::validateCollectionSpreadSegments(
             elementsValid = false;
             continue;
         }
-        if (!values[index].valid || !classifyImplicit(
-                values[index].typeKey, element, values[index].integerConstant).exists())
+        if (!values[index].valid || !classifyImportedFlexibleConversion(values[index], element).exists())
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidConversion,
@@ -627,7 +626,7 @@ void ProjectMethodBodyModel::analyzeCollectionElements(
             elementsValid = false;
             continue;
         }
-        if (!classifyImplicit(value.typeKey, *element, value.integerConstant).exists())
+        if (!classifyImportedFlexibleConversion(value, *element).exists())
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidConversion,
