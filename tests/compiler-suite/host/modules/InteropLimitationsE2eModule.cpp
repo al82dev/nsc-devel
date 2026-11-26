@@ -191,6 +191,11 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         [](TestContext& context) { expectExit(context, "TF-INTEROP-417", "static-local-owned-string", 42); });
     addCase(registry, "TF-INTEROP-418", {"interop", "c", "string", "function-pointer", "l-003", "e2e"},
         [](TestContext& context) { expectExit(context, "TF-INTEROP-418", "string-through-c-function-pointer", 42); });
+    addCase(registry, "TF-INTEROP-419", {"interop", "diagnostic", "c-enum", "e2e"},
+        [](TestContext& context) {
+            expectDiagnostic(context, "TF-INTEROP-419", "enum-demand-member-diagnostic",
+                "Main.ns:10:57: error: default parameter value must be a literal constant");
+        });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",

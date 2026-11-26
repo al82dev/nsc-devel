@@ -1,0 +1,20 @@
+// Compiler-suite fixture enum-demand-member-diagnostic: an invalid member declaration (a default argument that names
+// a mutable static field) in a project whose C header has an enum in a function signature. The diagnostic must name
+// the declaration and its location instead of only an internal message.
+namespace Fixture
+{
+    public class Settings
+    {
+        public static int counter = 3;
+
+        public static int Scale(int value, int factor = counter)
+        {
+            return value * factor + lim_mode_value(LIM_MODE_B);
+        }
+    }
+
+    int Main()
+    {
+        return Settings.Scale(10);
+    }
+}

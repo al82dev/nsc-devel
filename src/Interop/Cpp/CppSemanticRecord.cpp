@@ -5051,7 +5051,21 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
         members.setPrecompiledSnapshots(finalSnapshots);
         diagnostics::DiagnosticEngine demandDiagnostics;
         if (!members.build(lookup, units, demandDiagnostics, compilation.genericModel()))
-            return CppRecordObservationFailure{"cannot build preliminary members for C enum function demands"};
+        {
+            // EN: The member declarations of the program are invalid; report the first diagnostic with its location
+            //     (as T19-025 does for the name lookup) instead of an internal message without one.
+            // ES: Las declaraciones de miembros del programa son invalidas; se informa el primer diagnostico con su
+            //     ubicacion en lugar de un mensaje interno sin ella.
+            std::string failure = "cannot build preliminary members for C enum function demands";
+            if (!demandDiagnostics.diagnostics().empty())
+            {
+                std::ostringstream rendered;
+                diagnostics::DiagnosticRenderer(compilation.sourceManager())
+                    .render(demandDiagnostics.diagnostics().front(), rendered);
+                failure += ": " + rendered.str();
+            }
+            return CppRecordObservationFailure{std::move(failure)};
+        }
         frontend::ProjectNamespaceFunctionModel demands;
         demands.setCaptureCppFunctionDemands(true);
         demands.setPrecompiledSnapshots(finalSnapshots);
