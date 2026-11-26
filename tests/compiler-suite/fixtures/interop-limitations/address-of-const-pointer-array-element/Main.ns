@@ -1,0 +1,32 @@
+// Compiler-suite fixture address-of-const-pointer-array-element (L-069): the address of an element of an array of `const char*` (`glShaderSource(shader, 1, &sources[0],
+// NULL)`-style `sbyte const**` parameters). Exit 42.
+namespace Fixture
+{
+    int TotalLength(sbyte const** strings, int count)
+    {
+        int total = 0;
+        int index = 0;
+        while (index < count)
+        {
+            int length = 0;
+            while (strings[index][length] != 0) { length = length + 1; }
+            total = total + length;
+            index = index + 1;
+        }
+        return total;
+    }
+
+    sbyte const* Text(sbyte const* literal)
+    {
+        return literal;
+    }
+
+    int Main()
+    {
+        sbyte const*[2] sources;
+        sources[0] = Text("#version 330 core\n");
+        sources[1] = Text("void main() {}\n");
+        // 18 + 15 = 33; second element alone 15: 33 + 15 = 48 - 6 = 42
+        return TotalLength(&sources[0], 2) + TotalLength(&sources[1], 1) - 6;
+    }
+}

@@ -933,8 +933,16 @@ void ProjectMethodBodyModel::analyzeRawIndex(
         const bool volatilePointerElement = validFixedIndices && base.pointerPointeeVolatile &&
             (ProjectTypeConversion::isPointer(result.typeKey) ||
              ProjectMemberModel::fixedArrayElementTypeKey(result.typeKey).has_value());
-        if ((qualifiedPointerElement || volatilePointerElement) && formingAddressOperand_ &&
-            expression == formingAddressTarget_)
+        // EN: L-069. The address of a pointer element whose pointee is const (`&p[0]` with `sbyte const*[1] p`) is a
+        //     `sbyte const**` exactly as the address of a `sbyte const*` local is: the element keeps the readonly
+        //     pointee, which the address carries as its pointer level qualifier (C1-02). Volatile pointees and nested
+        //     fixed arrays keep the restriction.
+        // ES: L-069. La direccion de un elemento puntero con pointee const es un `sbyte const**`, como la de un local
+        //     `sbyte const*`: el elemento conserva el pointee readonly, que la direccion lleva como calificador de nivel.
+        const bool constPointerElementAddress = qualifiedPointerElement && !volatilePointerElement &&
+            ProjectTypeConversion::isPointer(result.typeKey);
+        if ((qualifiedPointerElement || volatilePointerElement) && !constPointerElementAddress &&
+            formingAddressOperand_ && expression == formingAddressTarget_)
         {
             diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
                 diagnostics::DiagnosticSeverity::Error, expression->range(),
@@ -969,7 +977,8 @@ void ProjectMethodBodyModel::analyzeRawIndex(
                                     imported->origin == CppImportedTypeOrigin::CUnion);
             }();
         result.addressable = (!result.volatileStorage || nestedPointerIndex) && !unalignedImportedFieldElement &&
-            !qualifiedPointerElement && !volatilePointerElement && !result.cppAtomicStorage;
+            (!qualifiedPointerElement || constPointerElementAddress) && !volatilePointerElement &&
+            !result.cppAtomicStorage;
         result.readonlyReceiver = readonlyElement;
         result.onePastEndAddress = fixedOnePastAddress;
         coreBindings_.push_back(MethodCoreBinding{
