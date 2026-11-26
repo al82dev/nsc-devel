@@ -129,6 +129,7 @@ struct ExpressionResult final
     //     resultado de una funcion C, o un elemento o dato apuntado alcanzado desde ellos. Solo activa el
     //     diagnostico de las operaciones enteras cuyo resultado NativeSharp difiere del de C; nunca cambia su tipo.
     bool cppCOrigin = false;
+    bool cppForeignCallResult = false; // Direct imported C/C++ call result.
     std::size_t cppVolatilePointeeAlignment = 0;
     // T08-D07: this expression denotes C `_Atomic` record storage, accessed only as a whole value.
     bool cppAtomicRecordStorage = false;

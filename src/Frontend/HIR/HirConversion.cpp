@@ -1,4 +1,5 @@
 #include "../CComplexConversion.h"
+#include "../ForeignCallResultConversion.h"
 #include "HirLoweringSupport.h"
 
 #include "nativesharp/AST/AstNode.h"
@@ -248,6 +249,17 @@ bool ProjectOopHirModel::delegateParameterOwned(std::size_t delegateTypeOrdinal,
     return false;
 }
 
+void ProjectOopHirModel::convertForeignCondition(
+    std::unique_ptr<ProjectOopHirNode>& value, const ast::AstNode* syntax)
+{
+    if (!value || value->typeKey == "builtin:bool") return;
+    const auto* binding = expressionType(syntax);
+    if (!binding || !binding->cppForeignCallResult) return;
+    const ProjectImplicitConversion conversion = classifyExpressionConversion(syntax, value->typeKey, "builtin:bool");
+    if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
+        value = wrapImplicitConversion(std::move(value), conversion, syntax);
+}
+
 ProjectImplicitConversion ProjectOopHirModel::classifyExpressionConversion(
     const ast::AstNode* syntax, std::string_view sourceTypeKey, std::string_view targetTypeKey) const
 {
@@ -257,8 +269,11 @@ ProjectImplicitConversion ProjectOopHirModel::classifyExpressionConversion(
         targetTypeKey == *element + "*")
         return {ProjectConversionKind::CFlexibleArrayToPointer, 1, std::string(sourceTypeKey),
                 std::string(targetTypeKey), std::nullopt};
-    return classifyImplicit(sourceTypeKey, targetTypeKey,
+    ProjectImplicitConversion conversion = classifyImplicit(sourceTypeKey, targetTypeKey,
                             binding ? binding->integerConstant : std::nullopt);
+    if (!conversion.exists() && binding && binding->cppForeignCallResult)
+        conversion = classifyForeignCallNumericResult(nameLookup_, sourceTypeKey, targetTypeKey);
+    return conversion;
 }
 
 ProjectImplicitConversion ProjectOopHirModel::classifyImplicit(

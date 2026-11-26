@@ -534,6 +534,7 @@ bool ProjectConstructionModel::classLocalChildConstructionIsClosed(const ObjectC
         if (conversion.kind != ProjectConversionKind::Identity &&
             conversion.kind != ProjectConversionKind::IntegralPromotion &&
             conversion.kind != ProjectConversionKind::Numeric &&
+            conversion.kind != ProjectConversionKind::ForeignNumeric &&
             conversion.kind != ProjectConversionKind::ConstantInteger) return false;
     if (binding.targetIsStruct || binding.allocatorSelection ||
         (binding.resolution != ConstructionResolutionKind::ResolvedExplicit &&

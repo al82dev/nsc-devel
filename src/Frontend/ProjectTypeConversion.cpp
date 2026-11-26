@@ -805,6 +805,7 @@ const char* projectConversionKindName(ProjectConversionKind kind) noexcept
         case ProjectConversionKind::IntegralPromotion: return "integral-promotion";
         case ProjectConversionKind::ConstantInteger: return "constant-integer";
         case ProjectConversionKind::Numeric: return "numeric";
+        case ProjectConversionKind::ForeignNumeric: return "foreign-numeric";
         case ProjectConversionKind::Tuple: return "tuple";
         case ProjectConversionKind::Function: return "function";
         case ProjectConversionKind::NullPointer: return "null-pointer";

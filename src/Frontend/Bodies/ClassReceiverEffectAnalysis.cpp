@@ -659,6 +659,7 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
             const bool integralConversion = value != nullptr && builtins::isIntegerTypeKey(value->typeKey) &&
                 builtins::isIntegerTypeKey(parameter.typeKey) &&
                 (conversion == ProjectConversionKind::IntegralPromotion || conversion == ProjectConversionKind::Numeric ||
+                 conversion == ProjectConversionKind::ForeignNumeric ||
                  conversion == ProjectConversionKind::ConstantInteger);
             if (name == nullptr || value == nullptr || !isClassLocalScalarType(value->typeKey) ||
                 !((parameter.typeKey == value->typeKey && conversion == ProjectConversionKind::Identity) ||

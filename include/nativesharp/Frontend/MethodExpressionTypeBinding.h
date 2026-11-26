@@ -64,6 +64,8 @@ struct MethodExpressionTypeBinding final
     // Analysis-time alignment fact; consumers must account for reassignment and flow joins.
     std::size_t pointerKnownAlignment = 1;
     // Preserve the origin needed to distinguish imported flexible members from native storage.
+    bool cppForeignCallResult = false; // Preserved for HIR conversion.
+    bool cppCOrigin = false; // Source provenance of imported pointer values.
     bool cppFlexibleArrayMember = false;
     bool cppFlexibleArrayDecaySafe = false;
     // C1-02: the expression's intermediate pointer level qualifiers. / Los calificadores de niveles intermedios.

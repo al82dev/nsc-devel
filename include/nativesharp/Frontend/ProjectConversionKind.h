@@ -45,6 +45,8 @@ enum class ProjectConversionKind
     //     Clang compiles (`namespaceFunctionOrdinal`), as C converts it.
     // ES: T19-039. Un valor real o un portador `_Complex` pasa a otro portador `_Complex` con la conversion C que
     //     compila Clang (`namespaceFunctionOrdinal`), como lo convierte C.
-    CComplexValue
+    CComplexValue,
+    // Arithmetic conversion of the direct result of an imported call.
+    ForeignNumeric
 };
 }

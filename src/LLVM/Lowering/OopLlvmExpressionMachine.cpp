@@ -2371,7 +2371,24 @@ bool OopLlvmImplementation::lowerExpressionFrame041Convert(
                                             LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), "cpp.upcast.null");
         value = LLVMBuildSelect(builder_, isNull, value, adjusted, "cpp.upcast.value");
     }
-    values.push_back(convert(value, current->children.front()->typeKey, current->typeKey, error));
+    // Only this foreign-result conversion uses C/C++ integer conversion semantics.
+    // Its operand has already been evaluated under the surrounding NativeSharp policy.
+    if (current->conversionKind &&
+        *current->conversionKind == frontend::ProjectConversionKind::ForeignNumeric &&
+        current->typeKey == "builtin:bool" &&
+        frontend::ProjectTypeConversion::isPointer(current->children.front()->typeKey))
+    {
+        values.push_back(LLVMBuildICmp(builder_, LLVMIntNE, value, LLVMConstNull(LLVMTypeOf(value)),
+                                      "foreign.pointer.to.bool"));
+        return true;
+    }
+    const auto previousOverflowPolicy = currentOverflowPolicy_;
+    if (current->conversionKind &&
+        *current->conversionKind == frontend::ProjectConversionKind::ForeignNumeric)
+        currentOverflowPolicy_ = "unchecked";
+    LLVMValueRef converted = convert(value, current->children.front()->typeKey, current->typeKey, error);
+    currentOverflowPolicy_ = previousOverflowPolicy;
+    values.push_back(converted);
     return true;
 }
 

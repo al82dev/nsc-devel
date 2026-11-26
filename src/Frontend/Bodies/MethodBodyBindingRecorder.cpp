@@ -133,6 +133,8 @@ MethodExpressionTypeBinding ProjectMethodBodyModel::makeExpressionTypeBinding(
     binding.cppVolatilePointeeMicrosoft = result.cppVolatilePointeeMicrosoft;
     binding.cppVolatilePointeeAlignment = result.cppVolatilePointeeAlignment;
     binding.pointerKnownAlignment = result.pointerKnownAlignment;
+    binding.cppForeignCallResult = result.cppForeignCallResult;
+    binding.cppCOrigin = result.cppCOrigin;
     binding.cppFlexibleArrayMember = result.cppFlexibleArrayMember;
     binding.cppFlexibleArrayDecaySafe = result.cppFlexibleArrayDecaySafe;
     binding.ownership = result.ownership;

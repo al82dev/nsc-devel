@@ -1,4 +1,5 @@
 #include "../CComplexConversion.h"
+#include "../ForeignCallResultConversion.h"
 #include <algorithm>
 #include <iterator>
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
@@ -65,7 +66,10 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyImportedFlexibleConver
         targetTypeKey == *element + "*")
         return {ProjectConversionKind::CFlexibleArrayToPointer, 1, source.typeKey,
                 std::string(targetTypeKey), std::nullopt};
-    return classifyImplicit(source.typeKey, targetTypeKey, source.integerConstant);
+    ProjectImplicitConversion conversion = classifyImplicit(source.typeKey, targetTypeKey, source.integerConstant);
+    if (!conversion.exists() && source.cppForeignCallResult)
+        conversion = classifyForeignCallNumericResult(nameLookup_, source.typeKey, targetTypeKey);
+    return conversion;
 }
 
 ProjectImplicitConversion ProjectMethodBodyModel::classifyCFrontierConversion(
