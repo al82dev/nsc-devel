@@ -1251,6 +1251,18 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
     const bool cLinkage = candidate.isImportedC || (importedFunction && !cFunction->mangledName.starts_with('?'));
     if (!conversion.exists() && !packElement && (candidate.isImportedC || candidate.isCppExternal || importedFunction))
         conversion = classifyCFrontierConversion(arguments[argumentOrdinal], parameter, conversionTarget, cLinkage);
+    // EN: L-063. A string literal is static NUL-terminated UTF-8, so it reaches a `const char*` (`sbyte const*`,
+    //     `byte const*`) parameter of any function, a NativeSharp one included (`Length("wb")`), as it reaches a C
+    //     one (Item 3.2). A parameter that may write through the pointer does not receive it. Rank 5: an overload
+    //     taking `string` stays better for a literal (`Console.Write("")`).
+    // ES: L-063. Un literal es UTF-8 estatico con NUL, asi que llega a un parametro `const char*` de cualquier
+    //     funcion, tambien una NativeSharp, como a una C. Un parametro que puede escribir por el puntero no lo recibe.
+    if (!conversion.exists() && !packElement && arguments[argumentOrdinal].typeKey == "string-literal" &&
+        (conversionTarget == "builtin:sbyte*" || conversionTarget == "builtin:byte*" ||
+         conversionTarget == "builtin:char*") &&
+        parameter.passKind == ParameterPassKind::Value && parameter.pointerPointeeReadonly)
+        conversion = {ProjectConversionKind::StringLiteralToCharPointer, 5, arguments[argumentOrdinal].typeKey, std::string(conversionTarget),
+                      std::nullopt};
     // EN: Freeze P3: an `in` parameter only reads its argument, so a readonly place (another
     //     `in` parameter, a readonly field, a `ref readonly` result) may be lent to it.
     // ES: Congelamiento P3: un parametro `in` solo lee su argumento, asi que se le puede prestar
@@ -6867,6 +6879,18 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     if (!conversion.exists() && !packElement && (candidate.isImportedC || candidate.isCppExternal))
         conversion = classifyCFrontierConversion(argument, parameter, conversionTarget,
             candidate.isImportedC || (candidate.isCppExternal && !candidate.cppExternalSymbol.starts_with('?')));
+    // EN: L-063. A string literal is static NUL-terminated UTF-8, so it reaches a `const char*` (`sbyte const*`,
+    //     `byte const*`) parameter of any function, a NativeSharp one included (`Length("wb")`), as it reaches a C
+    //     one (Item 3.2). A parameter that may write through the pointer does not receive it. Rank 5: an overload
+    //     taking `string` stays better for a literal (`Console.Write("")`).
+    // ES: L-063. Un literal es UTF-8 estatico con NUL, asi que llega a un parametro `const char*` de cualquier
+    //     funcion, tambien una NativeSharp, como a una C. Un parametro que puede escribir por el puntero no lo recibe.
+    if (!conversion.exists() && !packElement && argument.typeKey == "string-literal" &&
+        (conversionTarget == "builtin:sbyte*" || conversionTarget == "builtin:byte*" ||
+         conversionTarget == "builtin:char*") &&
+        parameter.passKind == ParameterPassKind::Value && parameter.pointerPointeeReadonly)
+        conversion = {ProjectConversionKind::StringLiteralToCharPointer, 5, argument.typeKey, std::string(conversionTarget),
+                      std::nullopt};
     const bool boundLvalue = rvalueArgument && parameter.cppRvalueReference && conversion.exists() &&
         conversion.kind == ProjectConversionKind::Identity && argument.addressable;
     // EN: Freeze P3: as above, an `in` parameter accepts a readonly place.

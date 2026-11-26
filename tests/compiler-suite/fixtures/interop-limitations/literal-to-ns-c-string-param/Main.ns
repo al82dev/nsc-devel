@@ -1,0 +1,22 @@
+// Compiler-suite fixture literal-to-ns-c-string-param (L-063): a string literal passed to a `const char*` parameter of a NativeSharp function (`fopen(path, "wb")`
+// wrappers in ogldev), for `sbyte const*` and `byte const*`, read up to the NUL. Exit 42.
+namespace Fixture
+{
+    int Length(sbyte const* text)
+    {
+        int count = 0;
+        while (text[count] != 0) { count = count + 1; }
+        return count;
+    }
+
+    int First(byte const* text)
+    {
+        return (int)text[0];
+    }
+
+    int Main()
+    {
+        // 5 + 'A' (65) - 28 = 42
+        return Length("hello") + First("A") - 28;
+    }
+}
