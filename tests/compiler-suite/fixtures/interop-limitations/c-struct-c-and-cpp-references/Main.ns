@@ -1,0 +1,11 @@
+// Compiler-suite fixture c-struct-c-and-cpp-references (L-047): a C struct and a C inline function of a system
+// header that a C reference and a C++ reference both reach (`FILE` and `fprintf` of stdio.h with GLM) are one type
+// and one function: `LIM_FILE*` is mapped and the call is not ambiguous. Exit 42.
+namespace Fixture
+{
+    int Main()
+    {
+        LIM_FILE* stream = lim_stream();
+        return lim_put(stream, 40);
+    }
+}

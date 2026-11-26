@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup><Name>InteropLimitation</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+    <CppLibraryReference Header="@FIXTURE@/sys/lim_file.h" Language="C" Standard="c17">
+      <IncludeDirectory Path="@FIXTURE@" Kind="User" />
+      <IncludeDirectory Path="@FIXTURE@/sys" Kind="System" />
+    </CppLibraryReference>
+    <CppLibraryReference Header="@FIXTURE@/lim_cpp.hpp" Language="C++" Standard="c++17">
+      <IncludeDirectory Path="@FIXTURE@" Kind="User" />
+      <IncludeDirectory Path="@FIXTURE@/sys" Kind="System" />
+    </CppLibraryReference>
+  </ItemGroup>
+</Project>

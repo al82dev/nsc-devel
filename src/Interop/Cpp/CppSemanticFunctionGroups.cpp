@@ -68,6 +68,7 @@ CppSemanticFunctionGroupsResult groupCppSemanticFunctions(
     std::map<Key, std::size_t> groupByKey;
     std::map<Key, std::size_t> firstExternalByKey;
     std::map<std::pair<std::size_t, std::string>, std::size_t> firstExternalByUsr;
+    std::map<Key, std::size_t> groupByCLinkageUsr; // L-047
     CppSemanticFunctionGroups result;
     for (std::size_t index = 0; index < entries.size(); ++index)
     {
@@ -136,7 +137,44 @@ CppSemanticFunctionGroupsResult groupCppSemanticFunctions(
         Key key{symbol->projectOrdinal, declaration.qualifiedName,
                 builtinWrapper ? "c-builtin:" + declaration.cMacroWrapper
                 : cInlineDefinition ? "c-inline:" + *declaration.clangUsr : *declaration.externalSymbol};
+        // EN: L-047. The same C function reached by a C reference and by a C++ reference (UCRT's inline `fprintf`
+        //     through stdio.h and through a C++ header that includes <cstdio>) is a C inline definition in the C
+        //     reference and an `extern "C"` function in the C++ one, so the keys differ. Both name one function (same
+        //     Clang USR, one C linkage name); when their NativeSharp signatures are equal, the second joins the
+        //     first one's group instead of making the call ambiguous.
+        // ES: L-047. La misma funcion C alcanzada por una referencia C y por una C++ (el `fprintf` inline de UCRT por
+        //     stdio.h y por un encabezado C++ que incluye <cstdio>) es una definicion C inline en la referencia C y
+        //     una funcion `extern "C"` en la C++, asi que las claves difieren. Ambas nombran una sola funcion (mismo
+        //     USR de Clang, un nombre de enlace C); si sus firmas NativeSharp son iguales, la segunda se une al grupo
+        //     de la primera en lugar de volver ambigua la llamada.
+        const bool cLinkageExternal = declaration.externalLinkage &&
+            declaration.languageLinkage == CppLanguageLinkage::C && declaration.clangUsr &&
+            !declaration.clangUsr->empty();
+        const bool crossLanguageCandidate = (cInlineDefinition && !builtinWrapper) || cLinkageExternal;
+        const auto usrKey = crossLanguageCandidate
+            ? std::optional<Key>(Key{symbol->projectOrdinal, declaration.qualifiedName, *declaration.clangUsr})
+            : std::nullopt;
+        if (usrKey && !groupByKey.contains(key))
+            if (const auto prior = groupByCLinkageUsr.find(*usrKey); prior != groupByCLinkageUsr.end())
+            {
+                auto& group = result.groups[prior->second];
+                const auto& original = entries[group.inventoryIndices.front()];
+                const bool originalInline = original.declaration.isCStaticInlineDefinition &&
+                    !original.declaration.externalLinkage;
+                if (originalInline != cInlineDefinition && entry.targetTriple == original.targetTriple &&
+                    declaration.callingConvention == original.declaration.callingConvention &&
+                    symbol->moduleName == group.symbol.moduleName &&
+                    symbol->namespaceName == group.symbol.namespaceName &&
+                    symbol->signatureKey == group.symbol.signatureKey &&
+                    symbol->declaredTypeKey == group.symbol.declaredTypeKey &&
+                    symbol->isVariadic == group.symbol.isVariadic)
+                {
+                    group.inventoryIndices.push_back(index);
+                    continue;
+                }
+            }
         auto [it, inserted] = groupByKey.emplace(std::move(key), result.groups.size());
+        if (inserted && usrKey) groupByCLinkageUsr.emplace(*usrKey, result.groups.size());
         if (!inserted && cInlineDefinition)
         {
             const auto& original = entries[result.groups[it->second].inventoryIndices.front()];
@@ -447,6 +485,11 @@ bool captureCppTemplateFunctionCandidates(const compilation::ProjectGraph& graph
                 if (entry.referenceIndex >= project.cppLibraryReferences().size())
                 { error = "C function candidate has no source reference"; return false; }
                 if (!entry.declaration.externalLinkage && !entry.declaration.isCStaticInlineDefinition) continue;
+                // L-047: only the copies of the kind the group calls (a C inline definition or an extern "C"
+                //     function). / Solo las copias del tipo que llama el grupo.
+                if (group.inventoryIndices.front() < inventory.size() &&
+                    inventory[group.inventoryIndices.front()].declaration.externalLinkage !=
+                        entry.declaration.externalLinkage) continue;
                 const auto key = std::make_tuple(entry.projectOrdinal, entry.referenceIndex, group.symbol.mangledName);
                 if (!seen.insert(key).second) continue;
                 metadata_detail::CDependencyFunctionSnapshot snapshot;

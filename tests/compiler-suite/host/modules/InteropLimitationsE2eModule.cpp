@@ -280,6 +280,8 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         [](TestContext& context) { expectExit(context, "TF-INTEROP-451", "cpp-anonymous-union-derived", 42); });
     addCase(registry, "TF-INTEROP-452", {"language", "conversion", "operator", "l-059", "e2e"},
         [](TestContext& context) { expectExit(context, "TF-INTEROP-452", "user-conversion-both-operands", 42); });
+    addCase(registry, "TF-INTEROP-453", {"interop", "c", "cpp", "l-047", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-453", "c-struct-c-and-cpp-references", 42); });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",

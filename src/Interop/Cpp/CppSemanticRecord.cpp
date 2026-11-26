@@ -4235,6 +4235,59 @@ CppRecordRefinementResult refineCppRecordGroupsForPointerTransport(
         }
         if (matching && first) group.status = CppRecordGroupStatus::MultipleDefinitionsPointerCompatible;
     }
+    // EN: L-047. A C struct of a header that both a C reference and a C++ reference reach (UCRT's `struct _iobuf`, the
+    //     `FILE` of stdio.h, which a C++ reference reaches through <cwchar> -> <cstdio>) has two ODR hashes, since
+    //     Clang hashes a C record and a C++ record differently; so `FILE*` was not mapped and `fprintf` was not
+    //     imported. It is one record when every observation is the same definition: the same Clang USR, size and
+    //     alignment at the same offset of the same file (same contents), one ODR hash per language, and the same
+    //     fields, with no C++-only members in the C++ observations.
+    // ES: L-047. Un struct C de un encabezado que alcanzan una referencia C y una C++ (el `struct _iobuf` de UCRT, el
+    //     `FILE` de stdio.h, que una referencia C++ alcanza por <cwchar> -> <cstdio>) tiene dos hashes ODR, pues
+    //     Clang calcula distinto el de un record C y el de uno C++; asi `FILE*` no se mapeaba y `fprintf` no se
+    //     importaba. Es un solo record cuando cada observacion es la misma definicion: mismo USR de Clang, tamano y
+    //     alineacion en el mismo desplazamiento del mismo archivo (mismo contenido), un hash ODR por lenguaje y los
+    //     mismos campos, sin miembros exclusivos de C++ en las observaciones C++.
+    for (auto& group : result.groups)
+    {
+        if (group.status != CppRecordGroupStatus::MultipleDefinitionsUnverified) continue;
+        const CppRecordDeclaration* firstC = nullptr;
+        const CppRecordDeclaration* firstCxx = nullptr;
+        bool matching = true;
+        for (const auto index : group.inventoryIndices)
+        {
+            const auto& record = inventory[index].declaration;
+            if (!record.complete) continue;
+            if (!record.clangUsr || record.clangUsr->empty() || !record.sourceProvenance || !record.odrHash ||
+                !record.sizeBits || !record.alignmentBits || !record.anonymousCRecords.empty() ||
+                (record.isCxx && (!record.bases.empty() || !record.methods.empty() || !record.staticFields.empty() ||
+                                  record.hasVirtualBases)))
+            { matching = false; break; }
+            auto& sameLanguage = record.isCxx ? firstCxx : firstC;
+            const auto* reference = firstC ? firstC : firstCxx;
+            if (reference)
+            {
+                std::error_code ec;
+                const bool sameFile = std::filesystem::equivalent(reference->sourceProvenance->sourcePath,
+                    record.sourceProvenance->sourcePath, ec);
+                bool sameFields = reference->kind == record.kind && reference->fields.size() == record.fields.size();
+                for (std::size_t i = 0; sameFields && i < record.fields.size(); ++i)
+                {
+                    const auto& a = reference->fields[i];
+                    const auto& b = record.fields[i];
+                    sameFields = a.name == b.name && a.offsetBits == b.offsetBits && a.bitWidth == b.bitWidth &&
+                        !a.isAnonymousCarrier && !b.isAnonymousCarrier && sameMemberType(a.type, b.type);
+                }
+                if (ec || !sameFile || !sameFields || reference->clangUsr != record.clangUsr ||
+                    reference->sourceProvenance->bufferSha256 != record.sourceProvenance->bufferSha256 ||
+                    reference->sourceProvenance->byteOffset != record.sourceProvenance->byteOffset ||
+                    reference->sizeBits != record.sizeBits || reference->alignmentBits != record.alignmentBits ||
+                    (sameLanguage && sameLanguage->odrHash != record.odrHash))
+                { matching = false; break; }
+            }
+            if (!sameLanguage) sameLanguage = &record;
+        }
+        if (matching && firstC && firstCxx) group.status = CppRecordGroupStatus::MultipleDefinitionsPointerCompatible;
+    }
     return result;
 }
 
