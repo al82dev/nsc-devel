@@ -9,6 +9,7 @@
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
+#include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Language/IterationSemantics.h"
@@ -231,6 +232,63 @@ bool initializeNamespaceStateConstant(NamespaceStateSymbol& symbol)
     }
 
     ProjectIntegerEvaluator integerEvaluator(nullptr);
+    // EN: L-039. A fixed array of numbers or booleans with a brace initializer of constants (`const float[4] LTC1 =
+    //     { 1, 0, 0, (float)2e-05 };`, ltc_matrix.hpp) is constant data. Each element is a literal, a signed literal,
+    //     a cast of one, or an integer constant expression; more elements than the array holds is an error, fewer
+    //     leave the rest zero.
+    // ES: L-039. Un arreglo fijo de numeros o booleanos con un inicializador de constantes entre llaves es dato
+    //     constante. Cada elemento es un literal, un literal con signo, un cast de uno o una expresion entera
+    //     constante; mas elementos que los del arreglo es un error, menos dejan el resto en cero.
+    if (initializer->kind() == ast::AstNodeKind::AggregateInitializerExpression)
+    {
+        const std::optional<std::string> element = ProjectMemberModel::fixedArrayElementTypeKey(symbol.declaredTypeKey);
+        const std::optional<std::uint64_t> count = ProjectMemberModel::fixedArrayCount(symbol.declaredTypeKey);
+        if (!element || !count || initializer->children().size() > *count) return false;
+        const bool floatingElement = *element == "builtin:float" || *element == "builtin:double";
+        const bool booleanElement = *element == "builtin:bool";
+        if (!floatingElement && !booleanElement && !ProjectTypeConversion::isIntegral(*element)) return false;
+        for (const ast::AstNode* value : initializer->children())
+        {
+            const ast::AstNode* operand = value;
+            while (operand != nullptr && operand->kind() == ast::AstNodeKind::CastExpression) operand = operand->first();
+            if (operand == nullptr) return false;
+            double sign = 1.0;
+            const ast::AstNode* magnitude = operand;
+            if (magnitude->kind() == ast::AstNodeKind::UnaryExpression &&
+                (magnitude->tokenKind() == lexer::TokenKind::Minus || magnitude->tokenKind() == lexer::TokenKind::Plus) &&
+                magnitude->first() != nullptr)
+            {
+                if (magnitude->tokenKind() == lexer::TokenKind::Minus) sign = -1.0;
+                magnitude = magnitude->first();
+            }
+            if (booleanElement)
+            {
+                if (operand->kind() != ast::AstNodeKind::BooleanLiteralExpression) return false;
+                symbol.arrayIntegerValues.push_back(operand->text() == "true" ? 1U : 0U);
+                continue;
+            }
+            if (floatingElement)
+            {
+                if (magnitude->kind() == ast::AstNodeKind::FloatingLiteralExpression)
+                {
+                    symbol.arrayFloatingValues.push_back(sign * magnitude->floatingValue());
+                    continue;
+                }
+                if (magnitude->kind() == ast::AstNodeKind::IntegerLiteralExpression)
+                {
+                    symbol.arrayFloatingValues.push_back(sign * static_cast<double>(magnitude->integerValue()));
+                    continue;
+                }
+                return false;
+            }
+            const std::optional<ProjectIntegerValue> integer = integerEvaluator.evaluate(operand);
+            if (!integer.has_value()) return false;
+            symbol.arrayIntegerValues.push_back(ProjectIntegerEvaluator::normalize(integer->bits, *element));
+        }
+        symbol.hasArrayInitializer = true;
+        symbol.initializerKind = NamespaceStateInitializerKind::Zero;
+        return true;
+    }
     if (const std::optional<ProjectIntegerValue> value = integerEvaluator.evaluate(initializer);
         value.has_value() && ProjectTypeConversion::isIntegral(symbol.declaredTypeKey))
     {

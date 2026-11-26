@@ -224,6 +224,8 @@ void registerInteropLimitationsE2eModule(TestRegistry& registry)
         [](TestContext& context) { expectExit(context, "TF-INTEROP-427", "empty-statement", 42); });
     addCase(registry, "TF-INTEROP-428", {"language", "parser", "literal", "l-032", "e2e"},
         [](TestContext& context) { expectExit(context, "TF-INTEROP-428", "c-floating-literal-forms", 42); });
+    addCase(registry, "TF-INTEROP-429", {"language", "namespace-state", "array", "l-039", "e2e"},
+        [](TestContext& context) { expectExit(context, "TF-INTEROP-429", "namespace-array-initializer", 42); });
     addCase(registry, "TF-INTEROP-410", {"interop", "diagnostic", "l-009", "e2e"},
         [](TestContext& context) {
             expectDiagnostic(context, "TF-INTEROP-410", "using-diagnostic",

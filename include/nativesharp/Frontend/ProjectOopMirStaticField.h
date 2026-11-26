@@ -52,6 +52,10 @@ struct ProjectOopMirStaticField final
     //     literal's NUL-terminated UTF-8 bytes (constantStringValue); false keeps a pointer constant null.
     //     / Un puntero de cadena C inicializado con un literal apunta a sus bytes UTF-8 con NUL.
     bool constantStringPointer = false;
+    // L-039: a fixed array initialized from a brace initializer of constants. / Arreglo fijo con constantes.
+    bool constantArrayInitializer = false;
+    std::vector<std::uint64_t> constantArrayIntegers = {};
+    std::vector<double> constantArrayFloatings = {};
     // Stage 51.x: an enum member's declared type is its own enum type (so it type-checks and
     // compares correctly against other enum-typed expressions), not its int-sized underlying
     // representation -- so `ProjectTypeConversion::isIntegral(typeKey)` returns false for it.

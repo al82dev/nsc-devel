@@ -1,0 +1,21 @@
+// Compiler-suite fixture namespace-array-initializer (L-039): namespace-scope arrays with brace initializers of constants (ltc_matrix.hpp), const and mutable,
+// float, int and bool elements, with fewer elements than the array holds (the rest is zero). Exit 42.
+namespace Fixture
+{
+    const float[4] LTC1 = {
+        1, 0, -0.5f, (float)2e-05,
+    };
+    const int[5] PRIMES = { 2, 3, 5, -7 };
+    bool[3] FLAGS = { true, false, true };
+    int[3] COUNTS = { 1, 2, 3 };
+
+    int Main()
+    {
+        if (LTC1[0] != 1.0f || LTC1[2] != -0.5f || LTC1[3] <= 0.0f) return 1;
+        if (PRIMES[3] != -7 || PRIMES[4] != 0) return 2;
+        if (!FLAGS[0] || FLAGS[1] || !FLAGS[2]) return 3;
+        COUNTS[1] = COUNTS[1] + 10;
+        // 2 + 3 + 5 - 7 + 0 = 3; 1 + 12 + 3 = 16; 3 + 16 + 23 = 42
+        return PRIMES[0] + PRIMES[1] + PRIMES[2] + PRIMES[3] + PRIMES[4] + COUNTS[0] + COUNTS[1] + COUNTS[2] + 23;
+    }
+}

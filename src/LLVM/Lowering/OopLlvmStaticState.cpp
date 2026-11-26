@@ -162,6 +162,32 @@ LLVMValueRef OopLlvmImplementation::staticFieldInitializer(
         std::string& error)
 {
         if (!field.hasConstantInitializer) return LLVMConstNull(type);
+        // EN: L-039. A fixed array initialized from a brace initializer of constants is constant data: each element
+        //     takes its value, the ones not written are zero.
+        // ES: L-039. Un arreglo fijo inicializado con constantes entre llaves es dato constante; los elementos no
+        //     escritos son cero.
+        if (field.constantArrayInitializer)
+        {
+            const auto elementKey = frontend::ProjectMemberModel::fixedArrayElementTypeKey(field.typeKey);
+            const auto count = frontend::ProjectMemberModel::fixedArrayCount(field.typeKey);
+            if (!elementKey || !count)
+            {
+                fail(error, "L-039 array initializer of a non fixed-size array");
+                return nullptr;
+            }
+            const bool floating = *elementKey == "builtin:float" || *elementKey == "builtin:double";
+            LLVMTypeRef element = llvmType(*elementKey, error);
+            if (element == nullptr) return nullptr;
+            std::vector<LLVMValueRef> values;
+            values.reserve(static_cast<std::size_t>(*count));
+            for (std::uint64_t index = 0; index < *count; ++index)
+                values.push_back(floating
+                    ? LLVMConstReal(element, index < field.constantArrayFloatings.size()
+                        ? field.constantArrayFloatings[index] : 0.0)
+                    : LLVMConstInt(element, index < field.constantArrayIntegers.size()
+                        ? field.constantArrayIntegers[index] : 0U, 0));
+            return LLVMConstArray2(element, values.data(), values.size());
+        }
         const frontend::builtins::IntegerTypeInfo* fieldEnum =
             findEnumUnderlyingInfo(nameLookup_, field.typeKey);
         const auto enumOrdinal = field.typeKey.starts_with("type:")

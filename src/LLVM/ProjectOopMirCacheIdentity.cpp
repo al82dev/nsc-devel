@@ -383,6 +383,11 @@ void writeStaticFields(IdentityWriter& output, const frontend::ProjectOopMirMode
         output.scalar(std::bit_cast<std::uint64_t>(field.constantFloatingValue));
         output.scalar(field.constantBooleanValue); output.text(field.constantStringValue);
         output.scalar(field.constantStringPointer);
+        output.scalar(field.constantArrayInitializer);
+        output.scalar(field.constantArrayIntegers.size());
+        for (const std::uint64_t value : field.constantArrayIntegers) output.scalar(value);
+        output.scalar(field.constantArrayFloatings.size());
+        for (const double value : field.constantArrayFloatings) output.scalar(std::bit_cast<std::uint64_t>(value));
         output.scalar(field.isEnumConstant);
         output.optional(field.namespaceStateOrdinal);
         output.text(field.debugDisplayName);

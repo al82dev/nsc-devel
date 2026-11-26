@@ -2283,7 +2283,8 @@ ast::AstNode* Parser::finishFunctionOrGlobalVariable(
 
     if (consumeIf(TokenKind::Equal))
     {
-        global->setFirst(parseExpression());
+        // L-039: a namespace array may have a brace initializer, as a local one. / Como un arreglo local.
+        global->setFirst(at(TokenKind::LeftBrace) ? parseAggregateInitializer() : parseExpression());
     }
     else if (isConst)
     {

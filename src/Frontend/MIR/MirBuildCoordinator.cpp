@@ -801,6 +801,13 @@ void ProjectOopMirModel::buildNamespaceStateFields(
         staticField.debugDisplayName = state.namespaceName.empty()
             ? state.name
             : state.namespaceName + "." + state.name;
+        if (state.hasArrayInitializer)
+        {
+            staticField.hasConstantInitializer = true;
+            staticField.constantArrayInitializer = true;
+            staticField.constantArrayIntegers = state.arrayIntegerValues;
+            staticField.constantArrayFloatings = state.arrayFloatingValues;
+        }
         switch (state.initializerKind)
         {
             case NamespaceStateInitializerKind::Integer:

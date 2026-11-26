@@ -48,6 +48,12 @@ struct NamespaceStateSymbol final
     double floatingValue = 0.0;
     bool booleanValue = false;
     std::string stringValue;
+    // L-039: the element values of a fixed array state with a brace initializer (`const float[4] LTC1 = {...}`):
+    //     integer bit patterns of the element type, or floating values; missing elements are zero.
+    //     / Los valores de los elementos de un estado arreglo fijo con inicializador entre llaves.
+    bool hasArrayInitializer = false;
+    std::vector<std::uint64_t> arrayIntegerValues;
+    std::vector<double> arrayFloatingValues;
     bool isConst = false;
     bool isPrecompiled = false;
     bool isCppExternal = false;
