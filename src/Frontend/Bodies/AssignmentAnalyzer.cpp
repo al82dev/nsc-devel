@@ -1295,10 +1295,20 @@ void ProjectMethodBodyModel::collectBorrowedAssignmentOwners(
     std::size_t methodMemberOrdinal,
     std::size_t scopeOrdinal) const
 {
-    if (expression->second() == nullptr ||
-        expression->second()->kind() != ast::AstNodeKind::IdentifierExpression) return;
+    if (expression->second() == nullptr) return;
+    // EN: L-038. A borrowed result of an instance call (`last = last.children.Last().Value();`) has the owners of the
+    //     local at the root of its receiver chain (analyzeBorrowedReassignment requires a borrowed result).
+    // ES: L-038. Un resultado borrowed de una llamada de instancia tiene los duenos del local en la raiz de la cadena
+    //     de su receptor.
+    const ast::AstNode* sourceSyntax = expression->second();
+    if (sourceSyntax->kind() == ast::AstNodeKind::CallExpression && sourceSyntax->first() != nullptr &&
+        sourceSyntax->first()->kind() == ast::AstNodeKind::MemberExpression)
+        while (sourceSyntax != nullptr && (sourceSyntax->kind() == ast::AstNodeKind::CallExpression ||
+                                           sourceSyntax->kind() == ast::AstNodeKind::MemberExpression))
+            sourceSyntax = sourceSyntax->first();
+    if (sourceSyntax == nullptr || sourceSyntax->kind() != ast::AstNodeKind::IdentifierExpression) return;
     const std::optional<ScopeName> source =
-        lookupScopeName(scopeOrdinal, expression->second()->text());
+        lookupScopeName(scopeOrdinal, sourceSyntax->text());
     if (source.has_value() && source->kind == ScopeNameKind::Local &&
         source->semanticOrdinal < locals_.size())
     {
@@ -1452,9 +1462,17 @@ bool ProjectMethodBodyModel::analyzeBorrowedReassignment(
     }
     std::vector<std::size_t> ownerLocals;
     std::vector<std::size_t> ownerParameters;
-    collectBorrowedAssignmentOwners(
-        ownerLocals, ownerParameters, expression, enclosingMethod,
-        methodMemberOrdinal, scopeOrdinal);
+    const bool callSource = expression->second() != nullptr &&
+        expression->second()->kind() == ast::AstNodeKind::CallExpression;
+    // L-038: only a borrowed call result takes its receiver's owners. / Solo un resultado borrowed toma los duenos.
+    if (!callSource || right.ownership == sema::OwnershipKind::Borrowed)
+        collectBorrowedAssignmentOwners(
+            ownerLocals, ownerParameters, expression, enclosingMethod,
+            methodMemberOrdinal, scopeOrdinal);
+    // L-038: the owners of a call-borrowed local are frozen while it is alive (rejectUseOfCallBorrowedOwner). / Los
+    //     duenos de un local prestado por una llamada quedan congelados mientras vive.
+    if (callSource && targetLocalBorrow != nullptr && (!ownerLocals.empty() || !ownerParameters.empty()))
+        targetLocalBorrow->fromInstanceCall = true;
     if (ownerLocals.empty() && ownerParameters.empty())
     {
         diagnostics.report(

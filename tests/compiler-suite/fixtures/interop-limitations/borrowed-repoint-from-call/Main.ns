@@ -1,0 +1,38 @@
+// Compiler-suite fixture borrowed-repoint-from-call (L-038): a borrowed local walks down a tree, re-pointed to a
+// borrowed call result of itself (`last = last.GetChild();`), so the owners stay those of the start. Exit 42.
+namespace Fixture
+{
+    public class Node
+    {
+        public int depth = 0;
+        private owned Node child = null;
+
+        public void AddChild()
+        {
+            child = new Node();
+            child.depth = depth + 1;
+        }
+
+        public borrowed Node GetChild()
+        {
+            return child;
+        }
+    }
+
+    int Main()
+    {
+        raii Node root = new Node();
+        int total = 0;
+        {
+            borrowed Node last = root;
+            for (int i = 0; i < 3; i++)
+            {
+                last.AddChild();
+                last = last.GetChild();
+                total = total + last.depth;
+            }
+        }
+        borrowed Node walk = root.GetChild().GetChild().GetChild();
+        return total + walk.depth * 12;
+    }
+}
