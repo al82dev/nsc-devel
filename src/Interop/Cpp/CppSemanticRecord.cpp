@@ -1613,8 +1613,14 @@ bool sameCapturedMembers(const CppRecordDeclaration& a, const CppRecordDeclarati
             x.dllImport != y.dllImport || x.isVirtual != y.isVirtual || x.isPureVirtual != y.isPureVirtual ||
             x.isDeleted != y.isDeleted || x.variadic != y.variadic || x.externalSymbol != y.externalSymbol ||
             x.parameters.size() != y.parameters.size() || !sameMemberType(x.returnType, y.returnType)) return false;
+        // EN: L-018. A C++ parameter name is not part of the function: GLM declares `vec(T x, T y)` in type_vec2.hpp
+        //     and defines `vec(T _x, T _y)` in type_vec2.inl, and each session keeps the redeclaration its
+        //     instantiations reached. C++ records compare parameters without their names; C keeps the rule.
+        // ES: L-018. El nombre de un parametro C++ no es parte de la funcion: GLM declara `vec(T x, T y)` en
+        //     type_vec2.hpp y define `vec(T _x, T _y)` en type_vec2.inl, y cada sesion conserva la redeclaracion que
+        //     alcanzaron sus instanciaciones. Los records C++ comparan parametros sin sus nombres; C conserva la regla.
         for (std::size_t p = 0; p < x.parameters.size(); ++p)
-            if (x.parameters[p].name != y.parameters[p].name ||
+            if ((!(a.isCxx && b.isCxx) && x.parameters[p].name != y.parameters[p].name) ||
                 x.parameters[p].hasDefaultArgument != y.parameters[p].hasDefaultArgument ||
                 x.parameters[p].defaultArgumentKind != y.parameters[p].defaultArgumentKind ||
                 x.parameters[p].defaultArgumentBits != y.parameters[p].defaultArgumentBits ||
@@ -4429,6 +4435,33 @@ CppRecordObservationResult prepareCppRecordObservation(
                 if (sameSource && memberAccessLayout) objectLayout = memberAccessLayout;
                 if (!objectLayout && memberAccessLayout && equivalentCRecordsHaveValueLayout(inventory, group, *chosen))
                     objectLayout = memberAccessLayout;
+                // EN: L-018. One C++ definition reached by several sessions of a project (each reference includes the
+                //     same header, as GLM's `mat<4, 4, float>` through glm.hpp, matrix_transform.hpp and type_ptr.hpp)
+                //     is the same record by the ODR: same Clang USR, ODR hash, size and alignment, at the same offset of
+                //     the same file. It keeps the value layout a single observation has.
+                // ES: L-018. Una definicion C++ que alcanzan varias sesiones de un proyecto (cada referencia incluye el
+                //     mismo encabezado, como `mat<4, 4, float>` de GLM por glm.hpp, matrix_transform.hpp y type_ptr.hpp)
+                //     es el mismo record por la ODR: mismo USR de Clang, hash ODR, tamano y alineacion, en el mismo
+                //     desplazamiento del mismo archivo. Conserva el layout de valor que tiene una sola observacion.
+                if (!objectLayout && memberAccessLayout && record.isCxx && record.clangUsr && !record.clangUsr->empty() &&
+                    record.odrHash && record.sourceProvenance)
+                {
+                    bool sameDefinition = true;
+                    for (const auto entryIndex : group.inventoryIndices)
+                    {
+                        const auto& other = inventory[entryIndex].declaration;
+                        if (!other.complete) continue;
+                        std::error_code ec;
+                        if (!other.isCxx || other.clangUsr != record.clangUsr || other.odrHash != record.odrHash ||
+                            other.sizeBits != record.sizeBits || other.alignmentBits != record.alignmentBits ||
+                            !other.sourceProvenance ||
+                            other.sourceProvenance->byteOffset != record.sourceProvenance->byteOffset ||
+                            !std::filesystem::equivalent(record.sourceProvenance->sourcePath,
+                                                         other.sourceProvenance->sourcePath, ec) || ec)
+                        { sameDefinition = false; break; }
+                    }
+                    if (sameDefinition) objectLayout = memberAccessLayout;
+                }
             }
         result.types.push_back({group.identity, frontend::NamedTypeDeclarationKind::Struct,
                                 nestedAccessibility, group.projectOrdinal,
@@ -5133,7 +5166,12 @@ bool selectExperimentalCppRecordTypesForCompilation(
         const auto group = std::find_if(observation.groups.groups.begin(), observation.groups.groups.end(),
             [&](const auto& item) { return item.projectOrdinal == type.projectOrdinal &&
                                            item.identity.key() == type.identity.key(); });
-        if (group == observation.groups.groups.end() || group->status != CppRecordGroupStatus::OneDefinition)
+        // L-018: one C++ definition seen by several sessions has a value layout only when it is the same definition
+        //     (see the observation above). / Una definicion C++ vista por varias sesiones solo tiene layout de valor
+        //     si es la misma definicion.
+        if (group == observation.groups.groups.end() ||
+            (group->status != CppRecordGroupStatus::OneDefinition &&
+             group->status != CppRecordGroupStatus::MultipleDefinitionsPointerCompatible))
             continue;
         const auto selected = selectCppRecordMemberDefinition(observation.inventory, *group);
         if (!selected || *selected >= observation.inventory.size()) continue;

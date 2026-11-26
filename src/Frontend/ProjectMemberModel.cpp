@@ -207,7 +207,19 @@ bool ProjectMemberModel::setExperimentalCppLifetimeMethods(
     // NSMeta X4-06: a symbol is unique within a project; a consumer with the header and a precompiled source session
     // name the same C++ special member. / Un simbolo es unico en un proyecto.
     std::set<std::pair<std::size_t, std::string>> symbols;
-    for (const auto& method : methods)
+    // EN: L-018. Several references of one project may include the same C++ header (one per original #include);
+    //     each Clang session then reports the same special member of the same record. A method equal in project,
+    //     owner, kind, signature and symbol to one already taken is that member again and is kept once; a method
+    //     that repeats only its signature or only its symbol is still a conflict.
+    // ES: L-018. Varias referencias de un proyecto pueden incluir el mismo encabezado C++ (una por #include
+    //     original); cada sesion de Clang informa entonces el mismo miembro especial del mismo record. Un metodo igual
+    //     en proyecto, duenio, clase, firma y simbolo a uno ya tomado es ese miembro otra vez y se conserva una vez;
+    //     un metodo que repite solo su firma o solo su simbolo sigue siendo un conflicto.
+    std::set<std::tuple<std::size_t, std::string, CppImportedLifetimeKind, std::vector<std::string>, std::string>>
+        identities;
+    std::vector<CppImportedLifetimeMethod> unique;
+    unique.reserve(methods.size());
+    for (auto& method : methods)
     {
         if (method.ownerIdentityKey.empty() || method.externalSymbol.empty() ||
             (method.kind != CppImportedLifetimeKind::Constructor && method.kind != CppImportedLifetimeKind::Destructor) ||
@@ -235,11 +247,14 @@ bool ProjectMemberModel::setExperimentalCppLifetimeMethods(
                     signatureTypes[index];
         // T19-006: the C++ spellings keep `S(int)` and `S(long)` apart. / Las separan.
         if (!method.cppSignatureSuffix.empty()) signatureTypes.push_back(method.cppSignatureSuffix);
+        if (!identities.emplace(method.projectOrdinal, method.ownerIdentityKey, method.kind, signatureTypes,
+                                method.externalSymbol).second) continue;
         if (!signatures.emplace(method.projectOrdinal, method.ownerIdentityKey, method.kind, std::move(signatureTypes)).second ||
             !symbols.emplace(method.projectOrdinal, method.externalSymbol).second)
         { error = "duplicate C++ lifetime method signature or symbol"; return false; }
+        unique.push_back(std::move(method));
     }
-    experimentalCppLifetimeMethods_ = std::move(methods);
+    experimentalCppLifetimeMethods_ = std::move(unique);
     error.clear();
     return true;
 }

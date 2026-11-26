@@ -650,6 +650,48 @@ const clang::RecordDecl* complexCarrierRecord(clang::ASTContext& context, clang:
     return nullptr;
 }
 
+// EN: L-018. Clang spells an unnamed record as `(anonymous union at <file>:<line>:<column>)` with the file as the
+//     #include reached it, so the same union of one header is `glm\.\ext\..\detail\type_vec4.hpp` in one session and
+//     `glm\gtc\..\.\ext\..\detail\type_vec4.hpp` in another, and the sessions disagree on one record. The file part is
+//     normalized lexically (`.` and `..` removed), which names the same file in every session.
+// ES: L-018. Clang escribe un record sin nombre como `(anonymous union at <archivo>:<linea>:<columna>)` con el
+//     archivo como lo alcanzo el #include, asi que la misma union de un encabezado es `glm\.\ext\..\detail\...` en
+//     una sesion y `glm\gtc\..\.\ext\..\detail\...` en otra, y las sesiones discrepan sobre un record. La parte de
+//     archivo se normaliza lexicamente (se quitan `.` y `..`), lo que nombra el mismo archivo en toda sesion.
+std::string normalizeUnnamedLocations(std::string spelling)
+{
+    if (spelling.find(" at ") == std::string::npos) return spelling;
+    std::string result;
+    result.reserve(spelling.size());
+    std::size_t cursor = 0;
+    while (cursor < spelling.size())
+    {
+        const auto open = spelling.find('(', cursor);
+        if (open == std::string::npos) break;
+        const std::string_view rest(spelling.data() + open, spelling.size() - open);
+        const bool unnamed = rest.starts_with("(anonymous") || rest.starts_with("(unnamed") ||
+            rest.starts_with("(lambda");
+        const auto at = unnamed ? spelling.find(" at ", open) : std::string::npos;
+        const auto close = at == std::string::npos ? std::string::npos : spelling.find(')', at);
+        // The location ends with `:<line>:<column>`; the file is what precedes those two numbers.
+        const auto column = close == std::string::npos ? std::string::npos : spelling.rfind(':', close);
+        const auto line = column == std::string::npos || column <= at ? std::string::npos :
+            spelling.rfind(':', column - 1);
+        if (line == std::string::npos || line <= at + 4)
+        {
+            result.append(spelling, cursor, open + 1 - cursor);
+            cursor = open + 1;
+            continue;
+        }
+        result.append(spelling, cursor, at + 4 - cursor);
+        const std::string file = spelling.substr(at + 4, line - (at + 4));
+        result += std::filesystem::path(file).lexically_normal().string();
+        cursor = line;
+    }
+    result.append(spelling, cursor, std::string::npos);
+    return result;
+}
+
 CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned depth = 0)
 {
     CppType result;
@@ -662,10 +704,10 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
         result.spelling = type.getAsString();
         return result;
     }
-    result.spelling = type.getAsString();
+    result.spelling = normalizeUnnamedLocations(type.getAsString());
     const clang::QualType canonical = type.getCanonicalType();
-    result.canonicalSpelling = canonical.getAsString();
-    result.unqualifiedCanonicalSpelling = canonical.getUnqualifiedType().getAsString();
+    result.canonicalSpelling = normalizeUnnamedLocations(canonical.getAsString());
+    result.unqualifiedCanonicalSpelling = normalizeUnnamedLocations(canonical.getUnqualifiedType().getAsString());
     result.isConst = canonical.isConstQualified();
     result.isVolatile = canonical.isVolatileQualified();
     result.isRestrict = canonical.isRestrictQualified();

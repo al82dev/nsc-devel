@@ -2033,7 +2033,12 @@ bool planCppImplicitLifetimeEmission(
     if (const auto* failure = std::get_if<CppSemanticRecordFailure>(&collected))
     { error = failure->message; return false; }
     const auto& entries = std::get<std::vector<CppSemanticRecordEntry>>(collected);
-    const auto groups = groupCppSemanticRecords(entries);
+    // L-018: the definitions several sessions of a project see are compared, so the same C++ definition counts as
+    //     one. / Se comparan las definiciones que ven varias sesiones, asi la misma definicion C++ cuenta como una.
+    auto refined = refineCppRecordGroupsForPointerTransport(entries, groupCppSemanticRecords(entries), projects);
+    if (const auto* failure = std::get_if<CppRecordStructuralComparisonFailure>(&refined))
+    { error = failure->message; return false; }
+    const auto& groups = std::get<CppRecordGroups>(refined);
     std::vector<CppImplicitLifetimeEmissionRequest> planned;
     std::set<std::size_t> seen;
     for (const auto ordinal : selectedMembers)
@@ -2057,7 +2062,8 @@ bool planCppImplicitLifetimeEmission(
                 if (group) { error = "ambiguous C++ lifetime record"; return false; }
                 group = &candidate;
             }
-        if (!group || group->status != CppRecordGroupStatus::OneDefinition)
+        if (!group || (group->status != CppRecordGroupStatus::OneDefinition &&
+                       group->status != CppRecordGroupStatus::MultipleDefinitionsPointerCompatible))
         { error = "C++ lifetime emission requires one unambiguous definition"; return false; }
         const auto chosen = selectCppRecordMemberDefinition(entries, *group);
         if (!chosen) { error = "C++ lifetime definition is unavailable"; return false; }

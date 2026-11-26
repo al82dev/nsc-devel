@@ -491,7 +491,23 @@ bool ProjectNameLookup::expandCppTypeAlias(
                         const auto compatible = [](const auto& left, const auto& right) {
                             return !left || left->empty() || !right || right->empty() || left == right;
                         };
-                        if (qualified != alias.declaration.name || conflictingRecordUsr || conflictingEnumUsr ||
+                        // EN: L-018. A C++ typedef in a namespace may be redeclared in several headers (GLM declares
+                        //     `typedef mat<4, 4, float, defaultp> mat4;` in fwd.hpp and in matrix_float4x4.hpp); the
+                        //     redeclarations are one typedef-name ([dcl.typedef]), but each session may keep a
+                        //     different one, whose USR differs only in the header's basename (`c:fwd.hpp@N@glm@T@mat4`).
+                        //     The USRs without that file part must be equal; the aliased type was already compared.
+                        // ES: L-018. Un typedef C++ en un namespace puede redeclararse en varios encabezados (GLM declara
+                        //     `typedef mat<4, 4, float, defaultp> mat4;` en fwd.hpp y en matrix_float4x4.hpp); las
+                        //     redeclaraciones son un solo typedef-name ([dcl.typedef]), pero cada sesion puede conservar
+                        //     una distinta, cuyo USR solo difiere en el nombre base del encabezado. Los USR sin esa
+                        //     parte de archivo deben ser iguales; el tipo con alias ya se comparo.
+                        const auto withoutFile = [](const std::string& value) {
+                            const auto at = value.find('@');
+                            return at == std::string::npos ? value : value.substr(at);
+                        };
+                        if ((qualified != alias.declaration.name &&
+                             withoutFile(*knownAliasUsr) != withoutFile(*usr)) ||
+                            conflictingRecordUsr || conflictingEnumUsr ||
                             !isFileTypedef(*knownAliasUsr) ||
                             !isFileTypedef(*usr) ||
                             !compatible(knownRecordUsr, recordIdentity ? recordIdentity->clangUsr : std::nullopt) ||
