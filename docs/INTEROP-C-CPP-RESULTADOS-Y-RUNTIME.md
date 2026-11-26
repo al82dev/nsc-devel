@@ -86,3 +86,21 @@ el tutorial todavía no compila.
   errores de tipos en el código de los ejemplos. Los registros están en
   Z:/nsc-tutorials/OpenGL-3/ogl/results, con sus nombres respectivos.
 - No se ejecutó la batería de pruebas de NSC.
+
+## Seguimiento estático: punteros locales y bool
+
+- La procedencia de un puntero a función local se decide en
+  src/Frontend/Bodies/CallAnalyzer.cpp, en el bloque que establece
+  cppForeignCallResult para una invocación de delegate. Recorre toda la
+  sintaxis del callable y solo acepta una asignación si su expresión
+  derecha ya está en possibleDelegateSources.
+- AssignmentAnalyzer.cpp incorpora esa fuente al analizar la asignación.
+  Por lo tanto, una asignación posterior que todavía no fue analizada
+  impide acreditar la procedencia extranjera incluso si su destino fuera
+  otra función importada. Es un límite de la implementación actual,
+  no una comprobación de ejecución. Resolverlo exige considerar ramas,
+  ciclos, alias y destinos NativeSharp sin relajar sus conversiones.
+- OopLlvmFieldsAndConversions.cpp, convertScalar, genera comparación
+  distinta de cero para convertir enteros y flotantes a bool; los punteros
+  extranjeros se tratan en OopLlvmExpressionMachine.cpp. Esta lectura no
+  sustituye comprobaciones funcionales de los casos ni de las enumeraciones.
