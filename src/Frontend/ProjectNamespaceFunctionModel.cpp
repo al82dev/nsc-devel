@@ -240,6 +240,35 @@ bool initializeNamespaceStateConstant(NamespaceStateSymbol& symbol)
         return true;
     }
 
+    // EN: L-022. A floating namespace constant may be a signed literal (`const float YAW = -90.0f;`, camera.h) or an
+    //     integer constant (`const double K = -2;`): both are exact, as a class constant already allowed. Folding is
+    //     limited to these forms; arithmetic between floating values stays dynamic.
+    // ES: L-022. Una constante flotante de namespace puede ser un literal con signo (`const float YAW = -90.0f;`,
+    //     camera.h) o una constante entera (`const double K = -2;`): ambas son exactas, como ya lo permitia una
+    //     constante de clase. El plegado se limita a estas formas; la aritmetica entre flotantes sigue dinamica.
+    const bool floatingState = symbol.declaredTypeKey == "builtin:float" || symbol.declaredTypeKey == "builtin:double";
+    if (floatingState && initializer->kind() == ast::AstNodeKind::UnaryExpression &&
+        (initializer->tokenKind() == lexer::TokenKind::Minus || initializer->tokenKind() == lexer::TokenKind::Plus) &&
+        initializer->first() != nullptr &&
+        initializer->first()->kind() == ast::AstNodeKind::FloatingLiteralExpression)
+    {
+        symbol.initializerKind = NamespaceStateInitializerKind::Floating;
+        const double magnitude = initializer->first()->floatingValue();
+        symbol.floatingValue = initializer->tokenKind() == lexer::TokenKind::Minus ? -magnitude : magnitude;
+        return true;
+    }
+    if (floatingState)
+        if (const std::optional<ProjectIntegerValue> value = integerEvaluator.evaluate(initializer);
+            value.has_value() && ProjectTypeConversion::isIntegral(value->typeKey))
+        {
+            symbol.initializerKind = NamespaceStateInitializerKind::Floating;
+            symbol.floatingValue = value->typeKey == "builtin:ulong" || value->typeKey == "builtin:uint" ||
+                    value->typeKey == "builtin:ushort" || value->typeKey == "builtin:byte"
+                ? static_cast<double>(static_cast<std::uint64_t>(value->bits))
+                : static_cast<double>(static_cast<std::int64_t>(value->bits));
+            return true;
+        }
+
     switch (initializer->kind())
     {
         case ast::AstNodeKind::FloatingLiteralExpression:
