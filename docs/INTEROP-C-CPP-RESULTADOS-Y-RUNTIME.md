@@ -81,5 +81,8 @@ el tutorial todavía no compila.
   de acceso. La compilación sigue fallando: hay errores de tipos y usos de
   AntTweakBar que no se pueden resolver; no se encontró AntTweakBar.h en
   Z:/sdk. Esto no demuestra que la aplicación funcione.
-- Las repeticiones de los tutoriales 09 AssImp y 18 billboards siguen
-  pendientes de resultado. No se ejecutó la batería de pruebas de NSC.
+- **Tutoriales 09 AssImp y 18 billboards:** con la misma corrección ya no
+  terminan con violación de acceso. La compilación sigue fallando por
+  errores de tipos en el código de los ejemplos. Los registros están en
+  Z:/nsc-tutorials/OpenGL-3/ogl/results, con sus nombres respectivos.
+- No se ejecutó la batería de pruebas de NSC.
