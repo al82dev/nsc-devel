@@ -6512,6 +6512,16 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                             const bool valueCopy = parent &&
                                 parent->kind() == ast::AstNodeKind::VariableDeclarationStatement &&
                                 parent->first() == node;
+                            // A raw function pointer compared directly with null is only read.
+                            const ast::AstNode* comparisonOther = parent &&
+                                parent->kind() == ast::AstNodeKind::BinaryExpression
+                                ? (parent->first() == node ? parent->second() :
+                                   parent->second() == node ? parent->first() : nullptr) : nullptr;
+                            const bool nullComparison = comparisonOther &&
+                                comparisonOther->kind() == ast::AstNodeKind::NullLiteralExpression &&
+                                (parent->tokenKind() == lexer::TokenKind::EqualEqual ||
+                                 parent->tokenKind() == lexer::TokenKind::BangEqual) &&
+                                ProjectTypeConversion::isFunctionPointer(local.typeKey);
                             // Copying the function pointer value to another raw-pointer local
                             // does not expose this local's storage or change its target.
                             const MethodNameBinding* copyTarget = parent &&
@@ -6534,7 +6544,8 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                                 ? topLevelStatement(parent) : std::nullopt;
                             const bool laterWrite = callStatement && writeStatement &&
                                 *writeStatement > *callStatement;
-                            if (!directCall && !valueCopy && !assignedLocalCopy && !recordedWrite && !laterWrite)
+                            if (!directCall && !valueCopy && !nullComparison && !assignedLocalCopy &&
+                                !recordedWrite && !laterWrite)
                             {
                                 foreign = false;
                                 break;

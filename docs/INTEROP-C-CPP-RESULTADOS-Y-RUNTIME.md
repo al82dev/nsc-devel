@@ -251,3 +251,14 @@ coinciden en SHA-256
 eed6d6ebb36b2f9a12e4494780dcdec8160b9eb839d272609e86af4959d4dc4e.
 El ejecutable instalado informa build hash 789d6522a621e6ea. Esta
 comprobación no equivale a validar los ejemplos ni las conversiones.
+
+## Comparación con null de punteros locales
+
+- **Problema:** al comprobar las fuentes de una llamada por puntero local,
+  el analizador trataba una comparación directa del puntero con null como
+  un uso desconocido y descartaba su procedencia extranjera.
+- **Cambio:** acepta únicamente las comparaciones == y != con null de un
+  puntero crudo a función como lecturas; no se modifica el tratamiento de
+  otros usos ni de fuentes NativeSharp o desconocidas.
+- **Validación:** revisión estática y git diff --check. La corrección
+  todavía no se ha compilado ni incorporado al ejecutable instalado.
