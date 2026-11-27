@@ -217,10 +217,9 @@ demo y la ausencia de esos diagnósticos no demuestra su comportamiento.
 NSC compiló con el commit 942656b1f y se instaló con build hash
 cc0ef4d583068c72. El binario construido y el instalado coinciden en SHA-256
 7d4943b0b26d429b3daca5a0c831633cd21364a484c6ddabfd5991a10d64bbf8.
-La pasada O3 de los ejemplos está en curso. La construcción y esos
-ejemplos no demuestran por sí solos el comportamiento de la nueva ruta
-de asignaciones posteriores; la validación funcional específica sigue
-pendiente.
+La pasada O3 de ejemplos se interrumpió a solicitud del usuario: él
+compilará e instalará en adelante. No hay un resultado completo de esa
+pasada. La validación funcional específica de la nueva ruta sigue pendiente.
 
 ## Copias entre punteros locales a funciones
 
@@ -235,3 +234,11 @@ pendiente.
   se cambia la clasificación de conversiones de NativeSharp.
 - **Validación:** revisión estática. Pendientes compilar NSC y
   comprobación funcional específica.
+
+### Estado tras cambio de instrucción
+
+La corrección 707caa452 compiló en A:/nsc-devel/build-clang/bin/nsc.exe,
+pero no se instaló. El usuario indicó que él compilará e instalará.
+El ejecutable de C:/native-sharp corresponde al build anterior
+cc0ef4d583068c72. La pasada de ejemplos se detuvo antes de terminar;
+los registros parciales no deben tomarse como un resultado completo.
