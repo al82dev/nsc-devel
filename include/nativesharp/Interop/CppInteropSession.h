@@ -179,6 +179,8 @@ struct CppNativeStructLayout
     std::vector<std::uint64_t> fieldOffsets;
 };
 
+struct CppRecordSpecialization;
+
 struct CppTemplateArgument
 {
     enum class Kind { Type, Integral, Boolean, Template, NativeStruct };
@@ -215,6 +217,20 @@ struct CppTemplateArgument
     //     hace C cuando la macro lo evalua varias veces o de forma condicional.
     bool sideEffectFree = false;
     bool cSignedChar = false; // C5-02: a C `signed char` value, kept apart from `char`. / Un valor C `signed char`.
+    // EN: T5. For a record argument that is a class template specialization: its template and arguments, so a
+    //     session whose translation unit declares the template but never named that specialization can form the
+    //     same record (`glm::vec<3, float, packed_highp>` for a template of `glm/gtx/norm.hpp`).
+    std::shared_ptr<const CppRecordSpecialization> recordSpecialization;
+};
+
+// EN: T5. A class template specialization described by its template's qualified name and its template
+//     arguments. A Type argument names a builtin or a record (by USR, with its own description when it is a
+//     specialization too); an Integral or Boolean argument carries its value and its type: `builtin`, or
+//     `recordUsr` for an enumeration.
+struct CppRecordSpecialization
+{
+    std::string templateName;
+    std::vector<CppTemplateArgument> arguments;
 };
 
 // T13-010: the specialization Sema produced, or Clang's diagnostics. / La especializacion de Sema, o sus diagnosticos.
@@ -447,6 +463,12 @@ public:
     //     Clang deduce los argumentos de la plantilla de clase de los tipos de los argumentos de una construccion.
     virtual std::optional<CppTemplateInstantiation> deduceClassTemplate(
         std::string_view, std::span<const CppTemplateArgument>) const { return std::nullopt; }
+    // EN: T5. The template and arguments of the class template specialization with this Clang USR, when this
+    //     session declares it; nullopt otherwise or when an argument cannot be described.
+    virtual std::optional<CppRecordSpecialization> describeRecordSpecialization(std::string_view) const
+    {
+        return std::nullopt;
+    }
     // T13-005: Sema deduces the arguments of the function templates with that name from the types of a call's
     // arguments; nullopt when it declares no such template. Deduced specializations are imported under the
     // template's own name. / Sema deduce los argumentos de las plantillas de funcion con ese nombre a partir de

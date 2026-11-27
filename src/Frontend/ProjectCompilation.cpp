@@ -1797,6 +1797,38 @@ std::string ProjectCompilation::argumentSpelling(const ast::AstNode* argument) c
     return {};
 }
 
+// EN: T5. Attaches to each record argument without a description the one a session of the project gives for its
+//     USR (describeRecordSpecialization).
+void ProjectCompilation::describeCppRecordArguments(
+    std::size_t projectOrdinal,
+    std::vector<interop::CppTemplateArgument>& arguments,
+    std::vector<interop::CppTemplateArgument>& explicitArguments) const
+{
+    if (projectOrdinal >= projectGraph_->projects().size()) return;
+    for (const auto& group : cppProjectSessions_)
+    {
+        std::error_code ec;
+        if (!std::filesystem::equivalent(group.projectFile, projectGraph_->projects()[projectOrdinal].projectFile(),
+                                         ec) || ec) continue;
+        for (std::vector<interop::CppTemplateArgument>* list : {&arguments, &explicitArguments})
+        {
+            for (interop::CppTemplateArgument& argument : *list)
+            {
+                if (!argument.recordUsr || argument.recordSpecialization) continue;
+                for (const auto& session : group.sessions)
+                {
+                    if (!session) continue;
+                    auto description = session->describeRecordSpecialization(*argument.recordUsr);
+                    if (!description) continue;
+                    argument.recordSpecialization =
+                        std::make_shared<const interop::CppRecordSpecialization>(std::move(*description));
+                    break;
+                }
+            }
+        }
+    }
+}
+
 bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeductionRequest> requests)
 {
     static const std::map<std::string, std::string, std::less<>> builtins{
@@ -1909,6 +1941,12 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
             site.file = std::string(sourceManager_.getPath(begin));
             site.line = sourceManager_.getPosition(begin).line;
         }
+        // EN: T5. A session that declares the template may not declare a record argument's specialization (it is
+        //     named only by another header of the project, as a typedef). Each record argument that a session
+        //     describes as a class template specialization carries that description, so the session with the
+        //     template can form the same record.
+        if (mapped && !request.functionMacro)
+            describeCppRecordArguments(request.projectOrdinal, arguments, explicitArguments);
         if (mapped && request.projectOrdinal < projectGraph_->projects().size())
             for (const auto& group : cppProjectSessions_)
             {

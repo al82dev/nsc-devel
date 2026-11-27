@@ -371,6 +371,11 @@ private:
     bool applyCppTemplateUses(std::string& loadError);
     bool buildNamespaceFunctions(std::string& loadError);
     bool deduceCppTemplateCalls(std::span<const CppTemplateDeductionRequest> requests);
+    // T5: the class template specialization descriptions of the record arguments of a deduction request.
+    void describeCppRecordArguments(
+        std::size_t projectOrdinal,
+        std::vector<interop::CppTemplateArgument>& arguments,
+        std::vector<interop::CppTemplateArgument>& explicitArguments) const;
     bool compileSyntaxCore(const std::filesystem::path& projectFile, std::string& loadError);
     bool enterStage(CompilationStage stage, std::string& error);
 

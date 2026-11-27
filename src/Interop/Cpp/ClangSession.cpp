@@ -5268,6 +5268,184 @@ public:
         return result;
     }
 
+    // EN: T5. The template and arguments of a class template specialization this translation unit declares, so
+    //     another session of the project can form the same record (deduceFunctionTemplateCallWithExplicitLocked).
+    std::optional<CppRecordSpecialization> describeRecordSpecialization(std::string_view usr) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || !ast_->getASTContext().getLangOpts().CPlusPlus || options_.macroExpansionOnly)
+            return std::nullopt;
+        const auto* tag = findTagByUsr(*ast_->getASTContext().getTranslationUnitDecl(), usr);
+        const auto* specialization = llvm::dyn_cast_or_null<clang::ClassTemplateSpecializationDecl>(tag);
+        if (!specialization) return std::nullopt;
+        return describeSpecializationLocked(*specialization, 0);
+    }
+
+    // EN: T5. The builtin spelling builtinTemplateArgumentType takes for this type; empty when it names none.
+    static std::string builtinTemplateArgumentSpelling(const clang::ASTContext& context, clang::QualType type)
+    {
+        static constexpr const char* builtins[] = {"bool", "signed char", "unsigned char", "char16_t", "short",
+            "unsigned short", "int", "unsigned int", "long long", "unsigned long long", "float", "double"};
+        for (const char* name : builtins)
+        {
+            if (context.hasSameType(builtinTemplateArgumentType(context, name), type)) return name;
+        }
+        return {};
+    }
+
+    // EN: T5. The description of a specialization; the caller holds the mutex. A type argument with qualifiers, a
+    //     pack, a template or an expression argument is not described.
+    std::optional<CppRecordSpecialization> describeSpecializationLocked(
+        const clang::ClassTemplateSpecializationDecl& specialization, unsigned depth) const
+    {
+        if (depth > 8) return std::nullopt;
+        const auto& context = ast_->getASTContext();
+        CppRecordSpecialization description;
+        description.templateName = specialization.getSpecializedTemplate()->getQualifiedNameAsString();
+        for (const auto& argument : specialization.getTemplateArgs().asArray())
+        {
+            CppTemplateArgument value;
+            if (argument.getKind() == clang::TemplateArgument::Integral)
+            {
+                const clang::QualType type = argument.getIntegralType().getCanonicalType();
+                const llvm::APSInt& integral = argument.getAsIntegral();
+                value.kind = type->isBooleanType() ? CppTemplateArgument::Kind::Boolean
+                                                   : CppTemplateArgument::Kind::Integral;
+                value.boolean = integral.getBoolValue();
+                value.integralUnsigned = integral.isUnsigned();
+                value.integral = integral.isUnsigned() ? static_cast<std::int64_t>(integral.getZExtValue())
+                                                       : integral.getSExtValue();
+                if (const auto* enumeration = type->getAsTagDecl())
+                {
+                    const auto usr = declarationUsr(enumeration);
+                    if (!usr) return std::nullopt;
+                    value.recordUsr = *usr;
+                }
+                else
+                {
+                    value.builtin = builtinTemplateArgumentSpelling(context, type);
+                    if (value.builtin.empty()) return std::nullopt;
+                }
+                description.arguments.push_back(std::move(value));
+                continue;
+            }
+            if (argument.getKind() != clang::TemplateArgument::Type) return std::nullopt;
+            clang::QualType type = argument.getAsType().getCanonicalType();
+            while (type->isPointerType())
+            {
+                ++value.pointerDepth;
+                type = type->getPointeeType().getCanonicalType();
+            }
+            if (type.hasQualifiers()) return std::nullopt;
+            if (const auto* tag = type->getAsTagDecl())
+            {
+                const auto usr = declarationUsr(tag);
+                if (!usr) return std::nullopt;
+                value.recordUsr = *usr;
+                if (const auto* nested = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(tag))
+                    if (auto nestedDescription = describeSpecializationLocked(*nested, depth + 1))
+                        value.recordSpecialization =
+                            std::make_shared<const CppRecordSpecialization>(std::move(*nestedDescription));
+            }
+            else
+            {
+                value.builtin = builtinTemplateArgumentSpelling(context, type);
+                if (value.builtin.empty()) return std::nullopt;
+            }
+            description.arguments.push_back(std::move(value));
+        }
+        return description;
+    }
+
+    // EN: T5. The record a template argument names in this translation unit: the one with its USR, or else the
+    //     specialization its description names, formed and completed here as a C++ unit naming it would. The
+    //     formed record must have the same USR, so it is the same C++ type. Null when neither exists.
+    const clang::TagDecl* tagForTemplateArgument(const CppTemplateArgument& argument) const
+    {
+        if (!argument.recordUsr) return nullptr;
+        auto& context = ast_->getASTContext();
+        if (const auto* tag = findTagByUsr(*context.getTranslationUnitDecl(), *argument.recordUsr)) return tag;
+        if (!argument.recordSpecialization) return nullptr;
+        return formSpecializationLocked(*argument.recordSpecialization, *argument.recordUsr, 0);
+    }
+
+    const clang::TagDecl* formSpecializationLocked(
+        const CppRecordSpecialization& description, std::string_view expectedUsr, unsigned depth) const
+    {
+        if (depth > 8) return nullptr;
+        auto& context = ast_->getASTContext();
+        auto& sema = ast_->getSema();
+        clang::ClassTemplateDecl* classTemplate = nullptr;
+        visitNamespaceTemplates([&](const clang::TemplateDecl& declaration, bool isFunction) {
+            if (isFunction || classTemplate) return;
+            const auto names = allTemplateNames(declaration);
+            if (std::find(names.begin(), names.end(), description.templateName) != names.end())
+                classTemplate = llvm::dyn_cast<clang::ClassTemplateDecl>(const_cast<clang::TemplateDecl*>(&declaration));
+        });
+        if (!classTemplate) return nullptr;
+        const auto& sources = context.getSourceManager();
+        const auto location = sources.getLocForEndOfFile(sources.getMainFileID());
+        clang::TemplateArgumentListInfo arguments(location, location);
+        for (const auto& argument : description.arguments)
+        {
+            if (argument.kind == CppTemplateArgument::Kind::Type)
+            {
+                clang::QualType type;
+                if (argument.recordUsr)
+                {
+                    const clang::TagDecl* tag = findTagByUsr(*context.getTranslationUnitDecl(), *argument.recordUsr);
+                    if (!tag && argument.recordSpecialization)
+                        tag = formSpecializationLocked(*argument.recordSpecialization, *argument.recordUsr, depth + 1);
+                    if (!tag) return nullptr;
+                    type = context.getCanonicalTagType(tag);
+                }
+                else type = builtinTemplateArgumentType(context, argument.builtin);
+                if (type.isNull()) return nullptr;
+                for (unsigned level = 0; level < argument.pointerDepth; ++level) type = context.getPointerType(type);
+                arguments.addArgument(
+                    sema.getTrivialTemplateArgumentLoc(clang::TemplateArgument(type), clang::QualType(), location));
+                continue;
+            }
+            if (argument.kind != CppTemplateArgument::Kind::Integral &&
+                argument.kind != CppTemplateArgument::Kind::Boolean) return nullptr;
+            clang::QualType type;
+            if (argument.kind == CppTemplateArgument::Kind::Boolean) type = context.BoolTy;
+            else if (argument.recordUsr)
+            {
+                const auto* tag = findTagByUsr(*context.getTranslationUnitDecl(), *argument.recordUsr);
+                if (!tag || !llvm::isa<clang::EnumDecl>(tag)) return nullptr;
+                type = context.getCanonicalTagType(tag);
+            }
+            else type = builtinTemplateArgumentType(context, argument.builtin);
+            if (type.isNull() || !type->isIntegralOrEnumerationType()) return nullptr;
+            const bool unsignedType = type->isUnsignedIntegerOrEnumerationType();
+            llvm::APSInt value(llvm::APInt(context.getIntWidth(type),
+                                           argument.kind == CppTemplateArgument::Kind::Boolean
+                                               ? std::uint64_t(argument.boolean ? 1 : 0)
+                                               : static_cast<std::uint64_t>(argument.integral),
+                                           !unsignedType, true),
+                               unsignedType);
+            arguments.addArgument(
+                sema.getTrivialTemplateArgumentLoc(clang::TemplateArgument(context, value, type), type, location));
+        }
+        clang::QualType type;
+        {
+            clang::Sema::SFINAETrap trap(sema);
+            type = sema.CheckTemplateIdType(clang::ElaboratedTypeKeyword::None, clang::TemplateName(classTemplate),
+                                            location, arguments, nullptr, false);
+            if (trap.hasErrorOccurred()) type = clang::QualType();
+        }
+        if (type.isNull() || type->isDependentType()) return nullptr;
+        const auto* specialization =
+            llvm::dyn_cast_or_null<clang::ClassTemplateSpecializationDecl>(type->getAsCXXRecordDecl());
+        const auto usr = specialization ? declarationUsr(specialization) : std::nullopt;
+        if (!usr || *usr != expectedUsr) return nullptr;
+        if (sema.RequireCompleteType(location, type, clang::diag::err_incomplete_type)) return nullptr;
+        // The types the specialization names, as for one the header names.
+        instantiateNamedSpecializations(context, sema, type.getCanonicalType(), location);
+        return specialization;
+    }
+
     // T13-010: the instantiation; the caller holds the mutex. / La instanciacion; quien llama tiene el mutex.
     std::optional<CppTemplateInstantiation> deduceClassTemplate(
         std::string_view qualifiedName, std::span<const CppTemplateArgument> arguments) const override
@@ -5747,7 +5925,8 @@ public:
             clang::QualType type;
             if (argument.recordUsr)
             {
-                const auto* tag = findTagByUsr(*context.getTranslationUnitDecl(), *argument.recordUsr);
+                // T5: also a specialization this unit never named, formed from its description.
+                const auto* tag = tagForTemplateArgument(argument);
                 if (!tag) return std::nullopt;
                 type = context.getCanonicalTagType(tag);
             }
@@ -5771,7 +5950,7 @@ public:
             clang::QualType type;
             if (argument.recordUsr)
             {
-                const auto* tag = findTagByUsr(*context.getTranslationUnitDecl(), *argument.recordUsr);
+                const auto* tag = tagForTemplateArgument(argument);
                 if (!tag) return std::nullopt;
                 type = context.getCanonicalTagType(tag);
             }
