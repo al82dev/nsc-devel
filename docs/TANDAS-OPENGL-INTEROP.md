@@ -9,6 +9,7 @@
   NativeSharp y los tutoriales originales en Z:/project-tutorials.
 - Cada tanda se termina, documenta y compromete antes de compilar NSC y pasar
   a la siguiente. Si la compilación falla, se corrige en la misma tanda.
+  NSC se construye exclusivamente en Release con optimización O3.
 - No ejecutar tests unitarios, baselines ni baterías de pruebas. Al terminar
   la octava tanda se compilan y ejecutan los proyectos OpenGL; ante errores
   se vuelve a la tanda correspondiente.
@@ -45,3 +46,13 @@
 - **Validación:** NSC compiló y el ejecutable arrancó con build
   4ba4f7e577fdcfed. No se ejecutaron pruebas ni se compiló el tutorial;
   su comportamiento queda pendiente de la pasada posterior a la tanda 8.
+
+### Reconstrucción Release/O3
+
+A indicación del usuario, se revisaron los comandos efectivos: la
+configuración anterior incluía /O2 seguida de /clang:-O3, por lo que mi
+afirmación previa de que necesariamente compilaba en O2 fue incorrecta.
+Se reconfiguró build-clang con NSC_HOST_OPTIMIZATION=O3 y sin /O2 en las
+opciones Release. Los 641 comandos C/C++ observados contienen /clang:-O3
+como única opción de optimización. NSC se reconstruyó y arrancó con
+build c12325b356ca1239. No se ejecutaron baterías ni ejemplos.
