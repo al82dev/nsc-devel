@@ -6,34 +6,59 @@ project owner's.
 
 ## 1. `binary operator requires compatible numeric operands in Stage 34`
 
-Sites (all are arguments of a C function, but the failing operation is the NativeSharp multiplication inside):
+Six sites, all arguments of a C function; the failing operation is a NativeSharp multiplication inside each:
 
-- `MaxParticles * 4 * sizeof(GLfloat)` and `MaxParticles * 4 * sizeof(GLubyte)`, with `const int MaxParticles`
-  declared in NativeSharp.
-- `ParticlesCount * sizeof(GLfloat) * 4` and `ParticlesCount * sizeof(GLubyte) * 4`, with an `int` local.
+| Line | Expression | Left operand of the failing `*` | Right operand |
+|---|---|---|---|
+| 91, 159 | `MaxParticles * 4 * sizeof(GLfloat)` | `MaxParticles * 4`: `int`, no constant | `sizeof(GLfloat)`: `nuint`, no constant |
+| 95, 162 | `MaxParticles * 4 * sizeof(GLubyte)` | `MaxParticles * 4`: `int`, no constant | `sizeof(GLubyte)`: `nuint`, constant 1 |
+| 160 | `ParticlesCount * sizeof(GLfloat) * 4` | `ParticlesCount`: runtime `int` | `sizeof(GLfloat)`: `nuint`, no constant |
+| 163 | `ParticlesCount * sizeof(GLubyte) * 4` | `ParticlesCount`: runtime `int` | `sizeof(GLubyte)`: `nuint`, constant 1 |
 
 Types and provenance:
 
 - `sizeof(T)` is `builtin:nuint` for every type (`IndexAndRangeExpressions.cpp`, `SizeofConstant` binding,
   `result.typeKey = "builtin:nuint"`). It carries an integer constant only for a C/C++ value layout fixed by
-  Clang and for builtin integer types (T19-002); `GLfloat` is `float`, so `sizeof(GLfloat)` is a non-constant
-  `nuint`, while `sizeof(GLubyte)` is the constant 1.
-- `MaxParticles` is a `const` namespace state with an integer constant (`IdentifierAnalyzer.cpp`, namespace state
-  identifiers). `MaxParticles * 4` is analyzed by `ProjectMethodBodyModel::analyzeArithmeticBinary`
-  (`OperatorExpressionAnalyzer.cpp`), which sets the result type (`int`) and does not set `integerConstant` on the
-  result, so the product is no longer a constant expression for the next operator. (Read in the code; not observed
-  in a dump.)
-- `ParticlesCount` is a runtime `int`.
+  Clang and for builtin integer types (T19-002). `GLfloat` is `float`, a builtin floating type, so
+  `sizeof(GLfloat)` is a non-constant `nuint`; `GLubyte` is a builtin integer, so `sizeof(GLubyte)` is the
+  constant 1.
+- `MaxParticles` is a NativeSharp `const int` namespace state with an integer constant (`IdentifierAnalyzer.cpp`).
+  `MaxParticles * 4` is analyzed by `ProjectMethodBodyModel::analyzeArithmeticBinary`
+  (`OperatorExpressionAnalyzer.cpp`), which sets the result type (`int`) but never sets `integerConstant` on the
+  result, so the product is no longer a constant for the next operator. The compiler does have a constant
+  evaluator (`ProjectIntegerEvaluator`, used through `foldIntegerConstant` for constant declarations, case labels
+  and similar positions), but expression analysis does not feed it into `ExpressionResult::integerConstant`.
+  (Read in the code; not observed in a dump.)
+- `ParticlesCount` is a runtime `int` local.
 
 Rule applied: `ProjectTypeConversion::commonNumericType` (`ProjectTypeConversion.cpp`). For `int` and `nuint` a
 common type exists only when the `int` operand is a constant that fits (`constantAdaptsUpward`, C#'s implicit
-constant expression conversion); otherwise `integerPromotion` gives `nuint`, which `int` does not reach, and no
-widening alternative exists, so the pair is rejected, as C# rejects `int * nuint`. This is a deliberate rule of
-NativeSharp's integer arithmetic (IDs 120/126 in that function), not an interop conversion.
+constant expression conversion, which applies to `int` constants only). Otherwise `integerPromotion` gives
+`nuint`, which a non-constant `int` does not reach (`int -> nuint` is not an implicit conversion), the `ulong`
+fallback fails for the same reason, and the pair is rejected. A `nuint` constant does not adapt to `int`. This is a
+deliberate rule of NativeSharp's integer arithmetic (IDs 120/126 in that function), not an interop conversion.
 
-Possible decisions, none implemented: fold the integer constants of binary arithmetic so `MaxParticles * 4` stays
-a constant; give `sizeof` of a fixed-size builtin floating type its constant; or keep the rule (the source then
-writes the conversion it means).
+How the source differs from C# and C:
+
+- In C#, `sizeof(float)` is an `int` constant and `MaxParticles * 4` is a constant expression, so all six
+  expressions are `int`.
+- In C, `sizeof` is `size_t` and the usual arithmetic conversions turn `int * size_t` into `size_t`, so all six
+  are `size_t`.
+- NativeSharp takes `size_t`'s type for `sizeof` and C#'s rule for mixing signed and unsigned operands, so neither
+  route applies.
+
+Language decisions that would be needed (none implemented, none required by interop):
+
+1. Constant folding of binary integer arithmetic in expression analysis, so `MaxParticles * 4` keeps its constant.
+   With the existing upward rule this alone accepts lines 91, 95, 159 and 162 (`int` constant 400000 adapts to
+   `nuint`).
+2. A constant `sizeof` for builtin floating types (their size is fixed by the language as for integers). Alone it
+   changes nothing in these lines: it gives `nuint` constants, which do not adapt to `int`.
+3. For lines 160 and 163 (runtime `int` times `nuint`), one of: let a non-negative `nuint` constant adapt to the
+   other operand's type (a new direction of the constant rule, needing 2 for line 160); make `sizeof` an `int`
+   constant as in C#; or accept `int * nuint` as C does. Each of these changes the signed/unsigned rule of the
+   language, not of interop.
+4. Keep the rule: the source writes the conversion it means (`(nuint)MaxParticles`, `(nuint)ParticlesCount`).
 
 ## 2. `compound assignment cannot implicitly convert its right-hand side from 'builtin:double' to 'builtin:float'`
 
