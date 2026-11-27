@@ -6433,6 +6433,72 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                             callableSyntax = namespaceFunctionModel_->functions()[functionOrdinal].definitionSyntax;
                     }
                     if (!callableSyntax) { foreign = false; break; }
+                    // In an ordinary, non-reentrant body, a later top-level statement
+                    // cannot change the target of this earlier call. Do not make that
+                    // assumption across loops, deferred execution or exception handlers.
+                    const ast::AstNode* body = callableSyntax->first();
+                    bool orderedBody = body && body->kind() == ast::AstNodeKind::BlockStatement;
+                    if (orderedBody)
+                    {
+                        std::vector<const ast::AstNode*> pending{body};
+                        while (!pending.empty() && orderedBody)
+                        {
+                            const ast::AstNode* node = pending.back();
+                            pending.pop_back();
+                            switch (node->kind())
+                            {
+                            case ast::AstNodeKind::WhileStatement:
+                            case ast::AstNodeKind::DoWhileStatement:
+                            case ast::AstNodeKind::ForStatement:
+                            case ast::AstNodeKind::ForeachStatement:
+                            case ast::AstNodeKind::LoopExpression:
+                            case ast::AstNodeKind::LambdaExpression:
+                            case ast::AstNodeKind::AwaitExpression:
+                            case ast::AstNodeKind::YieldReturnStatement:
+                            case ast::AstNodeKind::YieldBreakStatement:
+                            case ast::AstNodeKind::SuspendStatement:
+                            case ast::AstNodeKind::TryStatement:
+                            case ast::AstNodeKind::InlineAssemblyStatement:
+                            case ast::AstNodeKind::StaticFieldIterationStatement:
+                                orderedBody = false;
+                                continue;
+                            default: break;
+                            }
+                            for (const ast::AstNode* child : {node->first(), node->second(), node->third()})
+                                if (child) pending.push_back(child);
+                            for (const ast::AstNode* child : node->children())
+                                if (child) pending.push_back(child);
+                        }
+                    }
+                    const auto topLevelStatement = [&](const ast::AstNode* target) -> std::optional<std::size_t>
+                    {
+                        if (!orderedBody || !target) return std::nullopt;
+                        std::optional<std::size_t> found;
+                        const auto& statements = body->children();
+                        for (std::size_t index = 0; index < statements.size(); ++index)
+                        {
+                            std::vector<const ast::AstNode*> pending;
+                            if (statements[index]) pending.push_back(statements[index]);
+                            bool contains = false;
+                            while (!pending.empty() && !contains)
+                            {
+                                const ast::AstNode* node = pending.back();
+                                pending.pop_back();
+                                if (node == target) { contains = true; break; }
+                                for (const ast::AstNode* child : {node->first(), node->second(), node->third()})
+                                    if (child) pending.push_back(child);
+                                for (const ast::AstNode* child : node->children())
+                                    if (child) pending.push_back(child);
+                            }
+                            if (contains)
+                            {
+                                if (found) return std::nullopt;
+                                found = index;
+                            }
+                        }
+                        return found;
+                    };
+                    const auto callStatement = topLevelStatement(expression);
                     std::vector<std::pair<const ast::AstNode*, const ast::AstNode*>> pendingSyntax{
                         {callableSyntax, nullptr}};
                     while (!pendingSyntax.empty() && foreign)
@@ -6450,7 +6516,14 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                                 parent->first() == node && parent->second() &&
                                 std::find(local.possibleDelegateSources.begin(), local.possibleDelegateSources.end(),
                                           parent->second()) != local.possibleDelegateSources.end();
-                            if (!directCall && !valueCopy && !recordedWrite)
+                            const bool assignmentTarget = parent &&
+                                parent->kind() == ast::AstNodeKind::AssignmentExpression &&
+                                parent->first() == node;
+                            const auto writeStatement = assignmentTarget && !recordedWrite
+                                ? topLevelStatement(parent) : std::nullopt;
+                            const bool laterWrite = callStatement && writeStatement &&
+                                *writeStatement > *callStatement;
+                            if (!directCall && !valueCopy && !recordedWrite && !laterWrite)
                             {
                                 foreign = false;
                                 break;

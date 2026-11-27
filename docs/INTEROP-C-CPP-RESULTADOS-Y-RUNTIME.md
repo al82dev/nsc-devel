@@ -194,3 +194,20 @@ La compilación O3 de tutorial09_AssImp ya no reporta los errores de
 mMeshes ni mTextureCoords. Permanece fallida por seis diagnósticos de
 tipos NativeSharp en texture.ns y tutorial09_AssImp.ns. No se ejecutó el
 demo y la ausencia de esos diagnósticos no demuestra su comportamiento.
+
+## Asignaciones posteriores de punteros locales
+
+- **Problema:** CallAnalyzer examinaba todas las asignaciones del puntero,
+  pero las posteriores a la llamada aún no estaban registradas y anulaban
+  la procedencia extranjera incluso cuando no podían ejecutarse antes.
+- **Cambio:** cuando la llamada y la escritura aparecen en sentencias
+  distintas del bloque principal, la escritura es posterior y el cuerpo
+  no contiene bucles, lambdas, suspensión, excepciones, ensamblador ni
+  iteración estática, esa escritura posterior no invalida la llamada
+  anterior. Las fuentes anteriores siguen comprobándose; las llamadas a
+  destinos NativeSharp no reciben la conversión extranjera por este cambio.
+- **Límite:** este análisis no resuelve el flujo general en bucles,
+  lambdas ni sentencias compartidas. No se considera terminado el soporte de
+  punteros locales.
+- **Validación:** revisión estática; pendientes compilación de NSC
+  y comprobación funcional de esta ruta.
