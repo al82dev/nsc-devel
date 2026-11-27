@@ -6512,6 +6512,17 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                             const bool valueCopy = parent &&
                                 parent->kind() == ast::AstNodeKind::VariableDeclarationStatement &&
                                 parent->first() == node;
+                            // Copying the function pointer value to another raw-pointer local
+                            // does not expose this local's storage or change its target.
+                            const MethodNameBinding* copyTarget = parent &&
+                                parent->kind() == ast::AstNodeKind::AssignmentExpression &&
+                                parent->second() == node && parent->first()
+                                ? nameBinding(parent->first(), methodMemberOrdinal) : nullptr;
+                            const bool assignedLocalCopy = copyTarget &&
+                                copyTarget->kind == MethodNameBindingKind::Local && copyTarget->localOrdinal &&
+                                *copyTarget->localOrdinal < locals_.size() &&
+                                ProjectTypeConversion::isFunctionPointer(local.typeKey) &&
+                                ProjectTypeConversion::isFunctionPointer(locals_[*copyTarget->localOrdinal].typeKey);
                             const bool recordedWrite = parent && parent->kind() == ast::AstNodeKind::AssignmentExpression &&
                                 parent->first() == node && parent->second() &&
                                 std::find(local.possibleDelegateSources.begin(), local.possibleDelegateSources.end(),
@@ -6523,7 +6534,7 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                                 ? topLevelStatement(parent) : std::nullopt;
                             const bool laterWrite = callStatement && writeStatement &&
                                 *writeStatement > *callStatement;
-                            if (!directCall && !valueCopy && !recordedWrite && !laterWrite)
+                            if (!directCall && !valueCopy && !assignedLocalCopy && !recordedWrite && !laterWrite)
                             {
                                 foreign = false;
                                 break;

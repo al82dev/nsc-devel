@@ -221,3 +221,17 @@ La pasada O3 de los ejemplos está en curso. La construcción y esos
 ejemplos no demuestran por sí solos el comportamiento de la nueva ruta
 de asignaciones posteriores; la validación funcional específica sigue
 pendiente.
+
+## Copias entre punteros locales a funciones
+
+- **Problema:** el seguimiento de una llamada a través de un puntero
+  local rechazaba una fuente que se hubiera copiado mediante una asignación
+  a otra variable local, aunque el destino fuera también un puntero crudo.
+- **Cambio:** reconoce esa lectura de valor cuando el destino está ligado
+  a otra variable local de tipo puntero a función. La cadena de fuentes
+  sigue revisándose: una fuente no extranjera o desconocida no acredita
+  el resultado como extranjero.
+- **Alcance:** CallAnalyzer.cpp. No se admite una referencia a la variable ni
+  se cambia la clasificación de conversiones de NativeSharp.
+- **Validación:** revisión estática. Pendientes compilar NSC y
+  comprobación funcional específica.
