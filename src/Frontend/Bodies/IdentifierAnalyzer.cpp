@@ -522,6 +522,7 @@ void ProjectMethodBodyModel::collectIdentifierMemberCandidates(
     std::vector<std::size_t>& fields,
     std::vector<std::size_t>& events,
     std::vector<std::size_t>& methods,
+    std::vector<std::size_t>& inaccessibleCppMethods,
     bool& inaccessibleFound,
     bool& uncapturedReceiverFound) const
 {
@@ -545,6 +546,8 @@ void ProjectMethodBodyModel::collectIdentifierMemberCandidates(
                 *inheritanceModel_))
         {
             inaccessibleFound = true;
+            if (member.kind == ClassMemberKind::Method && member.isCppExternal)
+                inaccessibleCppMethods.push_back(candidate);
             continue;
         }
         if (member.kind == ClassMemberKind::Field) fields.push_back(candidate);
@@ -881,11 +884,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMemberOr
     std::vector<std::size_t> fields;
     std::vector<std::size_t> events;
     std::vector<std::size_t> methods;
+    std::vector<std::size_t> inaccessibleCppMethods;
     bool inaccessibleFound = false;
     bool uncapturedReceiverFound = false;
     collectIdentifierMemberCandidates(
         expression, methodMemberOrdinal, accessingTypeOrdinal, staticContext,
-        fields, events, methods, inaccessibleFound, uncapturedReceiverFound);
+        fields, events, methods, inaccessibleCppMethods, inaccessibleFound, uncapturedReceiverFound);
     if (fields.empty() && events.empty() && methods.empty() && uncapturedReceiverFound)
     {
         diagnostics.report(
@@ -926,7 +930,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMemberOr
         ExpressionResult group = analyzeMethodGroupIdentifier(
             expression, methods, methodMemberOrdinal, scopeOrdinal,
             accessingTypeOrdinal, thisTypeKey, diagnostics, allowMethodGroup);
-        group.inaccessibleNamedMember = inaccessibleFound;
+        group.inaccessibleCppMethodCandidates = std::move(inaccessibleCppMethods);
         return group;
     }
     if (const std::optional<ExpressionResult> namespaceResult =

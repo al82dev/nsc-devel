@@ -1283,10 +1283,7 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
     if (!conversion.exists() && !packElement && !cLinkage && (candidate.isCppExternal || importedFunction) &&
         arguments[argumentOrdinal].argumentPassKind == ParameterPassKind::Value &&
         (parameter.passKind == ParameterPassKind::Value || rvalueArgument))
-    {
         conversion = classifyCppArithmeticArgumentConversion(arguments[argumentOrdinal].typeKey, conversionTarget);
-        if (conversion.exists()) evaluated.usesCppArithmeticConversion = true;
-    }
     // EN: L-063. A string literal is static NUL-terminated UTF-8, so it reaches a `const char*` (`sbyte const*`,
     //     `byte const*`) parameter of any function, a NativeSharp one included (`Length("wb")`), as it reaches a C
     //     one (Item 3.2). A parameter that may write through the pointer does not receive it. Rank 5: an overload
@@ -7013,15 +7010,23 @@ void ProjectMethodBodyModel::evaluateCallCandidates(
     // final no queda ninguna viable, estas son las que explican por que.
     constraintRejectedSyntaxes.clear();
     if (memberModel_ == nullptr) return;
-    call.evaluatedCandidates.reserve(callee.methodCandidates.size());
-    call.viableCandidateMemberOrdinals.reserve(callee.methodCandidates.size());
-    for (const std::size_t candidateOrdinal : callee.methodCandidates)
+    // EN: T7. The inaccessible C++ methods of the name follow the accessible candidates: C++ ranks them all and
+    //     checks access on the one it selects (chooseNonDominatedCallCandidate). NativeSharp methods never appear
+    //     among them.
+    std::vector<std::size_t> candidateOrdinals = callee.methodCandidates;
+    candidateOrdinals.insert(candidateOrdinals.end(), callee.inaccessibleCppMethodCandidates.begin(),
+                             callee.inaccessibleCppMethodCandidates.end());
+    call.evaluatedCandidates.reserve(candidateOrdinals.size());
+    call.viableCandidateMemberOrdinals.reserve(candidateOrdinals.size());
+    for (std::size_t position = 0; position < candidateOrdinals.size(); ++position)
     {
+        const std::size_t candidateOrdinal = candidateOrdinals[position];
         if (candidateOrdinal >= memberModel_->members().size()) continue;
         const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
         if (candidate.kind != ClassMemberKind::Method) continue;
         MethodCallCandidate candidateBinding;
         candidateBinding.memberOrdinal = candidateOrdinal;
+        candidateBinding.inaccessible = position >= callee.methodCandidates.size();
         candidateBinding.isVariadicCandidate = candidate.isVariadic;
         if (!prepareCallCandidateMapping(
                 candidateBinding, candidate, expression,
@@ -7033,11 +7038,6 @@ void ProjectMethodBodyModel::evaluateCallCandidates(
         hasMatchingArity = true;
         candidateBinding.viable = true;
         evaluateCallCandidateArguments(candidateBinding, candidate, resolvedArguments);
-        // EN: T2. C++ ranks an inaccessible overload before checking access: with one of this name, a candidate
-        //     that needs a C++ arithmetic conversion could be chosen where C++ rejects the call, so it is not viable.
-        //     `pick(1.5)` with a public `pick(int)` and a private `pick(double)` stays rejected.
-        if (callee.inaccessibleNamedMember && candidateBinding.usesCppArithmeticConversion)
-            candidateBinding.viable = false;
         if (callee.readonlyReceiver && candidate.isCppExternal && candidate.declaringTypeIsStruct &&
             !candidate.isStatic && !candidate.isReadonly) candidateBinding.viable = false;
         finishCallCandidateEvaluation(
@@ -7203,15 +7203,12 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     if (!conversion.exists() && !packElement && (candidate.isImportedC || candidate.isCppExternal))
         conversion = classifyCFrontierConversion(argument, parameter, conversionTarget, cLinkage);
     // EN: T2. As for a C++ namespace function, a C++ method converts an arithmetic argument with C++'s standard
-    //     conversions. evaluateCallCandidates drops such a candidate when an inaccessible member of this name
-    //     exists, because C++ ranks that member too before checking access (D3, pruebas-tanda-10-acceso).
+    //     conversions. The inaccessible C++ overloads of the name are ranked with it (T7), so an accessible one is
+    //     never chosen where C++ would choose an inaccessible one (D3, pruebas-tanda-10-acceso).
     if (!conversion.exists() && !packElement && !cLinkage && candidate.isCppExternal &&
         argument.argumentPassKind == ParameterPassKind::Value &&
         (parameter.passKind == ParameterPassKind::Value || rvalueArgument))
-    {
         conversion = classifyCppArithmeticArgumentConversion(argument.typeKey, conversionTarget);
-        if (conversion.exists()) candidateBinding.usesCppArithmeticConversion = true;
-    }
     // EN: L-063. A string literal is static NUL-terminated UTF-8, so it reaches a `const char*` (`sbyte const*`,
     //     `byte const*`) parameter of any function, a NativeSharp one included (`Length("wb")`), as it reaches a C
     //     one (Item 3.2). A parameter that may write through the pointer does not receive it. Rank 5: an overload
@@ -7827,6 +7824,20 @@ bool ProjectMethodBodyModel::chooseNonDominatedCallCandidate(
         return false;
     }
 
+    // EN: T7. The candidate C++ selects is inaccessible: the call is an access error, not a call to the best
+    //     accessible overload (`pick(1.5)` with a public `pick(int)` and a private `pick(double)`).
+    if (call.evaluatedCandidates[nonDominated.front()].inaccessible)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InaccessibleMember,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "the C++ overload of '" + call.methodName + "' selected for these arguments is not accessible in this "
+                "context");
+        call.resolution = MethodCallResolutionKind::NoViableCandidate;
+        recordCallBinding(std::move(call));
+        return false;
+    }
     selectedIndex = nonDominated.front();
     return true;
 }

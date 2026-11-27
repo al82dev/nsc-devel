@@ -156,7 +156,6 @@ void ProjectConstructionModel::evaluateConstructorInitializerCandidates(
     bool& accessibleMatchingArity) const
 {
     const ProjectConversionClassifier conversions(*inheritanceModel_, interfaceModel_, memberModel_);
-    bool inaccessibleMatchingArity = false;
     for (const std::size_t candidateOrdinal : binding.explicitConstructorMemberOrdinals)
     {
         const ClassMemberSymbol& candidateSymbol = memberModel_->members()[candidateOrdinal];
@@ -177,10 +176,8 @@ void ProjectConstructionModel::evaluateConstructorInitializerCandidates(
         anyMatchingArity = anyMatchingArity || matchingArity;
         accessibleMatchingArity = accessibleMatchingArity ||
             (candidate.accessible && matchingArity);
-        inaccessibleMatchingArity = inaccessibleMatchingArity || (!candidate.accessible && matchingArity);
         binding.evaluatedCandidates.push_back(std::move(candidate));
     }
-    rejectCppArithmeticBesideInaccessible(binding.evaluatedCandidates, inaccessibleMatchingArity);
 }
 
 void ProjectConstructionModel::selectConstructorInitializerCandidate(
@@ -277,6 +274,11 @@ void ProjectConstructionModel::resolveConstructorInitializerCandidates(
             range,
             std::string("ambiguous ") + targetName + " invocation");
         binding.resolution = ConstructorInitializerResolutionKind::Ambiguous;
+        return;
+    }
+    if (rejectInaccessibleSelection(binding.evaluatedCandidates[nonDominated.front()], range, diagnostics))
+    {
+        binding.resolution = ConstructorInitializerResolutionKind::Inaccessible;
         return;
     }
     selectConstructorInitializerCandidate(binding, nonDominated.front());

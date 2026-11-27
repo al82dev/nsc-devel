@@ -697,6 +697,7 @@ void ProjectMethodBodyModel::collectAccessibleMemberCandidates(
     std::vector<std::size_t>& fields,
     std::vector<std::size_t>& events,
     std::vector<std::size_t>& methods,
+    std::vector<std::size_t>& inaccessibleCppMethods,
     bool& inaccessibleFound,
     const ExpressionResult& receiver,
     bool typeReceiver,
@@ -721,6 +722,8 @@ void ProjectMethodBodyModel::collectAccessibleMemberCandidates(
             (interfaceReceiver && member.accessibility != ClassMemberAccessibility::Public))
         {
             inaccessibleFound = true;
+            if (member.kind == ClassMemberKind::Method && member.isCppExternal)
+                inaccessibleCppMethods.push_back(candidate);
             continue;
         }
         if (member.kind == ClassMemberKind::Field) fields.push_back(candidate);
@@ -1565,6 +1568,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     std::vector<std::size_t> fields;
     std::vector<std::size_t> events;
     std::vector<std::size_t> methods;
+    std::vector<std::size_t> inaccessibleCppMethods;
     bool inaccessibleFound = false;
     if (staticFieldSelection)
     {
@@ -1575,7 +1579,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     else
     {
         collectAccessibleMemberCandidates(
-            fields, events, methods, inaccessibleFound, receiver, typeReceiver,
+            fields, events, methods, inaccessibleCppMethods, inaccessibleFound, receiver, typeReceiver,
             receiverType, accessingTypeOrdinal, methodMemberOrdinal, expression->text());
     }
     if (rejectIncompleteMemberReceiver(
@@ -1605,7 +1609,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
             result, receiver, expression, methods, typeReceiver, receiverType,
             methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup))
     {
-        result.inaccessibleNamedMember = inaccessibleFound;
+        result.inaccessibleCppMethodCandidates = std::move(inaccessibleCppMethods);
         return result;
     }
     if (analyzeSynthesizedRootMember(

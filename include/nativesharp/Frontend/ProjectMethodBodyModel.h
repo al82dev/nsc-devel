@@ -3078,6 +3078,7 @@ private:
         std::vector<std::size_t>& fields,
         std::vector<std::size_t>& events,
         std::vector<std::size_t>& methods,
+        std::vector<std::size_t>& inaccessibleCppMethods,
         bool& inaccessibleFound,
         bool& uncapturedReceiverFound) const;
     ExpressionResult analyzeImplicitEventIdentifier(
@@ -3259,6 +3260,7 @@ private:
         std::vector<std::size_t>& fields,
         std::vector<std::size_t>& events,
         std::vector<std::size_t>& methods,
+        std::vector<std::size_t>& inaccessibleCppMethods,
         bool& inaccessibleFound,
         const ExpressionResult& receiver,
         bool typeReceiver,

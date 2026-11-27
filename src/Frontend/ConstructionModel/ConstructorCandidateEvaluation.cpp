@@ -207,7 +207,6 @@ void ProjectConstructionModel::evaluateConstructorArgument(
     {
         conversion = classifyCppArithmeticArgumentConversion(
             argumentTypes[argumentOrdinal].typeKey, conversionTarget);
-        if (conversion.exists()) candidate.usesCppArithmeticConversion = true;
     }
     // EN: X2. As for a C/C++ function (Item 3.2), a literal reaches a C++ constructor's `const char*` as its
     //     NUL-terminated UTF-8 bytes (`new std.string("text")`).
@@ -325,7 +324,9 @@ ConstructorCandidateBinding ProjectConstructionModel::evaluateConstructorCandida
     const NamedConstructorArgumentMap argumentMapping =
         mapConstructorArguments(arguments, constructor);
     matchingArity = argumentMapping.valid;
-    if (!candidate.accessible || !matchingArity)
+    // EN: T7. An inaccessible C++ constructor is still evaluated: C++ ranks it and rejects its selection
+    //     (rejectInaccessibleSelection). An inaccessible NativeSharp constructor is not a candidate.
+    if ((!candidate.accessible && !constructor.isCppExternal) || !matchingArity)
     {
         return candidate;
     }

@@ -186,7 +186,7 @@ std::optional<std::size_t> ProjectConstructionModel::previewSelectedCandidate(
     const std::vector<std::size_t> viable = viableConstructorCandidates(candidates);
     if (viable.empty()) return std::nullopt;
     const std::vector<std::size_t> nonDominated = nonDominatedConstructorCandidates(candidates, viable);
-    if (nonDominated.size() != 1) return std::nullopt;
+    if (nonDominated.size() != 1 || !candidates[nonDominated.front()].accessible) return std::nullopt;
     return candidates[nonDominated.front()].memberOrdinal;
 }
 
@@ -323,7 +323,6 @@ void ProjectConstructionModel::evaluateConstructionCandidates(
     //     candidatos ya evaluados en cada crecimiento. Contenido y orden no cambian.
     binding.evaluatedCandidates.reserve(
         binding.evaluatedCandidates.size() + binding.explicitConstructorMemberOrdinals.size());
-    bool inaccessibleMatchingArity = false;
     for (const std::size_t constructorOrdinal : binding.explicitConstructorMemberOrdinals)
     {
         const ClassMemberSymbol& constructor = memberModel_->members()[constructorOrdinal];
@@ -352,26 +351,27 @@ void ProjectConstructionModel::evaluateConstructionCandidates(
         anyMatchingArity = anyMatchingArity || matchingArity;
         accessibleMatchingArity = accessibleMatchingArity ||
             (candidate.accessible && matchingArity);
-        inaccessibleMatchingArity = inaccessibleMatchingArity || (!candidate.accessible && matchingArity);
         binding.evaluatedCandidates.push_back(std::move(candidate));
     }
-    rejectCppArithmeticBesideInaccessible(binding.evaluatedCandidates, inaccessibleMatchingArity);
 }
 
-// EN: C++ resolves the overloads over every constructor and checks access afterwards, while NativeSharp ranks only
-//     the accessible ones. With an inaccessible constructor of the same arity, a candidate that needs a C++
-//     arithmetic conversion could be chosen where C++ would choose the inaccessible one and reject the
-//     construction, so it is not viable: the construction stays rejected, as before those conversions existed.
-// Complexity: O(candidates). Effects: only clears `viable` of such candidates.
-void ProjectConstructionModel::rejectCppArithmeticBesideInaccessible(
-    std::vector<ConstructorCandidateBinding>& candidates,
-    bool inaccessibleMatchingArity) const
+// EN: T7. C++ resolves the overloads over every constructor and checks access on the one it selects, so an
+//     inaccessible C++ constructor takes part in the ranking (evaluateConstructorCandidate) and selecting it is an
+//     error, not a fallback to the best accessible one. A NativeSharp constructor never reaches this: inaccessible
+//     ones are not evaluated.
+// Complexity: O(1). Effects: reports one diagnostic when the selection is inaccessible.
+bool ProjectConstructionModel::rejectInaccessibleSelection(
+    const ConstructorCandidateBinding& selected,
+    SourceRange range,
+    diagnostics::DiagnosticEngine& diagnostics) const
 {
-    if (!inaccessibleMatchingArity) return;
-    for (ConstructorCandidateBinding& candidate : candidates)
-    {
-        if (candidate.usesCppArithmeticConversion) candidate.viable = false;
-    }
+    if (selected.accessible) return false;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidCall,
+        diagnostics::DiagnosticSeverity::Error,
+        range,
+        "the C++ constructor selected for these arguments is not accessible from this construction site");
+    return true;
 }
 
 void ProjectConstructionModel::rejectConstraintFailedCandidate(
@@ -544,6 +544,13 @@ void ProjectConstructionModel::resolveConstructionCandidates(
         return;
     }
 
+    if (rejectInaccessibleSelection(
+            binding.evaluatedCandidates[nonDominated.front()], binding.syntax->range(), diagnostics))
+    {
+        binding.resolution = ConstructionResolutionKind::Inaccessible;
+        constructions_.push_back(std::move(binding));
+        return;
+    }
     selectConstructionCandidate(binding, nonDominated.front());
     rejectNewToOrdinaryConstructorParameters(
         binding.evaluatedCandidates[nonDominated.front()], argumentTypes, diagnostics);
