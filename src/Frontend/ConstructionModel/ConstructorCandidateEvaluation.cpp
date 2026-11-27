@@ -100,6 +100,18 @@ bool transportableCppRecord(const ProjectNameLookup* lookup, std::string_view ty
     return ordinal.has_value() && lookup->cppTransportValueEligible(*ordinal);
 }
 
+// EN: T6. Both candidates bind the same parameters with conversions of the same rank, argument by argument.
+bool sameConversionRanks(const ConstructorCandidateBinding& left, const ConstructorCandidateBinding& right)
+{
+    if (left.argumentParameterOrdinals != right.argumentParameterOrdinals ||
+        left.conversions.size() != right.conversions.size()) return false;
+    for (std::size_t index = 0; index < left.conversions.size(); ++index)
+    {
+        if (left.conversions[index].rank != right.conversions[index].rank) return false;
+    }
+    return true;
+}
+
 bool isStringLiteralBorrow(
     const MethodParameterSymbol& parameter,
     const MethodExpressionTypeBinding& argument) noexcept
@@ -375,6 +387,12 @@ std::vector<std::size_t> ProjectConstructionModel::nonDominatedConstructorCandid
             *right.memberOrdinal >= memberModel_->members().size()) return false;
         const ClassMemberSymbol& l = memberModel_->members()[*left.memberOrdinal];
         const ClassMemberSymbol& r = memberModel_->members()[*right.memberOrdinal];
+        // EN: T6. On conversions of equal rank for every argument, a non-template C++ constructor is better than a
+        //     constructor template specialization ([over.match.best]).
+        if (l.isCppExternal && r.isCppExternal && l.declaringTypeOrdinal == r.declaringTypeOrdinal &&
+            !l.cppTemplateSpecialization && r.cppTemplateSpecialization &&
+            sameConversionRanks(left, right))
+            return true;
         if (!l.isCppExternal || !r.isCppExternal || l.declaringTypeOrdinal != r.declaringTypeOrdinal ||
             l.cppParameterSpellings.size() != l.parameters.size() ||
             r.cppParameterSpellings.size() != r.parameters.size() ||

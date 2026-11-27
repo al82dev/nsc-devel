@@ -77,5 +77,8 @@ struct CppImportedLifetimeMethod
     bool factory = false;
     // X2-05: a hidden move constructor, only for C++'s implicit move. / Solo para el movimiento implicito.
     bool implicitMoveOnly = false;
+    // EN: T6. A constructor template specialization deduced for a construction; on equal conversions C++ prefers
+    //     a non-template constructor to it.
+    bool templateSpecialization = false;
 };
 }

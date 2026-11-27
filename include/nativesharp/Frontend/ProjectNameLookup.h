@@ -161,6 +161,9 @@ struct CppImportedTypeDeclaration final
     std::vector<CppImportedPointerUpcast> cppPointerUpcasts{};
     // T12-001: Clang returns this record from a free C++ function through memory, whatever its size.
     bool cppIndirectReturn = false;
+    // T6: the C++ record declares a constructor template; its constructions ask Clang to deduce one. / Declara una
+    //     plantilla de constructor.
+    bool cppHasConstructorTemplates = false;
     // EN: X3-04. A C++ interface NativeSharp can implement: a complete polymorphic record whose object is only its
     //     vtable pointer, without virtual bases, whose virtual methods (its own and its bases') have distinct names
     //     (a virtual destructor is allowed); these are their names, in declaration order.

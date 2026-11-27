@@ -187,6 +187,25 @@ void ProjectCompilationIndexes::rebuildMembers(std::span<const ClassMemberSymbol
     }
 }
 
+// EN: T6. Members appended to a built member model (ProjectMemberModel::appendCppLifetimeMethods). The member table
+//     is re-pointed, because the member vector may have moved, and the name and signature indexes get the new
+//     ordinals. The layout, virtual and HIR tables keep their entries: they index earlier ordinals and their
+//     lookups bound-check a new one.
+void ProjectCompilationIndexes::appendMembers(std::span<const ClassMemberSymbol> members, std::size_t firstNew)
+{
+    membersByOrdinal_.clear();
+    membersByOrdinal_.reserve(members.size());
+    for (const ClassMemberSymbol& member : members) membersByOrdinal_.push_back(&member);
+    for (std::size_t ordinal = firstNew; ordinal < members.size(); ++ordinal)
+    {
+        const ClassMemberSymbol& member = members[ordinal];
+        memberOrdinalsByName_[member.name].push_back(ordinal);
+        if (member.declaringTypeOrdinal >= memberOrdinalsBySignature_.size())
+            memberOrdinalsBySignature_.resize(member.declaringTypeOrdinal + 1U);
+        memberOrdinalsBySignature_[member.declaringTypeOrdinal][member.signatureKey].push_back(ordinal);
+    }
+}
+
 void ProjectCompilationIndexes::rebuildLayouts(
     std::span<const ClassObjectLayout> classLayouts,
     std::span<const StructValueLayout> structLayouts,

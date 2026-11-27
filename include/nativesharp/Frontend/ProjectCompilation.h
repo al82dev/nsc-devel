@@ -371,6 +371,8 @@ private:
     bool applyCppTemplateUses(std::string& loadError);
     bool buildNamespaceFunctions(std::string& loadError);
     bool deduceCppTemplateCalls(std::span<const CppTemplateDeductionRequest> requests);
+    // T6: appends the deduced C++ constructor template specializations to the member model.
+    bool incorporateDeducedCppConstructors(std::string& loadError);
     // T5: the class template specialization descriptions of the record arguments of a deduction request.
     void describeCppRecordArguments(
         std::size_t projectOrdinal,
@@ -397,6 +399,8 @@ private:
     //     once the inner call has a type. The calls already deduced are not deduced again.
     // ES: T19-003. La deduccion corre en rondas: una llamada cuyo argumento es otra llamada a una plantilla o
     //     macro se deduce cuando la interior ya tiene tipo. Las llamadas ya deducidas no se deducen otra vez.
+    // T6: a deduction round instantiated a constructor template specialization. / Una ronda instancio uno.
+    bool cppConstructorTemplatesDeduced_ = false;
     static constexpr std::size_t kCppTemplateDeductionRounds = 8;
     std::size_t cppTemplateDeductionRound_ = 0;
     std::set<const ast::AstNode*> cppDeducedTemplateCalls_;

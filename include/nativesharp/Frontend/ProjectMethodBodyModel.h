@@ -5696,6 +5696,8 @@ private:
         std::size_t scopeOrdinal,
         const ExpressionResult& result) const;
     void recordConstructionSite(ProjectConstructionSite site);
+    // T6: asks Clang to deduce the record's constructor templates for this construction. / Pide la deduccion.
+    void recordCppConstructorTemplateDeduction(const ProjectConstructionSite& site) const;
     void recordCallBinding(MethodCallBinding binding);
     void recordNameBinding(MethodNameBinding binding);
     bool deferCaptureAllowsLocal(

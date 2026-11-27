@@ -203,6 +203,141 @@ std::uint64_t experimentalCppFieldBytes(std::string_view key)
 }
 }
 
+// EN: One imported C++ constructor or destructor as a member of its record, appended after the existing members:
+//     its ordinal is members_.size() and no earlier ordinal changes.
+bool ProjectMemberModel::addCppLifetimeMember(
+    const CppImportedLifetimeMethod& imported,
+    const ProjectNameLookup& nameLookup,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const auto ordinal = nameLookup.typeOrdinalForIdentity(imported.ownerIdentityKey);
+    const auto* owner = ordinal ? nameLookup.cppImportedType(*ordinal) : nullptr;
+    if (!owner || owner->projectOrdinal != imported.projectOrdinal)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidType, diagnostics::DiagnosticSeverity::Error,
+            SourceRange{}, "C++ lifetime method owner is not the imported type in its project");
+        return false;
+    }
+    // EN: T11-006. A by-value parameter is an imported enum or a trivial C++ record.
+    // ES: T11-006. Un parametro por valor es un enum importado o un record C++ trivial.
+    const bool valueParameters = std::all_of(imported.parameterTypeKeys.begin(), imported.parameterTypeKeys.end(),
+        [&](const std::string& key) {
+            if (!key.starts_with("type:") || key.ends_with('*') || key.ends_with(']')) return true;
+            const auto type = nameLookup.typeOrdinalForIdentity(std::string_view(key).substr(5));
+            const auto* value = type ? nameLookup.cppImportedType(*type) : nullptr;
+            // X4-05: a NativeSharp struct mirrored for a C++ class template (`Box<P>(P x)`), as its methods
+            //     already accept. / Un struct NativeSharp reflejado para una plantilla de clase C++.
+            if (!value && nameLookup.isCppNativeMirrorType(std::string_view(key).substr(5))) return true;
+            return value && ((value->enumBase && (value->origin == CppImportedTypeOrigin::CppEnum ||
+                                                  value->origin == CppImportedTypeOrigin::CEnum)) ||
+                             (value->origin == CppImportedTypeOrigin::CppRecord &&
+                              nameLookup.cppTrivialValueEligible(*type)));
+        });
+    if (!valueParameters ||
+        std::any_of(imported.parameterTypeKeys.begin(), imported.parameterTypeKeys.end(), [&](const auto& key) {
+            return !cppCallableRecordIsVisible(key, imported.projectOrdinal, nameLookup);
+        }))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidType, diagnostics::DiagnosticSeverity::Error,
+            SourceRange{}, "C++ constructor parameter type is not imported in its project");
+        return false;
+    }
+    ClassMemberSymbol member;
+    member.kind = imported.kind == CppImportedLifetimeKind::Constructor
+        ? ClassMemberKind::Constructor : ClassMemberKind::Destructor;
+    member.accessibility = imported.accessibility;
+    member.declaringTypeOrdinal = *ordinal;
+    member.name = member.kind == ClassMemberKind::Constructor ? ".ctor" : ".dtor";
+    member.declaredTypeKey = "builtin:void";
+    member.hasImplicitThis = true;
+    member.declaringTypeIsStruct = true;
+    member.isCppExternal = true;
+    member.cppExternalSymbol = imported.externalSymbol;
+    member.cppDllImport = imported.dllImport;
+    member.cppLifetimeNonThrowing = imported.isNonThrowing;
+    member.cppLifetimeImplicit = imported.isImplicit;
+    member.cppLifetimeTrivial = imported.isTrivial;
+    member.cppFactoryConstructor = imported.factory; // X2-05
+    member.cppTemplateSpecialization = imported.templateSpecialization; // T6
+    member.signatureKey = member.name + "(";
+    for (std::size_t i = 0; i < imported.parameterTypeKeys.size(); ++i)
+    {
+        MethodParameterSymbol parameter;
+        parameter.name = "arg" + std::to_string(i);
+        parameter.typeKey = imported.parameterTypeKeys[i];
+        parameter.pointerPointeeReadonly = !imported.parameterPointeeReadonly.empty() && imported.parameterPointeeReadonly[i];
+        parameter.passKind = imported.parameterPassKinds.empty() ? ParameterPassKind::Value
+                                                                 : imported.parameterPassKinds[i];
+        // T19-007: a C++ `T&&` parameter. / Un parametro C++ `T&&`.
+        parameter.cppRvalueReference = i < imported.parameterRvalueReferences.size() &&
+            imported.parameterRvalueReferences[i];
+        parameter.cppConstReference = !parameter.cppRvalueReference &&
+            parameter.passKind == ParameterPassKind::In; // X1-04
+        if (parameter.passKind != ParameterPassKind::Value)
+        {
+            parameter.pointeeTypeKey = parameter.typeKey.substr(0, parameter.typeKey.size() - 1);
+            parameter.pointerNullable = false;
+            parameter.lifetimeName = "$p" + std::to_string(i);
+        }
+        if (i) member.signatureKey += ",";
+        if (parameter.passKind == ParameterPassKind::Ref) member.signatureKey += "ref:";
+        else if (parameter.passKind == ParameterPassKind::In) member.signatureKey += "in:";
+        member.parameters.push_back(std::move(parameter));
+        if (imported.parameterTypeKeys.size() == 1 && !imported.parameterPointeeReadonly.empty() && imported.parameterPointeeReadonly[i]) member.signatureKey += "const:";
+        member.signatureKey += imported.parameterTypeKeys[i];
+    }
+    member.signatureKey += ")";
+    // T19-006: as for a C++ method. / Como en un metodo C++.
+    member.signatureKey += imported.cppSignatureSuffix;
+    member.cppParameterSpellings = imported.cppParameterSpellings;
+    member.cppDeclarationSpelling = imported.cppDeclarationSpelling;
+    const auto index = members_.size();
+    members_.push_back(std::move(member));
+    membersByType_[*ordinal].push_back(index);
+    membersByName_[*ordinal][members_[index].name].push_back(index);
+    // X2-05: a factory constructor is reached only through its function, a hidden move constructor only by an
+    //     implicit move. / Solo se alcanzan por su funcion o por un movimiento implicito.
+    if (imported.kind == CppImportedLifetimeKind::Constructor && !imported.factory && !imported.implicitMoveOnly)
+        constructorsByType_[*ordinal].push_back(index);
+    return true;
+}
+
+// EN: T6. Constructor template specializations deduced after the members were built (C++ template deduction
+//     rounds, ProjectCompilation::incorporateDeducedCppConstructors) join their record as constructors. They are
+//     appended: every existing ordinal, membersByType_ order and the per-ordinal entries of the other models stay
+//     valid, and a new ordinal is past their ends (their lookups are bounds-checked). The member indexes are rebuilt
+//     from members_, and ProjectCompilationIndexes re-points its member table, which members_ may have moved.
+//     A constructor whose owner already has a member with its symbol is not added again, and one whose parameter
+//     types cannot be members is left out without a diagnostic: the construction keeps its other candidates.
+bool ProjectMemberModel::appendCppLifetimeMethods(
+    std::span<const CppImportedLifetimeMethod> methods,
+    const ProjectNameLookup& nameLookup)
+{
+    if (!built_) return false;
+    const std::size_t firstNew = members_.size();
+    for (const CppImportedLifetimeMethod& imported : methods)
+    {
+        if (imported.kind != CppImportedLifetimeKind::Constructor) continue;
+        const auto owner = nameLookup.typeOrdinalForIdentity(imported.ownerIdentityKey);
+        if (!owner) continue;
+        bool present = false;
+        for (const std::size_t ordinal : membersOfType(*owner))
+        {
+            if (ordinal < members_.size() && members_[ordinal].kind == ClassMemberKind::Constructor &&
+                members_[ordinal].cppExternalSymbol == imported.externalSymbol) present = true;
+        }
+        if (present) continue;
+        diagnostics::DiagnosticEngine rejected;
+        addCppLifetimeMember(imported, nameLookup, rejected);
+    }
+    if (members_.size() == firstNew) return true;
+    buildMembersDeclaredByTypeIndex();
+    buildMemberNameIndex();
+    buildUserConversionIndex();
+    indexes_->appendMembers(members_, firstNew);
+    return true;
+}
+
 bool ProjectMemberModel::setExperimentalCppLifetimeMethods(
     std::vector<CppImportedLifetimeMethod> methods, std::string& error)
 {
@@ -439,96 +574,7 @@ bool ProjectMemberModel::build(
     collectDeclaredTypeMembers(nameLookup, diagnostics);
     collectExternalTraitImplMembers(nameLookup, diagnostics);
     for (const auto& imported : experimentalCppLifetimeMethods_)
-    {
-        const auto ordinal = nameLookup.typeOrdinalForIdentity(imported.ownerIdentityKey);
-        const auto* owner = ordinal ? nameLookup.cppImportedType(*ordinal) : nullptr;
-        if (!owner || owner->projectOrdinal != imported.projectOrdinal)
-        {
-            diagnostics.report(diagnostics::DiagnosticId::InvalidType, diagnostics::DiagnosticSeverity::Error,
-                SourceRange{}, "C++ lifetime method owner is not the imported type in its project");
-            return false;
-        }
-        // EN: T11-006. A by-value parameter is an imported enum or a trivial C++ record.
-        // ES: T11-006. Un parametro por valor es un enum importado o un record C++ trivial.
-        const bool valueParameters = std::all_of(imported.parameterTypeKeys.begin(), imported.parameterTypeKeys.end(),
-            [&](const std::string& key) {
-                if (!key.starts_with("type:") || key.ends_with('*') || key.ends_with(']')) return true;
-                const auto type = nameLookup.typeOrdinalForIdentity(std::string_view(key).substr(5));
-                const auto* value = type ? nameLookup.cppImportedType(*type) : nullptr;
-                // X4-05: a NativeSharp struct mirrored for a C++ class template (`Box<P>(P x)`), as its methods
-                //     already accept. / Un struct NativeSharp reflejado para una plantilla de clase C++.
-                if (!value && nameLookup.isCppNativeMirrorType(std::string_view(key).substr(5))) return true;
-                return value && ((value->enumBase && (value->origin == CppImportedTypeOrigin::CppEnum ||
-                                                      value->origin == CppImportedTypeOrigin::CEnum)) ||
-                                 (value->origin == CppImportedTypeOrigin::CppRecord &&
-                                  nameLookup.cppTrivialValueEligible(*type)));
-            });
-        if (!valueParameters ||
-            std::any_of(imported.parameterTypeKeys.begin(), imported.parameterTypeKeys.end(), [&](const auto& key) {
-                return !cppCallableRecordIsVisible(key, imported.projectOrdinal, nameLookup);
-            }))
-        {
-            diagnostics.report(diagnostics::DiagnosticId::InvalidType, diagnostics::DiagnosticSeverity::Error,
-                SourceRange{}, "C++ constructor parameter type is not imported in its project");
-            return false;
-        }
-        ClassMemberSymbol member;
-        member.kind = imported.kind == CppImportedLifetimeKind::Constructor
-            ? ClassMemberKind::Constructor : ClassMemberKind::Destructor;
-        member.accessibility = imported.accessibility;
-        member.declaringTypeOrdinal = *ordinal;
-        member.name = member.kind == ClassMemberKind::Constructor ? ".ctor" : ".dtor";
-        member.declaredTypeKey = "builtin:void";
-        member.hasImplicitThis = true;
-        member.declaringTypeIsStruct = true;
-        member.isCppExternal = true;
-        member.cppExternalSymbol = imported.externalSymbol;
-        member.cppDllImport = imported.dllImport;
-        member.cppLifetimeNonThrowing = imported.isNonThrowing;
-        member.cppLifetimeImplicit = imported.isImplicit;
-        member.cppLifetimeTrivial = imported.isTrivial;
-        member.cppFactoryConstructor = imported.factory; // X2-05
-        member.signatureKey = member.name + "(";
-        for (std::size_t i = 0; i < imported.parameterTypeKeys.size(); ++i)
-        {
-            MethodParameterSymbol parameter;
-            parameter.name = "arg" + std::to_string(i);
-            parameter.typeKey = imported.parameterTypeKeys[i];
-            parameter.pointerPointeeReadonly = !imported.parameterPointeeReadonly.empty() && imported.parameterPointeeReadonly[i];
-            parameter.passKind = imported.parameterPassKinds.empty() ? ParameterPassKind::Value
-                                                                     : imported.parameterPassKinds[i];
-            // T19-007: a C++ `T&&` parameter. / Un parametro C++ `T&&`.
-            parameter.cppRvalueReference = i < imported.parameterRvalueReferences.size() &&
-                imported.parameterRvalueReferences[i];
-            parameter.cppConstReference = !parameter.cppRvalueReference &&
-                parameter.passKind == ParameterPassKind::In; // X1-04
-            if (parameter.passKind != ParameterPassKind::Value)
-            {
-                parameter.pointeeTypeKey = parameter.typeKey.substr(0, parameter.typeKey.size() - 1);
-                parameter.pointerNullable = false;
-                parameter.lifetimeName = "$p" + std::to_string(i);
-            }
-            if (i) member.signatureKey += ",";
-            if (parameter.passKind == ParameterPassKind::Ref) member.signatureKey += "ref:";
-            else if (parameter.passKind == ParameterPassKind::In) member.signatureKey += "in:";
-            member.parameters.push_back(std::move(parameter));
-            if (imported.parameterTypeKeys.size() == 1 && !imported.parameterPointeeReadonly.empty() && imported.parameterPointeeReadonly[i]) member.signatureKey += "const:";
-            member.signatureKey += imported.parameterTypeKeys[i];
-        }
-        member.signatureKey += ")";
-        // T19-006: as for a C++ method. / Como en un metodo C++.
-        member.signatureKey += imported.cppSignatureSuffix;
-        member.cppParameterSpellings = imported.cppParameterSpellings;
-        member.cppDeclarationSpelling = imported.cppDeclarationSpelling;
-        const auto index = members_.size();
-        members_.push_back(std::move(member));
-        membersByType_[*ordinal].push_back(index);
-        membersByName_[*ordinal][members_[index].name].push_back(index);
-        // X2-05: a factory constructor is reached only through its function, a hidden move constructor only by an
-        //     implicit move. / Solo se alcanzan por su funcion o por un movimiento implicito.
-        if (imported.kind == CppImportedLifetimeKind::Constructor && !imported.factory && !imported.implicitMoveOnly)
-            constructorsByType_[*ordinal].push_back(index);
-    }
+        if (!addCppLifetimeMember(imported, nameLookup, diagnostics)) return false;
     for (const auto& imported : experimentalCppInstanceMethods_)
     {
         const auto ordinal = nameLookup.typeOrdinalForIdentity(imported.ownerIdentityKey);

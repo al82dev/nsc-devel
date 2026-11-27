@@ -173,6 +173,8 @@ struct CppSemanticLifetimeMethod
     // X2-05: a move constructor a copy constructor hides (T11-016), kept only for C++'s implicit move. / Un
     //     constructor de movimiento que oculta uno de copia, conservado solo para el movimiento implicito de C++.
     bool implicitMoveOnly = false;
+    // T6: a specialization of a constructor template deduced for a construction. / Una especializacion deducida.
+    bool templateSpecialization = false;
 };
 using CppSemanticLifetimeMethodResult = std::variant<CppSemanticLifetimeMethod, CppSemanticFunctionFailure>;
 // Metadata only: no storage, construction, destruction, or unwinding is implied.
@@ -205,6 +207,10 @@ struct CppSemanticLifetimeFamily
     //     USR de los constructores proyectados y de aquellos para los que uno no proyectado es viable.
     std::set<std::string> projectedUsrs{};
     std::set<std::string> blockingSiblings{};
+    // EN: T6. The deduced constructor template specializations of the record, from every translation unit that
+    //     defines it, whose NativeSharp signature no projected constructor already has (C++ prefers the
+    //     non-template on an identical signature).
+    std::vector<CppSemanticLifetimeMethod> deducedMethods{};
 };
 // The snapshot contains observed explicit declarations only; it does not certify implicit
 // special members, overload resolution, or safe object construction and destruction.

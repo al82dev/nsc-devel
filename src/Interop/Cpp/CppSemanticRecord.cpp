@@ -5301,6 +5301,7 @@ bool selectExperimentalCppRecordTypesForCompilation(
         for (const auto& upcast : observation.inventory[*selected].declaration.upcasts)
             type.cppPointerUpcasts.push_back({upcast.baseClangUsr, upcast.offsetBytes});
         type.cppIndirectReturn = observation.inventory[*selected].declaration.indirectReturn.value_or(false);
+        type.cppHasConstructorTemplates = observation.inventory[*selected].declaration.hasConstructorTemplates; // T6
         // X3-04: an abstract interface NativeSharp can implement. / Una interfaz abstracta que NativeSharp puede
         //     implementar.
         {

@@ -1752,6 +1752,25 @@ CppSemanticLifetimeMethodResult projectCppSemanticLifetimeMethod(
     return projected;
 }
 
+// EN: The NativeSharp signature of a projected lifetime method that tells overloads apart: pass kind, type key
+//     (`const:` for a single const pointer) and the T19-006 C++ spelling suffix.
+static std::vector<std::string> cppLifetimeSignature(const CppSemanticLifetimeMethod& method)
+{
+    std::vector<std::string> parameters;
+    for (std::size_t i = 0; i < method.parameters.size(); ++i)
+    {
+        const auto& parameter = method.parameters[i];
+        const auto passKind = i < method.passKinds.size() ? method.passKinds[i] : frontend::ParameterPassKind::Value;
+        parameters.push_back((passKind == frontend::ParameterPassKind::Ref ? "ref:" :
+            passKind == frontend::ParameterPassKind::In ? "in:" : "") +
+            (method.parameters.size() == 1 && parameter.isConst && parameter.nativeSharpTypeKey.ends_with('*')
+                ? "const:" + parameter.nativeSharpTypeKey : parameter.nativeSharpTypeKey));
+    }
+    // T19-006: the C++ spellings keep `S(int)` and `S(long)` apart. / Las separan.
+    if (!method.cppSignatureSuffix.empty()) parameters.push_back(method.cppSignatureSuffix);
+    return parameters;
+}
+
 frontend::CppImportedLifetimeMethod toCppImportedLifetimeMethod(const CppSemanticLifetimeMethod& method)
 {
     frontend::CppImportedLifetimeMethod result{method.projectOrdinal, method.ownerIdentityKey,
@@ -1766,6 +1785,7 @@ frontend::CppImportedLifetimeMethod toCppImportedLifetimeMethod(const CppSemanti
     result.parameterPassKinds = method.passKinds;
     result.parameterRvalueReferences = method.rvalueReferences;
     result.implicitMoveOnly = method.implicitMoveOnly; // X2-05
+    result.templateSpecialization = method.templateSpecialization; // T6
     result.cppParameterSpellings = method.cppParameterSpellings;
     result.cppSignatureSuffix = method.cppSignatureSuffix;
     result.cppDeclarationSpelling = method.cppDeclarationSpelling;
@@ -1876,19 +1896,7 @@ bool collectCppSemanticLifetimeFamilies(
                     method->externalSymbol = cppVirtualBaseLifetimeSymbol(*family.virtualBaseRecordUsr, *declared.clangUsr);
                     method->dllImport = false;
                 }
-                std::vector<std::string> parameters;
-                for (std::size_t i = 0; i < method->parameters.size(); ++i)
-                {
-                    const auto& parameter = method->parameters[i];
-                    const auto passKind = i < method->passKinds.size() ? method->passKinds[i]
-                                                                        : frontend::ParameterPassKind::Value;
-                    parameters.push_back((passKind == frontend::ParameterPassKind::Ref ? "ref:" :
-                        passKind == frontend::ParameterPassKind::In ? "in:" : "") +
-                        (method->parameters.size() == 1 && parameter.isConst && parameter.nativeSharpTypeKey.ends_with('*')
-                            ? "const:" + parameter.nativeSharpTypeKey : parameter.nativeSharpTypeKey));
-                }
-                // T19-006: the C++ spellings keep `S(int)` and `S(long)` apart. / Las separan.
-                if (!method->cppSignatureSuffix.empty()) parameters.push_back(method->cppSignatureSuffix);
+                std::vector<std::string> parameters = cppLifetimeSignature(*method);
                 if (!signatures.emplace(kind, std::move(parameters)).second)
                     family.hasProjectedSignatureCollision = true;
                 family.methods.push_back(std::move(*method));
@@ -1902,6 +1910,29 @@ bool collectCppSemanticLifetimeFamilies(
             else if (kind == CppMethodKind::Constructor && declared.viableForSiblings)
                 family.blockingSiblings.insert(declared.viableForSiblings->begin(), declared.viableForSiblings->end());
             else family.deferred.push_back({index, kind, std::get<CppSemanticFunctionFailure>(projected).message});
+        }
+        // EN: T6. The constructor template specializations deduced for constructions, from every translation unit
+        //     that defines the record (each deduces its own), projected as the record's other constructors. One
+        //     whose NativeSharp signature a projected constructor already has is left out: C++ prefers the
+        //     non-template constructor on an identical signature. A record with virtual bases keeps them out.
+        std::set<std::string> deducedUsrs;
+        for (const auto observed : group.inventoryIndices)
+        {
+            if (observed >= entries.size() || family.virtualBaseRecordUsr) continue;
+            for (const auto& deduced : entries[observed].declaration.deducedConstructors)
+            {
+                if (deduced.kind != CppMethodKind::Constructor || !deduced.clangUsr ||
+                    !deducedUsrs.insert(*deduced.clangUsr).second) continue;
+                CppRecordDeclaration probe = entry.declaration;
+                probe.methods = {deduced};
+                auto projected = projectCppSemanticLifetimeMethod(probe, 0, group.projectOrdinal,
+                    graph.projects()[group.projectOrdinal].moduleName(), entry.targetTriple, &visibleRecords, &lookup);
+                auto* method = std::get_if<CppSemanticLifetimeMethod>(&projected);
+                if (!method || signatures.contains({CppMethodKind::Constructor, cppLifetimeSignature(*method)}))
+                    continue;
+                method->templateSpecialization = true;
+                family.deducedMethods.push_back(std::move(*method));
+            }
         }
         if (!family.methods.empty() || !family.deferred.empty() || family.implicitMembers)
             result.push_back(std::move(family));
@@ -1982,6 +2013,7 @@ bool provideExperimentalCppLifetimeMethods(
             std::any_of(family.projectedUsrs.begin(), family.projectedUsrs.end(), [&](const std::string& usr) {
                 return family.blockingSiblings.contains(usr); })) continue;
         for (const auto& method : family.methods) result.push_back(toCppImportedLifetimeMethod(method));
+        for (const auto& method : family.deducedMethods) result.push_back(toCppImportedLifetimeMethod(method)); // T6
         for (const auto& method : *family.implicitDeclarations)
         {
             if ((method.kind != CppImplicitLifetimeKind::DefaultConstructor &&

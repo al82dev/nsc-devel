@@ -46,6 +46,8 @@ public:
     void clear() noexcept;
     void rebuildTypes(std::span<const NamedTypeDeclaration> types);
     void rebuildMembers(std::span<const ClassMemberSymbol> members);
+    // T6: members appended from `firstNew` on; the layout and virtual tables stay. / Miembros agregados.
+    void appendMembers(std::span<const ClassMemberSymbol> members, std::size_t firstNew);
     void rebuildDispatch(
         std::span<const VirtualMethodInfo> virtualMethods,
         std::span<const ClassVirtualTable> classTables,

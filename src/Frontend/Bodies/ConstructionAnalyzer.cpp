@@ -1083,8 +1083,33 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindAggregateIn
     return result;
 }
 
+// EN: T6. A construction of a C++ record that declares constructor templates asks Clang to deduce them from the
+//     argument types (`@constructor:<record USR>`, as a call asks for a function template): a deduced specialization
+//     joins the record's constructors in the next deduction round (incorporateDeducedCppConstructors) and is ranked
+//     with them, as C++ ranks template and non-template constructors together. A `ref`, `in` or `out` argument or
+//     one without a type leaves the construction to the non-template constructors.
+void ProjectMethodBodyModel::recordCppConstructorTemplateDeduction(const ProjectConstructionSite& site) const
+{
+    if (namespaceFunctionModel_ == nullptr || nameLookup_ == nullptr || site.syntax == nullptr ||
+        !site.targetTypeOrdinal || site.factoryConstructorMemberOrdinal || !site.argumentsTyped) return;
+    const CppImportedTypeDeclaration* imported = nameLookup_->cppImportedType(*site.targetTypeOrdinal);
+    if (imported == nullptr || !imported->cppHasConstructorTemplates || !imported->clangUsr) return;
+    CppTemplateDeductionRequest request;
+    request.syntax = site.syntax;
+    request.projectOrdinal = imported->projectOrdinal;
+    request.qualifiedNames = {"@constructor:" + *imported->clangUsr};
+    request.range = site.syntax->range();
+    for (const MethodExpressionTypeBinding& argument : site.argumentTypes)
+    {
+        if (argument.argumentPassKind != ParameterPassKind::Value || argument.typeKey.empty()) return;
+        request.argumentTypeKeys.push_back(argument.typeKey);
+    }
+    namespaceFunctionModel_->recordCppTemplateDeduction(std::move(request));
+}
+
 void ProjectMethodBodyModel::recordConstructionSite(ProjectConstructionSite site)
 {
+    recordCppConstructorTemplateDeduction(site);
     const std::optional<std::size_t> previous = constructionSiteIndex_.latest(
         site.syntax,
         site.callableOrdinal);

@@ -66,6 +66,9 @@ public:
     bool setExperimentalCppInstanceMethods(std::vector<CppImportedInstanceMethod> methods, std::string& error);
     // Isolated indexing only; callers must account for all C++ overloads before resolution.
     bool setExperimentalCppLifetimeMethods(std::vector<CppImportedLifetimeMethod> methods, std::string& error);
+    // T6: deduced C++ constructor template specializations appended to a built model (ordinals preserved).
+    bool appendCppLifetimeMethods(std::span<const CppImportedLifetimeMethod> methods,
+                                  const ProjectNameLookup& nameLookup);
     bool setExperimentalCppInstanceFields(std::vector<CppImportedInstanceField> fields, std::string& error);
     // EN: Item 1.4. Why a C/C++ field of the type with identity `ownerIdentityKey` was not imported, if it exists.
     // ES: Item 1.4. Por que no se importo un campo C/C++ del tipo con identidad `ownerIdentityKey`, si existe.
@@ -215,6 +218,10 @@ public:
         std::string& error) const;
 
 private:
+    bool addCppLifetimeMember(
+        const CppImportedLifetimeMethod& imported,
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics);
     std::unordered_set<std::string> trivialCleanupRootTypeKeys_;
     std::unordered_set<std::string> nonEscapingLifecycleTypeKeys_;
     std::unordered_set<std::string> identitySafeLifecycleTypeKeys_;

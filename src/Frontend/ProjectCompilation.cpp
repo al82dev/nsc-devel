@@ -1930,6 +1930,10 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
         //     expression keeps its own diagnostic. / Una expresion de operador que puede llamar una plantilla.
         const bool operatorTemplate = !request.qualifiedNames.empty() &&
             request.qualifiedNames.front().starts_with("@operator:");
+        // EN: T6. A construction that may call a constructor template; when none deduces, the construction keeps its
+        //     non-template constructors and its own diagnostic.
+        const bool constructorTemplate = !request.qualifiedNames.empty() &&
+            request.qualifiedNames.front().starts_with("@constructor:");
         bool answered = false;
         std::vector<std::string> notes;
         // C2-06: the NativeSharp site of a macro call, for __FILE__ and __LINE__. / El sitio NativeSharp de una
@@ -1961,6 +1965,7 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
                         {
                             answered = true;
                             if (result->instantiated) deduced = true;
+                            if (result->instantiated && constructorTemplate) cppConstructorTemplatesDeduced_ = true;
                             // NSMeta X4-06: a deduced function template (member or operator) makes its reference
                             //     travel as a source session. / Una plantilla de funcion deducida hace viajar su
                             //     referencia como sesion de fuente.
@@ -2000,7 +2005,7 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
                             else notes.insert(notes.end(), result->diagnostics.begin(), result->diagnostics.end());
                         }
             }
-        if (deduced || (memberTemplate && !answered) || operatorTemplate ||
+        if (deduced || (memberTemplate && !answered) || operatorTemplate || constructorTemplate ||
             (namespaceFunctionModel_ && namespaceFunctionModel_->referenceBinding(request.syntax)))
         {
             // T19-003: not deduced again in a later round. / No se deduce otra vez en otra ronda.
@@ -2019,6 +2024,25 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
         ok = false;
     }
     return ok;
+}
+
+// EN: T6. The C++ lifetime members are projected again from the sessions, whose record snapshots now carry the
+//     constructor template specializations deduced in this round (CppRecordDeclaration::deducedConstructors); only
+//     those specializations are taken, and ProjectMemberModel::appendCppLifetimeMethods appends the ones not yet
+//     members, so no existing member ordinal changes. The method body model is built again afterwards.
+bool ProjectCompilation::incorporateDeducedCppConstructors(std::string& loadError)
+{
+    if (!experimentalCppLifetimeMethodProvider_ || !memberModel_ || !nameLookup_ || !projectGraph_) return true;
+    std::vector<CppImportedLifetimeMethod> methods;
+    if (!experimentalCppLifetimeMethodProvider_(*projectGraph_, cppProjectSessions_, *nameLookup_, methods, loadError))
+        return false;
+    std::vector<CppImportedLifetimeMethod> deduced;
+    for (CppImportedLifetimeMethod& method : methods)
+    {
+        if (method.templateSpecialization) deduced.push_back(std::move(method));
+    }
+    memberModel_->appendCppLifetimeMethods(deduced, *nameLookup_);
+    return true;
 }
 
 bool ProjectCompilation::compileProjectMethodBodies(
@@ -2112,6 +2136,9 @@ bool ProjectCompilation::compileProjectMethodBodies(
             }
             for (std::size_t index = 0; index < namespaceBegin; ++index) diagnostics_.append(previous[index]);
             loadError.clear();
+            // T6: the deduced constructors join their records before the bodies are analyzed again.
+            if (cppConstructorTemplatesDeduced_ && !incorporateDeducedCppConstructors(loadError)) return false;
+            cppConstructorTemplatesDeduced_ = false;
             if (!buildNamespaceFunctions(loadError)) return false;
             for (std::size_t index = namespaceEnd; index < bodiesBegin; ++index) diagnostics_.append(previous[index]);
             roundBodiesBegin = diagnostics_.diagnostics().size();

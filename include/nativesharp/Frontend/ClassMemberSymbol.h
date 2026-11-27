@@ -265,5 +265,8 @@ struct ClassMemberSymbol final
     // X2-05: a C++ factory function seen as a constructor of its result type; `new T(...)` never selects it.
     //     / Una funcion fabrica C++ vista como constructor de su tipo resultado; `new T(...)` nunca la elige.
     bool cppFactoryConstructor = false;
+    // EN: T6. A C++ constructor template specialization deduced for a construction; on equal conversions a
+    //     non-template constructor is better ([over.match.best]).
+    bool cppTemplateSpecialization = false;
 };
 }
