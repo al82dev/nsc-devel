@@ -211,3 +211,13 @@ demo y la ausencia de esos diagnósticos no demuestra su comportamiento.
   punteros locales.
 - **Validación:** revisión estática; pendientes compilación de NSC
   y comprobación funcional de esta ruta.
+
+### Construcción del análisis de punteros locales
+
+NSC compiló con el commit 942656b1f y se instaló con build hash
+cc0ef4d583068c72. El binario construido y el instalado coinciden en SHA-256
+7d4943b0b26d429b3daca5a0c831633cd21364a484c6ddabfd5991a10d64bbf8.
+La pasada O3 de los ejemplos está en curso. La construcción y esos
+ejemplos no demuestran por sí solos el comportamiento de la nueva ruta
+de asignaciones posteriores; la validación funcional específica sigue
+pendiente.
