@@ -52,5 +52,11 @@ template specialization deduced for a construction (T6a) had no way to become a 
 
 ## Pending verification
 
-- Not built: the C++ toolchain at `C:/clang-llvm/bin` that `build-clang` uses was no longer present when this was
-  built (see the final report). No tests, baselines or probes were run, as requested.
+- No tests, baselines or probes were run, as requested. Pending: a construction that deduces a constructor
+  template, to observe the appended member in the next round.
+
+## Validation
+
+- NSC built in Release with O3 by NSC Builder 3 (run 20261127-000748-00365ad3, step "Construir NSC Release":
+  PASS, `NSC_HOST_OPTIMIZATION=O3`, `NSC_WARNINGS_AS_ERRORS=ON`, build identity
+  1.0.0+build.20261127T060752Z.718faec70f55fec8). The build is not a functional proof.
