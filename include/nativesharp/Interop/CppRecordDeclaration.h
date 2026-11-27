@@ -176,6 +176,13 @@ struct CppRecordDeclaration
     std::vector<CppRecordField> fields;
     std::vector<CppStaticField> staticFields;
     std::vector<CppMethodDeclaration> methods;
+    // EN: T6. The record declares a constructor template, so a construction may deduce one.
+    bool hasConstructorTemplates = false;
+    // EN: T6. The specializations of its constructor templates that a construction deduced in this session
+    //     (deduceFunctionTemplateCallWithExplicit with `@constructor:`). They are kept apart from `methods`, which
+    //     sameCapturedMembers compares between the translation units that define the record: each unit deduces its
+    //     own specializations.
+    std::vector<CppMethodDeclaration> deducedConstructors;
     // Identifies the language used to interpret this declaration; C and C++
     // unions have different member lifetime rules.
     bool isCxx = true;

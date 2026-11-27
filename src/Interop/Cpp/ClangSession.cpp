@@ -2564,7 +2564,8 @@ void completeMemberSignatureRecords(clang::ASTContext& astContext, clang::Sema& 
 void collectRecords(const clang::DeclContext& context, clang::ASTContext& astContext,
                     clang::MangleContext& mangler, std::set<const clang::TagDecl*>& seen,
                     std::vector<CppRecordDeclaration>& result, std::map<unsigned, std::string>& bufferHashes,
-                    clang::Sema* sema = nullptr, std::vector<const clang::RecordDecl*>* observed = nullptr)
+                    clang::Sema* sema = nullptr, std::vector<const clang::RecordDecl*>* observed = nullptr,
+                    const std::set<std::string>* deducedConstructors = nullptr)
 {
     for (const clang::Decl* declaration : context.decls())
     {
@@ -2572,12 +2573,14 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
         {
             // T13-007: the mirrors of NativeSharp structs are NativeSharp types. / Los espejos son tipos NativeSharp.
             if (nested->getParent()->isTranslationUnit() && nested->getName() == llvm::StringRef(cppNativeStructNamespace.data(), cppNativeStructNamespace.size())) continue;
-            collectRecords(*nested, astContext, mangler, seen, result, bufferHashes, sema, observed);
+            collectRecords(*nested, astContext, mangler, seen, result, bufferHashes, sema, observed,
+                           deducedConstructors);
             continue;
         }
         if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
         {
-            collectRecords(*linkage, astContext, mangler, seen, result, bufferHashes, sema, observed);
+            collectRecords(*linkage, astContext, mangler, seen, result, bufferHashes, sema, observed,
+                           deducedConstructors);
             continue;
         }
         // EN: T13-004. The specializations of a class template that Clang instantiated are records too.
@@ -2940,6 +2943,25 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                 std::vector<const clang::CXXMethodDecl*> recordMethods(cppRecord->method_begin(), cppRecord->method_end());
                 for (const auto* specialization : defaultedMemberSpecializations(*cppRecord, sema))
                     recordMethods.push_back(specialization);
+                // EN: T6. A constructor template makes a construction ask Clang to deduce one; the specializations
+                //     deduced in this session are captured, with their access (T7 checks it on the selected one),
+                //     as constructors of their own list.
+                for (const auto* member : cppRecord->decls())
+                {
+                    const auto* constructorTemplate = llvm::dyn_cast<clang::FunctionTemplateDecl>(member);
+                    if (!constructorTemplate ||
+                        !llvm::isa<clang::CXXConstructorDecl>(constructorTemplate->getTemplatedDecl())) continue;
+                    value.hasConstructorTemplates = true;
+                    if (!deducedConstructors) continue;
+                    for (const auto* specialization : constructorTemplate->specializations())
+                    {
+                        const auto* constructor = llvm::dyn_cast<clang::CXXConstructorDecl>(specialization);
+                        const auto usr = constructor ? declarationUsr(constructor) : std::nullopt;
+                        if (!usr || !deducedConstructors->contains(*usr) || constructor->isInvalidDecl() ||
+                            constructor->isDeleted() || !constructor->isDefined()) continue;
+                        value.deducedConstructors.push_back(captureMethod(constructor));
+                    }
+                }
                 for (const clang::CXXMethodDecl* method : recordMethods)
                 {
                     if (method->isImplicit() || method->isDependentContext() ||
@@ -3216,7 +3238,8 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
         if (observed) observed->push_back(record);
         result.push_back(std::move(value));
         if (record->isCompleteDefinition())
-            collectRecords(*record, astContext, mangler, seen, result, bufferHashes, sema, observed);
+            collectRecords(*record, astContext, mangler, seen, result, bufferHashes, sema, observed,
+                           deducedConstructors);
         }
     }
 }
@@ -3871,7 +3894,7 @@ public:
         std::vector<const clang::RecordDecl*> observed;
         if (ast_->hasSema()) completeMemberSignatureRecords(context, ast_->getSema()); // X2
         collectRecords(*context.getTranslationUnitDecl(), context, *mangler, seen, result, bufferHashes,
-                       ast_->hasSema() ? &ast_->getSema() : nullptr, &observed);
+                       ast_->hasSema() ? &ast_->getSema() : nullptr, &observed, &deducedConstructorUsrs_);
         // EN: T12-001. A trivially copyable C++ record that the C rules may not describe (a base, a declared
         //     constructor, a non-public field, not an aggregate) is returned by value as Clang's code generator
         //     classifies a free function returning it: on the Microsoft ABI such a record goes through memory.
@@ -5895,6 +5918,23 @@ public:
                         pending.push_back(baseRecord->getDefinition());
             }
         }
+        // EN: T6. `@constructor:<record USR>`: the constructor templates of that record, for a construction
+        //     (`new glm.vec3(v4)` and GLM's `template<typename U, qualifier P> vec(vec<4, U, P> const&)`). Access is
+        //     checked later on the selected constructor, as for any C++ constructor (T7); constructors are not
+        //     inherited, so the bases are not searched.
+        else if (qualifiedName.starts_with("@constructor:"))
+        {
+            const auto* tag = findTagByUsr(*context.getTranslationUnitDecl(),
+                                           std::string(qualifiedName.substr(std::string_view("@constructor:").size())));
+            const auto* record = tag ? llvm::dyn_cast<clang::CXXRecordDecl>(tag) : nullptr;
+            if (record && record->getDefinition())
+                for (auto* member : record->getDefinition()->decls())
+                    if (auto* constructorTemplate = llvm::dyn_cast<clang::FunctionTemplateDecl>(member);
+                        constructorTemplate &&
+                        llvm::isa<clang::CXXConstructorDecl>(constructorTemplate->getTemplatedDecl()) &&
+                        seenTemplates.insert(constructorTemplate->getCanonicalDecl()).second)
+                        templates.push_back(constructorTemplate);
+        }
         else
         visitNamespaceTemplates([&](const clang::TemplateDecl& declaration, bool isFunction) {
             if (!isFunction) return;
@@ -6030,7 +6070,9 @@ public:
         //     the second and never instantiates the first, whose body does not compile for a vector.
         // ES: Las plantillas de funcion miembro tambien se ordenan: para `v += w` C++ llama a
         //     `operator+=(vec<3, U, Q> const&)` y nunca instancia `operator+=(U)`, cuyo cuerpo no compila con un vector.
-        if (found.size() > 1 && (!qualifiedName.starts_with("@") || qualifiedName.starts_with("@member:")))
+        // T6: constructor templates too. / Tambien las plantillas de constructor.
+        if (found.size() > 1 && (!qualifiedName.starts_with("@") || qualifiedName.starts_with("@member:") ||
+                                 qualifiedName.starts_with("@constructor:")))
         {
             std::vector<clang::FunctionDecl*> mostSpecialized;
             for (auto* candidate : found)
@@ -6046,7 +6088,9 @@ public:
                     clang::QualType otherObject;
                     const auto* candidateMethod = llvm::dyn_cast<clang::CXXMethodDecl>(candidate);
                     const auto* otherMethod = llvm::dyn_cast<clang::CXXMethodDecl>(other);
-                    if (candidateMethod && otherMethod && !candidateMethod->isStatic() && !otherMethod->isStatic())
+                    // A constructor has no object argument to order. / Un constructor no tiene argumento objeto.
+                    if (candidateMethod && otherMethod && !candidateMethod->isStatic() && !otherMethod->isStatic() &&
+                        !llvm::isa<clang::CXXConstructorDecl>(candidateMethod))
                     {
                         candidateObject = context.getCanonicalTagType(candidateMethod->getParent());
                         otherObject = context.getCanonicalTagType(otherMethod->getParent());
@@ -6072,6 +6116,10 @@ public:
         result.instantiated = true;
         result.name = templates.front()->getNameAsString();
         result.clangUsr = declarationUsr(found.front());
+        // T6: the records snapshot captures these as constructors of their record. / El snapshot los captura.
+        if (qualifiedName.starts_with("@constructor:"))
+            for (auto* specialization : found)
+                if (const auto usr = declarationUsr(specialization)) deducedConstructorUsrs_.insert(*usr);
         // X2: each specialization keeps its own template's name (a `!=` request also deduces `==` ones). / Cada
         //     especializacion conserva el nombre de su propia plantilla.
         for (auto* specialization : found)
@@ -6295,10 +6343,16 @@ public:
                     for (const auto* specialization : functionTemplate->specializations())
                     {
                         offer(specialization);
+                        // T6: a constructor template specialization is emitted as its complete-object constructor,
+                        //     the symbol its import names. / Como su constructor de objeto completo.
                         if (!specialization->isInvalidDecl() && !specialization->isDependentContext() &&
                             specialization->isExternallyVisible() &&
                             specialization->getTemplateSpecializationKind() != clang::TSK_ExplicitInstantiationDeclaration)
-                            consider(clang::GlobalDecl(specialization));
+                        {
+                            if (const auto* constructor = llvm::dyn_cast<clang::CXXConstructorDecl>(specialization))
+                                consider(clang::GlobalDecl(constructor, clang::Ctor_Complete));
+                            else consider(clang::GlobalDecl(specialization));
+                        }
                     }
             }
         };
@@ -8573,6 +8627,9 @@ private:
         std::vector<CppTemplateArgument> explicitArguments;
     };
     mutable std::vector<TemplateDeduction> templateDeductions_;
+    // T6: the USRs of the constructor template specializations deduced for constructions. / Las especializaciones
+    //     de constructores plantilla deducidas para construcciones.
+    mutable std::set<std::string> deducedConstructorUsrs_;
     std::string inputPath_;
     std::optional<basic::Sha256Digest> preprocessingFingerprint_;
     // T13-005: the function template specializations NativeSharp requested. / Las que pidio NativeSharp.
