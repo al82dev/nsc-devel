@@ -157,3 +157,14 @@ ni se ha verificado funcionalmente la nueva conversión a enum C.
 - **Validación:** pendiente recompilar NSC y repetir el tutorial. El campo
   mTextureCoords, arreglo de punteros, es otro diagnóstico y no forma parte
   de este cambio. Los errores de tipos NativeSharp también siguen pendientes.
+
+### Compilación e instalación de punteros multinivel
+
+- La pasada O3 anterior terminó con 4 de 28 proyectos compilados usando
+  build 6cb479b3ad7b28dd. Los registros individuales están en
+  Z:/nsc-tutorials/OpenGL-3/ogl/results.
+- NSC compiló con el commit 3140b8644 y se instaló con build hash
+  9b25b3dae9c2948e. Los ejecutables compilado e instalado coinciden en
+  SHA-256 b5705030e344e082359a90c6cd6ff6f7974899f7ca0968545b405ca3cecaabc3.
+- La recompilación dirigida de tutorial09_AssImp está en curso. La
+  construcción del compilador no acredita por sí sola que el campo se importe.
