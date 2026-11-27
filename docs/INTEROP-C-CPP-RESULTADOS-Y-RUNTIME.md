@@ -275,3 +275,19 @@ comprobación no equivale a validar los ejemplos ni las conversiones.
   NativeSharp ni se aceptan enteros distintos de cero.
 - **Validación:** revisión estática y git diff --check. Pendiente que
   el usuario compile e instale NSC y que se repita el tutorial de sombras.
+
+## Pasada O3 solicitada con NSC instalado por el usuario
+
+Se compilaron los 28 proyectos del script con build 789d6522a621e6ea:
+cuatro compilaron (tutoriales 01, 02, 03 y 04) y 24 fallaron. Los logs
+individuales y el resumen se encuentran en
+Z:/nsc-tutorials/OpenGL-3/ogl/results. Las carpetas de los proyectos fallidos
+pueden existir aunque no haya ejecutable; el script las crea antes de compilar.
+
+Los diagnósticos incluyen conversiones de int a uint en common/texture.ns,
+operaciones Count()*sizeof, condiciones y callback del tutorial 12,
+el argumento puntero cero de glTexImage2D en el 16, AntTweakBar en el 17,
+declaraciones múltiples de campos en Particle.ns, y proyectos auxiliares
+sin fuentes o sin Main. La corrección 4cafd1113 para la llamada C con
+cero no estaba en el ejecutable utilizado y no se ha compilado ni validado.
+La compilación no demuestra equivalencia visual ni ejecución de los demos.
