@@ -667,10 +667,13 @@ LLVMValueRef OopLlvmImplementation::lowerValueConstruction(
         //     directly. / ES: T19-002. El valor cero de un struct o una union C (`new S()`) se lee como el tipo
         //     valor que tiene cualquier otro uso del tipo (un `i32` para una union de cuatro bytes), no como su
         //     portador de bytes, asi que una llamada C lo toma directamente.
-        const auto* cImported = cppRecord ? nameLookup_.cppImportedType(*node->targetTypeOrdinal) : nullptr;
-        if (cImported && node->calleeName.empty() &&
-            (cImported->origin == frontend::CppImportedTypeOrigin::CStruct ||
-             cImported->origin == frontend::CppImportedTypeOrigin::CUnion))
+        // T12. The same holds for every imported record that has a value layout: a C struct or union and a C++
+        //     record whose copy, assignment and destruction are trivial. Each has a MIR struct layout, so every
+        //     other value use of the type -- a local load, a parameter, a return -- carries it as
+        //     `llvmType(typeKey)` (an `i64` for an eight-byte record), and a call declared through
+        //     abiParameterType expects that carrier. The construction slot keeps its byte carrier; only the
+        //     value read from it changes. A record without a value layout keeps the byte carrier.
+        if (cppRecord && findStructLayout(mirModel_, node->typeKey) != nullptr)
         {
             carrier = llvmType(node->typeKey, error);
             if (carrier == nullptr) return nullptr;
