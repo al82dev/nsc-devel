@@ -568,8 +568,7 @@ void ProjectMethodBodyModel::analyzeConditionalBranches(
     }
     if (condition.valid && condition.typeKey != "builtin:bool" &&
         condition.typeKey != "builtin:never" &&
-        !(condition.cppForeignCallResult &&
-          classifyImportedFlexibleConversion(condition, "builtin:bool").exists()))
+        !classifyImportedConditionConversion(condition).exists())
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidCondition,

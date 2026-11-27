@@ -1,0 +1,46 @@
+# Tandas de interoperabilidad para los proyectos OpenGL
+
+## SCOPE LOCK
+
+- Objetivo: resolver secuencialmente los impedimentos conocidos para compilar
+  y ejecutar los proyectos de Z:/nsc-tutorials/OpenGL-3/ogl usando las APIs
+  C/C++ reales, sin bindings ni workarounds.
+- Fuente del compilador: A:/nsc-devel. Se preservan las reglas ordinarias de
+  NativeSharp y los tutoriales originales en Z:/project-tutorials.
+- Cada tanda se termina, documenta y compromete antes de compilar NSC y pasar
+  a la siguiente. Si la compilación falla, se corrige en la misma tanda.
+- No ejecutar tests unitarios, baselines ni baterías de pruebas. Al terminar
+  la octava tanda se compilan y ejecutan los proyectos OpenGL; ante errores
+  se vuelve a la tanda correspondiente.
+- No instalar ni sustituir C:/native-sharp: el usuario instala. Los ejecutables
+  exitosos deben tener sus DLL y recursos en sus respectivas carpetas.
+- Cierre: proyectos compilados y ejecutados con comportamiento comprobado o
+  bloqueos reales registrados; la compilación de NSC por sí sola no certifica
+  el comportamiento de los demos.
+
+## Estado de las tandas
+
+| Tanda | Alcance | Estado |
+| --- | --- | --- |
+| 1 | Condiciones de valores C/C++ importados | Implementada; compilación de NSC pendiente |
+| 2 | Callbacks C/C++ | Pendiente |
+| 3 | Constante cero como puntero en llamadas C | Commit 4cafd1113 existente; cotejo y compilación pendientes |
+| 4 | Expresiones numéricas | Pendiente |
+| 5 | Declaraciones de campos | Pendiente |
+| 6 | Fuentes y punto de entrada de proyectos auxiliares | Pendiente |
+| 7 | Dependencia real AntTweakBar | Pendiente |
+| 8 | Salidas, DLL y recursos | Pendiente |
+
+## Tanda 1: condiciones de valores importados
+
+- **Problema observado:** el tutorial 12 usa en condiciones las variables C
+  GLEW_AMD_seamless_cubemap_per_texture y GLEW_ARB_debug_output, ambas
+  GLboolean; el analizador exige bool.
+- **Causa:** la conversión a condición reconocía resultados de llamadas
+  C/C++, pero no otras lecturas directamente marcadas con cppCOrigin.
+- **Cambio:** en condiciones, !, && y ||, clasificar lecturas C/C++
+  numéricas o punteros mediante la conversión extranjera a bool y
+  conservarla al construir HIR. Los valores ordinarios de NativeSharp no
+  reciben esta excepción.
+- **Validación:** revisión estática; falta compilar NSC. No se ha
+  compilado ni ejecutado el tutorial y no se afirma que esté resuelto.

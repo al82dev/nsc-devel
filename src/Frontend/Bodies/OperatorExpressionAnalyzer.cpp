@@ -199,11 +199,9 @@ void ProjectMethodBodyModel::analyzeLogicalBinaryStep(
         return;
     }
     if ((accumulated.typeKey != "builtin:bool" &&
-         !(accumulated.cppForeignCallResult &&
-           classifyImportedFlexibleConversion(accumulated, "builtin:bool").exists())) ||
+         !classifyImportedConditionConversion(accumulated).exists()) ||
         (right.typeKey != "builtin:bool" &&
-         !(right.cppForeignCallResult &&
-           classifyImportedFlexibleConversion(right, "builtin:bool").exists())))
+         !classifyImportedConditionConversion(right).exists()))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,

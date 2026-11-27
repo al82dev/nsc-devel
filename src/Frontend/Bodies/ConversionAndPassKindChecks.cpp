@@ -72,6 +72,17 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyImportedFlexibleConver
     return conversion;
 }
 
+ProjectImplicitConversion ProjectMethodBodyModel::classifyImportedConditionConversion(
+    const ExpressionResult& source) const
+{
+    if (!source.cppCOrigin && !source.cppForeignCallResult)
+        return {ProjectConversionKind::None, 1000, source.typeKey, "builtin:bool", std::nullopt};
+    ProjectImplicitConversion conversion = classifyImportedFlexibleConversion(source, "builtin:bool");
+    if (!conversion.exists() && source.cppCOrigin)
+        conversion = classifyForeignCallNumericResult(nameLookup_, source.typeKey, "builtin:bool");
+    return conversion;
+}
+
 ProjectImplicitConversion ProjectMethodBodyModel::classifyCFrontierConversion(
     const ExpressionResult& source, const MethodParameterSymbol& parameter, std::string_view targetTypeKey,
     bool cLinkage) const

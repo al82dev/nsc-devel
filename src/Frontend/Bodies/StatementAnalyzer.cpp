@@ -407,8 +407,7 @@ void ProjectMethodBodyModel::processIfFrame(
             frame.statement->first(), methodMemberOrdinal, frame.scopeOrdinal, diagnostics);
         if (condition.valid && condition.typeKey != "builtin:bool" &&
             condition.typeKey != "builtin:never" &&
-            !(condition.cppForeignCallResult &&
-              classifyImportedFlexibleConversion(condition, "builtin:bool").exists()))
+            !classifyImportedConditionConversion(condition).exists())
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidCondition,
                 diagnostics::DiagnosticSeverity::Error,
@@ -1945,8 +1944,7 @@ void ProjectMethodBodyModel::analyzeIfStatement(
             currentIf->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
         if (condition.valid && condition.typeKey != "builtin:bool" &&
             condition.typeKey != "builtin:never" &&
-            !(condition.cppForeignCallResult &&
-              classifyImportedFlexibleConversion(condition, "builtin:bool").exists()))
+            !classifyImportedConditionConversion(condition).exists())
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidCondition,
@@ -2002,8 +2000,7 @@ void ProjectMethodBodyModel::analyzeWhileCondition(
         statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
     if (condition.valid && condition.typeKey != "builtin:bool" &&
         condition.typeKey != "builtin:never" &&
-            !(condition.cppForeignCallResult &&
-              classifyImportedFlexibleConversion(condition, "builtin:bool").exists()))
+            !classifyImportedConditionConversion(condition).exists())
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidCondition,
@@ -6592,8 +6589,7 @@ bool ProjectMethodBodyModel::analyzeForCondition(
     if (condition.valid &&
         condition.typeKey != "builtin:bool" &&
         condition.typeKey != "builtin:never" &&
-            !(condition.cppForeignCallResult &&
-              classifyImportedFlexibleConversion(condition, "builtin:bool").exists()))
+            !classifyImportedConditionConversion(condition).exists())
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidCondition,

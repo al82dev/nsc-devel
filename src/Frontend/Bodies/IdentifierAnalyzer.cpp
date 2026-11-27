@@ -1783,8 +1783,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeLogicalN
 if (operation == TokenKind::Bang)
 {
     if (operand.typeKey != "builtin:bool" &&
-        !(operand.cppForeignCallResult &&
-          classifyImportedFlexibleConversion(operand, "builtin:bool").exists()))
+        !classifyImportedConditionConversion(operand).exists())
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,

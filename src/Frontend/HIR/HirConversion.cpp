@@ -254,8 +254,10 @@ void ProjectOopHirModel::convertForeignCondition(
 {
     if (!value || value->typeKey == "builtin:bool") return;
     const auto* binding = expressionType(syntax);
-    if (!binding || !binding->cppForeignCallResult) return;
-    const ProjectImplicitConversion conversion = classifyExpressionConversion(syntax, value->typeKey, "builtin:bool");
+    if (!binding || (!binding->cppForeignCallResult && !binding->cppCOrigin)) return;
+    ProjectImplicitConversion conversion = classifyExpressionConversion(syntax, value->typeKey, "builtin:bool");
+    if (!conversion.exists() && binding->cppCOrigin)
+        conversion = classifyForeignCallNumericResult(nameLookup_, value->typeKey, "builtin:bool");
     if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
         value = wrapImplicitConversion(std::move(value), conversion, syntax);
 }
