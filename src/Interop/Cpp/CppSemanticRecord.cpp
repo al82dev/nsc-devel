@@ -710,8 +710,14 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     //     funcion de un record C++.
     if (!mapped && (!record.isCxx || cppValueFields))
         mapped = projectCppStoredFunctionPointer(field.type, projectOrdinal, moduleName, lookup, record.isCxx);
+    // Arrays of unqualified pointers are field storage, even when the C++ owner is not a value type.
+    // projectCArrayField validates each pointer's target identity and preserves the array dimensions.
+    const bool cppPointerArray = record.isCxx && field.type.kind == CppTypeKind::Array &&
+        arrayElement && arrayElement->kind == CppTypeKind::Pointer &&
+        !arrayElement->isConst && !arrayElement->isVolatile;
     // Item 9.11: an array of enums in a C++ record (GameInput labels). / Un arreglo de enums en un record C++.
-    if (!mapped && (!record.isCxx || (cppValueFields && (scalarArray || enumArray || recordArray))) &&
+    if (!mapped && (!record.isCxx || cppPointerArray ||
+                    (cppValueFields && (scalarArray || enumArray || recordArray))) &&
         field.type.kind == CppTypeKind::Array)
         mapped = projectCArrayField(field.type, projectOrdinal, moduleName, lookup);
     if (!mapped && (!record.isCxx || (cppValueFields && !field.type.isVolatile)) &&

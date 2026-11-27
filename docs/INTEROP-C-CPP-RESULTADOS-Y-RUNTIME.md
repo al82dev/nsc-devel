@@ -170,3 +170,17 @@ ni se ha verificado funcionalmente la nueva conversión a enum C.
   ya no informa el error de aiScene.mMeshes. El proyecto sigue sin compilar:
   permanece el error de mTextureCoords y los errores de tipos NativeSharp.
   Esto verifica que desapareció ese diagnóstico, no la ejecución del demo.
+
+## Campos C++ que son arreglos de punteros
+
+- **Síntoma:** tutorial09_AssImp informa que aiMesh.mTextureCoords,
+  declarado como aiVector3D *[8], no tiene mapeo.
+- **Causa comprobada:** projectCppSemanticInstanceField no invocaba el
+  mapeador de arreglos para un campo C++ cuyo elemento es un puntero.
+- **Cambio:** permite consultar projectCArrayField para arreglos de punteros
+  sin calificar de un record C++, incluso si su dueño no es transportable
+  por valor. Se conservan la verificación de identidad del tipo apuntado,
+  las dimensiones, el acceso al campo y las comprobaciones de layout.
+  No se cambia la construcción ni la copia del objeto dueño.
+- **Pendiente:** construir NSC y recompilar Assimp. No se ha demostrado que
+  el campo se importe ni que su acceso funcione.
