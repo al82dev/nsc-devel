@@ -787,14 +787,6 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     const auto chain = cppPointerChainQualifiers(qualifiedPointerType);
     const bool chainUsable = chain && (!record.isCxx || !cppPointerChainHasVolatile(qualifiedPointerType));
     const CppType& pointerType = chainUsable ? chain->carrier : qualifiedPointerType;
-    const bool scalarChainBase = [&]
-    {
-        const CppType* base = &pointerType;
-        while (base->kind == CppTypeKind::Pointer && base->element) base = base->element.get();
-        return base->kind == CppTypeKind::Boolean || base->kind == CppTypeKind::SignedInteger ||
-            base->kind == CppTypeKind::UnsignedInteger || base->kind == CppTypeKind::Floating ||
-            base->kind == CppTypeKind::Void;
-    }();
     // A C pointee may be `volatile`: the field keeps that qualification (C++ fields keep the previous rule).
     // Un apuntado C puede ser `volatile`: el campo conserva esa calificación (los campos C++ siguen la regla previa).
     if (pointerType.kind == CppTypeKind::Pointer && pointerType.sizeBits == 64 &&
@@ -824,7 +816,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         //     cada nivel intermedio solo agrega `*` a la clave del tipo.
         const CppType* recordPointee = pointerType.element.get();
         std::string extraLevels;
-        while ((!record.isCxx || scalarChainBase) && recordPointee->kind == CppTypeKind::Pointer &&
+        while (recordPointee->kind == CppTypeKind::Pointer &&
                recordPointee->element &&
                !recordPointee->isConst && !recordPointee->isVolatile && extraLevels.size() < 8)
         {

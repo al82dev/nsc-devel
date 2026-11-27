@@ -143,3 +143,17 @@ SHA-256 ed68451c480d1387ff7423035c400350bb81cb64ea6678e90888305085986a4a;
 el compilador informa build hash 6cb479b3ad7b28dd. La compilación de los
 ejemplos O3 está en curso. No se ejecutó la batería de pruebas de NSC
 ni se ha verificado funcionalmente la nueva conversión a enum C.
+
+## Campos C++ con punteros multinivel a records
+
+- **Síntoma:** el tutorial 09 AssImp, con NSC build 6cb479b3ad7b28dd,
+  informó que no podía importar aiScene.mMeshes de tipo aiMesh **.
+- **Causa estática:** projectCppSemanticInstanceField recorría los
+  punteros intermedios de campos C++, pero solo cuando la base era escalar.
+  Para una base record, la búsqueda de identidad recibía otro puntero.
+- **Cambio:** permite recorrer punteros intermedios de campos C++ con base
+  record, conservando las comprobaciones existentes de calificadores,
+  profundidad e identidad del record. No depende de Assimp.
+- **Validación:** pendiente recompilar NSC y repetir el tutorial. El campo
+  mTextureCoords, arreglo de punteros, es otro diagnóstico y no forma parte
+  de este cambio. Los errores de tipos NativeSharp también siguen pendientes.
