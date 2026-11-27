@@ -22,7 +22,7 @@
 
 | Tanda | Alcance | Estado |
 | --- | --- | --- |
-| 1 | Condiciones de valores C/C++ importados | Implementada; compilación de NSC pendiente |
+| 1 | Condiciones de valores C/C++ importados | Implementada y NSC compilado; demo pendiente |
 | 2 | Callbacks C/C++ | Pendiente |
 | 3 | Constante cero como puntero en llamadas C | Commit 4cafd1113 existente; cotejo y compilación pendientes |
 | 4 | Expresiones numéricas | Pendiente |
@@ -42,5 +42,6 @@
   numéricas o punteros mediante la conversión extranjera a bool y
   conservarla al construir HIR. Los valores ordinarios de NativeSharp no
   reciben esta excepción.
-- **Validación:** revisión estática; falta compilar NSC. No se ha
-  compilado ni ejecutado el tutorial y no se afirma que esté resuelto.
+- **Validación:** NSC compiló y el ejecutable arrancó con build
+  4ba4f7e577fdcfed. No se ejecutaron pruebas ni se compiló el tutorial;
+  su comportamiento queda pendiente de la pasada posterior a la tanda 8.
