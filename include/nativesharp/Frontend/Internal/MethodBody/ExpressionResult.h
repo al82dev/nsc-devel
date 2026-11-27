@@ -31,6 +31,9 @@ struct ExpressionResult final
     bool onePastEndAddress = false;
     bool onePastEndPointer = false;
     std::vector<std::size_t> methodCandidates;
+    // EN: Member lookup found an inaccessible member of this name besides methodCandidates, which C++ would still
+    //     rank before checking access (C++ arithmetic argument conversions, T2).
+    bool inaccessibleNamedMember = false;
     std::optional<ProjectIntegerConstant> integerConstant;
     std::optional<language::CallableTrait> callableTrait;
     sema::OwnershipKind ownership = sema::OwnershipKind::None;

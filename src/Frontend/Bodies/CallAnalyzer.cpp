@@ -15,6 +15,7 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectMemberAccessibility.h"
+#include "../CppArithmeticArgumentConversion.h"
 #include "nativesharp/Frontend/ProjectReferenceEscapeEvaluator.h"
 #include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
 #include "nativesharp/Interop/CppInteropSession.h"
@@ -1276,6 +1277,16 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
     const bool cLinkage = candidate.isImportedC || (importedFunction && !cFunction->mangledName.starts_with('?'));
     if (!conversion.exists() && !packElement && (candidate.isImportedC || candidate.isCppExternal || importedFunction))
         conversion = classifyCFrontierConversion(arguments[argumentOrdinal], parameter, conversionTarget, cLinkage);
+    // EN: T2. D3 keeps C's conversions to C linkage; a C++ function converts an arithmetic argument with C++'s own
+    //     standard conversions instead (a `double` for a `float` parameter, an `int` for an `unsigned` one). The
+    //     value for a `const T&` or `T&&` is the converted one, materialized for the call (X1-04, T19-007).
+    if (!conversion.exists() && !packElement && !cLinkage && (candidate.isCppExternal || importedFunction) &&
+        arguments[argumentOrdinal].argumentPassKind == ParameterPassKind::Value &&
+        (parameter.passKind == ParameterPassKind::Value || rvalueArgument))
+    {
+        conversion = classifyCppArithmeticArgumentConversion(arguments[argumentOrdinal].typeKey, conversionTarget);
+        if (conversion.exists()) evaluated.usesCppArithmeticConversion = true;
+    }
     // EN: L-063. A string literal is static NUL-terminated UTF-8, so it reaches a `const char*` (`sbyte const*`,
     //     `byte const*`) parameter of any function, a NativeSharp one included (`Length("wb")`), as it reaches a C
     //     one (Item 3.2). A parameter that may write through the pointer does not receive it. Rank 5: an overload
@@ -7022,6 +7033,11 @@ void ProjectMethodBodyModel::evaluateCallCandidates(
         hasMatchingArity = true;
         candidateBinding.viable = true;
         evaluateCallCandidateArguments(candidateBinding, candidate, resolvedArguments);
+        // EN: T2. C++ ranks an inaccessible overload before checking access: with one of this name, a candidate
+        //     that needs a C++ arithmetic conversion could be chosen where C++ rejects the call, so it is not viable.
+        //     `pick(1.5)` with a public `pick(int)` and a private `pick(double)` stays rejected.
+        if (callee.inaccessibleNamedMember && candidateBinding.usesCppArithmeticConversion)
+            candidateBinding.viable = false;
         if (callee.readonlyReceiver && candidate.isCppExternal && candidate.declaringTypeIsStruct &&
             !candidate.isStatic && !candidate.isReadonly) candidateBinding.viable = false;
         finishCallCandidateEvaluation(
@@ -7182,9 +7198,20 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     ProjectImplicitConversion conversion = classifyImportedFlexibleConversion(argument, conversionTarget);
     const MethodParameterSymbol& parameter = candidate.parameters[parameterOrdinal];
     // Items 3.2 and 3.3: the C conversions at a C/C++ boundary. / Las conversiones C en una frontera C/C++.
+    const bool cLinkage =
+        candidate.isImportedC || (candidate.isCppExternal && !candidate.cppExternalSymbol.starts_with('?'));
     if (!conversion.exists() && !packElement && (candidate.isImportedC || candidate.isCppExternal))
-        conversion = classifyCFrontierConversion(argument, parameter, conversionTarget,
-            candidate.isImportedC || (candidate.isCppExternal && !candidate.cppExternalSymbol.starts_with('?')));
+        conversion = classifyCFrontierConversion(argument, parameter, conversionTarget, cLinkage);
+    // EN: T2. As for a C++ namespace function, a C++ method converts an arithmetic argument with C++'s standard
+    //     conversions. evaluateCallCandidates drops such a candidate when an inaccessible member of this name
+    //     exists, because C++ ranks that member too before checking access (D3, pruebas-tanda-10-acceso).
+    if (!conversion.exists() && !packElement && !cLinkage && candidate.isCppExternal &&
+        argument.argumentPassKind == ParameterPassKind::Value &&
+        (parameter.passKind == ParameterPassKind::Value || rvalueArgument))
+    {
+        conversion = classifyCppArithmeticArgumentConversion(argument.typeKey, conversionTarget);
+        if (conversion.exists()) candidateBinding.usesCppArithmeticConversion = true;
+    }
     // EN: L-063. A string literal is static NUL-terminated UTF-8, so it reaches a `const char*` (`sbyte const*`,
     //     `byte const*`) parameter of any function, a NativeSharp one included (`Length("wb")`), as it reaches a C
     //     one (Item 3.2). A parameter that may write through the pointer does not receive it. Rank 5: an overload

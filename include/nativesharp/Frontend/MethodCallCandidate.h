@@ -59,6 +59,9 @@ struct MethodCallCandidate final
     bool synthesizesEmptyParameterPack = false;
     std::size_t defaultedParameterCount = 0;
     bool isVariadicCandidate = false;
+    // EN: An argument reaches its parameter only through a C++ arithmetic conversion
+    //     (classifyCppArithmeticArgumentConversion), which NativeSharp alone would reject.
+    bool usesCppArithmeticConversion = false;
     std::optional<std::size_t> invalidVariadicArgumentOrdinal;
     // L-064: an argument that may be null for a parameter declared non-null (Clang `_Nonnull`). / Un argumento que
     //     puede ser nulo para un parametro declarado no nulo.

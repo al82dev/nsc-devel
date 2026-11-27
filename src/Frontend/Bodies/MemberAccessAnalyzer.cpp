@@ -1603,7 +1603,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return result;
     if (analyzeMethodGroupMember(
             result, receiver, expression, methods, typeReceiver, receiverType,
-            methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup)) return result;
+            methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup))
+    {
+        result.inaccessibleNamedMember = inaccessibleFound;
+        return result;
+    }
     if (analyzeSynthesizedRootMember(
             result, receiver, expression, typeReceiver, receiverIsStruct,
             receiverIsEnumValue, inaccessibleFound, receiverType,

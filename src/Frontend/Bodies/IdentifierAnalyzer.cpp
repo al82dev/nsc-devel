@@ -923,9 +923,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMemberOr
     }
     if (!methods.empty())
     {
-        return analyzeMethodGroupIdentifier(
+        ExpressionResult group = analyzeMethodGroupIdentifier(
             expression, methods, methodMemberOrdinal, scopeOrdinal,
             accessingTypeOrdinal, thisTypeKey, diagnostics, allowMethodGroup);
+        group.inaccessibleNamedMember = inaccessibleFound;
+        return group;
     }
     if (const std::optional<ExpressionResult> namespaceResult =
             analyzeNamespaceIdentifierFallback(
