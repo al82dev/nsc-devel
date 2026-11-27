@@ -166,5 +166,7 @@ ni se ha verificado funcionalmente la nueva conversión a enum C.
 - NSC compiló con el commit 3140b8644 y se instaló con build hash
   9b25b3dae9c2948e. Los ejecutables compilado e instalado coinciden en
   SHA-256 b5705030e344e082359a90c6cd6ff6f7974899f7ca0968545b405ca3cecaabc3.
-- La recompilación dirigida de tutorial09_AssImp está en curso. La
-  construcción del compilador no acredita por sí sola que el campo se importe.
+- Con build 9b25b3dae9c2948e, la recompilación O3 de tutorial09_AssImp
+  ya no informa el error de aiScene.mMeshes. El proyecto sigue sin compilar:
+  permanece el error de mTextureCoords y los errores de tipos NativeSharp.
+  Esto verifica que desapareció ese diagnóstico, no la ejecución del demo.
