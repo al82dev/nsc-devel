@@ -325,41 +325,47 @@ bool ProjectOopHirModel::acceptOrdinaryConstructionArgument(
             std::move(child), argumentSyntax,
             constructionParameterOwned(construction.binding->selectedConstructorMemberOrdinal, parameterIndex),
             construction.hasOwnedTemporary);
-        // EN: T19-007. A value for a C++ constructor's `T&&` parameter is materialized in a temporary whose
-        //     address the constructor receives, as C++ binds a prvalue.
-        // ES: T19-007. Un valor para un parametro `T&&` de un constructor C++ se materializa en un temporal cuya
-        //     direccion recibe el constructor, como C++ enlaza un prvalue.
-        const auto constructorOrdinal = construction.binding->selectedConstructorMemberOrdinal;
-        if (memberModel_ != nullptr && constructorOrdinal.has_value() &&
-            *constructorOrdinal < memberModel_->members().size() &&
-            parameterIndex < memberModel_->members()[*constructorOrdinal].parameters.size())
-        {
-            const MethodParameterSymbol& parameter =
-                memberModel_->members()[*constructorOrdinal].parameters[parameterIndex];
-            // X1-04/STL: also a value for a `const T&` whose T is not a C++ record. / Tambien un valor para un
-            //     `const T&` cuyo T no es un record C++.
-            const bool constReferenceValue = parameter.cppConstReference && !parameter.pointeeTypeKey.empty() &&
-                !parameter.pointeeTypeKey.starts_with("type:");
-            // EN: T3. A C++ record argument the analysis bound to a `const T&` by value (its type is the referent,
-            //     not the parameter's pointer) is materialized the same way.
-            const bool constReferenceRecord = parameter.cppConstReference &&
-                parameter.pointeeTypeKey.starts_with("type:") && child->typeKey == parameter.pointeeTypeKey;
-            if ((parameter.cppRvalueReference || constReferenceValue || constReferenceRecord) &&
-                !argumentSyntax->auxiliaryText().starts_with("pass:"))
-            {
-                auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress, argumentSyntax,
-                                          std::string(parameter.pointeeTypeKey));
-                temporary->elementTypeKey = parameter.pointeeTypeKey;
-                temporary->children.push_back(std::move(child));
-                child = std::move(temporary);
-            }
-        }
+        child = materializeCppConstructionReferenceArgument(
+            std::move(child), argumentSyntax, construction.binding->selectedConstructorMemberOrdinal, parameterIndex);
         construction.node->children.push_back(std::move(child));
         construction.node->argumentParameterOrdinals.push_back(parameterIndex);
     }
     if (construction.nextArgument == construction.node->syntax->children().size())
         return prepareOrdinaryConstructionTail(construction, error);
     return true;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::materializeCppConstructionReferenceArgument(
+    std::unique_ptr<ProjectOopHirNode> child,
+    const ast::AstNode* argumentSyntax,
+    std::optional<std::size_t> constructorOrdinal,
+    std::size_t parameterIndex) const
+{
+    // EN: T19-007. A value for a C++ constructor's `T&&` parameter is materialized in a temporary whose
+    //     address the constructor receives, as C++ binds a prvalue.
+    // ES: T19-007. Un valor para un parametro `T&&` de un constructor C++ se materializa en un temporal cuya
+    //     direccion recibe el constructor, como C++ enlaza un prvalue.
+    if (memberModel_ == nullptr || !constructorOrdinal.has_value() ||
+        *constructorOrdinal >= memberModel_->members().size() ||
+        parameterIndex >= memberModel_->members()[*constructorOrdinal].parameters.size())
+        return child;
+    const MethodParameterSymbol& parameter = memberModel_->members()[*constructorOrdinal].parameters[parameterIndex];
+    // X1-04/STL: also a value for a `const T&` whose T is not a C++ record. / Tambien un valor para un
+    //     `const T&` cuyo T no es un record C++.
+    const bool constReferenceValue = parameter.cppConstReference && !parameter.pointeeTypeKey.empty() &&
+        !parameter.pointeeTypeKey.starts_with("type:");
+    // EN: T3. A C++ record argument the analysis bound to a `const T&` by value (its type is the referent,
+    //     not the parameter's pointer) is materialized the same way.
+    const bool constReferenceRecord = parameter.cppConstReference &&
+        parameter.pointeeTypeKey.starts_with("type:") && child->typeKey == parameter.pointeeTypeKey;
+    if ((!parameter.cppRvalueReference && !constReferenceValue && !constReferenceRecord) ||
+        parameter.isParameterPack || argumentSyntax->auxiliaryText().starts_with("pass:"))
+        return child;
+    auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress, argumentSyntax,
+                              std::string(parameter.pointeeTypeKey));
+    temporary->elementTypeKey = parameter.pointeeTypeKey;
+    temporary->children.push_back(std::move(child));
+    return temporary;
 }
 
 bool ProjectOopHirModel::appendOrdinaryConstructionPackElement(
@@ -619,6 +625,11 @@ bool ProjectOopHirModel::acceptAllocatorConstructionChild(
         error = "named construction argument has no selected parameter ordinal";
         return false;
     }
+    // EN: T8. As for an ordinary construction, a value for a C++ constructor's `const T&` or `T&&` parameter is
+    //     materialized, and the constructor placed in the allocator's storage receives its address.
+    child = materializeCppConstructionReferenceArgument(
+        std::move(child), construction.argumentSyntaxes[index], construction.binding->selectedConstructorMemberOrdinal,
+        construction.binding->selectedArgumentParameterOrdinals[index]);
     construction.arguments.push_back(std::move(child));
     construction.argumentParameterOrdinals.push_back(
         construction.binding->selectedArgumentParameterOrdinals[index]);

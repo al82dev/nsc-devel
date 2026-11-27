@@ -746,6 +746,12 @@ private:
         internal::OrdinaryConstructionFrameState& construction,
         std::unique_ptr<ProjectOopHirNode> child,
         std::string& error);
+    // T8: a value for a C++ constructor's `const T&` or `T&&` parameter in a materialized temporary.
+    std::unique_ptr<ProjectOopHirNode> materializeCppConstructionReferenceArgument(
+        std::unique_ptr<ProjectOopHirNode> child,
+        const ast::AstNode* argumentSyntax,
+        std::optional<std::size_t> constructorOrdinal,
+        std::size_t parameterIndex) const;
     bool acceptOrdinaryConstructionArgument(
         internal::OrdinaryConstructionFrameState& construction,
         std::unique_ptr<ProjectOopHirNode> child,
