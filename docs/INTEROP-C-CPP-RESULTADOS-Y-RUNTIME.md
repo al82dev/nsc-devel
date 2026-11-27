@@ -239,6 +239,15 @@ pasada. La validación funcional específica de la nueva ruta sigue pendiente.
 
 La corrección 707caa452 compiló en A:/nsc-devel/build-clang/bin/nsc.exe,
 pero no se instaló. El usuario indicó que él compilará e instalará.
-El ejecutable de C:/native-sharp corresponde al build anterior
-cc0ef4d583068c72. La pasada de ejemplos se detuvo antes de terminar;
+En ese momento el ejecutable de C:/native-sharp correspondía al build
+anterior cc0ef4d583068c72. La pasada de ejemplos se detuvo antes de terminar;
 los registros parciales no deben tomarse como un resultado completo.
+
+### Instalación posterior realizada por el usuario
+
+El usuario comunicó que instaló el compilador actualizado. Se comprobó
+que C:/native-sharp/bin/nsc.exe y A:/nsc-devel/build-clang/bin/nsc.exe
+coinciden en SHA-256
+eed6d6ebb36b2f9a12e4494780dcdec8160b9eb839d272609e86af4959d4dc4e.
+El ejecutable instalado informa build hash 789d6522a621e6ea. Esta
+comprobación no equivale a validar los ejemplos ni las conversiones.
