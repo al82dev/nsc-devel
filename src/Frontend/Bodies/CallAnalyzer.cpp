@@ -5700,10 +5700,12 @@ void ProjectMethodBodyModel::analyzeCallArguments(
             std::string invokedReturn;
             std::vector<std::string> invokedParameters;
             std::size_t invokedDelegate = 0;
+            // EN: T10. The binding itself selects the method whose signature, ownership and callback ABI the
+            //     parameter accepts, and reports a signature that none or several match; without a match the argument
+            //     stayed an unreported method group that HIR rejected later.
             if (argumentResult.methodGroup && !callee.methodGroup && isDelegateTypeKey(callee.typeKey) &&
                 delegateSignature(callee.typeKey, invokedReturn, invokedParameters, invokedDelegate) &&
-                argumentOrdinal < invokedParameters.size() &&
-                methodGroupExactlyMatchesDelegate(argumentResult, invokedParameters[argumentOrdinal]))
+                argumentOrdinal < invokedParameters.size())
                 argumentResult = bindMethodGroupToDelegate(argument, argumentResult, invokedParameters[argumentOrdinal],
                     methodMemberOrdinal, scopeOrdinal, diagnostics);
             if (argumentResult.methodGroup && callee.methodGroup)

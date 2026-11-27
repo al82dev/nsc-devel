@@ -548,6 +548,12 @@ std::optional<IterativeExpressionKind> ProjectOopHirModel::iterativeStorageKind(
             if (!address && expressionType(syntax->first()) != nullptr)
                 return IterativeExpressionKind::StorageUnary;
         }
+        // EN: T10. `&F` that the analysis bound to a function pointer or delegate parameter (the method group of F,
+        //     bindMethodGroupToDelegate on the `&` syntax) is that delegate creation, which lowerExpressionImpl
+        //     lowers from its binding; it is not the address of storage, so its operand is not lowered as one.
+        else if (syntax->tokenKind() == lexer::TokenKind::Amp && !address && delegateBinding(syntax) != nullptr &&
+                 delegateBinding(syntax)->kind == MethodDelegateOperationKind::Create)
+            return std::nullopt;
         else if (syntax->tokenKind() == lexer::TokenKind::Amp && !address)
         {
             const MethodNameBinding* target = nameBinding(syntax->first());
