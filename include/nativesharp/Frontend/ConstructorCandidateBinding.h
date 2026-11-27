@@ -23,6 +23,9 @@ struct ConstructorCandidateBinding final
     //     falla en este tipo cerrado (`where T : copy` con un T move-only); la clausula se informa
     //     si ningun otro candidato es viable.
     bool constraintRejected = false;
+    // EN: An argument reaches its parameter only through a C++ arithmetic conversion
+    //     (classifyCppArithmeticArgumentConversion), which NativeSharp alone would reject.
+    bool usesCppArithmeticConversion = false;
     std::vector<ProjectImplicitConversion> conversions;
     std::vector<std::size_t> argumentParameterOrdinals;
     std::vector<std::size_t> defaultedParameterOrdinals;

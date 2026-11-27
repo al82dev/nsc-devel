@@ -323,6 +323,7 @@ void ProjectConstructionModel::evaluateConstructionCandidates(
     //     candidatos ya evaluados en cada crecimiento. Contenido y orden no cambian.
     binding.evaluatedCandidates.reserve(
         binding.evaluatedCandidates.size() + binding.explicitConstructorMemberOrdinals.size());
+    bool inaccessibleMatchingArity = false;
     for (const std::size_t constructorOrdinal : binding.explicitConstructorMemberOrdinals)
     {
         const ClassMemberSymbol& constructor = memberModel_->members()[constructorOrdinal];
@@ -351,7 +352,25 @@ void ProjectConstructionModel::evaluateConstructionCandidates(
         anyMatchingArity = anyMatchingArity || matchingArity;
         accessibleMatchingArity = accessibleMatchingArity ||
             (candidate.accessible && matchingArity);
+        inaccessibleMatchingArity = inaccessibleMatchingArity || (!candidate.accessible && matchingArity);
         binding.evaluatedCandidates.push_back(std::move(candidate));
+    }
+    rejectCppArithmeticBesideInaccessible(binding.evaluatedCandidates, inaccessibleMatchingArity);
+}
+
+// EN: C++ resolves the overloads over every constructor and checks access afterwards, while NativeSharp ranks only
+//     the accessible ones. With an inaccessible constructor of the same arity, a candidate that needs a C++
+//     arithmetic conversion could be chosen where C++ would choose the inaccessible one and reject the
+//     construction, so it is not viable: the construction stays rejected, as before those conversions existed.
+// Complexity: O(candidates). Effects: only clears `viable` of such candidates.
+void ProjectConstructionModel::rejectCppArithmeticBesideInaccessible(
+    std::vector<ConstructorCandidateBinding>& candidates,
+    bool inaccessibleMatchingArity) const
+{
+    if (!inaccessibleMatchingArity) return;
+    for (ConstructorCandidateBinding& candidate : candidates)
+    {
+        if (candidate.usesCppArithmeticConversion) candidate.viable = false;
     }
 }
 

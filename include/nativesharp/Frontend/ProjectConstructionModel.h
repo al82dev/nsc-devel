@@ -268,6 +268,11 @@ private:
     void rejectConstraintFailedCandidate(
         const ClassMemberSymbol& constructor,
         ConstructorCandidateBinding& candidate) const;
+    // EN: Drops the candidates that need a C++ arithmetic conversion when an inaccessible constructor of the same
+    //     arity exists, because C++ would rank that one too before checking access.
+    void rejectCppArithmeticBesideInaccessible(
+        std::vector<ConstructorCandidateBinding>& candidates,
+        bool inaccessibleMatchingArity) const;
     bool reportConstraintRejectedCandidates(
         const std::vector<ConstructorCandidateBinding>& candidates,
         const ast::AstNode* site,

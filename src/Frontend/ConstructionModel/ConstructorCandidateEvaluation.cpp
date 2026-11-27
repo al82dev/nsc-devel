@@ -1,3 +1,4 @@
+#include "../CppArithmeticArgumentConversion.h"
 #include "../ForeignCallResultConversion.h"
 #include "nativesharp/Language/PointerLevelQualifiers.h"
 #include "nativesharp/Frontend/ProjectConstructionModel.h"
@@ -176,6 +177,18 @@ void ProjectConstructionModel::evaluateConstructorArgument(
         argumentTypes[argumentOrdinal].argumentPassKind == ParameterPassKind::Value)
         conversion = classifyForeignCallNumericResult(
             nameLookup_, argumentTypes[argumentOrdinal].typeKey, conversionTarget);
+    // EN: A C++ constructor converts an arithmetic argument to its parameter's type, as C++ does (`mat4(1.0)` with
+    //     a `float const&` parameter, or `double`s for 16 `float const&`). The value for a `const T&` or `T&&` is
+    //     the converted one, which HIR materializes for the construction (X1-04, T19-007). A NativeSharp
+    //     constructor keeps NativeSharp's conversions.
+    if (!conversion.exists() && !packElement && constructor.isCppExternal &&
+        argumentTypes[argumentOrdinal].argumentPassKind == ParameterPassKind::Value &&
+        (parameter.passKind == ParameterPassKind::Value || rvalueArgument))
+    {
+        conversion = classifyCppArithmeticArgumentConversion(
+            argumentTypes[argumentOrdinal].typeKey, conversionTarget);
+        if (conversion.exists()) candidate.usesCppArithmeticConversion = true;
+    }
     // EN: X2. As for a C/C++ function (Item 3.2), a literal reaches a C++ constructor's `const char*` as its
     //     NUL-terminated UTF-8 bytes (`new std.string("text")`).
     // ES: X2. Como para una funcion C/C++ (Item 3.2), un literal llega al `const char*` de un constructor C++ como
