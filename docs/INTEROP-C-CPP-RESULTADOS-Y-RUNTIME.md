@@ -184,3 +184,13 @@ ni se ha verificado funcionalmente la nueva conversión a enum C.
   No se cambia la construcción ni la copia del objeto dueño.
 - **Pendiente:** construir NSC y recompilar Assimp. No se ha demostrado que
   el campo se importe ni que su acceso funcione.
+
+### Recompilación de Assimp tras el arreglo de punteros
+
+NSC compiló con el commit dba0c402e y se instaló con build hash
+7331717062c4d14d. Los binarios compilado e instalado coinciden en SHA-256
+1b6c6dc12a105972c68ac98829133691283f91ac33482226a7a3d03cf575bae4.
+La compilación O3 de tutorial09_AssImp ya no reporta los errores de
+mMeshes ni mTextureCoords. Permanece fallida por seis diagnósticos de
+tipos NativeSharp en texture.ns y tutorial09_AssImp.ns. No se ejecutó el
+demo y la ausencia de esos diagnósticos no demuestra su comportamiento.
