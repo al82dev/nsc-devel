@@ -63,11 +63,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
     const ast::AstNode* expression,
     std::size_t methodMemberOrdinal,
     std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    diagnostics::DiagnosticEngine& diagnostics,
+    bool allowMethodGroup)
 {
     const std::optional<ExpressionResult> operand = analyzeUnaryOperand(
-        expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
+        expression, methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup);
     if (!operand.has_value()) return {};
+    // The enclosing call supplies the function-pointer type for an addressed
+    // method group. Binding that group performs signature and ABI checks.
+    if (allowMethodGroup && expression->tokenKind() == TokenKind::Amp && operand->methodGroup)
+        return *operand;
     if (ExpressionResult cppPrefix; tryCppPrefixIncrement(expression, *operand, methodMemberOrdinal, scopeOrdinal,
                                                           cppPrefix))
         return cppPrefix;

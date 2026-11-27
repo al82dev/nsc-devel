@@ -70,7 +70,7 @@ ProjectMethodBodyModel::analyzeExpressionKindUnaryExpressionOrPostfixExpression(
     {
         case ast::AstNodeKind::UnaryExpression:
         case ast::AstNodeKind::PostfixExpression:
-            result = analyzeUnary(expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
+            result = analyzeUnary(expression, methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup);
             break;
         default:
             break;

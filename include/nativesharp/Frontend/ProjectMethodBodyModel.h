@@ -4261,12 +4261,14 @@ private:
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
-        diagnostics::DiagnosticEngine& diagnostics);
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup);
     std::optional<ExpressionResult> analyzeUnaryOperand(
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
-        diagnostics::DiagnosticEngine& diagnostics);
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup);
     std::optional<ExpressionResult> analyzeOverloadedUnary(
         const ast::AstNode* expression,
         const ExpressionResult& operand,

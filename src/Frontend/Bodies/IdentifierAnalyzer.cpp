@@ -1341,7 +1341,8 @@ ProjectMethodBodyModel::analyzeUnaryOperand(
     const ast::AstNode* expression,
     std::size_t methodMemberOrdinal,
     std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    diagnostics::DiagnosticEngine& diagnostics,
+    bool allowMethodGroup)
 {
 // C7 "definite assignment": `f(out x)` is the one argument form that ASSIGNS its operand
 // instead of reading it -- the callee is obliged to write it (verifyOutParameterAssignments
@@ -1382,7 +1383,8 @@ if (expression->tokenKind() == TokenKind::Amp)
     formingAddressTarget_ = expression->first();
 }
 ExpressionResult operand = analyzeExpression(
-    expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+    expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
+    allowMethodGroup && expression->tokenKind() == TokenKind::Amp);
 formingAddressOperand_ = previousAddressFormation;
 formingAddressTarget_ = previousAddressTarget;
 definiteAssignmentWriteTarget_ = previousWriteTarget;

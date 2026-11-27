@@ -24,7 +24,7 @@
 | Tanda | Alcance | Estado |
 | --- | --- | --- |
 | 1 | Condiciones de valores C/C++ importados | Implementada y NSC compilado; demo pendiente |
-| 2 | Callbacks C/C++ | Pendiente |
+| 2 | Callbacks C/C++ | Implementada; compilación de NSC pendiente |
 | 3 | Constante cero como puntero en llamadas C | Commit 4cafd1113 existente; cotejo y compilación pendientes |
 | 4 | Expresiones numéricas | Pendiente |
 | 5 | Declaraciones de campos | Pendiente |
@@ -56,3 +56,18 @@ Se reconfiguró build-clang con NSC_HOST_OPTIMIZATION=O3 y sin /O2 en las
 opciones Release. Los 641 comandos C/C++ observados contienen /clang:-O3
 como única opción de optimización. NSC se reconstruyó y arrancó con
 build c12325b356ca1239. No se ejecutaron baterías ni ejemplos.
+
+## Tanda 2: callback con dirección de función
+
+- **Problema observado:** tutorial12_extensions pasa &DebugOutputCallback a
+  glDebugMessageCallbackARB; NSC rechaza el grupo de funciones antes de
+  compararlo con el tipo de callback del parámetro.
+- **Causa:** el contexto que permite resolver un grupo de funciones se
+  recibía en el análisis de la expresión, pero el operador & no lo
+  transmitía a su operando.
+- **Cambio:** cuando el contexto admite un grupo de funciones, & conserva
+  ese grupo para que el enlazador de callbacks existente seleccione la firma
+  y compruebe la convención. El operador de dirección de variables sigue
+  por su ruta anterior.
+- **Validación:** revisión estática y git diff --check. Pendiente
+  compilar NSC; no se ha comprobado el tutorial.
