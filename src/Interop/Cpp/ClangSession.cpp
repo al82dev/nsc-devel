@@ -5927,7 +5927,17 @@ public:
             {
                 // T5: also a specialization this unit never named, formed from its description.
                 const auto* tag = tagForTemplateArgument(argument);
-                if (!tag) return std::nullopt;
+                // EN: T4a. This unit declares the template but cannot name the argument's record: the call is
+                //     answered with that reason instead of silently, so its diagnostic is not left without notes.
+                //     A member or operator lookup keeps the silent answer, whose caller has its own diagnostic.
+                if (!tag && qualifiedName.starts_with("@")) return std::nullopt;
+                if (!tag)
+                {
+                    result.diagnostics.push_back("argument " + std::to_string(&argument - argumentTypes.data() + 1) +
+                        " has a C++ record type that the translation unit declaring '" + std::string(qualifiedName) +
+                        "' neither declares nor can form");
+                    return result;
+                }
                 type = context.getCanonicalTagType(tag);
             }
             else type = builtinTemplateArgumentType(context, argument.builtin);
