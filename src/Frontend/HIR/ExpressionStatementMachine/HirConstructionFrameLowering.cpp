@@ -340,7 +340,11 @@ bool ProjectOopHirModel::acceptOrdinaryConstructionArgument(
             //     `const T&` cuyo T no es un record C++.
             const bool constReferenceValue = parameter.cppConstReference && !parameter.pointeeTypeKey.empty() &&
                 !parameter.pointeeTypeKey.starts_with("type:");
-            if ((parameter.cppRvalueReference || constReferenceValue) &&
+            // EN: T3. A C++ record argument the analysis bound to a `const T&` by value (its type is the referent,
+            //     not the parameter's pointer) is materialized the same way.
+            const bool constReferenceRecord = parameter.cppConstReference &&
+                parameter.pointeeTypeKey.starts_with("type:") && child->typeKey == parameter.pointeeTypeKey;
+            if ((parameter.cppRvalueReference || constReferenceValue || constReferenceRecord) &&
                 !argumentSyntax->auxiliaryText().starts_with("pass:"))
             {
                 auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress, argumentSyntax,

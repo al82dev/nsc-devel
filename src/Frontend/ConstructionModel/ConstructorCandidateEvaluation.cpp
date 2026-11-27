@@ -9,6 +9,7 @@
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Frontend/CppOverloadRanking.h"
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
+#include "nativesharp/Frontend/ProjectNameLookup.h"
 
 #include <algorithm>
 #include <utility>
@@ -91,6 +92,14 @@ NamedConstructorArgumentMap mapConstructorArguments(
     return result;
 }
 
+// EN: L-020. A C++ record NativeSharp may copy bitwise (Item 10.1: trivially copyable and destructible).
+bool transportableCppRecord(const ProjectNameLookup* lookup, std::string_view typeKey)
+{
+    if (lookup == nullptr || !typeKey.starts_with("type:")) return false;
+    const std::optional<std::size_t> ordinal = lookup->typeOrdinalForIdentity(typeKey.substr(5));
+    return ordinal.has_value() && lookup->cppTransportValueEligible(*ordinal);
+}
+
 bool isStringLiteralBorrow(
     const MethodParameterSymbol& parameter,
     const MethodExpressionTypeBinding& argument) noexcept
@@ -161,7 +170,18 @@ void ProjectConstructionModel::evaluateConstructorArgument(
         argumentTypes[argumentOrdinal].argumentPassKind == ParameterPassKind::Value &&
         argumentTypes[argumentOrdinal].typeKey != parameter.typeKey &&
         !parameter.pointeeTypeKey.empty() && !parameter.pointeeTypeKey.starts_with("type:");
-    const bool rvalueArgument = !packElement && (parameter.cppRvalueReference || constReferenceValue) &&
+    // EN: T3. A C++ record argument written without `in` binds a constructor's `const T&` as it binds a call's
+    //     (X2-05, L-020): a prvalue (a construction or a call result) is materialized for the construction with no
+    //     copy, and a place of a record NativeSharp may copy bitwise binds the copy materialized for it, which the
+    //     constructor only reads. A place of any other record still binds with `in` (X2-04).
+    const bool constReferenceRecord = !packElement && parameter.cppConstReference &&
+        argumentTypes[argumentOrdinal].argumentPassKind == ParameterPassKind::Value &&
+        argumentTypes[argumentOrdinal].typeKey != parameter.typeKey &&
+        parameter.pointeeTypeKey.starts_with("type:") &&
+        (!sema::isPlaceCategory(argumentTypes[argumentOrdinal].valueCategory) ||
+         transportableCppRecord(nameLookup_, parameter.pointeeTypeKey));
+    const bool rvalueArgument = !packElement &&
+        (parameter.cppRvalueReference || constReferenceValue || constReferenceRecord) &&
         argumentTypes[argumentOrdinal].typeKey != parameter.typeKey;
     std::string conversionTarget = rvalueArgument ? parameter.pointeeTypeKey : parameter.typeKey;
     if (packElement)
