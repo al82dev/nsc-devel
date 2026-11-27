@@ -2389,6 +2389,17 @@ bool ProjectCompilation::compileProjectOopHir(
                     node->kind != ProjectOopHirNodeKind::LocalAddress &&
                     // X2-06: the address of a C++ field. / La direccion de un campo C++.
                     node->kind != ProjectOopHirNodeKind::FieldAddress &&
+                    // EN: T9. The address of an element (`p[i]` of a `T*`, an element of a C array field or of a
+                    //     NativeSharp array), of a parameter, of a static field or of a namespace state identifies the
+                    //     object in place, as a local's or a field's address does: reading a member through it
+                    //     (`p[i].m`) neither copies nor transfers the object. A read of the whole object is the
+                    //     PointerLoad (or value node) above the address, typed as the record, and stays rejected.
+                    node->kind != ProjectOopHirNodeKind::RawElementAddress &&
+                    node->kind != ProjectOopHirNodeKind::ArrayElementAddress &&
+                    node->kind != ProjectOopHirNodeKind::RangeArrayElementAddress &&
+                    node->kind != ProjectOopHirNodeKind::ParameterAddress &&
+                    node->kind != ProjectOopHirNodeKind::StaticFieldAddress &&
+                    node->kind != ProjectOopHirNodeKind::NamespaceStateAddress &&
                     // X2-05: the hidden owner of a receiver temporary, built in place. / El dueno oculto de un
                     //     temporal receptor, construido en su lugar.
                     // X2-05: a NativeSharp function's constructed result, into a local or returned again. / El
