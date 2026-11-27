@@ -77,6 +77,12 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyCFrontierConversion(
     bool cLinkage) const
 {
     const std::string target(targetTypeKey);
+    // C integer constant expressions with value zero are null pointer constants.
+    // Restrict this to the imported C boundary and preserve NativeSharp's own rules.
+    if (cLinkage && parameter.passKind == ParameterPassKind::Value &&
+        ProjectTypeConversion::isPointer(target) && ProjectTypeConversion::isIntegral(source.typeKey) &&
+        source.integerConstant && source.integerConstant->value == 0)
+        return {ProjectConversionKind::NullPointer, 4, source.typeKey, target, std::nullopt};
     // EN: Item 3.2 (D2). A literal reaches a C `const char*` (or `const unsigned char*`) as its NUL-terminated
     //     UTF-8 bytes. A parameter that may write through the pointer does not receive the literal.
     // ES: Item 3.2 (D2). Un literal llega a un `const char*` C (o `const unsigned char*`) como sus bytes UTF-8 con

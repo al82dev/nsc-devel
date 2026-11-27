@@ -262,3 +262,16 @@ comprobación no equivale a validar los ejemplos ni las conversiones.
   otros usos ni de fuentes NativeSharp o desconocidas.
 - **Validación:** revisión estática y git diff --check. La corrección
   todavía no se ha compilado ni incorporado al ejecutable instalado.
+
+## Constante cero como puntero nulo en llamadas C
+
+- **Síntoma:** tutorial16_shadowmaps pasa 0 al noveno parámetro de
+  glTexImage2D; NSC rechaza el candidato porque espera const void *.
+- **Causa:** classifyCFrontierConversion no contemplaba la constante
+  entera cero como puntero nulo en la frontera de una función C.
+- **Cambio:** para parámetros por valor de llamadas con enlace C, se
+  clasifica una constante integral de valor cero como puntero nulo si el
+  destino es un puntero. No se cambia la conversión ordinaria de
+  NativeSharp ni se aceptan enteros distintos de cero.
+- **Validación:** revisión estática y git diff --check. Pendiente que
+  el usuario compile e instale NSC y que se repita el tutorial de sombras.
