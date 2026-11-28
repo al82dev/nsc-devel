@@ -25,6 +25,10 @@ initializers (calls, copies of existing values) keep their current meaning.
 - `src/Frontend/Bodies/AssignmentAnalyzer.cpp`, `tryCppAssignment`: a marked store whose right side is a
   non-addressable `ObjectCreationExpression` does not select C++ assignment; it falls through to the ordinary
   store, which lowers as construction in place.
+- `src/Frontend/ProjectCompilation.cpp`, C++ value lifetime check over HIR: an `Assignment` whose destination is a
+  `NamespaceStateAddress` and whose value is a `ValueConstruction` is accepted, as the same shape with a
+  `FieldAddress` destination already is for field initializers (X2-06). Without it the analysis accepted the
+  initializer and the later check rejected it ("experimental C++ local cannot copy or transfer a C++ value").
 
 ## Pending
 
@@ -36,4 +40,5 @@ initializers (calls, copies of existing values) keep their current meaning.
 
 ## Status
 
-Implemented and built (Release O3). Behavior pending verification.
+Analysis and HIR check changes built (Release O3). The HIR check change was built but the end-to-end compile of a
+state initialized this way was interrupted before it finished: behavior pending verification.

@@ -2412,8 +2412,11 @@ bool ProjectCompilation::compileProjectOopHir(
                         parent->automaticDestruction))) &&
                     // X2-06: the assignment of a field initializer that builds a C++ field. / La asignacion de un
                     //     inicializador que construye un campo C++.
+                    // T18: the dynamic initializer of a namespace state constructs the C++ value in the state's
+                    //     storage, as a field initializer constructs a C++ field.
                     !(node->kind == ProjectOopHirNodeKind::Assignment && node->children.size() == 2 && node->children[0] &&
-                      node->children[0]->kind == ProjectOopHirNodeKind::FieldAddress && node->children[1] &&
+                      (node->children[0]->kind == ProjectOopHirNodeKind::FieldAddress ||
+                       node->children[0]->kind == ProjectOopHirNodeKind::NamespaceStateAddress) && node->children[1] &&
                       node->children[1]->kind == ProjectOopHirNodeKind::ValueConstruction) &&
                     !(node->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow && node->referenceResult &&
                       (node->automaticDestruction || node->cppCalleeDestroyed) && node->localOrdinal &&
