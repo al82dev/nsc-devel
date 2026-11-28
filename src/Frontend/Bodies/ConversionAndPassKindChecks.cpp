@@ -395,8 +395,13 @@ bool ProjectMethodBodyModel::inTemporaryArgumentAllowed(const ExpressionResult& 
         return false;
     const bool writtenTemporary = argument.argumentPassKind == ParameterPassKind::Value && !argument.addressable;
     if (!argument.inTemporaryOperand && !writtenTemporary) return false;
-    if (callee.isReferenceReturn || typeKeyCarriesLifetime(callee.declaredTypeKey) ||
-        ProjectTypeConversion::isPointer(callee.declaredTypeKey))
+    // T21: an `owned` result is a new owner transferred to the caller, not a borrow of the arguments: the borrow
+    //     model never ties its lifetime to argument storage, so a class, string or array result declared owned does
+    //     not keep a temporary from being lent. A reference return and a pointer result still refuse it.
+    const bool ownedResult = callee.declaredOwnership == sema::OwnershipKind::Owned &&
+        !ProjectTypeConversion::isPointer(callee.declaredTypeKey);
+    if (callee.isReferenceReturn || ProjectTypeConversion::isPointer(callee.declaredTypeKey) ||
+        (!ownedResult && typeKeyCarriesLifetime(callee.declaredTypeKey)))
         return false;
     return inTemporaryValueMaterializable(argument);
 }
