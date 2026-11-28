@@ -1156,6 +1156,13 @@ private:
         bool isDeferValueCapture,
         bool ownedQualifierOwnsStorage,
         bool managedDelegate) const;
+    // CC1: the copy constructor of a C++ record for a copy initialization, or why there is none.
+    struct CppCopyConstructorSelection
+    {
+        std::optional<std::size_t> ordinal;
+        std::string reason;
+    };
+    CppCopyConstructorSelection selectCppCopyConstructor(std::string_view typeKey, bool modifiablePlace) const;
     bool variableInfersRaiiOwner(
         const ast::AstNode* variable,
         std::string_view typeKey,
@@ -5361,6 +5368,9 @@ private:
     // CS1: set by validateVariableInitializerConversion when a runtime string initializes a read-only C character
     //     pointer local; finishVariableAnalysis consumes it once the local is registered.
     mutable bool pendingLocalCStringCopy_ = false;
+    // CC1: set by validateVariableOwnershipInitializer when a C++ record local is copy-constructed from a place;
+    //     finishVariableAnalysis stores it on the registered local.
+    mutable std::optional<std::size_t> pendingCppCopyConstructor_;
     // NS304-T10-F05: true mientras se analiza el LHS de un null-conditional write.
     bool activeNullConditionalWrite_ = false;
     std::unordered_set<std::size_t> analyzedCallableMembers_;

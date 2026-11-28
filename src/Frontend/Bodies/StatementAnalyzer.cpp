@@ -3964,8 +3964,69 @@ bool ProjectMethodBodyModel::variableRequiresRaii(
          typeKey.starts_with("iterator:") || typeKey.starts_with("async-iterator:"));
     const bool deferCaptureNeedsRaii = isDeferValueCapture &&
         (isReferenceTypeKey(typeKey) || typeKey == "builtin:string" || managedDelegate);
-    return variable->hasModifier(TokenKind::KwRaii) || ownedQualifierOwnsStorage ||
+    // RC1: a local of C++ record type holds the object itself; its construction, ownership and single destruction
+    //     at the end of its scope do not depend on `raii`, so the keyword is redundant there and does not make the
+    //     local an owner of a separate allocation (which would destroy it a second time).
+    bool cppRecordValue = false;
+    if (nameLookup_ != nullptr && typeKey.starts_with("type:") && !typeKey.ends_with('*'))
+        if (const auto ordinal = nameLookup_->typeOrdinalForIdentity(typeKey.substr(5)))
+            if (const auto* imported = nameLookup_->cppImportedType(*ordinal))
+                cppRecordValue = imported->origin == CppImportedTypeOrigin::CppRecord;
+    const bool raiiKeyword = variable->hasModifier(TokenKind::KwRaii) && !cppRecordValue;
+    return raiiKeyword || ownedQualifierOwnsStorage ||
         foreachEnumeratorNeedsRaii || deferCaptureNeedsRaii;
+}
+
+// CC1: the copy constructor C++ selects for `T x = place;` of a C++ record: `T(T&)` for a modifiable place when
+//     the record declares one, else `T(const T&)`. Deleted, factory and inaccessible constructors are not selected;
+//     the reason names what makes the copy invalid.
+ProjectMethodBodyModel::CppCopyConstructorSelection ProjectMethodBodyModel::selectCppCopyConstructor(
+    std::string_view typeKey, bool modifiablePlace) const
+{
+    CppCopyConstructorSelection result;
+    result.reason = "C++ type '" + std::string(typeKey.substr(5)) + "' declares no copy constructor";
+    if (memberModel_ == nullptr || nameLookup_ == nullptr || !typeKey.starts_with("type:")) return result;
+    const auto ordinal = nameLookup_->typeOrdinalForIdentity(typeKey.substr(5));
+    if (!ordinal) return result;
+    std::optional<std::size_t> constReference;
+    std::optional<std::size_t> mutableReference;
+    bool deleted = false;
+    bool inaccessible = false;
+    for (const std::size_t member : memberModel_->findMembers(*ordinal, ".ctor"))
+    {
+        if (member >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& constructor = memberModel_->members()[member];
+        if (!constructor.isCppExternal || constructor.cppFactoryConstructor || constructor.parameters.size() != 1)
+            continue;
+        const MethodParameterSymbol& parameter = constructor.parameters[0];
+        if (parameter.pointeeTypeKey != typeKey || parameter.cppRvalueReference) continue;
+        const bool byConst = parameter.passKind == ParameterPassKind::In;
+        const bool byMutable = parameter.passKind == ParameterPassKind::Ref;
+        if (!byConst && !byMutable) continue;
+        if (constructor.cppDeleted)
+        {
+            deleted = true;
+            continue;
+        }
+        if (constructor.accessibility != ClassMemberAccessibility::Public)
+        {
+            inaccessible = true;
+            continue;
+        }
+        if (byConst) constReference = member;
+        else mutableReference = member;
+    }
+    if (modifiablePlace && mutableReference.has_value()) result.ordinal = mutableReference;
+    else if (constReference.has_value()) result.ordinal = constReference;
+    if (result.ordinal.has_value()) return result;
+    if (deleted)
+        result.reason = "the copy constructor of C++ type '" + std::string(typeKey.substr(5)) + "' is deleted";
+    else if (inaccessible)
+        result.reason = "the copy constructor of C++ type '" + std::string(typeKey.substr(5)) + "' is not public";
+    else if (mutableReference.has_value())
+        result.reason = "the copy constructor of C++ type '" + std::string(typeKey.substr(5)) +
+            "' takes a non-const reference and the source is read-only";
+    return result;
 }
 
 bool ProjectMethodBodyModel::variableInfersRaiiOwner(
@@ -4313,19 +4374,24 @@ void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
         !isCompilerGeneratedMatchSnapshot && !isCompilerGeneratedForeachViewSnapshot &&
         variable->first()->kind() != ast::AstNodeKind::MoveExpression)
     {
-        // T20: a non-trivial C++ record is not copied implicitly, but it is copied explicitly with its copy
-        //     constructor. move(source) would leave the source in its moved-from state, which is not what a copy
-        //     of an element or a field means, so both forms are named.
-        const std::string remedy = cppRecordTypeKey(typeKey)
-            ? "; a C++ record with a non-trivial copy is copied explicitly with its copy constructor "
-              "(new T(in source)) or transferred with move(source)"
-            : "; use move(source)";
-        diagnostics.report(
-            diagnostics::DiagnosticId::NS3020InvalidValueCategory,
-            diagnostics::DiagnosticSeverity::Error,
-            variable->first()->range(),
-            "move-only value of type '" + std::string(typeKey) +
-                "' cannot be copied into local '" + variable->text() + "'" + remedy);
+        // CC1: `T x = place;` of a non-trivial C++ record copy-constructs x from the place, as C++ does, when the
+        //     record has a usable copy constructor; otherwise the diagnostic names why the copy is not valid.
+        const CppCopyConstructorSelection copy = cppRecordTypeKey(typeKey)
+            ? selectCppCopyConstructor(typeKey, initializer.assignable)
+            : CppCopyConstructorSelection{};
+        if (copy.ordinal.has_value())
+            pendingCppCopyConstructor_ = copy.ordinal;
+        else
+        {
+            const std::string remedy = !cppRecordTypeKey(typeKey) ? "; use move(source)"
+                : "; " + copy.reason + "; transfer it with move(source)";
+            diagnostics.report(
+                diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                diagnostics::DiagnosticSeverity::Error,
+                variable->first()->range(),
+                "move-only value of type '" + std::string(typeKey) +
+                    "' cannot be copied into local '" + variable->text() + "'" + remedy);
+        }
     }
     // EN: Freeze C-01: only a local that can hold the reference copies the owner. A local
     //     of a value type (`int primitive = sum;` through a user conversion) reads it.
@@ -6318,6 +6384,8 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
     inferredOwnerFromOwnedInitializer_ = false;
     // CS1: the same for the C string copy of a pointer local.
     pendingLocalCStringCopy_ = false;
+    // CC1: the same for the copy constructor of a C++ record local.
+    pendingCppCopyConstructor_.reset();
     analyzeVariableInitializer(
         precomputedVarInitializer, pendingLocalBorrow, pendingReferenceEscapeOrigin,
         pendingReferencePlaceKey, pendingReferenceReborrowSourceLocalOrdinal,
@@ -6378,6 +6446,12 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
     recordVariableShadowing(variable, methodMemberOrdinal, scopeOrdinal);
     const std::size_t localOrdinal = registerVariableLocal(
         std::move(local), variable, scopeOrdinal, isVariableLengthArray);
+    // CC1: the local is copy-constructed from its initializer place with the selected copy constructor.
+    if (pendingCppCopyConstructor_.has_value())
+    {
+        locals_[localOrdinal].cppCopyConstructorOrdinal = pendingCppCopyConstructor_;
+        pendingCppCopyConstructor_.reset();
+    }
     // CS1: the pointer local owns the NUL-terminated copy of its string initializer. The copy is frame storage, so a
     //     static local (module lifetime) and a callable that suspends (its frame is rebuilt on resume) cannot hold
     //     it. Rooting the local at itself makes the frame-storage checks (return, store, capture) apply to it.

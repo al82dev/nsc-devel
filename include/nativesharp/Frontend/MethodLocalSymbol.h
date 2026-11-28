@@ -64,6 +64,9 @@ struct MethodLocalSymbol final
     //     the string's bytes that it points at. The copy is frame storage (like a VLA), so the local is also its own
     //     variableLengthArrayRootLocalOrdinal and the same return, store and capture checks keep it in the frame.
     bool ownsCStringCopy = false;
+    // CC1: a local of a non-trivial C++ record initialized from a place of that record is copy-constructed in its
+    //     own storage with this copy constructor (member ordinal), as C++ initializes `T x = place;`.
+    std::optional<std::size_t> cppCopyConstructorOrdinal;
     std::string variableLengthArrayElementTypeKey;
     const ast::AstNode* variableLengthArrayCountSyntax = nullptr;
     // Source-order dimensions for multidimensional VLAs plus the compiler-generated locals

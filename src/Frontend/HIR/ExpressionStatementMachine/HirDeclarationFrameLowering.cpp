@@ -184,7 +184,8 @@ bool ProjectOopHirModel::nextVariableDeclarationChild(
     if (variable.mode == VariableDeclarationFrameMode::Initializer)
     {
         syntax = frame.syntax->first();
-        addressContext = variable.local->isReference;
+        // CC1: a C++ record local copy-constructed from a place takes the place's address.
+        addressContext = variable.local->isReference || variable.local->cppCopyConstructorOrdinal.has_value();
         return true;
     }
     if (variable.mode == VariableDeclarationFrameMode::VlaSingle)
@@ -254,6 +255,24 @@ bool ProjectOopHirModel::acceptVariableInitializer(
 {
     VariableDeclarationFrameState& variable = *frame.variableDeclaration;
     const MethodLocalSymbol& local = *variable.local;
+    // CC1: `T x = place;` of a non-trivial C++ record is the construction of x with the selected copy constructor
+    //     from the place's address, as the result of `return o;` is built (X2-05); x is then an ordinary C++ local
+    //     its scope destroys once.
+    if (local.cppCopyConstructorOrdinal.has_value() && local.typeKey.starts_with("type:") && nameLookup_ != nullptr)
+        if (const auto record = nameLookup_->typeOrdinalForIdentity(std::string_view(local.typeKey).substr(5)))
+        {
+            const ast::AstNode* source = frame.syntax->first();
+            auto pointer = makeNode(ProjectOopHirNodeKind::AddressValue, source, local.typeKey + "*");
+            pointer->children.push_back(std::move(child));
+            auto construction = makeNode(ProjectOopHirNodeKind::ValueConstruction, source, local.typeKey);
+            construction->targetTypeOrdinal = *record;
+            construction->memberOrdinal = *local.cppCopyConstructorOrdinal;
+            construction->argumentCount = 1;
+            construction->children.push_back(std::move(pointer));
+            variable.node->children.push_back(std::move(construction));
+            variable.mode = VariableDeclarationFrameMode::Ready;
+            return true;
+        }
     variable.node->placementConstructed =
         child->kind == ProjectOopHirNodeKind::PlacementConstruction;
     ProjectImplicitConversion conversion = local.isReference
