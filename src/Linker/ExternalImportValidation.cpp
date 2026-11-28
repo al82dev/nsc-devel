@@ -11,7 +11,9 @@
 #include <unordered_set>
 #include <vector>
 
+#if defined(_WIN32)
 #include <Windows.h>
+#endif
 
 namespace nativesharp::linker
 {
@@ -36,6 +38,8 @@ bool isApiSetName(std::string_view dllName)
 std::vector<std::filesystem::path> systemSearchDirectories()
 {
     std::vector<std::filesystem::path> directories;
+    // Hosts other than Windows have no Windows system directories; only explicit DLL paths are checked.
+#if defined(_WIN32)
     wchar_t buffer[MAX_PATH] = {};
     const UINT systemLength = GetSystemDirectoryW(buffer, MAX_PATH);
     if (systemLength > 0 && systemLength < MAX_PATH) directories.emplace_back(buffer);
@@ -56,6 +60,7 @@ std::vector<std::filesystem::path> systemSearchDirectories()
         if (separator == std::wstring_view::npos) break;
         remaining.remove_prefix(separator + 1);
     }
+#endif
     return directories;
 }
 

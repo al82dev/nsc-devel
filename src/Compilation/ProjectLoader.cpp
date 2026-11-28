@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
@@ -1193,6 +1194,7 @@ ProjectLoadOptions effectiveLoadOptions(const ProjectLoadOptions& options)
     {
         return effectiveOptions;
     }
+#if defined(_WIN32)
     char* environmentRoot = nullptr;
     std::size_t environmentRootLength = 0;
     if (_dupenv_s(&environmentRoot, &environmentRootLength, "NS_LIB_ROOT") == 0 &&
@@ -1203,6 +1205,15 @@ ProjectLoadOptions effectiveLoadOptions(const ProjectLoadOptions& options)
             effectiveOptions.libraryReferenceFallbackRoot = root.lexically_normal();
     }
     std::free(environmentRoot);
+#else
+    const char* environmentRoot = std::getenv("NS_LIB_ROOT");
+    if (environmentRoot != nullptr && *environmentRoot != '\0')
+    {
+        const std::filesystem::path root{environmentRoot};
+        if (root.is_absolute())
+            effectiveOptions.libraryReferenceFallbackRoot = root.lexically_normal();
+    }
+#endif
     return effectiveOptions;
 }
 

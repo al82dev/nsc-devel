@@ -63,6 +63,7 @@ void applyEnvironmentLibraryRoot(CompilerInvocation& invocation)
     if (invocation.libraryReferenceRootSeen ||
         invocation.projectLoadOptions.libraryReferenceRoot.has_value())
         return;
+#if defined(_WIN32)
     char* environmentRoot = nullptr;
     std::size_t environmentRootLength = 0;
     if (_dupenv_s(&environmentRoot, &environmentRootLength, "NS_LIB_ROOT") == 0 &&
@@ -74,6 +75,16 @@ void applyEnvironmentLibraryRoot(CompilerInvocation& invocation)
                 root.lexically_normal();
     }
     std::free(environmentRoot);
+#else
+    const char* environmentRoot = std::getenv("NS_LIB_ROOT");
+    if (environmentRoot != nullptr && *environmentRoot != '\0')
+    {
+        const std::filesystem::path root{environmentRoot};
+        if (root.is_absolute())
+            invocation.projectLoadOptions.libraryReferenceFallbackRoot =
+                root.lexically_normal();
+    }
+#endif
 }
 
 void applyProjectSettings(
@@ -409,12 +420,18 @@ ExitCode validateCompilerLinkOptions(
     //     entorno applyEnvironmentLibraryRoot.
     if (invocation.crtStartup)
     {
+#if defined(_WIN32)
         char* configured = nullptr;
         std::size_t configuredLength = 0;
         const bool present = _dupenv_s(&configured, &configuredLength, "NSC_LINKER") == 0 &&
             configured != nullptr && *configured != '\0';
         const std::string linker = present ? std::string(configured) : std::string();
         std::free(configured);
+#else
+        const char* configured = std::getenv("NSC_LINKER");
+        const bool present = configured != nullptr && *configured != '\0';
+        const std::string linker = present ? std::string(configured) : std::string();
+#endif
         if (present)
         {
             std::string name = std::filesystem::path(linker).filename().string();

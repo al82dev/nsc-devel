@@ -123,7 +123,7 @@ bool applyLines(
 std::string publicationLine(const CachePruneIndexRecord& record)
 {
     return "+ " + std::string(1, record.kind) + " " + record.key + " " +
-        std::to_string(record.publication.time_since_epoch().count()) + " " +
+        std::to_string(static_cast<long long>(record.publication.time_since_epoch().count())) + " " +
         std::to_string(record.size) + "\n";
 }
 

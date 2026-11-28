@@ -30,7 +30,7 @@ bool toolDigest(
     const std::filesystem::file_time_type writeTime = std::filesystem::last_write_time(tool, timeError);
     const bool memoizable = !sizeError && !timeError;
     const std::string memoKey = tool.generic_string() + "|" + std::to_string(fileSize) + "|" +
-        std::to_string(writeTime.time_since_epoch().count());
+        std::to_string(static_cast<long long>(writeTime.time_since_epoch().count()));
     const std::lock_guard<std::mutex> lock(mutex);
     if (memoizable)
     {

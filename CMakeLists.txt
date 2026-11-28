@@ -892,6 +892,13 @@ if(LLVM_FOUND)
         target_include_directories(nsc_cpp_interop PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
         target_include_directories(nsc_cpp_interop SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
         target_link_libraries(nsc_cpp_interop PRIVATE nsc_compilation clangTooling clangCodeGen clangUnifiedSymbolResolution)
+        # LLVM and Clang built without RTTI provide no type information. Outside MSVC, the sources that
+        # derive from their classes are compiled without RTTI too, so they do not reference it.
+        if(NOT MSVC AND NOT LLVM_ENABLE_RTTI)
+            set_source_files_properties(src/Interop/Cpp/ClangCancellationFileSystem.cpp
+                src/Interop/Cpp/ClangDiagnosticConsumer.cpp src/Interop/Cpp/ClangSessionAction.cpp
+                PROPERTIES COMPILE_OPTIONS "-fno-rtti")
+        endif()
         # EN: CppCRecordMetadataCodec.cpp (nsc_precompiled) calls cppCInlineLinkSymbol and
         #     projectCppCxxEnumConstant, defined in CppSemanticInventory.cpp of this library. The library is
         #     not exported, so the dependency is limited to the build tree.
