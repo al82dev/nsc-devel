@@ -2240,11 +2240,29 @@ bool planCppImplicitLifetimeFromValues(
         const bool factory = !value->constructionOrdinal && value->memberOrdinal &&
             *value->memberOrdinal < members.members().size() &&
             members.members()[*value->memberOrdinal].cppFactoryConstructor;
-        if (!factory && (!value->constructionOrdinal || *value->constructionOrdinal >= constructions.size() ||
+        // CC2: the copy of a place into a C++ local (CC1) is built with the selected copy constructor from the
+        //     place's address; it has no construction site, only that constructor. / La copia de un lugar a un local
+        //     C++ (CC1) se construye con el constructor de copia seleccionado desde la direccion del lugar; no tiene
+        //     sitio de construccion, solo ese constructor.
+        const bool copy = !value->constructionOrdinal && value->memberOrdinal &&
+            *value->memberOrdinal < members.members().size() && value->argumentCount == 1 &&
+            value->children.size() == 1 && value->children[0] &&
+            value->children[0]->kind == frontend::ProjectOopMirNodeKind::AddressValue &&
+            value->children[0]->typeKey == value->typeKey + "*";
+        if (!factory && !copy && (!value->constructionOrdinal || *value->constructionOrdinal >= constructions.size() ||
             !value->memberOrdinal || *value->memberOrdinal >= members.members().size()))
-        { error = "discarded C++ value has incomplete construction identity"; return false; }
+        {
+            // CL2: name the type, so a construction without a selected constructor can be found. / Nombra el tipo,
+            //     para poder encontrar una construccion sin constructor seleccionado.
+            const auto* imported = lookup.cppImportedType(*value->targetTypeOrdinal);
+            error = std::string(local ? "C++ local" : "discarded C++ value") + " of type '" +
+                imported->identity.fullyQualifiedName() + "' has incomplete construction identity" +
+                (value->memberOrdinal ? "" : " (no constructor was selected)");
+            return false;
+        }
         const auto& constructor = members.members()[*value->memberOrdinal];
-        if ((!factory && (constructions[*value->constructionOrdinal].targetTypeOrdinal != *value->targetTypeOrdinal ||
+        if ((!factory && !copy &&
+             (constructions[*value->constructionOrdinal].targetTypeOrdinal != *value->targetTypeOrdinal ||
                           constructions[*value->constructionOrdinal].selectedConstructorMemberOrdinal !=
                               value->memberOrdinal)) ||
             constructor.declaringTypeOrdinal != *value->targetTypeOrdinal ||
