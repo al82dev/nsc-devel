@@ -390,8 +390,10 @@ void ProjectMemberModel::validateStaticOwnedMember(
     // X2-06: an automatic property's getter returns its backing field by copy, which a non-trivial C++ record does not
     //     allow implicitly (it failed later as "experimental C++ local cannot copy", with no location). / El getter de
     //     una propiedad automatica devuelve su campo por copia, que un record C++ no trivial no permite.
+    // T13: both checks below need the record's observed value traits; the record observation pass has none yet.
     if (symbol.kind == ClassMemberKind::Field && !symbol.isStatic && symbol.name.starts_with("__nsc_backing_") &&
-        nameLookup_ != nullptr && symbol.declaredTypeKey.starts_with("type:") && !symbol.declaredTypeKey.ends_with('*'))
+        nameLookup_ != nullptr && !nameLookup_->cppValueTraitsPending() &&
+        symbol.declaredTypeKey.starts_with("type:") && !symbol.declaredTypeKey.ends_with('*'))
         if (const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(symbol.declaredTypeKey).substr(5)))
             if (const auto* imported = nameLookup_->cppImportedType(*ordinal);
                 imported && imported->origin == CppImportedTypeOrigin::CppRecord &&
@@ -409,6 +411,7 @@ void ProjectMemberModel::validateStaticOwnedMember(
                 return;
             }
     if (symbol.kind == ClassMemberKind::Field && symbol.isStatic && nameLookup_ != nullptr &&
+        !nameLookup_->cppValueTraitsPending() &&
         symbol.declaredTypeKey.starts_with("type:") && !symbol.declaredTypeKey.ends_with('*'))
         if (const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(symbol.declaredTypeKey).substr(5)))
             if (const auto* imported = nameLookup_->cppImportedType(*ordinal);

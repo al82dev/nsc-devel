@@ -228,6 +228,11 @@ public:
     // Item 10.1: a value NativeSharp may pass, return and copy (its default constructor may be non-trivial).
     // Item 10.1: un valor que NativeSharp puede pasar, devolver y copiar (su constructor por defecto puede no ser trivial).
     bool cppTransportValueEligible(std::size_t typeOrdinal) const noexcept;
+    // T13. A lookup built before the value traits of live C++ records are observed (the record observation pass)
+    //     answers false for every eligibility query above; checks that reject a declaration because a record is not a
+    //     value defer to the lookup that has the traits.
+    void setCppValueTraitsPending(bool pending) noexcept;
+    bool cppValueTraitsPending() const noexcept;
     // EN: T13-007. The NativeSharp structs a C++ session mirrors for a template argument, by identity key.
     // ES: T13-007. Los structs NativeSharp que una sesion C++ refleja para un argumento de plantilla, por clave.
     void setCppNativeMirrorTypes(std::set<std::string, std::less<>> identityKeys);
@@ -738,6 +743,7 @@ private:
     std::unordered_map<const ast::TypeSyntax*, std::size_t> bindingBySyntax_;
     const ProjectGenericModel* genericModel_ = nullptr;
     bool genericArgumentPrepass_ = false;
+    bool cppValueTraitsPending_ = false;
     std::unordered_map<const ast::TypeSyntax*, TypeNameBinding> authoredGenericArgumentBindings_;
     std::vector<ExpressionTypeNameBinding> expressionTypeBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> expressionTypeBindingBySyntax_;
