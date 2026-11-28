@@ -4312,12 +4312,21 @@ void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
     if (isMoveOnly && initializer.valid && initializer.addressable &&
         !isCompilerGeneratedMatchSnapshot && !isCompilerGeneratedForeachViewSnapshot &&
         variable->first()->kind() != ast::AstNodeKind::MoveExpression)
+    {
+        // T20: a non-trivial C++ record is not copied implicitly, but it is copied explicitly with its copy
+        //     constructor. move(source) would leave the source in its moved-from state, which is not what a copy
+        //     of an element or a field means, so both forms are named.
+        const std::string remedy = cppRecordTypeKey(typeKey)
+            ? "; a C++ record with a non-trivial copy is copied explicitly with its copy constructor "
+              "(new T(in source)) or transferred with move(source)"
+            : "; use move(source)";
         diagnostics.report(
             diagnostics::DiagnosticId::NS3020InvalidValueCategory,
             diagnostics::DiagnosticSeverity::Error,
             variable->first()->range(),
             "move-only value of type '" + std::string(typeKey) +
-                "' cannot be copied into local '" + variable->text() + "'; use move(source)");
+                "' cannot be copied into local '" + variable->text() + "'" + remedy);
+    }
     // EN: Freeze C-01: only a local that can hold the reference copies the owner. A local
     //     of a value type (`int primitive = sum;` through a user conversion) reads it.
     // ES: Congelamiento C-01: solo un local que puede guardar la referencia copia al owner.
