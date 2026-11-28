@@ -39,6 +39,16 @@ public:
         target::CpuFeatureLevel preferred,
         target::CpuFeatureLevel available,
         std::string& error);
+    // Target machines for TargetInfo::DefaultX64(), with the same overloads as createWindowsX64.
+    static std::unique_ptr<LlvmTargetMachine> createDefaultX64(std::string& error);
+    static std::unique_ptr<LlvmTargetMachine> createDefaultX64(
+        LlvmOptimizationLevel level,
+        std::string& error);
+    static std::unique_ptr<LlvmTargetMachine> createDefaultX64(
+        LlvmOptimizationLevel level,
+        target::CpuFeatureLevel preferred,
+        target::CpuFeatureLevel available,
+        std::string& error);
     static std::unique_ptr<LlvmTargetMachine> createWindowsArm64(std::string& error);
     static std::unique_ptr<LlvmTargetMachine> createWindowsArm64(
         LlvmOptimizationLevel level,

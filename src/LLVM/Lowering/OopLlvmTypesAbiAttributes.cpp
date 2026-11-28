@@ -6,6 +6,7 @@
 #include "OopLlvmSupport.h"
 
 #include <algorithm>
+#include <cstring>
 #include <limits>
 
 namespace nativesharp::llvm_backend

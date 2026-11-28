@@ -769,7 +769,7 @@ bool sourceTypeForGenericSpecialization(const interop::LibraryMetadata &metadata
 
 void Driver::printDataLayout(std::ostream &output)
 {
-    const target::TargetDataLayout dataLayout = target::TargetDataLayout::WindowsX64();
+    const target::TargetDataLayout dataLayout = target::TargetDataLayout::DefaultX64();
     output << "endianness: little\n"
            << "max-natural-alignment: " << dataLayout.maximumNaturalAlignment() << "\n"
            << "type size align\n";

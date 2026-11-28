@@ -508,6 +508,26 @@ clang++ -static -stdlib=libc++ -rtlib=compiler-rt -unwindlib=libunwind -fuse-ld=
   Linux-only `nsc` without the Win64 backend may not need it.
 - Acceptance: `file nsc` reports "statically linked"; `ldd nsc` reports "not a dynamic executable".
 
+### 7.1 Result of the first static build (2026-11-28)
+
+- [V] The LLVM and Clang static libraries in `/opt/clang-llvm` are built against **libstdc++** (574 `__cxx11`
+  symbols in `libLLVMSupport.a`, 0 libc++ symbols) and with `LLVM_ENABLE_RTTI OFF`. `nsc` must therefore use
+  libstdc++ (GCC 15 `libstdc++.a`), not libc++. The libc++ plan above does not apply to this toolchain.
+- [V] Configure used: Clang/Clang++ 23.1.0 from `/opt/clang-llvm`, `-static -fuse-ld=bfd`,
+  `NSC_ENABLE_CPP_INTEROP=ON`, `libz.a`, `libzstd.a`, `libxml2.a`, `NSC_NSLINK_EXECUTABLE=/bin/true`.
+- [V] Two more compile errors appeared with libstdc++: missing `<cstring>` in
+  `src/Frontend/Generics/Cache/TemplateCatalogCodec.cpp` and `src/LLVM/Lowering/OopLlvmTypesAbiAttributes.cpp`.
+- [V] Link needed `-fno-rtti` for `ClangCancellationFileSystem.cpp`, `ClangDiagnosticConsumer.cpp` and
+  `ClangSessionAction.cpp` (they derive from LLVM/Clang classes). `ClangSession.cpp` keeps RTTI because it uses
+  `dynamic_cast`. The CMake block applies only when `NOT MSVC AND NOT LLVM_ENABLE_RTTI`.
+- [V] Result: `bin/nsc` is an ELF 64-bit statically linked executable; `ldd` reports "not a dynamic
+  executable"; `nsc --version` runs.
+- [V] Link warnings: `dlopen`, `getpwnam_r`, `getpwuid_r` (from `libLLVMSupport.a`) in a static binary.
+- [V] `ninja nsc` still fails after the link: the `nsc` target runs a post-link step that generates the
+  toolchain contract files and rejects `NSC_LINKER=/bin/true` ("must name nslink.exe or lld-link.exe").
+- [V] `nsc --check` stops with "NativeSharp.Core package was not found": no `NativeSharpCore.lib` is available
+  on the Linux side.
+
 ## 8. Decisions for the owner
 
 1. **Linker for building `nsc`**: `/opt/clang-llvm/bin/ld.lld` does not run (ICU 70 missing). Options:
@@ -569,3 +589,29 @@ Windows lines stay byte-identical.
   [V] `/tmp` in WSL is not persistent across distro restarts.
 
 Nothing inside `/root/nsc-devel` was modified except this document.
+
+## 12. Progress on `nativesharp-linux` (2026-11-28)
+
+- [V] CMake: on hosts other than Windows, NSLink has no default and is not required; build-time `nsc` steps
+  receive `NSC_LINKER` only when NSLink is configured (`NSC_LINKER_ENVIRONMENT`). `ninja nsc` completes on
+  Linux, including the generated toolchain contract files and `NativeSharp.Runtime.Win32.lib`.
+- [V] CMake option `NSC_DEFAULT_TARGET` (`win64` | `linux-x64`), default by host. `linux-x64` defines
+  `NSC_DEFAULT_TARGET_LINUX_X64`.
+- [V] Target layer: `OperatingSystem::Linux`, `ObjectFormat::ELF`, `TargetInfo::LinuxX64()`,
+  `TargetInfo::DefaultX64()`, `TargetDataLayout::LinuxX64()`, `TargetDataLayout::DefaultX64()`,
+  `LlvmTargetMachine::createDefaultX64()`. Triple `x86_64-unknown-linux-gnu`, ABI name "System V AMD64 ABI".
+  On a `win64` build `DefaultX64()` returns `WindowsX64()`.
+- [V] The 40 hard-wired factory calls of section 4.2 outside `src/Linker/` and `src/Runtime/` now call the
+  `DefaultX64` forms (18 files). The Win64 backend keeps `WindowsX64`.
+- [V] Object verification: `ElfObjectVerifier` (x86-64 ELF relocatable) and `TargetObjectVerifier`, which
+  selects COFF or ELF from `TargetInfo::DefaultX64()`. The driver and `ProjectOopObjectGenerator` use it; the
+  COFF messages and output text are unchanged for `win64`.
+- [V] `nsc --print-target` on the Linux build: `linux`, `ELF`, `System V AMD64 ABI`, `x86_64-unknown-linux-gnu`.
+- [V] `nsc --emit-obj examples/tutorial_01_hello_mundo/Main.ns` produces an ELF 64-bit x86-64 relocatable
+  object at O0, O1, O2 and O3.
+- [V] `nsc --check` on the 23 `examples/tutorial_*`: 20 pass; the 3 failures report language errors
+  (`expected ';', found 'intHash'`, `PriorityQueue does not name a unique visible generic ... template`).
+  [NV] Whether the Windows `nsc` reports the same three.
+- [V] Undefined symbols of that object: `__nativesharp_alloc`, `__nativesharp_console_write`,
+  `__nativesharp_free`, `__nativesharp_trap`, NativeSharp.Core symbols, `memcpy`.
+- Next: Linux runtime (the `__nativesharp_*` surface), NativeSharp.Core as an ELF archive, executable link.

@@ -4,6 +4,7 @@ namespace nativesharp::target
 {
 enum class OperatingSystem
 {
-    Windows
+    Windows,
+    Linux
 };
 }

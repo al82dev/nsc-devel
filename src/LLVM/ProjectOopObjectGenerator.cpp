@@ -14,6 +14,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
+#include "nativesharp/LLVM/TargetObjectVerifier.h"
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmOptimizationObservation.h"
 #include "nativesharp/LLVM/LlvmOptimizer.h"
@@ -282,7 +283,7 @@ bool restorePreLlvmObject(
     if (hit)
     {
         const PhaseClock verification;
-        CoffObjectVerifier verifier;
+        TargetObjectVerifier verifier;
         if (verifier.verify(objectFile))
         {
             telemetry.verificationMicros += verification.elapsedMicros();
@@ -439,7 +440,7 @@ std::unique_ptr<LlvmTargetMachine> configureCodeUnitTarget(
 {
     const PhaseClock targetSetup;
     std::unique_ptr<LlvmTargetMachine> targetMachine =
-        LlvmTargetMachine::createWindowsX64(optimizationLevel, moduleError);
+        LlvmTargetMachine::createDefaultX64(optimizationLevel, moduleError);
     const bool configured = targetMachine != nullptr &&
         targetMachine->configureModuleForTarget(module, moduleError);
     telemetry.targetMicros += targetSetup.elapsedMicros();
@@ -553,7 +554,7 @@ bool restorePreOptimizationObject(
     telemetry.lookupMicros += lookup.elapsedMicros();
     if (!hit) return true;
     const PhaseClock verification;
-    CoffObjectVerifier verifier;
+    TargetObjectVerifier verifier;
     const bool verified = verifier.verify(objectFile);
     telemetry.verificationMicros += verification.elapsedMicros();
     if (!verified) return true;
@@ -596,7 +597,7 @@ bool restorePostLlvmObject(
     if (hit)
     {
         const PhaseClock verification;
-        CoffObjectVerifier verifier;
+        TargetObjectVerifier verifier;
         if (verifier.verify(objectFile))
         {
             telemetry.verificationMicros += verification.elapsedMicros();
@@ -629,7 +630,7 @@ void emitAndStoreCodeUnit(
         return;
     }
     telemetry.emissionMicros += emission.elapsedMicros();
-    CoffObjectVerifier verifier;
+    TargetObjectVerifier verifier;
     const PhaseClock verification;
     if (!verifier.verify(objectFile)) moduleError = verifier.error();
     telemetry.verificationMicros += verification.elapsedMicros();
@@ -1139,7 +1140,7 @@ bool runThinLtoBackends(
     std::string& error)
 {
     std::unique_ptr<LlvmTargetMachine> targetMachine =
-        LlvmTargetMachine::createWindowsX64(optimizationLevel, error);
+        LlvmTargetMachine::createDefaultX64(optimizationLevel, error);
     if (targetMachine == nullptr) return false;
     if (!thinLto.run(objectFiles, *targetMachine, optimizationLevel, workerCount, cacheDirectory, error))
         return false;
@@ -1151,7 +1152,7 @@ bool runThinLtoBackends(
             error = "cannot write CodeView procedure ranges: " + rangesError;
             return false;
         }
-        CoffObjectVerifier verifier;
+        TargetObjectVerifier verifier;
         if (!verifier.verify(objectFile))
         {
             error = verifier.error();
@@ -1199,7 +1200,7 @@ bool ProjectOopObjectGenerator::thinLtoCompatibility(
     std::string& identity,
     std::string& error)
 {
-    std::unique_ptr<LlvmTargetMachine> targetMachine = LlvmTargetMachine::createWindowsX64(level, error);
+    std::unique_ptr<LlvmTargetMachine> targetMachine = LlvmTargetMachine::createDefaultX64(level, error);
     if (targetMachine == nullptr) return false;
     identity = ThinLtoBackend::compatibilityIdentity(*targetMachine, level) +
         "debug " + std::string(debugInformationKindName(debugInformation)) + "\n" +

@@ -20,6 +20,9 @@ class TargetDataLayout final
 public:
     static TargetDataLayout WindowsX64();
     static TargetDataLayout WindowsArm64();
+    static TargetDataLayout LinuxX64();
+    // The layout of TargetInfo::DefaultX64().
+    static TargetDataLayout DefaultX64();
 
     TypeLayout layoutOf(BuiltinLayoutKind kind) const noexcept;
     std::optional<std::uint64_t> strideOf(TypeLayout element) const noexcept;

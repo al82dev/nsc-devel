@@ -13,7 +13,7 @@ bool moveWholeValue(MoveState& state, std::string& error) noexcept
     if (state.isCopy) return true;
     if (std::ranges::none_of(state.initializedFields, [](bool value) { return value; }))
     { error = "use after move"; return false; }
-    std::ranges::fill(state.initializedFields, false);
+    std::fill(state.initializedFields.begin(), state.initializedFields.end(), false);
     return true;
 }
 

@@ -109,6 +109,31 @@ std::unique_ptr<LlvmTargetMachine> LlvmTargetMachine::createWindowsX64(
     return createWindows(target::TargetInfo::WindowsX64(preferred, available), level, error);
 }
 
+std::unique_ptr<LlvmTargetMachine> LlvmTargetMachine::createDefaultX64(std::string& error)
+{
+    return createDefaultX64(LlvmOptimizationLevel::O0, error);
+}
+
+// createWindows builds the target machine of any TargetInfo from its triple, CPU and features.
+std::unique_ptr<LlvmTargetMachine> LlvmTargetMachine::createDefaultX64(
+    LlvmOptimizationLevel level,
+    std::string& error)
+{
+    const target::CpuFeatureLevel selected = target::selectedWindowsX64CpuFeatureLevel();
+    if (selected != target::CpuFeatureLevel::Baseline)
+        return createWindows(target::TargetInfo::DefaultX64(selected, selected), level, error);
+    return createWindows(target::TargetInfo::DefaultX64(), level, error);
+}
+
+std::unique_ptr<LlvmTargetMachine> LlvmTargetMachine::createDefaultX64(
+    LlvmOptimizationLevel level,
+    target::CpuFeatureLevel preferred,
+    target::CpuFeatureLevel available,
+    std::string& error)
+{
+    return createWindows(target::TargetInfo::DefaultX64(preferred, available), level, error);
+}
+
 std::unique_ptr<LlvmTargetMachine> LlvmTargetMachine::createWindowsArm64(std::string& error)
 {
     return createWindowsArm64(LlvmOptimizationLevel::O0, error);

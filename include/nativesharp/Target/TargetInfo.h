@@ -16,6 +16,12 @@ public:
     static TargetInfo WindowsX64();
     static TargetInfo WindowsX64(CpuFeatureLevel preferred, CpuFeatureLevel available);
     static TargetInfo WindowsArm64();
+    static TargetInfo LinuxX64();
+    static TargetInfo LinuxX64(CpuFeatureLevel preferred, CpuFeatureLevel available);
+    // The x64 target of a compilation that selects none: Linux x64 when the build defines
+    // NSC_DEFAULT_TARGET_LINUX_X64, Windows x64 otherwise.
+    static TargetInfo DefaultX64();
+    static TargetInfo DefaultX64(CpuFeatureLevel preferred, CpuFeatureLevel available);
 
     Architecture architecture() const noexcept;
     OperatingSystem operatingSystem() const noexcept;

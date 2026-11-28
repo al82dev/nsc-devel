@@ -138,7 +138,7 @@ void appendPhysicalLayoutIdentity(
 
 void appendTargetIdentity(std::string& out)
 {
-    const target::TargetInfo target = target::TargetInfo::WindowsX64();
+    const target::TargetInfo target = target::TargetInfo::DefaultX64();
     internal::CachePayloadWriter::string(out, target.architectureName());
     internal::CachePayloadWriter::string(out, target.operatingSystemName());
     internal::CachePayloadWriter::string(out, target.objectFormatName());

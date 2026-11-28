@@ -1,4 +1,5 @@
 #include "Internal/DriverInternal.h"
+#include "nativesharp/LLVM/TargetObjectVerifier.h"
 
 namespace nativesharp::driver
 {
@@ -572,7 +573,7 @@ bool lowerOopCodeModule(frontend::ProjectCompilation &compilation,
         "target-configuration",
         [&]
         {
-            targetMachine = llvm_backend::LlvmTargetMachine::createWindowsX64(optimizationLevel, targetError);
+            targetMachine = llvm_backend::LlvmTargetMachine::createDefaultX64(optimizationLevel, targetError);
             return targetMachine != nullptr && targetMachine->configureModuleForTarget(*module, targetError);
         });
     if (!targetConfigured)
@@ -620,10 +621,11 @@ bool publishOopCodeObject(std::string_view outputPath, frontend::ProjectCompilat
         error << "nsc: error: " << targetError << '\n';
         return false;
     }
-    llvm_backend::CoffObjectVerifier verifier;
+    llvm_backend::TargetObjectVerifier verifier;
     if (!measureDriverPhase("coff-verification", [&] { return verifier.verify(publication.stage); }))
     {
-        error << "nsc: error: Stage 44 emitted invalid COFF object: " << verifier.error() << '\n';
+        error << "nsc: error: Stage 44 emitted invalid " << verifier.formatName() << " object: "
+              << verifier.error() << '\n';
         return false;
     }
     if (!compilation.completeCodeGeneration(loadError))

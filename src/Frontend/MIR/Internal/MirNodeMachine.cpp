@@ -461,7 +461,7 @@ int ProjectOopMirModel::MirNodeMachine::lowerRawElementAddress(
     auto layout = model_.elementLayout(node->elementTypeKey);
     if (!layout.has_value() && node->elementTypeKey == "builtin:decimal")
     {
-        const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(
+        const auto decimal = target::TargetDataLayout::DefaultX64().layoutOf(
             target::BuiltinLayoutKind::Decimal);
         layout = {{decimal.size, decimal.alignment}};
     }
@@ -541,7 +541,7 @@ int ProjectOopMirModel::MirNodeMachine::lowerRawStorage(
     if (!layout.has_value() && node->kind == ProjectOopHirNodeKind::StackAllocation &&
         node->elementTypeKey == "builtin:decimal")
     {
-        const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(
+        const auto decimal = target::TargetDataLayout::DefaultX64().layoutOf(
             target::BuiltinLayoutKind::Decimal);
         layout = {{decimal.size, decimal.alignment}};
     }
@@ -1452,7 +1452,7 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup13(
             auto layout = model_.elementLayout(node->elementTypeKey);
             if (!layout.has_value() && node->elementTypeKey == "builtin:decimal")
             {
-                const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(
+                const auto decimal = target::TargetDataLayout::DefaultX64().layoutOf(
                     target::BuiltinLayoutKind::Decimal);
                 layout = {{decimal.size, decimal.alignment}};
             }

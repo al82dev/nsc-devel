@@ -624,7 +624,7 @@ void Parser::parseInlineAssemblyHeader(
 
             if (option == "target" && value == "x64")
             {
-                targetMetadata = std::string(target::TargetInfo::WindowsX64().llvmTriple());
+                targetMetadata = std::string(target::TargetInfo::DefaultX64().llvmTriple());
             }
             else if (option == "dialect" && value == "intel")
             {
@@ -833,7 +833,7 @@ void Parser::validateInlineAssemblyControlFlow(ast::AstNode* statement)
                 "asm call/return instructions cannot escape NativeSharp structured control flow");
             continue;
         }
-        const target::TargetInfo targetInfo = target::TargetInfo::WindowsX64();
+        const target::TargetInfo targetInfo = target::TargetInfo::DefaultX64();
         const std::string_view requiredFeature = targetInfo.requiredAssemblyFeature(mnemonic);
         if (!targetInfo.supportsCpuFeature(requiredFeature))
         {
@@ -1004,7 +1004,7 @@ bool Parser::validateInlineAssemblyClobberName(
             "asm cannot clobber the stack pointer; its value and alignment must survive the block");
         return false;
     }
-    if (!specialClobber && !target::TargetInfo::WindowsX64().isAssemblyRegister(registerName))
+    if (!specialClobber && !target::TargetInfo::DefaultX64().isAssemblyRegister(registerName))
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::InvalidInlineAssemblyTarget,
@@ -1103,7 +1103,7 @@ std::string Parser::parseInlineAssemblyConstraint(
         return defaultConstraint;
     }
     if (!fixedRegister.empty() &&
-        !target::TargetInfo::WindowsX64().isAssemblyRegister(fixedRegister))
+        !target::TargetInfo::DefaultX64().isAssemblyRegister(fixedRegister))
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::InvalidInlineAssemblyTarget,

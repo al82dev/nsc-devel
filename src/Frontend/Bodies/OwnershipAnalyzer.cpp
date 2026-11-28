@@ -15,6 +15,7 @@
 #include "nativesharp/Language/TraitSemantics.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cstdint>
 #include <functional>
 #include <limits>

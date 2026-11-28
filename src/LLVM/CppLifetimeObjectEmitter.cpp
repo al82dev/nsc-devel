@@ -28,7 +28,7 @@ bool emitCStaticInlineObject(const interop::CppInteropSession& session,
     if (!ir) { error = "cannot emit C static inline definitions through Clang"; return false; }
     auto module = LlvmModule::parseText(*ir, error);
     if (!module) return false;
-    auto target = LlvmTargetMachine::createWindowsX64(level, error);
+    auto target = LlvmTargetMachine::createDefaultX64(level, error);
     if (!target) return false;
     return target->emit(*module, output, LlvmCodeGenFileType::Object, error);
 }
@@ -41,7 +41,7 @@ bool emitCppInlineObject(const std::string& ir, LlvmOptimizationLevel level,
     { error = "C++ inline object requires IR and an absolute output path"; return false; }
     auto module = LlvmModule::parseText(ir, error);
     if (!module) return false;
-    auto target = LlvmTargetMachine::createWindowsX64(level, error);
+    auto target = LlvmTargetMachine::createDefaultX64(level, error);
     if (!target) return false;
     // EN: T15-017. Clang's IR expects Clang's pass pipeline, which runs even at -O0: coroutine bodies and
     //     the `llvm.coro.*` intrinsics of <coroutine> are split and lowered there, and always_inline is
@@ -73,7 +73,7 @@ bool emitCppImplicitLifetimeObject(const interop::CppInteropSession& session,
     }
     auto module = LlvmModule::parseText(*ir, error);
     if (!module) return false;
-    auto target = LlvmTargetMachine::createWindowsX64(level, error);
+    auto target = LlvmTargetMachine::createDefaultX64(level, error);
     if (!target) return false;
     return target->emit(*module, output, LlvmCodeGenFileType::Object, error);
 }

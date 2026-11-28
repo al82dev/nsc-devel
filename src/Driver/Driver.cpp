@@ -82,6 +82,7 @@
 #include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/Language/LanguageSurface.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
+#include "nativesharp/LLVM/TargetObjectVerifier.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
 #include "nativesharp/LLVM/CodegenIdentity.h"
 #include "nativesharp/LLVM/FloatingPointMode.h"
@@ -187,7 +188,7 @@ ExitCode Driver::printCodeGeneration(
 {
     std::string targetError;
     std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine =
-        llvm_backend::LlvmTargetMachine::createWindowsX64(optimizationLevel, targetError);
+        llvm_backend::LlvmTargetMachine::createDefaultX64(optimizationLevel, targetError);
     if (targetMachine == nullptr)
     {
         error << "nsc: internal error: target machine creation failed: " << targetError << '\n';
@@ -234,7 +235,7 @@ bool optimizeCodeGenerationModule(
     std::ostream& error)
 {
     std::string targetError;
-    targetMachine = llvm_backend::LlvmTargetMachine::createWindowsX64(optimizationLevel, targetError);
+    targetMachine = llvm_backend::LlvmTargetMachine::createDefaultX64(optimizationLevel, targetError);
     if (targetMachine == nullptr)
     {
         error << "nsc: internal error: target machine creation failed: " << targetError << '\n';
@@ -285,16 +286,17 @@ bool emitCodeGenerationArtifact(
 
     if (fileType == llvm_backend::LlvmCodeGenFileType::Object)
     {
-        llvm_backend::CoffObjectVerifier verifier;
+        llvm_backend::TargetObjectVerifier verifier;
         if (!verifier.verify(destination))
         {
-            error << "nsc: internal error: emitted COFF verification failed: " << verifier.error() << '\n';
+            error << "nsc: internal error: emitted " << verifier.formatName() << " verification failed: "
+                  << verifier.error() << '\n';
             std::error_code removeError;
             std::filesystem::remove(destination, removeError);
             return false;
         }
-        output << "COFF object emission: ok\n"
-               << "machine: AMD64 (0x8664)\n"
+        output << verifier.formatName() << " object emission: ok\n"
+               << "machine: " << verifier.machineName() << '\n'
                << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
                << "sections: " << verifier.info().sectionCount << '\n';
     }
@@ -430,7 +432,7 @@ void Driver::printCompilerIdentity(std::ostream &output)
 
 void Driver::printTarget(std::ostream &output)
 {
-    const target::TargetInfo targetInfo = target::TargetInfo::WindowsX64();
+    const target::TargetInfo targetInfo = target::TargetInfo::DefaultX64();
     output << "architecture: " << targetInfo.architectureName() << '\n'
            << "os:           " << targetInfo.operatingSystemName() << '\n'
            << "object:       " << targetInfo.objectFormatName() << '\n'

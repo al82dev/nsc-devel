@@ -26,7 +26,7 @@ using Field = std::pair<std::string, std::string>;
 std::vector<Field> expectedFields() {
   using namespace interop;
 
-  const target::TargetInfo target = target::TargetInfo::WindowsX64();
+  const target::TargetInfo target = target::TargetInfo::DefaultX64();
   return {
       {"compiler_release", std::string(kCompilerReleaseVersion)},
       {"stage", std::string(kCompilerStage)},

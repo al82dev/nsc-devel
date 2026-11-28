@@ -16,7 +16,7 @@
 namespace nativesharp::frontend
 {
 FrontendCompilation::FrontendCompilation()
-    : dataLayout_(target::TargetDataLayout::WindowsX64())
+    : dataLayout_(target::TargetDataLayout::DefaultX64())
 {
 }
 

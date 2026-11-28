@@ -179,12 +179,12 @@ ExitCode executeCompilerSession(const Driver &driver, std::span<const std::strin
         }
         const auto& root = *invocation.cppClangRoot;
         executionScope.cppSessionEnvironment = interop::CppProjectSessionEnvironment{
-            std::string(target::TargetInfo::WindowsX64().llvmTriple()),
+            std::string(target::TargetInfo::DefaultX64().llvmTriple()),
             root / "bin" / "clang.exe", root / "lib" / "clang" / "23",
             std::move(workingDirectory), invocation.cppSystemIncludes};
         if (cpuLevel != target::CpuFeatureLevel::Baseline)
             executionScope.cppSessionEnvironment->targetCpu =
-                std::string(target::TargetInfo::WindowsX64(cpuLevel, cpuLevel).llvmCpuName());
+                std::string(target::TargetInfo::DefaultX64(cpuLevel, cpuLevel).llvmCpuName());
         executionScope.cppSessionFactory = &cppFactory;
     }
 #else

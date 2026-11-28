@@ -26,7 +26,7 @@ std::string entryKey(
     material.push_back('\n');
     material += std::to_string(size);
     material.push_back('\n');
-    material += std::to_string(writeTime.time_since_epoch().count());
+    material += std::to_string(static_cast<long long>(writeTime.time_since_epoch().count()));
     const std::span<const std::uint8_t> bytes{
         reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
     return basic::sha256Hex(basic::sha256(bytes));

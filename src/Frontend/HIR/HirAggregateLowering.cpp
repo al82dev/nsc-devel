@@ -502,7 +502,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStackAllocationExpre
             objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, core->elementTypeKey);
         if (!elementLayout.has_value() && core->elementTypeKey == "builtin:decimal")
         {
-            const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(
+            const auto decimal = target::TargetDataLayout::DefaultX64().layoutOf(
                 target::BuiltinLayoutKind::Decimal);
             elementLayout = {{decimal.size, decimal.alignment}};
         }
@@ -987,7 +987,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAggregateOrLayoutExp
             // same target layout those paths use is taken here, for exactly this type.
             if (!layout.has_value() && binding->elementTypeKey == "builtin:decimal")
             {
-                const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(
+                const auto decimal = target::TargetDataLayout::DefaultX64().layoutOf(
                     target::BuiltinLayoutKind::Decimal);
                 layout = {{decimal.size, decimal.alignment}};
             }

@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -34,9 +35,14 @@ using nsc_internal::CompilerRunConfiguration;
 
 bool automaticErrorLogEnabled()
 {
+#if defined(_WIN32)
     char value[2]{};
     const DWORD length = GetEnvironmentVariableA("NSC_NO_ERROR_LOG", value, sizeof(value));
     return length != 1U || value[0] != '1';
+#else
+    const char* value = std::getenv("NSC_NO_ERROR_LOG");
+    return value == nullptr || std::string(value) != "1";
+#endif
 }
 
 std::string jsonEscape(std::string_view value)

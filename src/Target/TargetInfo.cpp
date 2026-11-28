@@ -79,6 +79,47 @@ TargetInfo TargetInfo::WindowsArm64()
         ObjectFormat::COFF);
 }
 
+TargetInfo TargetInfo::LinuxX64()
+{
+    return TargetInfo(
+        Architecture::X86_64,
+        OperatingSystem::Linux,
+        ObjectFormat::ELF);
+}
+
+TargetInfo TargetInfo::LinuxX64(CpuFeatureLevel preferred, CpuFeatureLevel available)
+{
+    CpuFeatureLevel selected = available;
+    if (static_cast<unsigned>(preferred) <= static_cast<unsigned>(available))
+    {
+        selected = preferred;
+    }
+    return TargetInfo(
+        Architecture::X86_64,
+        OperatingSystem::Linux,
+        ObjectFormat::ELF,
+        preferred,
+        selected);
+}
+
+TargetInfo TargetInfo::DefaultX64()
+{
+#if defined(NSC_DEFAULT_TARGET_LINUX_X64)
+    return LinuxX64();
+#else
+    return WindowsX64();
+#endif
+}
+
+TargetInfo TargetInfo::DefaultX64(CpuFeatureLevel preferred, CpuFeatureLevel available)
+{
+#if defined(NSC_DEFAULT_TARGET_LINUX_X64)
+    return LinuxX64(preferred, available);
+#else
+    return WindowsX64(preferred, available);
+#endif
+}
+
 Architecture TargetInfo::architecture() const noexcept
 {
     return architecture_;
@@ -101,22 +142,26 @@ std::string_view TargetInfo::architectureName() const noexcept
 
 std::string_view TargetInfo::operatingSystemName() const noexcept
 {
+    if (operatingSystem_ == OperatingSystem::Linux) return "linux";
     return "windows";
 }
 
 std::string_view TargetInfo::objectFormatName() const noexcept
 {
+    if (objectFormat_ == ObjectFormat::ELF) return "ELF";
     return "COFF";
 }
 
 std::string_view TargetInfo::llvmTriple() const noexcept
 {
+    if (operatingSystem_ == OperatingSystem::Linux) return "x86_64-unknown-linux-gnu";
     return architecture_ == Architecture::Arm64
         ? "aarch64-pc-windows-msvc" : "x86_64-pc-windows-msvc";
 }
 
 std::string_view TargetInfo::abiName() const noexcept
 {
+    if (operatingSystem_ == OperatingSystem::Linux) return "System V AMD64 ABI";
     return architecture_ == Architecture::Arm64
         ? "Microsoft Windows ARM64 ABI" : "Microsoft Windows x64 ABI";
 }

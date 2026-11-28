@@ -8,7 +8,7 @@ namespace
 void addCommonCompilationIdentity(
     compilation::CompilationInputManifest& manifest)
 {
-    const target::TargetInfo targetInfo = target::TargetInfo::WindowsX64();
+    const target::TargetInfo targetInfo = target::TargetInfo::DefaultX64();
     manifest.addIdentityField(
         "codegen", std::string(llvm_backend::kCodegenCacheIdentity));
     manifest.addIdentityField("target", std::string(targetInfo.llvmTriple()));

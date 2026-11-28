@@ -211,7 +211,7 @@ LLVMRealPredicate floatingPredicate(mir::MirOpcode opcode)
 
 LlvmLowerer::Implementation::Implementation(std::span<sema::Symbol* const> globalSymbols)
         : globalSymbols_(globalSymbols.begin(), globalSymbols.end()),
-          targetLayout_(target::TargetDataLayout::WindowsX64())
+          targetLayout_(target::TargetDataLayout::DefaultX64())
     {
     }
 

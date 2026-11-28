@@ -338,6 +338,7 @@ bool readCapabilityInput(
         return true;
     }
 
+#if defined(_WIN32)
     char* value = nullptr;
     std::size_t valueLength = 0;
     const errno_t environmentError = _dupenv_s(&value, &valueLength, identity.c_str());
@@ -356,6 +357,22 @@ bool readCapabilityInput(
     content.assign(value, length);
     std::free(value);
     return true;
+#else
+    const char* value = std::getenv(identity.c_str());
+    if (value == nullptr)
+    {
+        error = "declared comptime environment variable is unset: '" + identity + "'";
+        return false;
+    }
+    const std::string environmentValue(value);
+    if (environmentValue.size() > limit)
+    {
+        error = std::string(budgetExceeded);
+        return false;
+    }
+    content = environmentValue;
+    return true;
+#endif
 }
 
 // Only call-shaped identifiers need function-source cache dependencies.

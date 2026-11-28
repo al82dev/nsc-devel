@@ -252,7 +252,7 @@ private:
     const ProjectMemberModel* memberModel_ = nullptr;
     const ProjectInheritanceModel* inheritanceModel_ = nullptr;
     const ProjectConstructionModel* constructionModel_ = nullptr;
-    target::TargetDataLayout targetLayout_ = target::TargetDataLayout::WindowsX64();
+    target::TargetDataLayout targetLayout_ = target::TargetDataLayout::DefaultX64();
     std::vector<StructValueLayout> structLayouts_;
     std::vector<std::optional<std::size_t>> structLayoutIndexByType_;
     std::vector<ClassObjectLayout> classLayouts_;

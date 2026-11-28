@@ -367,7 +367,7 @@ ProjectObjectLayoutModel::valueLayoutForTypeKey(
     // the same one arrays, stackalloc and raw elements already use.
     if (typeKey == "builtin:decimal")
     {
-        const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(target::BuiltinLayoutKind::Decimal);
+        const auto decimal = target::TargetDataLayout::DefaultX64().layoutOf(target::BuiltinLayoutKind::Decimal);
         return {{decimal.size, decimal.alignment}};
     }
     if (language::futureInnerTypeKey(typeKey).has_value())

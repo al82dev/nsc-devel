@@ -22,6 +22,7 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cstdint>
 #include <functional>
 #include <limits>

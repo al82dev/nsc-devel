@@ -1088,7 +1088,7 @@ LanguageServiceIdentity LanguageService::identity() const noexcept
     return LanguageServiceIdentity{
         kCompilerReleaseVersion,
         kCompilerStage,
-        target::TargetInfo::WindowsX64().llvmTriple(),
+        target::TargetInfo::DefaultX64().llvmTriple(),
         kCompilerBuildId,
         kAnalysisAbiVersion};
 }

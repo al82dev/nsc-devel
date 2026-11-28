@@ -299,7 +299,7 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledStackAllocationFrame(
                     *nameLookup_, frame.core->elementTypeKey);
             if (!elementLayout.has_value() && frame.core->elementTypeKey == "builtin:decimal")
             {
-                const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(
+                const auto decimal = target::TargetDataLayout::DefaultX64().layoutOf(
                     target::BuiltinLayoutKind::Decimal);
                 elementLayout = {{decimal.size, decimal.alignment}};
             }

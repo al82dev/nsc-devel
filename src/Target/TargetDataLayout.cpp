@@ -18,6 +18,22 @@ TargetDataLayout TargetDataLayout::WindowsArm64()
     return TargetDataLayout();
 }
 
+TargetDataLayout TargetDataLayout::LinuxX64()
+{
+    // NativeSharp builtin types have fixed sizes and alignments, so the layouts represented by this
+    // class are the same as on Windows x64.
+    return TargetDataLayout();
+}
+
+TargetDataLayout TargetDataLayout::DefaultX64()
+{
+#if defined(NSC_DEFAULT_TARGET_LINUX_X64)
+    return LinuxX64();
+#else
+    return WindowsX64();
+#endif
+}
+
 TypeLayout TargetDataLayout::layoutOf(BuiltinLayoutKind kind) const noexcept
 {
     switch (kind)

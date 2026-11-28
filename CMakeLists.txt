@@ -22,7 +22,13 @@ option(NSC_ENABLE_CONSOLIDATED_TESTS "Build the opt-in consolidated C++ test exe
 option(NSC_ENABLE_CPP_INTEROP "Enable integration with Clang for C and C++ interoperability" OFF)
 option(NSC_CPP_INTEROP_SESSION_TESTS "Build the isolated Clang session tests" OFF)
 option(NSC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
-set(NSC_NSLINK_EXECUTABLE "C:/native-sharp/bin/nslink.exe" CACHE FILEPATH
+if(WIN32)
+    set(NSC_NSLINK_DEFAULT "C:/native-sharp/bin/nslink.exe")
+else()
+    # NSLink is the Win64 linker and does not run on other hosts; there is no default to look for.
+    set(NSC_NSLINK_DEFAULT "")
+endif()
+set(NSC_NSLINK_EXECUTABLE "${NSC_NSLINK_DEFAULT}" CACHE FILEPATH
     "NSLink executable used by generated NativeSharp build products")
 set(NSC_NSLINK_ROOT "" CACHE PATH
     "NSLink source or installation root used to locate nslink.exe")
@@ -55,10 +61,29 @@ if(NSC_NSLINK_EXECUTABLE STREQUAL "")
     endforeach()
     find_program(NSC_NSLINK_EXECUTABLE NAMES nslink HINTS ${NSC_NSLINK_SEARCH_HINTS})
 endif()
-if(NOT NSC_NSLINK_EXECUTABLE OR NOT EXISTS "${NSC_NSLINK_EXECUTABLE}")
+if(WIN32 AND (NOT NSC_NSLINK_EXECUTABLE OR NOT EXISTS "${NSC_NSLINK_EXECUTABLE}"))
     message(FATAL_ERROR
         "NSLink is required to build NativeSharp-generated products; set "
         "NSC_NSLINK_EXECUTABLE to nslink.exe or NSC_NSLINK_ROOT to its root")
+endif()
+# The target a compilation uses when it selects none. Hosts other than Windows default to Linux x64.
+if(WIN32)
+    set(NSC_DEFAULT_TARGET_INITIAL "win64")
+else()
+    set(NSC_DEFAULT_TARGET_INITIAL "linux-x64")
+endif()
+set(NSC_DEFAULT_TARGET "${NSC_DEFAULT_TARGET_INITIAL}" CACHE STRING
+    "Default compilation target: win64 or linux-x64")
+set_property(CACHE NSC_DEFAULT_TARGET PROPERTY STRINGS win64 linux-x64)
+if(NSC_DEFAULT_TARGET STREQUAL "linux-x64")
+    add_compile_definitions(NSC_DEFAULT_TARGET_LINUX_X64=1)
+elseif(NOT NSC_DEFAULT_TARGET STREQUAL "win64")
+    message(FATAL_ERROR "NSC_DEFAULT_TARGET must be win64 or linux-x64")
+endif()
+# Build-time nsc steps receive NSC_LINKER only when an NSLink executable is configured.
+set(NSC_LINKER_ENVIRONMENT)
+if(NSC_NSLINK_EXECUTABLE AND EXISTS "${NSC_NSLINK_EXECUTABLE}")
+    set(NSC_LINKER_ENVIRONMENT "NSC_LINKER=${NSC_NSLINK_EXECUTABLE}")
 endif()
 set(NSC_HOST_LINKAGE "STATIC" CACHE STRING
     "LLVM linkage for nsc.exe: STATIC (distributable) or DYNAMIC (development only)")
@@ -892,6 +917,13 @@ if(LLVM_FOUND)
         target_include_directories(nsc_cpp_interop PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
         target_include_directories(nsc_cpp_interop SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
         target_link_libraries(nsc_cpp_interop PRIVATE nsc_compilation clangTooling clangCodeGen clangUnifiedSymbolResolution)
+        # LLVM and Clang built without RTTI provide no type information. Outside MSVC, the sources that
+        # derive from their classes are compiled without RTTI too, so they do not reference it.
+        if(NOT MSVC AND NOT LLVM_ENABLE_RTTI)
+            set_source_files_properties(src/Interop/Cpp/ClangCancellationFileSystem.cpp
+                src/Interop/Cpp/ClangDiagnosticConsumer.cpp src/Interop/Cpp/ClangSessionAction.cpp
+                PROPERTIES COMPILE_OPTIONS "-fno-rtti")
+        endif()
         # EN: CppCRecordMetadataCodec.cpp (nsc_precompiled) calls cppCInlineLinkSymbol and
         #     projectCppCxxEnumConstant, defined in CppSemanticInventory.cpp of this library. The library is
         #     not exported, so the dependency is limited to the build tree.
@@ -1153,7 +1185,9 @@ add_library(nsc_llvm STATIC
     src/LLVM/Internal/SourceDependencyIndex.cpp
     src/LLVM/Internal/ThinLtoBackend.cpp
     src/LLVM/ThinLtoLibrarySidecarCodec.cpp
-    src/LLVM/CoffObjectVerifier.cpp)
+    src/LLVM/CoffObjectVerifier.cpp
+    src/LLVM/ElfObjectVerifier.cpp
+    src/LLVM/TargetObjectVerifier.cpp)
 # ThinLtoBackend.cpp is the only file that uses LLVM's C++ API (llvm::lto); it is compiled without RTTI
 # like the LLVM libraries it links. ThinLtoBackend.cpp es el unico archivo con la API C++ de LLVM; se
 # compila sin RTTI, igual que las bibliotecas de LLVM que enlaza.
@@ -1229,7 +1263,7 @@ if(WIN32)
         COMMAND "${CMAKE_COMMAND}" -E make_directory
             "${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}"
         COMMAND "${CMAKE_COMMAND}" -E env
-            "NSC_LINKER=${NSC_NSLINK_EXECUTABLE}"
+            ${NSC_LINKER_ENVIRONMENT}
             $<TARGET_FILE:nsc_windows_runtime_imports>
             "${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}"
         DEPENDS nsc_windows_runtime_imports
@@ -1420,7 +1454,7 @@ add_custom_command(TARGET nsc POST_BUILD
     COMMAND $<TARGET_FILE:nsc> --write-concurrency-contract "${NSC_CONCURRENCY_CONTRACT}"
     COMMAND $<TARGET_FILE:nsc> --write-numeric-contract "${NSC_NUMERIC_CONTRACT}"
     COMMAND "${CMAKE_COMMAND}" -E env
-        "NSC_LINKER=${NSC_NSLINK_EXECUTABLE}"
+        ${NSC_LINKER_ENVIRONMENT}
         $<TARGET_FILE:nsc> --write-windows-runtime-library "${NSC_WINDOWS_RUNTIME_LIBRARY}"
     BYPRODUCTS "${NSC_TOOLCHAIN_CONTRACT}"
                "${NSC_COMPATIBILITY_POLICY}"
