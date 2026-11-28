@@ -557,8 +557,12 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         arrayElement->kind == CppTypeKind::Record;
     const bool enumArray = field.type.kind == CppTypeKind::Array && arrayElement &&
         arrayElement->kind == CppTypeKind::Enumeration;
-    const auto ownerOrdinal = lookup ? lookup->typeOrdinalForIdentity(identity->key()) : std::nullopt;
-    const bool cppValueFields = record.isCxx && ownerOrdinal && lookup->cppTrivialValueEligible(*ownerOrdinal);
+    // L5: a field of a C++ record is reached in its place through the owner, whose complete layout Clang fixed;
+    //     whether the field's value may be copied or moved depends on the field's own type (the body analysis
+    //     applies it), not on the owner's copy or destruction. Array, record, enum, fixed-vector and function
+    //     pointer fields are therefore projected for every complete C++ owner, which replaces the T21 owner rule
+    //     described below (that rule tested `cppTrivialValueEligible` on the owner).
+    const bool cppPlaceFields = record.isCxx && record.complete;
     // EN: Item 15.1 (T21). Array, record, enum and function pointer fields of a C++ record are projected when the
     //     owner is a transport value (batch 10: its constructor may have a body). An owner with a non-trivial
     //     destructor or copy keeps them unimported, as the existing rejections of pruebas-tanda-09 require.
@@ -598,7 +602,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     // enlarges the physical field. The field retains Clang's own size,
     // offset and effective alignment; it is not a vector parameter conversion.
     // C3-10: also in a C record (a vector aggregate). / Tambien en un record C (un agregado vectorial).
-    if (!mapped && (!record.isCxx || cppValueFields) && field.type.kind == CppTypeKind::FixedVector &&
+    if (!mapped && (!record.isCxx || cppPlaceFields) && field.type.kind == CppTypeKind::FixedVector &&
         !field.type.isVolatile && field.type.arrayCount && *field.type.arrayCount > 0 &&
         *field.type.arrayCount <= (1U << 20) && field.type.element &&
         !field.type.element->isConst && !field.type.element->isVolatile && !field.type.element->isRestrict &&
@@ -621,7 +625,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     }
     // Preserve physical strides when a vector has trailing padding; the logical
     // array type contains only the lanes that can be indexed.
-    if (!mapped && (!record.isCxx || cppValueFields) && field.type.kind == CppTypeKind::Array)
+    if (!mapped && (!record.isCxx || cppPlaceFields) && field.type.kind == CppTypeKind::Array)
     {
         const CppType* current = &field.type;
         std::vector<std::uint64_t> dimensions;
@@ -708,7 +712,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     }
     // Item 9.13: a function pointer field of a C++ record too (Assimp, ImGui, mmx). / Tambien un campo puntero a
     //     funcion de un record C++.
-    if (!mapped && (!record.isCxx || cppValueFields))
+    if (!mapped && (!record.isCxx || cppPlaceFields))
         mapped = projectCppStoredFunctionPointer(field.type, projectOrdinal, moduleName, lookup, record.isCxx);
     // Arrays of unqualified pointers are field storage, even when the C++ owner is not a value type.
     // projectCArrayField validates each pointer's target identity and preserves the array dimensions.
@@ -717,10 +721,10 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         !arrayElement->isConst && !arrayElement->isVolatile;
     // Item 9.11: an array of enums in a C++ record (GameInput labels). / Un arreglo de enums en un record C++.
     if (!mapped && (!record.isCxx || cppPointerArray ||
-                    (cppValueFields && (scalarArray || enumArray || recordArray))) &&
+                    (cppPlaceFields && (scalarArray || enumArray || recordArray))) &&
         field.type.kind == CppTypeKind::Array)
         mapped = projectCArrayField(field.type, projectOrdinal, moduleName, lookup);
-    if (!mapped && (!record.isCxx || (cppValueFields && !field.type.isVolatile)) &&
+    if (!mapped && (!record.isCxx || (cppPlaceFields && !field.type.isVolatile)) &&
         field.type.kind == CppTypeKind::Enumeration)
     {
         CppType unqualified = field.type;
@@ -733,7 +737,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         }
     }
     // T19-005: a C++ field of an unnamed enum too. / Tambien un campo C++ de un enum sin nombre.
-    if (!mapped && (!record.isCxx || (cppValueFields && !field.type.isVolatile)) &&
+    if (!mapped && (!record.isCxx || (cppPlaceFields && !field.type.isVolatile)) &&
         field.type.kind == CppTypeKind::Enumeration &&
         field.type.enumIdentity && field.type.enumIdentity->anonymousContext &&
         field.type.enumIdentity->name.empty() && field.type.enumUnderlying &&
@@ -751,7 +755,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         if (auto mirror = nativeStructMirrorFieldKey(field.type, lookup))
             mapped = CppScalarTypeMapping{std::move(*mirror), field.type.canonicalSpelling, field.type.isConst,
                                           field.type.isVolatile};
-    if (!mapped && (!record.isCxx || cppValueFields) && lookup && field.type.kind == CppTypeKind::Record)
+    if (!mapped && (!record.isCxx || cppPlaceFields) && lookup && field.type.kind == CppTypeKind::Record)
     {
         const auto target = projectCppRecordTypeIdentity(field.type, moduleName);
         const auto* imported = fieldRecordType(*lookup, target, projectOrdinal);
@@ -760,8 +764,11 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
             imported && field.isAnonymousCarrier && imported->memberAccessLayout ? &*imported->memberAccessLayout : nullptr;
         // T19-004: the carrier of a trivial unnamed record of a C++ record is a C carrier. / El portador de un
         //     record sin nombre trivial de un record C++ es un portador C.
+        // L5: a record field of any imported record type with a layout is a place; copying its value is decided
+        //     by that type where the value is used.
         if (target && imported && layout && (!record.isCxx || field.isAnonymousCarrier ||
-            (targetOrdinal && lookup->cppTrivialValueEligible(*targetOrdinal))) &&
+            (targetOrdinal && (lookup->cppTrivialValueEligible(*targetOrdinal) ||
+                               imported->origin == frontend::CppImportedTypeOrigin::CppRecord))) &&
             (!field.type.recordIdentity || !field.type.recordIdentity->clangUsr || !imported->clangUsr ||
              field.type.recordIdentity->clangUsr == imported->clangUsr) &&
             !imported->isIncomplete && field.type.sizeBits && *field.type.sizeBits % 8 == 0 &&
