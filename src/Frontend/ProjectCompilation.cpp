@@ -2364,6 +2364,19 @@ bool ProjectCompilation::compileProjectOopHir(
                         (node->children[0]->kind == ProjectOopHirNodeKind::StaticCall ||
                          node->children[0]->kind == ProjectOopHirNodeKind::InstanceCall) &&
                         node->children[0]->typeKey == node->typeKey && !node->children[0]->referenceResult;
+                    // CL1: a local without an initializer has no construction to bind its cleanup to; as in
+                    //     item 10.1, it is constructed explicitly or initialized from a value.
+                    // CL1: un local sin inicializador no tiene una construccion a la cual ligar su limpieza; como en
+                    //     el item 10.1, se construye explicitamente o se inicializa con un valor.
+                    if (!node->staticLocal &&
+                        (node->children.empty() || !node->children[0] ||
+                         node->children[0]->kind == ProjectOopHirNodeKind::DefaultValue))
+                    {
+                        const std::string typeName = importedValue->identity.fullyQualifiedName();
+                        loadError = located(node, "C++ type '" + typeName + "' has a non-trivial copy or "
+                            "destruction; initialize the local with 'new " + typeName + "()' or with a value");
+                        return false;
+                    }
                     if (node->staticLocal || !node->localOrdinal || !node->cleanupRegionOrdinal ||
                         !node->automaticDestruction || node->children.size() != 1 || !node->children[0] ||
                         (!constructedCall &&
