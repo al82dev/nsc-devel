@@ -4375,11 +4375,26 @@ void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
             variable->first(), "the non-owning local '" + variable->text() + "'", diagnostics);
     if (!isRaii && initializer.valid && initializer.ownership == sema::OwnershipKind::Owned &&
         initializer.ownershipTransfer && !isBorrowed && localTypeOwnable)
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidOperand,
-            diagnostics::DiagnosticSeverity::Error,
-            variable->first()->range(),
-            "owned return value cannot initialize a non-owning local; use a raii owner destination");
+    {
+        // A1: as in C and C++, the variable an owned result initializes holds that result: `T x = f();` and
+        //     `static T x = f();` own what f transfers, as item 141 makes `T x = new T()` own its object. The
+        //     local becomes an inferred owner (raii): destroyed at the end of its scope, or at process exit for a
+        //     static local (L-014), moved only with move(...). Reference, pinned, foreach, pattern, scope and
+        //     compiler locals, and locals with an ownership qualifier, keep the rule.
+        const std::string_view marker = variable->auxiliaryText();
+        const bool ordinaryLocal = !variable->text().starts_with("$") && marker != "local:scope" &&
+            !marker.starts_with("local:ref") && !marker.starts_with("local:pinned") &&
+            !marker.starts_with("local:foreach") && !marker.starts_with("local:pattern") &&
+            ownershipKindFromSyntax(variable->typeSyntax()) == sema::OwnershipKind::None;
+        if (ordinaryLocal)
+            inferredOwnerFromOwnedInitializer_ = true;
+        else
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                variable->first()->range(),
+                "owned return value cannot initialize a non-owning local; use a raii owner destination");
+    }
     const bool ownedReturningInitializer = initializer.valid &&
         initializer.ownership == sema::OwnershipKind::Owned && initializer.ownershipTransfer;
     if (isRaii && variable->first()->kind() != ast::AstNodeKind::ObjectCreationExpression &&
@@ -6290,6 +6305,8 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
     bool pendingPointerHasProvenance = declaredPointerContract.hasProvenance;
     std::size_t pendingPointerKnownAlignment = declaredPointerContract.knownAlignment;
     unsigned pendingPointerAddressSpace = declaredPointerContract.addressSpace;
+    // A1: reset before the initializer is validated, so a flag never reaches another declaration.
+    inferredOwnerFromOwnedInitializer_ = false;
     analyzeVariableInitializer(
         precomputedVarInitializer, pendingLocalBorrow, pendingReferenceEscapeOrigin,
         pendingReferencePlaceKey, pendingReferenceReborrowSourceLocalOrdinal,
@@ -6302,6 +6319,12 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
         isReferenceLocal, isReadonlyReference, isPinnedReferenceLocal, isMoveOnly,
         isRaii, isBorrowed, isForeachEnumerator, managedDelegate,
         raiiOwnsNativeArrayBuffer, raiiBorrowedElementArray);
+    // A1: an unqualified local initialized by an owned transfer is the inferred owner of the result.
+    if (inferredOwnerFromOwnedInitializer_)
+    {
+        inferredOwnerFromOwnedInitializer_ = false;
+        if (!isReferenceLocal && !isVariableLengthArray && !isBorrowed && !isScope) isRaii = true;
+    }
     if (rejectDuplicateVariable(variable, scopeOrdinal, diagnostics)) return;
     MethodLocalSymbol local;
     initializeVariableLocal(

@@ -5355,6 +5355,9 @@ private:
     std::string activeTargetTypeKey_;
     // L3: the conditional expression that is the whole initializer or assignment source for activeTargetTypeKey_.
     const ast::AstNode* targetTypedConditional_ = nullptr;
+    // A1: set by validateVariableOwnershipInitializer when an unqualified local is initialized by an owned
+    //     transfer and becomes its inferred owner; finishVariableAnalysis consumes it.
+    mutable bool inferredOwnerFromOwnedInitializer_ = false;
     // NS304-T10-F05: true mientras se analiza el LHS de un null-conditional write.
     bool activeNullConditionalWrite_ = false;
     std::unordered_set<std::size_t> analyzedCallableMembers_;
