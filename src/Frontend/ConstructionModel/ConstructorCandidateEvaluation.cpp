@@ -120,11 +120,16 @@ bool isStringLiteralBorrow(
         parameter.typeKey == "builtin:string" && argument.typeKey == "string-literal";
 }
 
+// OT1: as for a method or a namespace function (callIsFullExpressionBorrow, freshStringBorrow), a fresh owned
+//     string (the result of an owned-returning call) is lent for the full expression to an unqualified or borrowed
+//     string parameter of a constructor and released after it, as a C++ temporary lives until the end of its full
+//     expression.
 bool isFreshOwnedStringBorrow(
     const MethodParameterSymbol& parameter,
     const MethodExpressionTypeBinding& argument) noexcept
 {
-    return parameter.ownership == sema::OwnershipKind::Borrowed &&
+    return (parameter.ownership == sema::OwnershipKind::Borrowed ||
+            parameter.ownership == sema::OwnershipKind::None) &&
         parameter.typeKey == "builtin:string" &&
         argument.ownership == sema::OwnershipKind::Owned &&
         argument.ownershipTransfer && argument.ownershipFreshOwner;
