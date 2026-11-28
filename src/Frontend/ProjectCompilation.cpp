@@ -2460,7 +2460,13 @@ bool ProjectCompilation::compileProjectOopHir(
                 const bool fieldInitializer = parent && parent->kind == ProjectOopHirNodeKind::Assignment &&
                     parent->children.size() == 2 && parent->children[0] &&
                     parent->children[0]->kind == ProjectOopHirNodeKind::FieldAddress && parent->children[1].get() == node;
-                if (fieldInitializer) continue;
+                // T18: the dynamic initializer of a namespace state builds its C++ value in the state's storage, as a
+                //     field initializer builds a C++ field (its destruction at process exit is not implemented yet).
+                const bool stateInitializer = parent && parent->kind == ProjectOopHirNodeKind::Assignment &&
+                    parent->children.size() == 2 && parent->children[0] &&
+                    parent->children[0]->kind == ProjectOopHirNodeKind::NamespaceStateAddress &&
+                    parent->children[1].get() == node;
+                if (fieldInitializer || stateInitializer) continue;
                 const bool local = returned || (experimentalCppLocalLifetimeAnalysisForTests_ && parent &&
                     ((parent->kind == ProjectOopHirNodeKind::LocalDeclaration && !parent->referenceLocal &&
                       !parent->staticLocal) ||

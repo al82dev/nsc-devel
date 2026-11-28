@@ -29,6 +29,10 @@ initializers (calls, copies of existing values) keep their current meaning.
   `NamespaceStateAddress` and whose value is a `ValueConstruction` is accepted, as the same shape with a
   `FieldAddress` destination already is for field initializers (X2-06). Without it the analysis accepted the
   initializer and the later check rejected it ("experimental C++ local cannot copy or transfer a C++ value").
+- `src/Frontend/ProjectCompilation.cpp`, C++ construction lifetime check: a `ValueConstruction` that is the value of
+  such an assignment is skipped like a field initializer (no local cleanup is registered for it). The previous
+  build stopped here with "experimental C++ lifetime requires direct local or discarded construction (under
+  assignment)".
 
 ## Pending
 
@@ -40,5 +44,6 @@ initializers (calls, copies of existing values) keep their current meaning.
 
 ## Status
 
-Analysis and HIR check changes built (Release O3). The HIR check change was built but the end-to-end compile of a
-state initialized this way was interrupted before it finished: behavior pending verification.
+The analysis change and the first HIR check change were built (Release O3); a compile of a probe program then
+stopped at the construction lifetime check. That last change is implemented with static review only: not built.
+Behavior pending build and verification.
