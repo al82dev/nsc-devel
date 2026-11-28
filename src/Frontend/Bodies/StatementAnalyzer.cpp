@@ -4490,6 +4490,26 @@ void ProjectMethodBodyModel::validateVariableInitializerConversion(
     if (!conversion.exists() && initializer.typeKey == "string-literal" && declaredPointerPointeeReadonly &&
         (typeKey == "builtin:sbyte*" || typeKey == "builtin:byte*" || typeKey == "builtin:char*"))
         return;
+    // T19: a runtime string converts to a C character pointer only as a direct C call argument (L-003): the
+    //     NUL-terminated copy it is converted to lives for that call. A pointer local would outlive that copy, so
+    //     the diagnostic states the rule instead of a bare type mismatch, spells the declared pointee const, and
+    //     names the explicit form (NativeSharp.Core.CString), which is what C++ asks for with c_str().
+    if (!conversion.exists() && initializer.typeKey == "builtin:string" &&
+        (typeKey == "builtin:sbyte*" || typeKey == "builtin:byte*" || typeKey == "builtin:char*"))
+    {
+        const std::string pointee = std::string(typeKey.substr(8, typeKey.size() - 9));
+        const std::string spelled = pointee + (declaredPointerPointeeReadonly ? " const*" : "*");
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            variable->first()->range(),
+            "cannot initialize local '" + variable->text() + "' of type '" + spelled +
+                "' from a runtime string: a string converts to a C character pointer only as a direct argument of "
+                "a C call, where its NUL-terminated copy lives for that call; a local pointer would outlive it. As "
+                "C++ asks for c_str(), keep the copy in an owner: 'raii CString c = new CString(text);' and "
+                "take 'c.Pointer()'");
+        return;
+    }
     if (!conversion.exists() && !reportTupleConversionFailure(
             initializer.typeKey, typeKey, variable->first()->range(), diagnostics))
         diagnostics.report(
