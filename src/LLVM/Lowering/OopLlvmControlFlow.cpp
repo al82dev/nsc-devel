@@ -600,6 +600,9 @@ LLVMValueRef OopLlvmImplementation::beginLoopStackScope(const frontend::ProjectO
             if (current == nullptr) continue;
             if (current->kind == frontend::ProjectOopMirNodeKind::StackAllocation && current->booleanValue)
                 scoped = true;
+            // CS1: the NUL-terminated string copy of a pointer local is stack storage of the iteration too.
+            if (isCStringArgument(current))
+                scoped = true;
             for (const auto& child : current->children) pending.push_back(child.get());
         }
         if (!scoped) return nullptr;

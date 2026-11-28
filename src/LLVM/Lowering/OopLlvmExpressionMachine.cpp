@@ -2314,15 +2314,16 @@ bool OopLlvmImplementation::lowerExpressionFrame041Convert(
     if (value == nullptr) { values.push_back(nullptr); return true; }
     if (terminated()) { values.push_back(value); return true; }
     // EN: L-003. The string itself passes through; the enclosing direct call makes its NUL-terminated copy
-    //     (materializeCStringArguments). Anywhere else the conversion has no storage to live in.
-    // ES: L-003. La cadena pasa tal cual; la llamada directa que la contiene hace su copia con NUL.
+    //     (materializeCStringArguments). CS1: anywhere else the body model admitted it only as the initializer of a
+    //     read-only pointer local that owns the copy, so the copy is made here in the frame's stack storage.
+    // ES: L-003. La cadena pasa tal cual; la llamada directa que la contiene hace su copia con NUL. CS1: en otro
+    //     lugar solo es el inicializador de un local puntero que posee la copia, hecha aqui en la pila del marco.
     if (isCStringArgument(current))
     {
         if (std::find(claimedCStringArguments_.begin(), claimedCStringArguments_.end(), current) ==
             claimedCStringArguments_.end())
         {
-            values.push_back(failValue(error,
-                "L-003 a string converts to a C 'const char*' only as an argument of a direct call"));
+            values.push_back(buildCStringStackCopy(value));
             return true;
         }
         values.push_back(value);
@@ -5442,8 +5443,6 @@ LLVMValueRef OopLlvmImplementation::materializeCStringArguments(const frontend::
     LLVMValueRef save = nullptr;
     if (terminated()) return nullptr;
     LLVMTypeRef pointer = LLVMPointerTypeInContext(context_, 0);
-    LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
-    LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
     for (std::size_t child = firstArgumentChild; child < call->children.size(); ++child)
     {
         const frontend::ProjectOopMirNode* argument = call->children[child].get();
@@ -5457,36 +5456,48 @@ LLVMValueRef OopLlvmImplementation::materializeCStringArguments(const frontend::
             LLVMValueRef intrinsic = LLVMGetIntrinsicDeclaration(module_, id, &pointer, 1);
             save = LLVMBuildCall2(builder_, LLVMGlobalGetValueType(intrinsic), intrinsic, nullptr, 0, "cstr.save");
         }
-        LLVMValueRef string = arguments[index];
-        LLVMValueRef function = LLVMGetBasicBlockParent(LLVMGetInsertBlock(builder_));
-        LLVMBasicBlockRef copyBlock = LLVMAppendBasicBlockInContext(context_, function, "cstr.copy");
-        LLVMBasicBlockRef doneBlock = LLVMAppendBasicBlockInContext(context_, function, "cstr.done");
-        LLVMBasicBlockRef entryBlock = LLVMGetInsertBlock(builder_);
-        LLVMValueRef isNull = LLVMBuildICmp(builder_, LLVMIntEQ, string, LLVMConstNull(pointer), "cstr.null");
-        LLVMBuildCondBr(builder_, isNull, doneBlock, copyBlock);
-        LLVMPositionBuilderAtEnd(builder_, copyBlock);
-        LLVMValueRef length = LLVMBuildLoad2(builder_, i64, string, "cstr.length");
-        LLVMValueRef dataOffset = LLVMConstInt(i64, 8, 0);
-        LLVMValueRef data = LLVMBuildGEP2(builder_, i8, string, &dataOffset, 1, "cstr.data");
-        LLVMValueRef size = LLVMBuildAdd(builder_, length, LLVMConstInt(i64, 1, 0), "cstr.size");
-        LLVMValueRef buffer = LLVMBuildArrayAlloca(builder_, i8, size, "cstr.buffer");
-        LLVMTypeRef memcpyTypes[] = {pointer, pointer, i64};
-        LLVMValueRef memcpyIntrinsic = LLVMGetIntrinsicDeclaration(
-            module_, LLVMLookupIntrinsicID("llvm.memcpy", 11), memcpyTypes, 3);
-        LLVMValueRef memcpyArguments[] = {buffer, data, length, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
-        LLVMBuildCall2(builder_, LLVMGlobalGetValueType(memcpyIntrinsic), memcpyIntrinsic, memcpyArguments, 4, "");
-        LLVMValueRef terminator = LLVMBuildGEP2(builder_, i8, buffer, &length, 1, "cstr.end");
-        LLVMBuildStore(builder_, LLVMConstInt(i8, 0, 0), terminator);
-        LLVMBasicBlockRef copyEnd = LLVMGetInsertBlock(builder_);
-        LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
-        LLVMValueRef result = LLVMBuildPhi(builder_, pointer, "cstr");
-        LLVMValueRef incoming[] = {LLVMConstNull(pointer), buffer};
-        LLVMBasicBlockRef blocks[] = {entryBlock, copyEnd};
-        LLVMAddIncoming(result, incoming, blocks, 2);
-        arguments[index] = result;
+        arguments[index] = buildCStringStackCopy(arguments[index]);
     }
     return save;
+}
+
+// EN: CS1. A NUL-terminated copy of a runtime string's bytes (length at offset 0, bytes at offset 8) in a dynamic
+//     stack allocation of length + 1 bytes; a null string gives null. The copy is never written after it is made.
+//     Its storage ends with the enclosing loop iteration or the frame, or earlier when a caller restores the stack.
+// ES: CS1. Una copia con NUL de los bytes de una cadena en una reserva dinamica de la pila de longitud + 1 bytes;
+//     una cadena nula da nulo. Su almacenamiento termina con la iteracion del bucle o con el marco.
+LLVMValueRef OopLlvmImplementation::buildCStringStackCopy(LLVMValueRef string)
+{
+    LLVMTypeRef pointer = LLVMPointerTypeInContext(context_, 0);
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+    LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
+    LLVMValueRef function = LLVMGetBasicBlockParent(LLVMGetInsertBlock(builder_));
+    LLVMBasicBlockRef copyBlock = LLVMAppendBasicBlockInContext(context_, function, "cstr.copy");
+    LLVMBasicBlockRef doneBlock = LLVMAppendBasicBlockInContext(context_, function, "cstr.done");
+    LLVMBasicBlockRef entryBlock = LLVMGetInsertBlock(builder_);
+    LLVMValueRef isNull = LLVMBuildICmp(builder_, LLVMIntEQ, string, LLVMConstNull(pointer), "cstr.null");
+    LLVMBuildCondBr(builder_, isNull, doneBlock, copyBlock);
+    LLVMPositionBuilderAtEnd(builder_, copyBlock);
+    LLVMValueRef length = LLVMBuildLoad2(builder_, i64, string, "cstr.length");
+    LLVMValueRef dataOffset = LLVMConstInt(i64, 8, 0);
+    LLVMValueRef data = LLVMBuildGEP2(builder_, i8, string, &dataOffset, 1, "cstr.data");
+    LLVMValueRef size = LLVMBuildAdd(builder_, length, LLVMConstInt(i64, 1, 0), "cstr.size");
+    LLVMValueRef buffer = LLVMBuildArrayAlloca(builder_, i8, size, "cstr.buffer");
+    LLVMTypeRef memcpyTypes[] = {pointer, pointer, i64};
+    LLVMValueRef memcpyIntrinsic = LLVMGetIntrinsicDeclaration(
+        module_, LLVMLookupIntrinsicID("llvm.memcpy", 11), memcpyTypes, 3);
+    LLVMValueRef memcpyArguments[] = {buffer, data, length, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+    LLVMBuildCall2(builder_, LLVMGlobalGetValueType(memcpyIntrinsic), memcpyIntrinsic, memcpyArguments, 4, "");
+    LLVMValueRef terminator = LLVMBuildGEP2(builder_, i8, buffer, &length, 1, "cstr.end");
+    LLVMBuildStore(builder_, LLVMConstInt(i8, 0, 0), terminator);
+    LLVMBasicBlockRef copyEnd = LLVMGetInsertBlock(builder_);
+    LLVMBuildBr(builder_, doneBlock);
+    LLVMPositionBuilderAtEnd(builder_, doneBlock);
+    LLVMValueRef result = LLVMBuildPhi(builder_, pointer, "cstr");
+    LLVMValueRef incoming[] = {LLVMConstNull(pointer), buffer};
+    LLVMBasicBlockRef blocks[] = {entryBlock, copyEnd};
+    LLVMAddIncoming(result, incoming, blocks, 2);
+    return result;
 }
 
 // EN: L-003. Restores the stack pointer saved before the copies, so they live exactly for the call.

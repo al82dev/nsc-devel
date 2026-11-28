@@ -1678,6 +1678,8 @@ private:
     LLVMValueRef materializeCStringArguments(const frontend::ProjectOopMirNode* call, std::size_t firstArgumentChild,
         std::vector<LLVMValueRef>& arguments);
     void releaseCStringArguments(LLVMValueRef stackSave);
+    // CS1: the NUL-terminated stack copy itself, shared by call arguments and by pointer locals that own a copy.
+    LLVMValueRef buildCStringStackCopy(LLVMValueRef string);
     std::vector<const frontend::ProjectOopMirNode*> claimedCStringArguments_;
     bool lowerExpressionFrame041Convert(
         const LlvmExpressionFrame& frame, std::vector<LlvmExpressionFrame>& frames,
