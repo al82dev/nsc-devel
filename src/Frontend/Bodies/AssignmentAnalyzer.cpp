@@ -920,7 +920,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     const bool delegateTarget = isDelegateTypeKey(left.typeKey);
     // NS304-T09-F07: expone el tipo objetivo al `new()` target-typed del lado derecho.
     const std::string previousTargetTypeKey = activeTargetTypeKey_;
+    const ast::AstNode* const previousTargetTypedConditional = targetTypedConditional_;
     activeTargetTypeKey_ = left.typeKey;
+    targetTypedConditional_ = expression->tokenKind() == TokenKind::Equal && expression->second() != nullptr &&
+            expression->second()->kind() == ast::AstNodeKind::ConditionalExpression
+        ? expression->second() : nullptr;
     ExpressionResult right;
     if (delegateTarget && expression->second()->kind() == ast::AstNodeKind::LambdaExpression)
     {
@@ -937,6 +941,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
                 ownedFieldMoveTarget || genericFieldMoveTarget || ownedSetterMoveTarget);
     }
     activeTargetTypeKey_ = previousTargetTypeKey;
+    targetTypedConditional_ = previousTargetTypedConditional;
     if (right.methodGroup && delegateTarget)
     {
         right = bindMethodGroupToDelegate(

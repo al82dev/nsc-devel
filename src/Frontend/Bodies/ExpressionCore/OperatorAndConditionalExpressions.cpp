@@ -912,9 +912,39 @@ ProjectMethodBodyModel::analyzeExpressionKindConditionalExpression(
         result.valid = true;
         return result;
     }
-    if (!resolveConditionalDivergence(result, whenTrue, whenFalse) &&
-        !resolveConditionalMatchingType(result, expression, whenTrue, whenFalse, diagnostics))
-        resolveConditionalSpecialType(result, expression, whenTrue, whenFalse, diagnostics);
+    // L3: a conditional that is the whole source of an initializer or assignment is target-typed, as in C#: when
+    //     its natural type is missing or does not convert to the target, and each branch converts to the target, the
+    //     result has the target type and HIR converts each branch to it. Elsewhere the normal rules apply.
+    const std::string targetTypeKey = expression == targetTypedConditional_ ? activeTargetTypeKey_ : std::string();
+    if (targetTypeKey.empty())
+    {
+        if (!resolveConditionalDivergence(result, whenTrue, whenFalse) &&
+            !resolveConditionalMatchingType(result, expression, whenTrue, whenFalse, diagnostics))
+            resolveConditionalSpecialType(result, expression, whenTrue, whenFalse, diagnostics);
+    }
+    else
+    {
+        diagnostics::DiagnosticEngine naturalDiagnostics;
+        ExpressionResult natural;
+        if (!resolveConditionalDivergence(natural, whenTrue, whenFalse) &&
+            !resolveConditionalMatchingType(natural, expression, whenTrue, whenFalse, naturalDiagnostics))
+            resolveConditionalSpecialType(natural, expression, whenTrue, whenFalse, naturalDiagnostics);
+        const bool naturalFits = natural.valid && !naturalDiagnostics.hasErrors() &&
+            classifyImportedFlexibleConversion(natural, targetTypeKey).exists();
+        const bool branchesFit = classifyImportedFlexibleConversion(whenTrue, targetTypeKey).exists() &&
+            classifyImportedFlexibleConversion(whenFalse, targetTypeKey).exists();
+        if (!naturalFits && branchesFit)
+        {
+            result.typeKey = targetTypeKey;
+            result.valid = true;
+        }
+        else
+        {
+            result = natural;
+            for (const diagnostics::Diagnostic& diagnostic : naturalDiagnostics.diagnostics())
+                diagnostics.append(diagnostic);
+        }
+    }
     if (result.valid && memberModel_ != nullptr && memberModel_->typeIsMoveOnly(result.typeKey) &&
         (whenTrue.addressable || whenFalse.addressable))
     {
