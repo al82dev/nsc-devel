@@ -1815,6 +1815,34 @@ if (operation == TokenKind::Bang)
     return result;
 }
 
+namespace
+{
+// T14: the explanation for an operand of `&`, `ref`, `in` or `out` that has no address, by what its syntax is. A
+//     member access may name a bit field or a property; an identifier, `this` or a dereference keeps the general
+//     text; any other expression computes a temporary value.
+std::string nonAddressableOperandMessage(const ast::AstNode* expression)
+{
+    const ast::AstNode* target = expression != nullptr ? expression->first() : nullptr;
+    const std::string_view pass = expression != nullptr ? std::string_view(expression->auxiliaryText())
+                                                        : std::string_view();
+    const std::string form = pass.starts_with("pass:") ? std::string(pass.substr(5)) : std::string("&");
+    if (target == nullptr)
+        return "bit fields have no address; operand of & must name addressable storage, "
+            "not a bit field or temporary value";
+    const ast::AstNodeKind kind = target->kind();
+    if (kind == ast::AstNodeKind::MemberExpression || kind == ast::AstNodeKind::PointerMemberExpression)
+        return "a bit field or a property value has no address; the operand of '" + form +
+            "' must name addressable storage";
+    const bool dereference = kind == ast::AstNodeKind::UnaryExpression && target->tokenKind() == TokenKind::Star;
+    if (kind == ast::AstNodeKind::IdentifierExpression || kind == ast::AstNodeKind::ThisExpression ||
+        kind == ast::AstNodeKind::BaseExpression || dereference)
+        return "bit fields have no address; operand of & must name addressable storage, "
+            "not a bit field or temporary value";
+    return "the operand of '" + form + "' is a temporary value (a call result, a construction or a computed "
+        "value), which has no address; store it in a local first";
+}
+}
+
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAddressOf(
     const ast::AstNode* expression,
     const ExpressionResult& operand,
@@ -1839,8 +1867,7 @@ if (operation == TokenKind::Amp)
         // ES: Una lectura indexada tiene su propia explicacion: el texto generico nombraba campos de
         //     bits para un caracter de cadena o el resultado de un indexador por valor.
         const ast::AstNode* target = expression->first();
-        std::string message = "bit fields have no address; operand of & must name addressable storage, "
-            "not a bit field or temporary value";
+        std::string message = nonAddressableOperandMessage(expression);
         if (target != nullptr && target->kind() == ast::AstNodeKind::IndexExpression)
             message = operand.typeKey == "builtin:char"
                 ? "an indexed character is a value, not addressable storage; "
