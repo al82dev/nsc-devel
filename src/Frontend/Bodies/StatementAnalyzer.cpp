@@ -4084,6 +4084,13 @@ void ProjectMethodBodyModel::validateVariableLifetimeQualifiers(
     bool raiiOwnsNativeArrayBuffer,
     const char* ownerSpelling) const
 {
+    // T16: a C++ record local holds the object itself and its scope destroys it, so the qualifier names nothing
+    //     to own; the diagnostic says so instead of only listing what an owner may be.
+    bool cppRecordValue = false;
+    if (isRaii && nameLookup_ != nullptr && typeKey.starts_with("type:") && !typeKey.ends_with('*'))
+        if (const auto ordinal = nameLookup_->typeOrdinalForIdentity(typeKey.substr(5)))
+            if (const auto* imported = nameLookup_->cppImportedType(*ordinal))
+                cppRecordValue = imported->origin == CppImportedTypeOrigin::CppRecord;
     if (isRaii && !isReferenceTypeKey(typeKey) && typeKey != "builtin:string" &&
         !managedDelegate && !raiiOwnsNativeArrayBuffer &&
         !typeKey.starts_with("iterator:") && !typeKey.starts_with("async-iterator:"))
@@ -4091,9 +4098,12 @@ void ProjectMethodBodyModel::validateVariableLifetimeQualifiers(
             diagnostics::DiagnosticId::InvalidType,
             diagnostics::DiagnosticSeverity::Error,
             variable->range(),
-            std::string(ownerSpelling) +
-                " requires a NativeSharp class/interface reference, managed delegate, native "
-                "string, or native array buffer");
+            cppRecordValue
+                ? std::string(ownerSpelling) + " cannot own a C++ record: a local of C++ record type holds the "
+                      "object itself and the end of its scope destroys it; remove the ownership qualifier"
+                : std::string(ownerSpelling) +
+                      " requires a NativeSharp class/interface reference, managed delegate, native "
+                      "string, or native array buffer");
     // EN: Freeze C-11: a struct enumerator with a non-trivial lifetime is an ordinary value
     //     local of the lowered loop; its scope destroys it on every exit, like any value local.
     // ES: Congelamiento C-11: un enumerador struct con lifetime no trivial es un local de
