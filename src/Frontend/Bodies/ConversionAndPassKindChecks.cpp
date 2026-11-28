@@ -67,7 +67,9 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyImportedFlexibleConver
         return {ProjectConversionKind::CFlexibleArrayToPointer, 1, source.typeKey,
                 std::string(targetTypeKey), std::nullopt};
     ProjectImplicitConversion conversion = classifyImplicit(source.typeKey, targetTypeKey, source.integerConstant);
-    if (!conversion.exists() && source.cppForeignCallResult)
+    // L2: a read of C/C++ storage (a field, an element, a global, the pointee of a C pointer) converts as a C/C++
+    //     call result does; a NativeSharp value keeps NativeSharp's conversions.
+    if (!conversion.exists() && (source.cppForeignCallResult || source.cppCOrigin))
         conversion = classifyForeignCallNumericResult(nameLookup_, source.typeKey, targetTypeKey);
     return conversion;
 }

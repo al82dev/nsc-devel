@@ -480,7 +480,7 @@ void ProjectOopHirModel::convertConditionalBranch(
             resultType == *element + "*"
         ? ProjectImplicitConversion{ProjectConversionKind::CFlexibleArrayToPointer, 1, branch->typeKey, resultType,
                                     std::nullopt}
-        : binding != nullptr && binding->cppForeignCallResult
+        : binding != nullptr && (binding->cppForeignCallResult || binding->cppCOrigin)
         ? classifyExpressionConversion(syntax, branch->typeKey, resultType)
         : ProjectTypeConversion::classifyImplicit(
             branch->typeKey, resultType, binding != nullptr ? binding->integerConstant : std::nullopt);

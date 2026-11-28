@@ -205,7 +205,9 @@ void ProjectConstructionModel::evaluateConstructorArgument(
         argumentTypes[argumentOrdinal].typeKey,
         conversionTarget,
         argumentTypes[argumentOrdinal].integerConstant);
-    if (!conversion.exists() && argumentTypes[argumentOrdinal].cppForeignCallResult &&
+    // L2: a read of C/C++ storage too, as in the body model.
+    if (!conversion.exists() &&
+        (argumentTypes[argumentOrdinal].cppForeignCallResult || argumentTypes[argumentOrdinal].cppCOrigin) &&
         argumentTypes[argumentOrdinal].argumentPassKind == ParameterPassKind::Value)
         conversion = classifyForeignCallNumericResult(
             nameLookup_, argumentTypes[argumentOrdinal].typeKey, conversionTarget);

@@ -273,7 +273,8 @@ ProjectImplicitConversion ProjectOopHirModel::classifyExpressionConversion(
                 std::string(targetTypeKey), std::nullopt};
     ProjectImplicitConversion conversion = classifyImplicit(sourceTypeKey, targetTypeKey,
                             binding ? binding->integerConstant : std::nullopt);
-    if (!conversion.exists() && binding && binding->cppForeignCallResult)
+    // L2: a read of C/C++ storage converts as a C/C++ call result does, as in the body model.
+    if (!conversion.exists() && binding && (binding->cppForeignCallResult || binding->cppCOrigin))
         conversion = classifyForeignCallNumericResult(nameLookup_, sourceTypeKey, targetTypeKey);
     return conversion;
 }
