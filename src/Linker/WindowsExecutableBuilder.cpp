@@ -447,9 +447,12 @@ bool discoverExecutableImports(
             *linker, temporaryDirectory, programText,
             externalImports, importLibraries, error))
         return false;
+    // RT1: NativeSharp's runtime comes before the libraries of the references, so a symbol that both NativeSharp's
+    //     runtime and an MSVC runtime archive define (_fltused) resolves to NativeSharp's definition, and those
+    //     archives only supply the objects NativeSharp does not define (the /GS cookie, TLS support).
+    if (independentRuntime) importLibraries.push_back(runtimeLibrary);
     importLibraries.insert(
         importLibraries.end(), extraLinkLibraries.begin(), extraLinkLibraries.end());
-    if (independentRuntime) importLibraries.push_back(runtimeLibrary);
     return true;
 }
 

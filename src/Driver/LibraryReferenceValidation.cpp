@@ -585,12 +585,24 @@ bool validateProjectLibraryReferences(
                 if (std::filesystem::is_regular_file(include.path / "corecrt.h", ec))
                     addRuntime(include.path.parent_path().parent_path() / "lib" / "ucrt" / "x64" / "ucrt.lib");
                 ec.clear();
-                if (reference.language == interop::CppLanguageMode::Cpp &&
-                    std::filesystem::is_regular_file(include.path / "vcruntime.h", ec))
+                // RT1: a static C or C++ library (a Library with no Runtime DLL: its code is linked into the image)
+                //     compiled against the dynamic MSVC runtime (/MD, the default of MSVC and clang-cl) references the
+                //     vcruntime exports (memcmp, memcpy) and, from the static part of msvcrt.lib, the /GS stack
+                //     cookie (__security_cookie, __security_check_cookie) and the TLS support (_tls_index). They come
+                //     from the toolset of the include directory. An import library of a DLL brings no such code, so
+                //     its link is unchanged. The executable link places NativeSharp's runtime before these archives
+                //     (WindowsExecutableBuilder), so a symbol both define (_fltused) stays NativeSharp's.
+                //     C++ references keep msvcprt.lib and vcruntime.lib as before.
+                const bool staticLibrary = !reference.libraryPath.empty() && reference.runtimePath.empty();
+                if (std::filesystem::is_regular_file(include.path / "vcruntime.h", ec))
                 {
                     const auto runtime = include.path.parent_path() / "lib" / "x64";
-                    addRuntime(runtime / "msvcprt.lib");
-                    addRuntime(runtime / "vcruntime.lib");
+                    if (reference.language == interop::CppLanguageMode::Cpp)
+                        addRuntime(runtime / "msvcprt.lib");
+                    if (reference.language == interop::CppLanguageMode::Cpp || staticLibrary)
+                        addRuntime(runtime / "vcruntime.lib");
+                    if (staticLibrary)
+                        addRuntime(runtime / "msvcrt.lib");
                 }
             }
     if (!validateCppImportRuntimes(cppRuntimeReferences, error)) return false;
