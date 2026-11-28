@@ -4934,6 +4934,7 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                 request.range = expression->range();
                 request.functionMacro = site->functionMacro;
                 bool valid = true;
+                const std::size_t errorsBeforeArguments = diagnostics.errorCount();
                 // STL: the explicit template arguments written in the call (`make_unique<int>(42)`) come first; Clang
                 //     deduces the rest. / Los argumentos de plantilla explicitos van primero; Clang deduce el resto.
                 const ast::AstNode* callee = expression->first();
@@ -5030,6 +5031,9 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                                                         signedCharOrigin ? "csigned:" : "") + value.typeKey);
                 }
                 if (valid) namespaceFunctionModel_->recordCppTemplateDeduction(std::move(request));
+                // T15: an argument that failed with its own error leaves nothing to deduce or expand; the call adds
+                //     no second error for it.
+                if (!valid && diagnostics.errorCount() > errorsBeforeArguments) return ExpressionResult{};
                 // T19-003: a C/C++ function-like macro needs its expansion. / Una macro de funcion C/C++ necesita
                 //     expandirse.
                 diagnostics.report(diagnostics::DiagnosticId::InvalidCall, diagnostics::DiagnosticSeverity::Error,
