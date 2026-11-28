@@ -1240,12 +1240,17 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
         const auto ordinal = nameLookup_->typeOrdinalForIdentity(typeKey.substr(5));
         return ordinal.has_value() && nameLookup_->cppTransportValueEligible(*ordinal);
     };
-    const bool rvalueArgument = (parameter.cppRvalueReference ||
+    // L1: a temporary for a NativeSharp `in` parameter converts to the referent type and is materialized for the
+    //     call, as a value for a C++ `const T&` is. A forwarded receiver keeps its own binding.
+    const bool inTemporary = !(hasForwardedReceiver && argumentOrdinal == 0) &&
+        inTemporaryArgumentAllowed(arguments[argumentOrdinal], candidate, parameter);
+    if (inTemporary) evaluated.inTemporaryArgumentOrdinals.push_back(argumentOrdinal);
+    const bool rvalueArgument = ((parameter.cppRvalueReference ||
         (parameter.cppConstReference && (!cppRecordTypeKey(parameter.pointeeTypeKey) ||
                                          !arguments[argumentOrdinal].addressable ||
                                          transportableCppRecord(parameter.pointeeTypeKey))) ||
         (parameter.cppByValueRecord && !arguments[argumentOrdinal].addressable)) &&
-        arguments[argumentOrdinal].argumentPassKind == ParameterPassKind::Value;
+        arguments[argumentOrdinal].argumentPassKind == ParameterPassKind::Value) || inTemporary;
     std::string conversionTarget = (hasForwardedReceiver && argumentOrdinal == 0 &&
             parameter.passKind != ParameterPassKind::Value) || rvalueArgument
         ? parameter.pointeeTypeKey
@@ -2726,6 +2731,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
     call.selectedConversions = selected.conversions;
     call.selectedArgumentParameterOrdinals = selected.argumentParameterOrdinals;
     call.selectedArgumentSyntaxes.assign(argumentSyntaxes.begin(), argumentSyntaxes.end());
+    for (const std::size_t ordinal : selected.inTemporaryArgumentOrdinals)
+        if (ordinal < argumentSyntaxes.size() && argumentSyntaxes[ordinal] != nullptr)
+            call.inTemporaryArgumentSyntaxes.push_back(argumentSyntaxes[ordinal]);
     call.selectedParameterPackElements = selected.parameterPackElements;
     call.selectedParameterPackOrdinal = selected.parameterPackOrdinal;
     call.selectedUsesExpandedParameterPack = selected.usesExpandedParameterPack;
@@ -7187,11 +7195,16 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     }
     const bool packElement = argumentOrdinal < candidateBinding.parameterPackElements.size() &&
         candidateBinding.parameterPackElements[argumentOrdinal];
+    // L1: as for a namespace function, a temporary for a NativeSharp `in` parameter.
+    const bool inTemporary = !packElement &&
+        inTemporaryArgumentAllowed(argument, candidate, candidate.parameters[parameterOrdinal]);
+    if (inTemporary) candidateBinding.inTemporaryArgumentOrdinals.push_back(argumentOrdinal);
     // T19-007: as for a namespace function, a value for a C++ `T&&`. / Como en una funcion de namespace.
-    const bool rvalueArgument = !packElement && (candidate.parameters[parameterOrdinal].cppRvalueReference ||
+    const bool rvalueArgument = (!packElement && (candidate.parameters[parameterOrdinal].cppRvalueReference ||
         (candidate.parameters[parameterOrdinal].cppConstReference &&
          (!cppRecordTypeKey(candidate.parameters[parameterOrdinal].pointeeTypeKey) || !argument.addressable))) &&
-        argument.argumentPassKind == ParameterPassKind::Value; // X2-05: a C++ record prvalue too. / Un prvalue tambien.
+        argument.argumentPassKind == ParameterPassKind::Value) || // X2-05: a C++ record prvalue too.
+        inTemporary;
     std::string conversionTarget = rvalueArgument ? candidate.parameters[parameterOrdinal].pointeeTypeKey
                                                   : candidate.parameters[parameterOrdinal].typeKey;
     if (packElement)
@@ -8868,6 +8881,9 @@ void ProjectMethodBodyModel::configureSelectedCallBinding(
          argumentOrdinal < selected.argumentParameterOrdinals.size(); ++argumentOrdinal)
         call.selectedArgumentSyntaxes.push_back(resolvedCallArgumentSyntax(
             expression, callee, argumentOrdinal, coreStringForwarding));
+    for (const std::size_t ordinal : selected.inTemporaryArgumentOrdinals)
+        if (ordinal < call.selectedArgumentSyntaxes.size() && call.selectedArgumentSyntaxes[ordinal] != nullptr)
+            call.inTemporaryArgumentSyntaxes.push_back(call.selectedArgumentSyntaxes[ordinal]);
     call.selectedParameterPackElements = selected.parameterPackElements;
     call.selectedParameterPackOrdinal = selected.parameterPackOrdinal;
     call.selectedUsesExpandedParameterPack = selected.usesExpandedParameterPack;

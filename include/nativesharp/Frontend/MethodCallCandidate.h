@@ -55,6 +55,8 @@ struct MethodCallCandidate final
     // Source argument ordinals whose fresh owned string is borrowed only for the duration of
     // this call. Used by namespace/free functions as well as member calls.
     std::vector<std::size_t> fullExpressionBorrowArgumentOrdinals;
+    // L1: source argument ordinals whose temporary value is materialized for an `in` parameter.
+    std::vector<std::size_t> inTemporaryArgumentOrdinals;
     bool usesExpandedParameterPack = false;
     bool synthesizesEmptyParameterPack = false;
     std::size_t defaultedParameterCount = 0;

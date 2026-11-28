@@ -357,6 +357,48 @@ bool ProjectMethodBodyModel::isClassReferenceTypeKey(std::string_view typeKey) c
     return classTypeOrdinalForTypeKey(typeKey).has_value();
 }
 
+// L1. A temporary value lent to an `in` parameter is stored for the call and its address passed; the callee only
+//     reads it. The value must need nothing at the end of the call: no ownership, no owned storage, no lifetime of
+//     its own, and for a C++ record a trivial copy and destruction (a transport value).
+bool ProjectMethodBodyModel::inTemporaryValueMaterializable(const ExpressionResult& value) const
+{
+    if (!value.valid || value.typeKey.empty() || memberModel_ == nullptr) return false;
+    if (value.typeKey == "builtin:void" || value.typeKey == "builtin:null" || value.typeKey == "string-literal" ||
+        value.typeKey == "builtin:string")
+        return false;
+    if (value.ownership != sema::OwnershipKind::None || value.ownershipTransfer || value.ownershipFreshOwner)
+        return false;
+    if (isReferenceTypeKey(value.typeKey) || typeKeyIsViewLike(value.typeKey) ||
+        typeKeyCarriesLifetime(value.typeKey))
+        return false;
+    if (value.typeKey.starts_with("type:") && nameLookup_ != nullptr)
+    {
+        const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(value.typeKey).substr(5));
+        const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+        if (imported != nullptr && imported->origin == CppImportedTypeOrigin::CppRecord)
+            return nameLookup_->cppTransportValueEligible(*ordinal);
+    }
+    return !memberModel_->typeTransitivelyOwnsStorage(value.typeKey) && !memberModel_->typeIsMoveOnly(value.typeKey);
+}
+
+// L1. An argument for a NativeSharp `in` parameter that is a temporary: written `in e` with e a temporary, or
+//     written without the keyword and not addressable. A place written without `in` keeps the C4 rule. A callee
+//     whose result may refer to its arguments (a reference return, a lifetime-carrying or pointer result) does not
+//     receive a temporary, which dies after the call.
+bool ProjectMethodBodyModel::inTemporaryArgumentAllowed(const ExpressionResult& argument,
+    const ClassMemberSymbol& callee, const MethodParameterSymbol& parameter) const
+{
+    if (parameter.passKind != ParameterPassKind::In || parameter.cppConstReference || parameter.cppRvalueReference ||
+        parameter.isParameterPack || parameter.pointeeTypeKey.empty())
+        return false;
+    const bool writtenTemporary = argument.argumentPassKind == ParameterPassKind::Value && !argument.addressable;
+    if (!argument.inTemporaryOperand && !writtenTemporary) return false;
+    if (callee.isReferenceReturn || typeKeyCarriesLifetime(callee.declaredTypeKey) ||
+        ProjectTypeConversion::isPointer(callee.declaredTypeKey))
+        return false;
+    return inTemporaryValueMaterializable(argument);
+}
+
 // C4 "language references": the call site and the signature must agree about `ref`/`out`/`in`.
 // Overload resolution has already separated the candidates by TYPE -- a by-reference parameter
 // takes `T*`, a by-value one takes `T` -- so what is left is the readability rule C# has for the
@@ -379,6 +421,8 @@ void ProjectMethodBodyModel::checkArgumentPassKinds(
         const ParameterPassKind expected = chosen.parameters[parameterOrdinal].passKind;
         const ParameterPassKind written = arguments[index].argumentPassKind;
         if (expected == written) continue;
+        // L1: a temporary for an `in` parameter needs no keyword; it cannot change.
+        if (inTemporaryArgumentAllowed(arguments[index], chosen, chosen.parameters[parameterOrdinal])) continue;
         // T19-007: a value for a C++ `T&&` needs no keyword. / Un valor para un `T&&` C++ no lleva palabra clave.
         if (written == ParameterPassKind::Value && (chosen.parameters[parameterOrdinal].cppRvalueReference ||
                                                     chosen.parameters[parameterOrdinal].cppConstReference)) continue;

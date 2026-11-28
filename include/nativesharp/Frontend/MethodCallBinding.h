@@ -72,6 +72,8 @@ struct MethodCallBinding final
     // Source expressions in the same order as selectedArgumentParameterOrdinals. Retained so
     // T06-F07 can propagate escape contracts after the complete call graph has been analyzed.
     std::vector<const ast::AstNode*> selectedArgumentSyntaxes;
+    // L1: the argument syntaxes whose temporary value is materialized for an `in` parameter.
+    std::vector<const ast::AstNode*> inTemporaryArgumentSyntaxes;
     std::string resultTypeKey;
 };
 }

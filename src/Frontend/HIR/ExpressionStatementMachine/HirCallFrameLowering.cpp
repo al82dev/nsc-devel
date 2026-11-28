@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <optional>
 #include <utility>
+#include <vector>
 
 namespace nativesharp::frontend
 {
@@ -17,6 +18,24 @@ using internal::IterativeExpressionKind;
 using internal::OrdinaryCallFrameStage;
 using internal::OrdinaryCallFrameState;
 using internal::ReceiverFrameState;
+
+namespace
+{
+// L1: whether the analysis lent this argument's temporary value to an `in` parameter.
+bool lendsInTemporary(const std::vector<const ast::AstNode*>& syntaxes, const ast::AstNode* argument)
+{
+    return argument != nullptr && std::find(syntaxes.begin(), syntaxes.end(), argument) != syntaxes.end();
+}
+
+// L1: the expression lowered for such an argument: the operand of a written `in`, otherwise the argument itself.
+const ast::AstNode* inTemporaryValueSyntax(const ast::AstNode* argument)
+{
+    if (argument != nullptr && argument->kind() == ast::AstNodeKind::UnaryExpression &&
+        argument->auxiliaryText() == "pass:in" && argument->first() != nullptr)
+        return argument->first();
+    return argument;
+}
+}
 
 bool ProjectOopHirModel::isBoundCallKind(
     IterativeExpressionKind kind) noexcept
@@ -134,6 +153,12 @@ bool ProjectOopHirModel::nextBoundCallChild(
     }
     const ClassMemberSymbol* target = callableSymbol(call.target.memberOrdinal);
     syntax = call.argumentSyntaxes[call.nextArgument];
+    if (call.binding != nullptr && lendsInTemporary(call.binding->inTemporaryArgumentSyntaxes, syntax))
+    {
+        syntax = inTemporaryValueSyntax(syntax);
+        addressContext = false;
+        return true;
+    }
     // T19-007: a temporary operand is lowered as a value and materialized. / Se materializa como valor.
     addressContext = target != nullptr && target->isUserOperator &&
         boundCallArgumentNeedsAddress(call.target.memberOrdinal, call.nextArgument) &&
@@ -191,7 +216,10 @@ void ProjectOopHirModel::acceptBoundCallChild(
     const bool rvalueValue = parameter != nullptr && !target->isUserOperator &&
         (parameter->cppRvalueReference || parameter->cppConstReference) &&
         !call.argumentSyntaxes[index]->auxiliaryText().starts_with("pass:");
-    if (temporaryOperand || rvalueValue)
+    // L1: a temporary lent to an `in` parameter is materialized the same way.
+    const bool inTemporary = parameter != nullptr &&
+        lendsInTemporary(call.binding->inTemporaryArgumentSyntaxes, call.argumentSyntaxes[index]);
+    if (temporaryOperand || rvalueValue || inTemporary)
     {
         auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress, call.argumentSyntaxes[index],
                                   std::string(parameter->pointeeTypeKey));
@@ -375,6 +403,8 @@ bool ProjectOopHirModel::nextOrdinaryCallChild(
     }
     syntax = call.node->syntax->children()[call.nextArgument];
     addressContext = false;
+    if (lendsInTemporary(call.binding->inTemporaryArgumentSyntaxes, syntax))
+        syntax = inTemporaryValueSyntax(syntax);
     return true;
 }
 
@@ -491,8 +521,10 @@ bool ProjectOopHirModel::acceptOrdinaryCallArgumentChild(
                 ownedValueParameter(selectedMember.parameters[parameterIndex]), call.hasOwnedTemporary);
             // T19-007: a value for a C++ `T&&` is materialized. / Un valor para un `T&&` C++ se materializa.
             const MethodParameterSymbol& parameter = selectedMember.parameters[parameterIndex];
-            if ((parameter.cppRvalueReference || parameter.cppConstReference) &&
-                !argumentSyntax->auxiliaryText().starts_with("pass:"))
+            // L1: a temporary lent to an `in` parameter is materialized the same way.
+            if (((parameter.cppRvalueReference || parameter.cppConstReference) &&
+                 !argumentSyntax->auxiliaryText().starts_with("pass:")) ||
+                lendsInTemporary(call.binding->inTemporaryArgumentSyntaxes, argumentSyntax))
             {
                 auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress, argumentSyntax,
                                           std::string(parameter.pointeeTypeKey));
@@ -682,6 +714,11 @@ bool ProjectOopHirModel::nextNamespaceCallChild(
     }
     syntax = call.node->syntax->children()[call.nextArgument];
     addressContext = false;
+    if (lendsInTemporary(call.binding->inTemporaryArgumentSyntaxes, syntax))
+    {
+        syntax = inTemporaryValueSyntax(syntax);
+        return true;
+    }
     // EN: L-034. An argument the analysis bound by its address to a C++ `T&` / `const T&` parameter without a written
     //     `ref` (`dist(engine)`, conversion `T*`) is lowered as its place, so the callee sees the caller's object.
     // ES: L-034. Un argumento que el analisis enlazo por su direccion a un parametro C++ `T&` / `const T&` sin `ref`
@@ -847,8 +884,10 @@ bool ProjectOopHirModel::acceptNamespaceCallArgumentChild(
             call.hasOwnedTemporary);
         // T19-007: a value for a C++ `T&&` is materialized. / Un valor para un `T&&` C++ se materializa.
         const MethodParameterSymbol& parameter = call.target->parameters[parameterOrdinal];
-        if ((parameter.cppRvalueReference || parameter.cppConstReference) &&
-            !argumentSyntax->auxiliaryText().starts_with("pass:"))
+        // L1: a temporary lent to an `in` parameter is materialized the same way.
+        if (((parameter.cppRvalueReference || parameter.cppConstReference) &&
+             !argumentSyntax->auxiliaryText().starts_with("pass:")) ||
+            lendsInTemporary(call.binding->inTemporaryArgumentSyntaxes, argumentSyntax))
         {
             auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress, argumentSyntax,
                                       std::string(parameter.pointeeTypeKey));

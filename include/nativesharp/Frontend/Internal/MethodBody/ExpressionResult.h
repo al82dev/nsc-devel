@@ -109,6 +109,8 @@ struct ExpressionResult final
     // must agree -- which is the point of requiring the keyword at all: a reader of the call
     // can see that the argument may change without going to read the signature.
     ParameterPassKind argumentPassKind = ParameterPassKind::Value;
+    // L1: `in e` where e is a temporary value: the result is e's value, materialized for the `in` parameter.
+    bool inTemporaryOperand = false;
     bool flowProvenNonNull = false;
     bool flowIntegerExcludesZero = false;
     std::optional<std::int64_t> flowIntegerMinimum;

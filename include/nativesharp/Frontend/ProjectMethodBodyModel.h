@@ -5207,6 +5207,11 @@ private:
     ProjectImplicitConversion classifyCFrontierConversion(
         const ExpressionResult& source, const MethodParameterSymbol& parameter, std::string_view targetTypeKey,
         bool cLinkage) const;
+    // L1: whether a temporary of this value may be stored for the duration of a call and lent to an `in`
+    //     parameter, and whether this argument of `callee` is such a temporary.
+    bool inTemporaryValueMaterializable(const ExpressionResult& value) const;
+    bool inTemporaryArgumentAllowed(const ExpressionResult& argument, const ClassMemberSymbol& callee,
+        const MethodParameterSymbol& parameter) const;
     bool reportTupleConversionFailure(
         std::string_view sourceTypeKey,
         std::string_view targetTypeKey,
