@@ -5018,6 +5018,8 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
         return CppRecordObservationFailure{"precompiled snapshot does not match observation syntax"};
     frontend::ProjectNameLookup lookup;
     lookup.setPrecompiledSnapshots(finalSnapshots);
+    // T13: the value traits of the live records are observed after this pass (selection for compilation).
+    lookup.setCppValueTraitsPending(true);
     // EN: T19-025. The aliases of the main lookup, including those of the precompiled catalogs: the copied trees hold
     //     the specializations of precompiled templates, whose bodies may name a producer's C/C++ alias.
     // ES: T19-025. Los alias de la busqueda principal, incluidos los de los catalogos precompilados: los arboles

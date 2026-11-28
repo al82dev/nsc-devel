@@ -383,6 +383,16 @@ bool ProjectNameLookup::cppTrivialValueEligible(std::size_t typeOrdinal) const n
     return interop::cppRecordValueTransportEligible(*imported->cppValueTraits, *imported->cppValueOperations);
 }
 
+void ProjectNameLookup::setCppValueTraitsPending(bool pending) noexcept
+{
+    cppValueTraitsPending_ = pending;
+}
+
+bool ProjectNameLookup::cppValueTraitsPending() const noexcept
+{
+    return cppValueTraitsPending_;
+}
+
 bool ProjectNameLookup::cppTransportValueEligible(std::size_t typeOrdinal) const noexcept
 {
     const auto* imported = cppImportedType(typeOrdinal);
