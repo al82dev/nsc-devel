@@ -539,12 +539,15 @@ bool ProjectMethodBodyModel::validateLambdaLocalCaptureLifetime(
     {
         const std::size_t root = *local.variableLengthArrayRootLocalOrdinal;
         const std::string rootName = root < locals_.size() ? locals_[root].name : local.name;
+        // CS1: the NUL-terminated string copy owned by a pointer local is frame storage too.
+        const bool cStringCopy = root < locals_.size() && locals_[root].ownsCStringCopy;
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
             diagnostics::DiagnosticSeverity::Error,
             name.syntax->range(),
-            "pointer into variable-length array '" + rootName +
-                "' cannot be captured by a lambda because the delegate may outlive its stack frame");
+            (cStringCopy ? "pointer to the NUL-terminated string copy owned by local '" + rootName + "'"
+                         : "pointer into variable-length array '" + rootName + "'") +
+                " cannot be captured by a lambda because the delegate may outlive its stack frame");
         safe = false;
     }
     // EN: Freeze (plan item 136): the classifier names the scope object and the owner.

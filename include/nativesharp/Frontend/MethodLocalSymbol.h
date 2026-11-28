@@ -60,6 +60,10 @@ struct MethodLocalSymbol final
     // element type and count expression so HIR can synthesize the existing stack-allocation
     // operation without changing fields, parameters, or return types.
     bool isVariableLengthArray = false;
+    // CS1: a read-only C character pointer local initialized from a runtime string owns the NUL-terminated copy of
+    //     the string's bytes that it points at. The copy is frame storage (like a VLA), so the local is also its own
+    //     variableLengthArrayRootLocalOrdinal and the same return, store and capture checks keep it in the frame.
+    bool ownsCStringCopy = false;
     std::string variableLengthArrayElementTypeKey;
     const ast::AstNode* variableLengthArrayCountSyntax = nullptr;
     // Source-order dimensions for multidimensional VLAs plus the compiler-generated locals

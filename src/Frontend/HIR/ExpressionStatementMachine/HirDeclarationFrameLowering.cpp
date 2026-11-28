@@ -256,11 +256,17 @@ bool ProjectOopHirModel::acceptVariableInitializer(
     const MethodLocalSymbol& local = *variable.local;
     variable.node->placementConstructed =
         child->kind == ProjectOopHirNodeKind::PlacementConstruction;
-    const ProjectImplicitConversion conversion = local.isReference
+    ProjectImplicitConversion conversion = local.isReference
         ? ProjectImplicitConversion{
             ProjectConversionKind::Identity, 0, local.typeKey,
             local.typeKey, std::nullopt}
         : classifyExpressionConversion(frame.syntax->first(), child->typeKey, local.typeKey);
+    // CS1: a read-only C character pointer local that owns the NUL-terminated copy of its string initializer (the
+    //     body model accepted it) converts the string as an L-003 argument does; the backend gives the copy the
+    //     local's frame storage instead of the call's.
+    if (!conversion.exists() && local.ownsCStringCopy && child->typeKey == "builtin:string")
+        conversion = ProjectImplicitConversion{ProjectConversionKind::StringToCharPointer, 4, child->typeKey,
+                                               local.typeKey, std::nullopt};
     if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
     {
         child = wrapImplicitConversion(

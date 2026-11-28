@@ -1076,12 +1076,15 @@ bool ProjectMethodBodyModel::validateAssignmentTargetStorage(
     {
         const std::string name = *assignedVlaRoot < locals_.size()
             ? locals_[*assignedVlaRoot].name : std::string("<variable-length-array>");
+        // CS1: the NUL-terminated string copy owned by a pointer local is frame storage too.
+        const bool cStringCopy = *assignedVlaRoot < locals_.size() && locals_[*assignedVlaRoot].ownsCStringCopy;
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
             diagnostics::DiagnosticSeverity::Error,
             expression->second()->range(),
-            "pointer into variable-length array '" + name +
-                "' cannot be stored outside a local alias because the stack frame owns it");
+            (cStringCopy ? "pointer to the NUL-terminated string copy owned by local '" + name + "'"
+                         : "pointer into variable-length array '" + name + "'") +
+                " cannot be stored outside a local alias because the stack frame owns it");
         return false;
     }
     if (assignedVlaRoot.has_value())
@@ -2180,6 +2183,19 @@ bool ProjectMethodBodyModel::validatePlainAssignmentConversion(
     if (!conversion.exists() && right.typeKey == "string-literal" && left.pointerPointeeReadonly &&
         (left.typeKey == "builtin:sbyte*" || left.typeKey == "builtin:byte*" || left.typeKey == "builtin:char*"))
         return true;
+    // CS1: only the declaration of a pointer local makes the NUL-terminated copy of a runtime string, so the copy
+    //     lives exactly as long as that local; an assignment has no storage of its own for a copy.
+    if (!conversion.exists() && right.typeKey == "builtin:string" &&
+        (left.typeKey == "builtin:sbyte*" || left.typeKey == "builtin:byte*" || left.typeKey == "builtin:char*"))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "a runtime string cannot be assigned to a C character pointer: its NUL-terminated copy is made only "
+            "where a read-only pointer local is declared from it ('sbyte const* p = text;'), which then owns it");
+        return false;
+    }
     if (!conversion.exists())
     {
         diagnostics.report(

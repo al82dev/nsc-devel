@@ -1,5 +1,8 @@
 # B - Runtime string stored in a C character pointer local (decision record)
 
+Superseded by CS1 (`CS1-string-to-c-pointer-local.md`): the capability is implemented with frame storage, not with
+a hidden heap allocation. The record below is kept as the earlier decision.
+
 ## Question
 
 Should `sbyte const* p = text;` (a runtime string into a C character pointer local) be accepted, with a hidden

@@ -24,3 +24,9 @@ initializer and a `sbyte*`, `byte*` or `char*` local, the diagnostic spells the 
 
 Built (Release O3). Message checked on a small project; no other behavior changes. The suggested text was edited
 after that build; the last wording is not built.
+
+## Superseded
+
+CS1 (`docs/language-limits/CS1-string-to-c-pointer-local.md`) accepts `sbyte const* p = text;` and
+`byte const* p = text;`. The diagnostic remains for the forms CS1 rejects (writable pointee, `char` pointee) and
+states the reason; it no longer suggests an explicit Core type.

@@ -4514,24 +4514,33 @@ void ProjectMethodBodyModel::validateVariableInitializerConversion(
     if (!conversion.exists() && initializer.typeKey == "string-literal" && declaredPointerPointeeReadonly &&
         (typeKey == "builtin:sbyte*" || typeKey == "builtin:byte*" || typeKey == "builtin:char*"))
         return;
-    // T19: a runtime string converts to a C character pointer only as a direct C call argument (L-003): the
-    //     NUL-terminated copy it is converted to lives for that call. A pointer local would outlive that copy, so
-    //     the diagnostic states the rule instead of a bare type mismatch, spells the declared pointee const, and
-    //     names the explicit form (NativeSharp.Core.CString), which is what C++ asks for with c_str().
+    // CS1: a runtime string initializes a read-only 8-bit C character pointer local (`sbyte const* p = text;`). The
+    //     local owns a NUL-terminated copy of the string's bytes in the declaring frame; the copy lives as long as
+    //     the local and is released with the frame (a loop iteration releases its own), as a VLA is. A null string
+    //     gives a null pointer. Only the declaration makes the copy: an assignment, a static local and a suspending
+    //     callable are rejected, and the copy cannot escape (return, store outside a local alias, capture).
+    //     T19: every other form keeps a diagnostic that states the rule and spells the declared pointee const.
     if (!conversion.exists() && initializer.typeKey == "builtin:string" &&
         (typeKey == "builtin:sbyte*" || typeKey == "builtin:byte*" || typeKey == "builtin:char*"))
     {
+        const bool byteCharacter = typeKey != "builtin:char*";
+        if (byteCharacter && declaredPointerPointeeReadonly && !isVarInferred)
+        {
+            pendingLocalCStringCopy_ = true;
+            return;
+        }
         const std::string pointee = std::string(typeKey.substr(8, typeKey.size() - 9));
         const std::string spelled = pointee + (declaredPointerPointeeReadonly ? " const*" : "*");
+        const std::string reason = !byteCharacter
+            ? "the NUL-terminated copy of a string holds its UTF-8 bytes; declare 'sbyte const*' or 'byte const*'"
+            : "the NUL-terminated copy of a string is read-only; declare the pointee const ('" + pointee +
+                " const*')";
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error,
             variable->first()->range(),
             "cannot initialize local '" + variable->text() + "' of type '" + spelled +
-                "' from a runtime string: a string converts to a C character pointer only as a direct argument of "
-                "a C call, where its NUL-terminated copy lives for that call; a local pointer would outlive it. As "
-                "C++ asks for c_str(), keep the copy in an owner: 'raii CString c = new CString(text);' and "
-                "take 'c.Pointer()'");
+                "' from a runtime string: " + reason);
         return;
     }
     if (!conversion.exists() && !reportTupleConversionFailure(
@@ -6307,6 +6316,8 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
     unsigned pendingPointerAddressSpace = declaredPointerContract.addressSpace;
     // A1: reset before the initializer is validated, so a flag never reaches another declaration.
     inferredOwnerFromOwnedInitializer_ = false;
+    // CS1: the same for the C string copy of a pointer local.
+    pendingLocalCStringCopy_ = false;
     analyzeVariableInitializer(
         precomputedVarInitializer, pendingLocalBorrow, pendingReferenceEscapeOrigin,
         pendingReferencePlaceKey, pendingReferenceReborrowSourceLocalOrdinal,
@@ -6367,6 +6378,29 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
     recordVariableShadowing(variable, methodMemberOrdinal, scopeOrdinal);
     const std::size_t localOrdinal = registerVariableLocal(
         std::move(local), variable, scopeOrdinal, isVariableLengthArray);
+    // CS1: the pointer local owns the NUL-terminated copy of its string initializer. The copy is frame storage, so a
+    //     static local (module lifetime) and a callable that suspends (its frame is rebuilt on resume) cannot hold
+    //     it. Rooting the local at itself makes the frame-storage checks (return, store, capture) apply to it.
+    if (pendingLocalCStringCopy_)
+    {
+        pendingLocalCStringCopy_ = false;
+        const ClassMemberSymbol* callable = methodSymbol(methodMemberOrdinal);
+        const bool suspends = callable != nullptr &&
+            (callable->effects.contains(sema::Effect::Async) || callable->effects.contains(sema::Effect::Generator));
+        if (isStaticLocal || suspends)
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                variable->first()->range(),
+                std::string(isStaticLocal ? "a static local" : "a local of an async or iterator callable") +
+                    " cannot hold the NUL-terminated copy of a runtime string: the copy is storage of the "
+                    "current stack frame");
+        else
+        {
+            locals_[localOrdinal].ownsCStringCopy = true;
+            locals_[localOrdinal].variableLengthArrayRootLocalOrdinal = localOrdinal;
+        }
+    }
     assignFnOnceEnvironments(localOrdinal, variable->first(), scopeOrdinal,
         pendingCallableTrait == language::CallableTrait::FnOnce);
     if (isVariableLengthArray)
@@ -7519,12 +7553,15 @@ bool ProjectMethodBodyModel::rejectVariableArrayReturn(
     if (!vlaRoot.has_value()) return false;
     const std::string name = *vlaRoot < locals_.size()
         ? locals_[*vlaRoot].name : std::string("<variable-length-array>");
+    // CS1: the NUL-terminated string copy owned by a pointer local is frame storage too.
+    const bool cStringCopy = *vlaRoot < locals_.size() && locals_[*vlaRoot].ownsCStringCopy;
     diagnostics.report(
         diagnostics::DiagnosticId::InvalidReturn,
         diagnostics::DiagnosticSeverity::Error,
         statement->first()->range(),
-        "variable-length array storage rooted at '" + name +
-            "' cannot be returned; its stack frame ends with this call");
+        (cStringCopy ? "the NUL-terminated string copy owned by local '" + name + "'"
+                     : "variable-length array storage rooted at '" + name + "'") +
+            " cannot be returned; its stack frame ends with this call");
     return true;
 }
 

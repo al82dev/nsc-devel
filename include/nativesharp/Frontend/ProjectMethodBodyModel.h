@@ -5358,6 +5358,9 @@ private:
     // A1: set by validateVariableOwnershipInitializer when an unqualified local is initialized by an owned
     //     transfer and becomes its inferred owner; finishVariableAnalysis consumes it.
     mutable bool inferredOwnerFromOwnedInitializer_ = false;
+    // CS1: set by validateVariableInitializerConversion when a runtime string initializes a read-only C character
+    //     pointer local; finishVariableAnalysis consumes it once the local is registered.
+    mutable bool pendingLocalCStringCopy_ = false;
     // NS304-T10-F05: true mientras se analiza el LHS de un null-conditional write.
     bool activeNullConditionalWrite_ = false;
     std::unordered_set<std::size_t> analyzedCallableMembers_;
