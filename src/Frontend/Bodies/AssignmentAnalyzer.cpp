@@ -4352,6 +4352,14 @@ bool ProjectMethodBodyModel::tryCppAssignment(
         !left.assignable || !left.typeKey.starts_with("type:") || right.typeKey != left.typeKey ||
         expression->tokenKind() != lexer::TokenKind::Equal)
         return false;
+    // T18: the dynamic initializer of a namespace state (L-023) initializes storage that holds no object yet, so a
+    //     construction `new T(...)` is constructed in that storage, as C++ initializes a namespace-scope variable,
+    //     instead of assigned to it with operator=. A store of a construction of a non-trivial C++ record is
+    //     lowered as construction in its destination (X2-06). Other initializers keep C++ assignment.
+    if (expression->auxiliaryText() == "namespace-state-initializer" && !right.addressable &&
+        expression->second() != nullptr &&
+        expression->second()->kind() == ast::AstNodeKind::ObjectCreationExpression)
+        return false;
     const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(left.typeKey).substr(5));
     const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
     if (imported == nullptr || imported->origin != CppImportedTypeOrigin::CppRecord ||
