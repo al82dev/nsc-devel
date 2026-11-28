@@ -1569,6 +1569,8 @@ void ProjectNamespaceFunctionModel::injectDynamicNamespaceInitializers(
         }
         ast::AstNode* assignment = make(ast::AstNodeKind::AssignmentExpression);
         assignment->setTokenKind(lexer::TokenKind::Equal);
+        // T18: the state's storage holds no object yet; the body analysis treats this store as its initialization.
+        assignment->setAuxiliaryText("namespace-state-initializer");
         assignment->setFirst(target);
         assignment->setSecond(initializer);
         ast::AstNode* statement = make(ast::AstNodeKind::ExpressionStatement);

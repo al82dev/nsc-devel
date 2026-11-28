@@ -63,6 +63,8 @@ struct NamespaceFunctionCallBinding final
     std::vector<const ast::AstNode*> selectedDefaultArguments;
     std::vector<std::size_t> selectedDefaultArgumentParameterOrdinals;
     std::vector<const ast::AstNode*> selectedArgumentSyntaxes;
+    // L1: the argument syntaxes whose temporary value is materialized for an `in` parameter.
+    std::vector<const ast::AstNode*> inTemporaryArgumentSyntaxes;
     std::string resultTypeKey;
     // EN: T19-039. The call performs a C `op=` on a `_Complex` carrier: the first argument is the address of the
     //     assignment target, evaluated once, and the second is the right-hand side.

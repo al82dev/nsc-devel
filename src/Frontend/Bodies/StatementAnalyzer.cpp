@@ -4163,11 +4163,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::evaluateVariabl
             variable->first(), typeKey, methodMemberOrdinal, scopeOrdinal, diagnostics);
     // NS304-T09-F07: expone el tipo declarado al `new()` target-typed del inicializador.
     const std::string previousTargetTypeKey = activeTargetTypeKey_;
+    const ast::AstNode* const previousTargetTypedConditional = targetTypedConditional_;
     activeTargetTypeKey_ = typeKey;
+    targetTypedConditional_ = variable->first()->kind() == ast::AstNodeKind::ConditionalExpression
+        ? variable->first() : nullptr;
     initializer = analyzeExpression(
         variable->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
         isDelegateTypeKey(typeKey), false, isRaii || isMoveOnly);
     activeTargetTypeKey_ = previousTargetTypeKey;
+    targetTypedConditional_ = previousTargetTypedConditional;
     if (initializer.methodGroup && isDelegateTypeKey(typeKey))
         initializer = bindMethodGroupToDelegate(
             variable->first(), initializer, typeKey, methodMemberOrdinal, scopeOrdinal,

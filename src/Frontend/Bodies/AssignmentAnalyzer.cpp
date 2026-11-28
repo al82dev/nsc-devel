@@ -920,7 +920,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     const bool delegateTarget = isDelegateTypeKey(left.typeKey);
     // NS304-T09-F07: expone el tipo objetivo al `new()` target-typed del lado derecho.
     const std::string previousTargetTypeKey = activeTargetTypeKey_;
+    const ast::AstNode* const previousTargetTypedConditional = targetTypedConditional_;
     activeTargetTypeKey_ = left.typeKey;
+    targetTypedConditional_ = expression->tokenKind() == TokenKind::Equal && expression->second() != nullptr &&
+            expression->second()->kind() == ast::AstNodeKind::ConditionalExpression
+        ? expression->second() : nullptr;
     ExpressionResult right;
     if (delegateTarget && expression->second()->kind() == ast::AstNodeKind::LambdaExpression)
     {
@@ -937,6 +941,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
                 ownedFieldMoveTarget || genericFieldMoveTarget || ownedSetterMoveTarget);
     }
     activeTargetTypeKey_ = previousTargetTypeKey;
+    targetTypedConditional_ = previousTargetTypedConditional;
     if (right.methodGroup && delegateTarget)
     {
         right = bindMethodGroupToDelegate(
@@ -4346,6 +4351,14 @@ bool ProjectMethodBodyModel::tryCppAssignment(
     if (namespaceFunctionModel_ == nullptr || nameLookup_ == nullptr || !left.valid || !right.valid ||
         !left.assignable || !left.typeKey.starts_with("type:") || right.typeKey != left.typeKey ||
         expression->tokenKind() != lexer::TokenKind::Equal)
+        return false;
+    // T18: the dynamic initializer of a namespace state (L-023) initializes storage that holds no object yet, so a
+    //     construction `new T(...)` is constructed in that storage, as C++ initializes a namespace-scope variable,
+    //     instead of assigned to it with operator=. A store of a construction of a non-trivial C++ record is
+    //     lowered as construction in its destination (X2-06). Other initializers keep C++ assignment.
+    if (expression->auxiliaryText() == "namespace-state-initializer" && !right.addressable &&
+        expression->second() != nullptr &&
+        expression->second()->kind() == ast::AstNodeKind::ObjectCreationExpression)
         return false;
     const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(left.typeKey).substr(5));
     const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;

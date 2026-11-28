@@ -1860,6 +1860,18 @@ if (operation == TokenKind::Amp)
     //     `ref`/`in`/`out`.
     const bool volatileAddress = operand.cppVolatileGlobalAddress && expression != nullptr &&
         !expression->auxiliaryText().starts_with("pass:");
+    // L1: `in e` with e a temporary lends e's value; the call stores it and passes its address.
+    if (!operand.addressable && !atomicAddress && !volatileAddress && expression != nullptr &&
+        expression->auxiliaryText() == "pass:in" && !operand.cppAtomicStorage && !operand.volatileStorage &&
+        inTemporaryValueMaterializable(operand))
+    {
+        ExpressionResult lent = operand;
+        lent.argumentPassKind = ParameterPassKind::In;
+        lent.inTemporaryOperand = true;
+        lent.addressable = false;
+        lent.assignable = false;
+        return lent;
+    }
     if (!operand.addressable && !atomicAddress && !volatileAddress)
     {
         // EN: An indexed read gets its own explanation: the generic text named bit fields for a
