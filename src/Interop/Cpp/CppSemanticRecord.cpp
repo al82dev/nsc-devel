@@ -5126,6 +5126,60 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
     std::vector<frontend::CppImportedTypeDeclaration> signatureEnums;
     if (!provideCppEnumTypes(*graph, compilation.cppProjectSessions(), signatureEnums, error))
         return CppRecordObservationFailure{std::move(error)};
+    // T17: the enums named by the method signatures and the fields of the records the program uses are imported,
+    //     as the enums of a C function signature are, so a member whose signature uses an enum the program does
+    //     not name itself (a pointer to an enum output parameter, an enum result) can be projected.
+    std::vector<std::size_t> memberEnumGroups = result.selection.referencedGroups;
+    memberEnumGroups.insert(memberEnumGroups.end(), result.selection.expressionCandidateGroups.begin(),
+                            result.selection.expressionCandidateGroups.end());
+    for (const std::size_t groupIndex : memberEnumGroups)
+    {
+        if (groupIndex >= result.groups.groups.size()) continue;
+        const auto& group = result.groups.groups[groupIndex];
+        if (group.projectOrdinal >= graph->projects().size()) continue;
+        const std::string moduleName(graph->projects()[group.projectOrdinal].moduleName());
+        for (const std::size_t inventoryIndex : group.inventoryIndices)
+        {
+            if (inventoryIndex >= result.inventory.size()) continue;
+            const auto& declaration = result.inventory[inventoryIndex].declaration;
+            std::vector<const CppType*> roots;
+            for (const auto& method : declaration.methods)
+            {
+                roots.push_back(&method.returnType);
+                for (const auto& parameter : method.parameters) roots.push_back(&parameter.type);
+            }
+            for (const auto& field : declaration.fields) roots.push_back(&field.type);
+            for (const CppType* root : roots)
+            {
+                const CppType* type = root;
+                std::size_t depth = 0;
+                while (type != nullptr && depth < 64 &&
+                       (type->kind == CppTypeKind::Pointer || type->kind == CppTypeKind::Array ||
+                        type->kind == CppTypeKind::LValueReference || type->kind == CppTypeKind::RValueReference))
+                {
+                    type = type->element.get();
+                    ++depth;
+                }
+                if (type == nullptr || type->kind != CppTypeKind::Enumeration || !type->enumIdentity ||
+                    type->enumIdentity->anonymousContext || type->enumIdentity->name.empty())
+                    continue;
+                CppType unqualified = *type;
+                unqualified.isConst = false;
+                unqualified.isVolatile = false;
+                const auto identity = projectCppEnumTypeIdentity(unqualified, moduleName);
+                if (!identity) continue;
+                const std::string key = identity->key();
+                for (const auto& candidate : signatureEnums)
+                {
+                    if (candidate.projectOrdinal != group.projectOrdinal || candidate.identity.key() != key) continue;
+                    if (candidate.deferredImportError.empty() && !collidingEnumIdentities.contains(key) &&
+                        enumIdentities.insert(key).second)
+                        result.referencedEnumTypes.push_back(candidate);
+                    break;
+                }
+            }
+        }
+    }
     auto functionInventory = collectCppSemanticFunctions(*graph, compilation.cppProjectSessions());
     if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&functionInventory))
         return CppRecordObservationFailure{failure->message};
